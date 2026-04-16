@@ -46,4 +46,14 @@ export type Unit = {
   T: TireReadings;
   minT: number | null;
   hasRefaccion?: boolean;
+  // Campos render-time (opcionales, poblados por el pipeline legado)
+  brand?: string;
+  insp?: string;
+  obs?: string;
+  obsArr?: string[];
+  photos?: string[];
+  km?: number | string;
 };
+
+/** Marks for completed findings per unit, keyed by finding text. */
+export type ChecklistDB = Record<string, Record<string, { done?: boolean }>>;

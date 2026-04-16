@@ -97,7 +97,7 @@ Mover código del HTML monolito a módulos TS. **Un módulo por PR**, no big-ban
 | 2.2 | Partir JS legado en módulos TS — **orden**:                      |                                         |
 |     | a) `excel-loader` ✅ 2026-04-16                                   | `src/io/excelLoader.ts`, 7 tests        |
 |     | b) `zip-loader` ✅ 2026-04-16 (combina readZip + loadExcel)      | `src/io/zipLoader.ts`, 5 tests          |
-|     | c) `render-table` + `render-detail`                              | Consumir `safeHTML`                     |
+|     | c) `render-table` (tab Inspecciones) ✅ 2026-04-16               | `src/ui/renderTable.ts`, 24 tests, XSS-safe |
 |     | d) `pdf-export` (envuelve `jsPDF`)                               | Snapshot test                           |
 |     | e) `state` / store central                                       | Última — depende del resto              |
 | 2.3 | Migrar consumers HTML → módulos TS uno a uno con flag opcional   | Feature flag `USE_NEW_MODULE` por tab   |
@@ -107,6 +107,14 @@ Mover código del HTML monolito a módulos TS. **Un módulo por PR**, no big-ban
 - HTML: `<style>...</style>` → `<link rel="stylesheet" href="./src/styles/main.css"/>`.
 - HTML legado pasó de 332KB → 278KB (-16%).
 - Verificado en preview: 486 CSS rules cargadas, body bg correcto, responsive intacto.
+
+**P2.2(c) notas**:
+- `src/ui/renderTable.ts`: reemplaza `renderTable()` del legado (línea ~2195). DOM-API first (no `innerHTML` con input de usuario), helpers `mkpill`/`fcell`/`tcell` exportados para tests y reuso.
+- Deps inyectables: `units`, `selectedUid`, `checklistDB`, `hasZip`, `isUnitEnTaller`, `parseSvcDate`, `onSelect`, `today`. Facilita testing y desacopla del estado global del legado.
+- 24 tests: 4 mkpill, 4 fcell (con cuenta de done), 5 tcell (con thresholds), 11 renderTable (empty state, risk classes, selección, click, XSS, photos icon, taller badge, obsArr count, alertas svc, re-render).
+- `src/main.ts`: entry Vite con feature flag `localStorage.USE_NEW_RENDER === '1'`. Cuando activa, overrides `window.renderTable` con shim que inyecta el estado global del legado al módulo nuevo; try/catch fallback al legado si algo falla.
+- `Control de flotilla.html`: `<script type="module" src="/src/main.ts">` añadido pre-`</body>`. Bajo file:// 404 silenciosamente; bajo Vite dev se activa.
+- Validado en preview: flag OFF → idéntico al baseline (`#hdr 1280×52`, `#dz 1280×748`). Flag ON → 2 filas renderizan correctamente; input hostil (`<script>`, `<img onerror>`, `<svg onload>`) NO se ejecuta (pwned* flags todos false, 0 nodos inyectados).
 
 **P2.2(a-b) notas**:
 - `loadExcel(file)` valida magic bytes ZIP (PK\x03\x04) antes de parsear — evita que xlsx trague basura como CSV vacío. Retorna `LoadedReport` con clasificación mensual/semanal.

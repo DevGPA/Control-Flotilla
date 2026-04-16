@@ -5650,5 +5650,9 @@ async function deleteTallerEntry(id){
   }
 })();
 </script>
+<!-- Módulos TS nuevos (Vite dev server resuelve en /src/). Feature flag:
+     localStorage.setItem('USE_NEW_RENDER','1') para probar renderTable nuevo.
+     Bajo file:// este script 404 silenciosamente y el legado sigue trabajando. -->
+<script type="module" src="/src/main.ts" onerror="/* no-op: file:// o build sin Vite */"></script>
 </body>
 </html>
