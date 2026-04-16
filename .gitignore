@@ -23,3 +23,11 @@ _legacy/
 
 # Build extra
 dev-dist/
+tsconfig.tsbuildinfo
+
+# TypeScript build output (tsc -b emite .js junto a .ts; usamos tsc --noEmit ahora)
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+tests/**/*.js
+tests/**/*.js.map
