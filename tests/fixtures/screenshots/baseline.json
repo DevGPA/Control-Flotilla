@@ -1,0 +1,58 @@
+{
+  "_meta": {
+    "description": "Baseline DOM state capturado 2026-04-16 pre-P2.2(c) render migration. Usar para detectar regresiones visuales en próximas sesiones.",
+    "commit": "2912991",
+    "capturedAt": "2026-04-16T23:14Z",
+    "scenario": "drop-zone empty state (sin data cargada)",
+    "fontFamily": "Inter",
+    "stylesheets": ["vendor/fonts/fonts.css", "src/styles/main.css"],
+    "verificationScript": "scripts/verify-baseline.mjs"
+  },
+  "mobile_375x812": {
+    "viewport": { "w": 375, "h": 812 },
+    "horizontalOverflow": false,
+    "elements": {
+      "#hdr": { "display": "flex", "w": 375, "h": 161, "visible": true },
+      "#mainnav": { "display": "flex", "w": 375, "h": 51, "visible": true },
+      "#dz": { "display": "flex", "w": 375, "h": 651, "visible": true },
+      ".hbrand": { "display": "flex", "w": 375, "h": 26, "visible": true },
+      ".hname": { "display": "block", "fontSize": "11.5px", "w": 123, "h": 13 },
+      ".hico": { "display": "flex", "w": 26, "h": 26 },
+      ".mnav": { "display": "flex", "fontSize": "11px", "w": 99, "h": 44 },
+      "#kpi": { "display": "none", "visible": false },
+      "#tb": { "display": "none", "visible": false },
+      "#det": { "display": "none", "visible": false }
+    }
+  },
+  "tablet_768x1024": {
+    "viewport": { "w": 768, "h": 1024 },
+    "horizontalOverflow": false,
+    "elements": {
+      "#hdr": { "display": "flex", "w": 768, "h": 165, "visible": true },
+      "#mainnav": { "display": "flex", "w": 768, "h": 51, "visible": true },
+      "#dz": { "display": "flex", "w": 768, "h": 859, "visible": true },
+      ".hbrand": { "display": "flex", "w": 768, "h": 30, "visible": true },
+      ".hname": { "display": "block", "fontSize": "12px", "w": 129, "h": 14 },
+      ".hico": { "display": "flex", "w": 30, "h": 30 },
+      ".mnav": { "display": "flex", "fontSize": "11px", "w": 99, "h": 44 }
+    }
+  },
+  "desktop_1280x800": {
+    "viewport": { "w": 1280, "h": 800 },
+    "horizontalOverflow": false,
+    "elements": {
+      "#hdr": { "display": "flex", "w": 1280, "h": 52, "visible": true },
+      "#mainnav": { "display": "none", "visible": false, "note": "main nav oculto hasta que data cargada" },
+      "#dz": { "display": "flex", "w": 1280, "h": 748, "visible": true },
+      ".hbrand": { "display": "flex", "w": 268, "h": 51, "visible": true },
+      ".hname": { "display": "block", "fontSize": "13px", "w": 199, "h": 15 },
+      ".hico": { "display": "flex", "w": 30, "h": 30 }
+    }
+  },
+  "counts": {
+    "scripts": 7,
+    "stylesheets": 2,
+    "fontFaces": 39,
+    "totalElements": 509
+  }
+}

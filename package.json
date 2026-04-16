@@ -13,6 +13,7 @@
     "test:cov": "vitest run --coverage",
     "lint": "eslint \"src/**/*.{ts,js}\"",
     "audit:xss": "node scripts/xss-audit.mjs \"Control de flotilla.html\"",
+    "audit:baseline": "node scripts/verify-baseline.mjs",
     "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
     "typecheck": "tsc --noEmit"
   },
