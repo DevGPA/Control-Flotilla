@@ -1,13 +1,13 @@
 // renderTable — tabla principal del tab "Inspecciones".
 // Reemplaza la función `renderTable()` del legado (línea ~2195 de
-// `Control de flotilla.html`). DOM-API first, sin innerHTML con input de
-// usuario. Helpers `mkpill`, `fcell`, `tcell` exportados para reuso.
+// `Control de flotilla.html`). DOM-API puro: cero `innerHTML` (ESLint lo prohíbe
+// vía no-restricted-syntax). Helpers `mkpill`, `fcell`, `tcell` retornan
+// `HTMLElement` en vez de strings para componer con appendChild.
 //
 // Las inyecciones (checklistDB, hasZip, onSelect, isUnitEnTaller, parseSvcDate)
 // entran como deps para mantener el módulo DOM-agnostic/testeable.
 
 import { TCRIT, TWARN } from "../analyzer/constants";
-import { escHtml } from "../dom/safeHTML";
 import type { ChecklistDB, RiskLevel, Unit } from "../types";
 
 export type RenderTableDeps = {
@@ -26,17 +26,44 @@ export type RenderTableDeps = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  Helpers de celdas — exportados para reuso y tests aislados
+//  Helpers de celdas — retornan HTMLElement para composición DOM-safe
 // ═══════════════════════════════════════════════════════════════
 
+/** Crea un <i data-lucide="..."> (lucide.replace() lo hidrata al icono SVG). */
+function lucideIcon(name: string, size = 10, extraStyle = ""): HTMLElement {
+  const i = document.createElement("i");
+  i.setAttribute("data-lucide", name);
+  i.style.cssText = `width:${size}px;height:${size}px;vertical-align:-1px;${extraStyle}`;
+  return i;
+}
+
 /** Genera el badge de riesgo. Las clases `pu/pr/pc/po` están en main.css. */
-export function mkpill(r: RiskLevel): string {
+export function mkpill(r: RiskLevel): HTMLElement {
   const [cl, lb] =
     r === "Urgente" ? ["pu", "Urgente"] :
     r === "Revisar" ? ["pr", "Revisar"] :
     r === "Completar" ? ["pc", "Completar"] :
     ["po", "OK"];
-  return `<span class="pill ${cl}"><span class="pd"></span>${lb}</span>`;
+  const span = document.createElement("span");
+  span.className = `pill ${cl}`;
+  const dot = document.createElement("span");
+  dot.className = "pd";
+  span.appendChild(dot);
+  span.appendChild(document.createTextNode(lb));
+  return span;
+}
+
+function dotRow(color: string, text: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "fcr";
+  const dot = document.createElement("span");
+  dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0`;
+  const label = document.createElement("span");
+  label.style.cssText = `color:${color};font-size:10px`;
+  label.textContent = text;
+  row.appendChild(dot);
+  row.appendChild(label);
+  return row;
 }
 
 /**
@@ -44,33 +71,52 @@ export function mkpill(r: RiskLevel): string {
  * Las cuentas se derivan de `u.F` descontando lo marcado como done en
  * `checklistDB[u.uid][finding.text].done`.
  */
-export function fcell(u: Unit, checklistDB: ChecklistDB = {}): string {
+export function fcell(u: Unit, checklistDB: ChecklistDB = {}): HTMLElement {
   const dm = checklistDB[u.uid] || {};
   const pending = u.F.filter((f) => !(dm[f.text] && dm[f.text].done));
   const a = pending.filter((f) => f.lv === "Urgente").length;
   const b = pending.filter((f) => f.lv === "Revisar").length;
   const c = pending.filter((f) => f.lv === "Completar").length;
-  if (!a && !b && !c) return `<span style="color:var(--G);font-size:10px">Ninguno</span>`;
-  const rows: string[] = [];
-  if (a) rows.push(dotRow("var(--R)", `${a} urgente${a > 1 ? "s" : ""}`));
-  if (b) rows.push(dotRow("var(--A)", `${b} revisar`));
-  if (c) rows.push(dotRow("var(--B)", `${c} completar`));
-  return `<div class="fcw">${rows.join("")}</div>`;
-}
-
-function dotRow(color: string, text: string): string {
-  // escHtml no necesario aquí: `color` es enum interno, `text` viene de counts.
-  return `<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span><span style="color:${color};font-size:10px">${text}</span></div>`;
+  if (!a && !b && !c) {
+    const empty = document.createElement("span");
+    empty.style.cssText = "color:var(--G);font-size:10px";
+    empty.textContent = "Ninguno";
+    return empty;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "fcw";
+  if (a) wrap.appendChild(dotRow("var(--R)", `${a} urgente${a > 1 ? "s" : ""}`));
+  if (b) wrap.appendChild(dotRow("var(--A)", `${b} revisar`));
+  if (c) wrap.appendChild(dotRow("var(--B)", `${c} completar`));
+  return wrap;
 }
 
 /** Indicador visual de llanta con TACO mínimo. */
-export function tcell(minT: number | null, tcrit = TCRIT, twarn = TWARN): string {
+export function tcell(minT: number | null, tcrit = TCRIT, twarn = TWARN): HTMLElement {
   if (minT === null || !Number.isFinite(minT)) {
-    return `<span style="color:var(--s3);font-size:10px">—</span>`;
+    const placeholder = document.createElement("span");
+    placeholder.style.cssText = "color:var(--s3);font-size:10px";
+    placeholder.textContent = "—";
+    return placeholder;
   }
   const pct = Math.min((minT / 10) * 100, 100);
   const color = minT <= tcrit ? "var(--R)" : minT <= twarn ? "var(--A)" : "var(--G)";
-  return `<div class="tmw"><div class="tmb" style="width:50px"><div class="tmb" style="width:${pct}%;background:${color}"></div></div><div class="tml" style="color:${color}">${Number(minT)}mm</div></div>`;
+  const wrap = document.createElement("div");
+  wrap.className = "tmw";
+  const bar = document.createElement("div");
+  bar.className = "tmb";
+  bar.style.width = "50px";
+  const fill = document.createElement("div");
+  fill.className = "tmb";
+  fill.style.cssText = `width:${pct}%;background:${color}`;
+  bar.appendChild(fill);
+  const label = document.createElement("div");
+  label.className = "tml";
+  label.style.color = color;
+  label.textContent = `${Number(minT)}mm`;
+  wrap.appendChild(bar);
+  wrap.appendChild(label);
+  return wrap;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -131,13 +177,14 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     if (hasZip && u.photos && u.photos.length > 0) {
       const cam = document.createElement("span");
       cam.style.cssText = "margin-left:5px;font-size:9px;color:var(--O);opacity:.75";
-      cam.innerHTML = '<i data-lucide="camera" style="width:10px;height:10px;vertical-align:-1px"></i>';
+      cam.appendChild(lucideIcon("camera", 10));
       plate.appendChild(cam);
     }
     if (enTaller) {
       const badge = document.createElement("span");
       badge.className = "taller-badge-row";
-      badge.innerHTML = '<i data-lucide="wrench" style="width:9px;height:9px;vertical-align:-1px"></i> TALLER';
+      badge.appendChild(lucideIcon("wrench", 9));
+      badge.appendChild(document.createTextNode(" TALLER"));
       plate.appendChild(badge);
     }
     idCell.appendChild(plate);
@@ -165,16 +212,16 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     // ── 4. Risk pill
     const pillCell = document.createElement("div");
     pillCell.className = "tc";
-    pillCell.innerHTML = mkpill(u.risk);
+    pillCell.appendChild(mkpill(u.risk));
     tr.appendChild(pillCell);
 
-    // ── 5. Findings (counts aggregated, safe)
-    const fCell = document.createElement("div");
-    fCell.className = "tc";
-    fCell.innerHTML = fcell(u, checklistDB);
-    tr.appendChild(fCell);
+    // ── 5. Findings summary
+    const fCellEl = document.createElement("div");
+    fCellEl.className = "tc";
+    fCellEl.appendChild(fcell(u, checklistDB));
+    tr.appendChild(fCellEl);
 
-    // ── 6. Observations (user text — use textContent, never innerHTML)
+    // ── 6. Observations (user text — always textContent)
     const obsCell = document.createElement("div");
     obsCell.className = "tc";
     if (u.obs) {
@@ -197,10 +244,10 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     }
     tr.appendChild(obsCell);
 
-    // ── 7. Tires (computed string — safe)
+    // ── 7. Tires
     const tireCell = document.createElement("div");
     tireCell.className = "tc";
-    tireCell.innerHTML = tcell(u.minT, tcrit, twarn);
+    tireCell.appendChild(tcell(u.minT, tcrit, twarn));
     tr.appendChild(tireCell);
 
     // ── 8. KM / Fecha / Service alert
@@ -217,16 +264,8 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     if (u.nextSvc && u.nextSvc !== "—" && parseSvcDate) {
       const sd = parseSvcDate(u.nextSvc);
       if (sd) {
-        const alert = document.createElement("div");
-        alert.style.cssText = "font-size:8px;margin-top:2px;font-weight:700";
-        if (sd < today0) {
-          alert.style.color = "#EF4444";
-          alert.innerHTML = '<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-2px"></i> Svc vencido';
-        } else if (sd <= d30) {
-          alert.style.color = "#F59E0B";
-          alert.innerHTML = '<i data-lucide="clock" style="width:10px;height:10px;vertical-align:-2px"></i> Svc próximo';
-        }
-        if (alert.textContent) kmCell.appendChild(alert);
+        const alertEl = svcAlertEl(sd, today0, d30);
+        if (alertEl) kmCell.appendChild(alertEl);
       }
     }
     tr.appendChild(kmCell);
@@ -237,6 +276,25 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
   container.appendChild(frag);
 }
 
+/** Crea el badge de alerta de servicio (vencido/próximo) o null si no aplica. */
+function svcAlertEl(serviceDate: Date, today0: Date, d30: Date): HTMLElement | null {
+  const el = document.createElement("div");
+  el.style.cssText = "font-size:8px;margin-top:2px;font-weight:700";
+  if (serviceDate < today0) {
+    el.style.color = "#EF4444";
+    el.appendChild(lucideIcon("alert-triangle", 10, "vertical-align:-2px;"));
+    el.appendChild(document.createTextNode(" Svc vencido"));
+    return el;
+  }
+  if (serviceDate <= d30) {
+    el.style.color = "#F59E0B";
+    el.appendChild(lucideIcon("clock", 10, "vertical-align:-2px;"));
+    el.appendChild(document.createTextNode(" Svc próximo"));
+    return el;
+  }
+  return null;
+}
+
 /** Util: crea celda con textContent seguro. */
 function appendTextCell(tr: HTMLElement, text: string, className = "tc"): void {
   const td = document.createElement("div");
@@ -244,6 +302,3 @@ function appendTextCell(tr: HTMLElement, text: string, className = "tc"): void {
   td.textContent = text;
   tr.appendChild(td);
 }
-
-// Evita warning "escHtml imported but unused" — reservado para extensiones.
-void escHtml;

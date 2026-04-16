@@ -20,29 +20,37 @@ function makeUnit(overrides: Partial<Unit> = {}): Unit {
 }
 
 function setupContainer(): HTMLElement {
-  document.body.innerHTML = '<div id="tbody"></div>';
-  return document.getElementById("tbody")!;
+  document.body.replaceChildren();
+  const d = document.createElement("div");
+  d.id = "tbody";
+  document.body.appendChild(d);
+  return d;
 }
 
 // ─── mkpill ─────────────────────────────────────────────────────────
 
 describe("mkpill", () => {
-  it("Urgente → clase pu", () => {
-    expect(mkpill("Urgente")).toContain('class="pill pu"');
-    expect(mkpill("Urgente")).toContain("Urgente");
+  it("Urgente → span.pill.pu con texto 'Urgente'", () => {
+    const el = mkpill("Urgente");
+    expect(el.tagName).toBe("SPAN");
+    expect(el.className).toBe("pill pu");
+    expect(el.textContent).toBe("Urgente");
   });
-  it("Revisar → clase pr", () => expect(mkpill("Revisar")).toContain('class="pill pr"'));
-  it("Completar → clase pc", () => expect(mkpill("Completar")).toContain('class="pill pc"'));
-  it("OK → clase po", () => expect(mkpill("OK")).toContain('class="pill po"'));
+  it("Revisar → clase pr", () => expect(mkpill("Revisar").className).toBe("pill pr"));
+  it("Completar → clase pc", () => expect(mkpill("Completar").className).toBe("pill pc"));
+  it("OK → clase po", () => expect(mkpill("OK").className).toBe("pill po"));
+  it("incluye dot decorador (.pd)", () => {
+    expect(mkpill("OK").querySelector(".pd")).not.toBeNull();
+  });
 });
 
 // ─── fcell ──────────────────────────────────────────────────────────
 
 describe("fcell", () => {
-  it("sin hallazgos → 'Ninguno' en verde", () => {
-    const html = fcell(makeUnit({ F: [] }));
-    expect(html).toContain("Ninguno");
-    expect(html).toContain("color:var(--G)");
+  it("sin hallazgos → span verde 'Ninguno'", () => {
+    const el = fcell(makeUnit({ F: [] }));
+    expect(el.textContent).toBe("Ninguno");
+    expect(el.getAttribute("style")).toMatch(/color:\s*var\(--G\)/);
   });
 
   it("cuenta urgentes, revisar, completar por separado", () => {
@@ -54,10 +62,12 @@ describe("fcell", () => {
         { cat: "Documentos", text: "t4", lv: "Completar" },
       ],
     });
-    const html = fcell(u);
-    expect(html).toContain("2 urgentes");
-    expect(html).toContain("1 revisar");
-    expect(html).toContain("1 completar");
+    const el = fcell(u);
+    expect(el.className).toBe("fcw");
+    expect(el.textContent).toContain("2 urgentes");
+    expect(el.textContent).toContain("1 revisar");
+    expect(el.textContent).toContain("1 completar");
+    expect(el.querySelectorAll(".fcr")).toHaveLength(3);
   });
 
   it("excluye findings marcados como done en checklistDB", () => {
@@ -68,50 +78,57 @@ describe("fcell", () => {
       ],
     });
     const db = { u1: { "piloto 3mm": { done: true } } };
-    const html = fcell(u, db);
-    expect(html).not.toContain("urgente");
-    expect(html).toContain("1 revisar");
+    const el = fcell(u, db);
+    expect(el.textContent).not.toContain("urgente");
+    expect(el.textContent).toContain("1 revisar");
   });
 
   it("singular vs plural en 'urgente(s)'", () => {
     const u1 = makeUnit({ F: [{ cat: "Checklist", text: "x", lv: "Urgente" }] });
-    expect(fcell(u1)).toContain("1 urgente</span>");
-    const u2 = makeUnit({ F: [
-      { cat: "Checklist", text: "a", lv: "Urgente" },
-      { cat: "Checklist", text: "b", lv: "Urgente" },
-    ] });
-    expect(fcell(u2)).toContain("2 urgentes");
+    expect(fcell(u1).textContent).toContain("1 urgente");
+    expect(fcell(u1).textContent).not.toContain("1 urgentes");
+    const u2 = makeUnit({
+      F: [
+        { cat: "Checklist", text: "a", lv: "Urgente" },
+        { cat: "Checklist", text: "b", lv: "Urgente" },
+      ],
+    });
+    expect(fcell(u2).textContent).toContain("2 urgentes");
   });
 });
 
 // ─── tcell ──────────────────────────────────────────────────────────
 
 describe("tcell", () => {
-  it("minT null → placeholder", () => {
-    expect(tcell(null)).toContain("—");
+  it("minT null → placeholder '—'", () => {
+    const el = tcell(null);
+    expect(el.textContent).toBe("—");
   });
 
   it("minT ≤ TCRIT (3.99) → color rojo", () => {
-    const html = tcell(3);
-    expect(html).toContain("var(--R)");
-    expect(html).toContain("3mm");
+    const el = tcell(3);
+    const label = el.querySelector(".tml") as HTMLElement;
+    expect(label?.style.color).toBe("var(--R)");
+    expect(el.textContent).toContain("3mm");
   });
 
   it("minT entre TCRIT y TWARN → ámbar", () => {
-    const html = tcell(5);
-    expect(html).toContain("var(--A)");
-    expect(html).toContain("5mm");
+    const el = tcell(5);
+    const label = el.querySelector(".tml") as HTMLElement;
+    expect(label?.style.color).toBe("var(--A)");
+    expect(el.textContent).toContain("5mm");
   });
 
   it("minT > TWARN (6.99) → verde", () => {
-    const html = tcell(8);
-    expect(html).toContain("var(--G)");
+    const el = tcell(8);
+    const label = el.querySelector(".tml") as HTMLElement;
+    expect(label?.style.color).toBe("var(--G)");
   });
 
   it("umbrales custom respetados", () => {
-    expect(tcell(10, 5, 8)).toContain("var(--G)");
-    expect(tcell(7, 5, 8)).toContain("var(--A)");
-    expect(tcell(3, 5, 8)).toContain("var(--R)");
+    expect((tcell(10, 5, 8).querySelector(".tml") as HTMLElement).style.color).toBe("var(--G)");
+    expect((tcell(7, 5, 8).querySelector(".tml") as HTMLElement).style.color).toBe("var(--A)");
+    expect((tcell(3, 5, 8).querySelector(".tml") as HTMLElement).style.color).toBe("var(--R)");
   });
 });
 
@@ -119,7 +136,7 @@ describe("tcell", () => {
 
 describe("renderTable", () => {
   beforeEach(() => {
-    document.body.innerHTML = "";
+    document.body.replaceChildren();
   });
 
   it("estado vacío → mensaje 'Sin resultados'", () => {
@@ -164,17 +181,15 @@ describe("renderTable", () => {
     expect(onSelect).toHaveBeenCalledWith("u2");
   });
 
-  it("input hostil en eco/plate se escapa (XSS safe via textContent)", () => {
+  it("input hostil en eco/plate/obs se trata como texto (XSS safe)", () => {
     const c = setupContainer();
     renderTable(c, {
       units: [makeUnit({ eco: '<img src=x onerror=alert(1)>', obs: '<script>evil</script>' })],
     });
-    // textContent lo preserva como texto; el navegador no lo ejecuta ni crea nodos.
     const plate = c.querySelector(".tplate");
     expect(plate?.textContent).toBe('<img src=x onerror=alert(1)>');
     expect(c.querySelector("img")).toBeNull();
     expect(c.querySelector("script")).toBeNull();
-    // La observación también
     const cmt = c.querySelector(".tcmt");
     expect(cmt?.textContent).toContain('<script>evil</script>');
   });
