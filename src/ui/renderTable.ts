@@ -9,6 +9,13 @@
 
 import { TCRIT, TWARN } from "../analyzer/constants";
 import type { ChecklistDB, RiskLevel, Unit } from "../types";
+import { createVirtualTable } from "./virtualTable";
+
+/** Threshold a partir del cual se activa la virtualización. */
+export const VIRTUALIZE_THRESHOLD = 200;
+
+/** Altura fija asumida por fila en modo virtualizado (px). */
+export const VIRTUAL_ROW_HEIGHT = 60;
 
 export type RenderTableDeps = {
   units: Unit[];
@@ -23,6 +30,14 @@ export type RenderTableDeps = {
   /** Umbrales de llantas (override para tests); defaults TCRIT/TWARN. */
   tcrit?: number;
   twarn?: number;
+  /**
+   * Activa virtualización explícitamente. Si se omite, se auto-activa cuando
+   * `units.length >= VIRTUALIZE_THRESHOLD`. Pasar `false` fuerza render no-virtual
+   * (útil si hay layout custom con alturas variables).
+   */
+  virtualize?: boolean;
+  /** Override de altura fija de fila cuando virtualize=true. */
+  rowHeight?: number;
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -123,6 +138,138 @@ export function tcell(minT: number | null, tcrit = TCRIT, twarn = TWARN): HTMLEl
 //  renderTable — entry point
 // ═══════════════════════════════════════════════════════════════
 
+type BuildRowCtx = {
+  selectedUid: string | null;
+  checklistDB: ChecklistDB;
+  hasZip: boolean;
+  isUnitEnTaller: (u: Unit) => boolean;
+  parseSvcDate?: (s: string) => Date | null;
+  onSelect?: (uid: string) => void;
+  today0: Date;
+  d30: Date;
+  tcrit: number;
+  twarn: number;
+};
+
+/** Construye una fila `.tr` para la unidad. Extraído para reuso entre render
+ *  fragment-based y virtualizado. */
+function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
+  const { selectedUid, checklistDB, hasZip, isUnitEnTaller, parseSvcDate, onSelect, today0, d30, tcrit, twarn } = ctx;
+  const enTaller = isUnitEnTaller(u);
+  const riskClass = u.risk === "Urgente" ? "ru" : u.risk === "Revisar" ? "rr" : "ro";
+  const tr = document.createElement("div");
+  tr.className = `tr ${riskClass}${selectedUid === u.uid ? " sel" : ""}`;
+  tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
+  if (enTaller) tr.style.outline = "1.5px solid #c4b5fd";
+  if (onSelect) tr.addEventListener("click", () => onSelect(u.uid));
+
+  // ── 1. Índice
+  appendTextCell(tr, String(i + 1), "tc tn");
+
+  // ── 2. Eco / Placas
+  const idCell = document.createElement("div");
+  idCell.className = "tc";
+  const plate = document.createElement("div");
+  plate.className = "tplate";
+  plate.textContent = u.eco || u.plate || "—";
+  if (hasZip && u.photos && u.photos.length > 0) {
+    const cam = document.createElement("span");
+    cam.style.cssText = "margin-left:5px;font-size:9px;color:var(--O);opacity:.75";
+    cam.appendChild(lucideIcon("camera", 10));
+    plate.appendChild(cam);
+  }
+  if (enTaller) {
+    const badge = document.createElement("span");
+    badge.className = "taller-badge-row";
+    badge.appendChild(lucideIcon("wrench", 9));
+    badge.appendChild(document.createTextNode(" TALLER"));
+    plate.appendChild(badge);
+  }
+  idCell.appendChild(plate);
+  if (u.eco && u.plate) {
+    const sub = document.createElement("div");
+    sub.style.cssText = "font-size:9px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
+    sub.textContent = u.plate;
+    idCell.appendChild(sub);
+  }
+  tr.appendChild(idCell);
+
+  // ── 3. Unidad / Inspector
+  const uiCell = document.createElement("div");
+  uiCell.className = "tc";
+  const brand = document.createElement("div");
+  brand.className = "tbr";
+  brand.textContent = u.brand || "—";
+  const insp = document.createElement("div");
+  insp.className = "tinsp";
+  insp.textContent = u.insp || "—";
+  uiCell.appendChild(brand);
+  uiCell.appendChild(insp);
+  tr.appendChild(uiCell);
+
+  // ── 4. Risk pill
+  const pillCell = document.createElement("div");
+  pillCell.className = "tc";
+  pillCell.appendChild(mkpill(u.risk));
+  tr.appendChild(pillCell);
+
+  // ── 5. Findings summary
+  const fCellEl = document.createElement("div");
+  fCellEl.className = "tc";
+  fCellEl.appendChild(fcell(u, checklistDB));
+  tr.appendChild(fCellEl);
+
+  // ── 6. Observations (user text — always textContent)
+  const obsCell = document.createElement("div");
+  obsCell.className = "tc";
+  if (u.obs) {
+    const cmt = document.createElement("div");
+    cmt.className = "tcmt";
+    const arr = u.obsArr && u.obsArr.length ? u.obsArr : [u.obs];
+    if (arr.length > 1) {
+      const countBadge = document.createElement("span");
+      countBadge.style.cssText = "font-size:8px;color:var(--B);font-weight:700;background:rgba(77,158,255,.15);padding:1px 6px;border-radius:3px;margin-right:6px";
+      countBadge.textContent = String(arr.length);
+      cmt.appendChild(countBadge);
+    }
+    cmt.appendChild(document.createTextNode(arr[0]));
+    obsCell.appendChild(cmt);
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "tcmt-empty";
+    empty.textContent = "—";
+    obsCell.appendChild(empty);
+  }
+  tr.appendChild(obsCell);
+
+  // ── 7. Tires
+  const tireCell = document.createElement("div");
+  tireCell.className = "tc";
+  tireCell.appendChild(tcell(u.minT, tcrit, twarn));
+  tr.appendChild(tireCell);
+
+  // ── 8. KM / Fecha / Service alert
+  const kmCell = document.createElement("div");
+  kmCell.className = "tc";
+  const km = document.createElement("div");
+  km.className = "tkm";
+  km.textContent = u.km !== undefined && u.km !== "" ? `${Number(u.km).toLocaleString("es-MX")}km` : "—";
+  kmCell.appendChild(km);
+  const dt = document.createElement("div");
+  dt.className = "tdt";
+  dt.textContent = u.fecha || "—";
+  kmCell.appendChild(dt);
+  if (u.nextSvc && u.nextSvc !== "—" && parseSvcDate) {
+    const sd = parseSvcDate(u.nextSvc);
+    if (sd) {
+      const alertEl = svcAlertEl(sd, today0, d30);
+      if (alertEl) kmCell.appendChild(alertEl);
+    }
+  }
+  tr.appendChild(kmCell);
+  return tr;
+}
+
 /** Renderiza la tabla de inspecciones en el container dado. */
 export function renderTable(container: HTMLElement, deps: RenderTableDeps): void {
   const {
@@ -136,6 +283,8 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     today: todayRef = new Date(),
     tcrit = TCRIT,
     twarn = TWARN,
+    virtualize,
+    rowHeight = VIRTUAL_ROW_HEIGHT,
   } = deps;
 
   // Reset container
@@ -154,125 +303,38 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
   const d30 = new Date(today0);
   d30.setDate(d30.getDate() + 30);
 
+  const ctx: BuildRowCtx = {
+    selectedUid,
+    checklistDB,
+    hasZip,
+    isUnitEnTaller,
+    parseSvcDate,
+    onSelect,
+    today0,
+    d30,
+    tcrit,
+    twarn,
+  };
+
+  // Decide modo virtualizado: explicit opt-in, o auto si muchas filas.
+  const useVirtual = virtualize ?? units.length >= VIRTUALIZE_THRESHOLD;
+
+  if (useVirtual) {
+    // virtualTable maneja todo el ciclo (append sizer+viewport, scroll listener,
+    // ResizeObserver, rAF). Fila con altura fija `rowHeight`.
+    createVirtualTable<Unit>({
+      container,
+      rows: units,
+      rowHeight,
+      overscan: 6,
+      renderRow: (u, i) => buildRow(u, i, ctx),
+    });
+    return;
+  }
+
+  // Modo clásico: document fragment con todas las filas a la vez.
   const frag = document.createDocumentFragment();
-
-  units.forEach((u, i) => {
-    const enTaller = isUnitEnTaller(u);
-    const riskClass = u.risk === "Urgente" ? "ru" : u.risk === "Revisar" ? "rr" : "ro";
-    const tr = document.createElement("div");
-    tr.className = `tr ${riskClass}${selectedUid === u.uid ? " sel" : ""}`;
-    tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
-    if (enTaller) tr.style.outline = "1.5px solid #c4b5fd";
-    if (onSelect) tr.addEventListener("click", () => onSelect(u.uid));
-
-    // ── 1. Índice
-    appendTextCell(tr, String(i + 1), "tc tn");
-
-    // ── 2. Eco / Placas
-    const idCell = document.createElement("div");
-    idCell.className = "tc";
-    const plate = document.createElement("div");
-    plate.className = "tplate";
-    plate.textContent = u.eco || u.plate || "—";
-    if (hasZip && u.photos && u.photos.length > 0) {
-      const cam = document.createElement("span");
-      cam.style.cssText = "margin-left:5px;font-size:9px;color:var(--O);opacity:.75";
-      cam.appendChild(lucideIcon("camera", 10));
-      plate.appendChild(cam);
-    }
-    if (enTaller) {
-      const badge = document.createElement("span");
-      badge.className = "taller-badge-row";
-      badge.appendChild(lucideIcon("wrench", 9));
-      badge.appendChild(document.createTextNode(" TALLER"));
-      plate.appendChild(badge);
-    }
-    idCell.appendChild(plate);
-    if (u.eco && u.plate) {
-      const sub = document.createElement("div");
-      sub.style.cssText = "font-size:9px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
-      sub.textContent = u.plate;
-      idCell.appendChild(sub);
-    }
-    tr.appendChild(idCell);
-
-    // ── 3. Unidad / Inspector
-    const uiCell = document.createElement("div");
-    uiCell.className = "tc";
-    const brand = document.createElement("div");
-    brand.className = "tbr";
-    brand.textContent = u.brand || "—";
-    const insp = document.createElement("div");
-    insp.className = "tinsp";
-    insp.textContent = u.insp || "—";
-    uiCell.appendChild(brand);
-    uiCell.appendChild(insp);
-    tr.appendChild(uiCell);
-
-    // ── 4. Risk pill
-    const pillCell = document.createElement("div");
-    pillCell.className = "tc";
-    pillCell.appendChild(mkpill(u.risk));
-    tr.appendChild(pillCell);
-
-    // ── 5. Findings summary
-    const fCellEl = document.createElement("div");
-    fCellEl.className = "tc";
-    fCellEl.appendChild(fcell(u, checklistDB));
-    tr.appendChild(fCellEl);
-
-    // ── 6. Observations (user text — always textContent)
-    const obsCell = document.createElement("div");
-    obsCell.className = "tc";
-    if (u.obs) {
-      const cmt = document.createElement("div");
-      cmt.className = "tcmt";
-      const arr = u.obsArr && u.obsArr.length ? u.obsArr : [u.obs];
-      if (arr.length > 1) {
-        const countBadge = document.createElement("span");
-        countBadge.style.cssText = "font-size:8px;color:var(--B);font-weight:700;background:rgba(77,158,255,.15);padding:1px 6px;border-radius:3px;margin-right:6px";
-        countBadge.textContent = String(arr.length);
-        cmt.appendChild(countBadge);
-      }
-      cmt.appendChild(document.createTextNode(arr[0]));
-      obsCell.appendChild(cmt);
-    } else {
-      const empty = document.createElement("span");
-      empty.className = "tcmt-empty";
-      empty.textContent = "—";
-      obsCell.appendChild(empty);
-    }
-    tr.appendChild(obsCell);
-
-    // ── 7. Tires
-    const tireCell = document.createElement("div");
-    tireCell.className = "tc";
-    tireCell.appendChild(tcell(u.minT, tcrit, twarn));
-    tr.appendChild(tireCell);
-
-    // ── 8. KM / Fecha / Service alert
-    const kmCell = document.createElement("div");
-    kmCell.className = "tc";
-    const km = document.createElement("div");
-    km.className = "tkm";
-    km.textContent = u.km !== undefined && u.km !== "" ? `${Number(u.km).toLocaleString("es-MX")}km` : "—";
-    kmCell.appendChild(km);
-    const dt = document.createElement("div");
-    dt.className = "tdt";
-    dt.textContent = u.fecha || "—";
-    kmCell.appendChild(dt);
-    if (u.nextSvc && u.nextSvc !== "—" && parseSvcDate) {
-      const sd = parseSvcDate(u.nextSvc);
-      if (sd) {
-        const alertEl = svcAlertEl(sd, today0, d30);
-        if (alertEl) kmCell.appendChild(alertEl);
-      }
-    }
-    tr.appendChild(kmCell);
-
-    frag.appendChild(tr);
-  });
-
+  units.forEach((u, i) => frag.appendChild(buildRow(u, i, ctx)));
   container.appendChild(frag);
 }
 

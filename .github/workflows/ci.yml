@@ -27,8 +27,16 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm run test:run
+      - name: Test with coverage
+        run: npm run test:cov
+
+      - name: XSS audit (innerHTML patterns en legado)
+        run: npm run audit:xss
+
+      - name: npm audit (high+ only)
+        run: npm audit --audit-level=high --omit=dev
+        # --omit=dev: ignoramos dev-tool vulns (workbox chain, solo build-time).
+        # Si algún vuln high+ entra en runtime, rompe build.
 
       - name: Build
         run: npm run build
@@ -39,4 +47,12 @@ jobs:
         with:
           name: dist
           path: dist/
+          retention-days: 14
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
           retention-days: 14

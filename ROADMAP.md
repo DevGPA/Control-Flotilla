@@ -142,12 +142,21 @@ Pulido, cierre de gaps de testing, publicación.
 
 | #   | Tarea                                                                      | Origen             |
 | --- | -------------------------------------------------------------------------- | ------------------ |
-| 3.1 | Virtualización tabla >500 filas — `virtualTable.ts` ya existe, wire en UI  | README 3.3         |
-| 3.2 | URL deep-linking — `urlState.ts` ya existe, wire en tabs/filtros           | README 3.5         |
-| 3.3 | Tests faltantes: `writeUrlState`, `virtualTable`, `setSafeText`            | `tests/`           |
+| 3.1 | Virtualización tabla — `virtualTable` integrado en `renderTable` con auto-threshold 200 ✅ 2026-04-16 | `src/ui/renderTable.ts` |
+| 3.2 | URL deep-linking — `urlState` wired con feature flag `USE_URL_STATE` ✅ 2026-04-16 | `src/main.ts`, `src/state/urlState.ts` |
+| 3.3 | Tests faltantes: `writeUrlState` (11), `virtualTable` (7), `setSafeText` (9) ✅ 2026-04-16 | `tests/` |
 | 3.4 | Publicar en GitHub privado — `Eminav-117/control-flotilla` ✅ 2026-04-16    | README 3.6         |
-| 3.5 | CI: agregar `npm audit --audit-level=high` + `audit:xss` + coverage threshold 80% | `.github/workflows/ci.yml` |
-| 3.6 | Migrar ~15 `alert()` restantes en legado a `notify()` explícito             | `Control de flotilla.html` |
+| 3.5 | CI hardening: coverage 80% + `audit:xss` + `npm audit --omit=dev` ✅ 2026-04-16 | `.github/workflows/ci.yml`, `vite.config.ts` |
+| 3.6 | Migrar 18 `alert()` del legado a `notify()` con severidad explícita ✅ 2026-04-16 | `Control de flotilla.html` |
+
+**P3 notas**:
+- **P3.1**: `RenderTableDeps` ahora incluye `virtualize?: boolean` y `rowHeight?: number`. Auto-activa cuando `units.length >= VIRTUALIZE_THRESHOLD (200)`. Fila `buildRow` extraída para reuso entre fragment y virtual. 3 tests adicionales (virtualize=true, auto-threshold, virtualize=false fuerza clásico).
+- **P3.2**: nueva flag `USE_URL_STATE`. Al cargar parsea `readUrlState()` y aplica a setters del legado (`setTab`, `setF`, `setBranch`, `setSearch`, `selUnit`, `setPeriodo`) si existen. `popstate` re-aplica. Expone `window.__syncUrlState(patch)` para que el legado escriba al cambiar filtros.
+- **P3.3**: 27 tests nuevos. `setSafeText`: null/undefined/number/boolean/object/HTML-as-text. `writeUrlState`: merge, sentinelas "all", replace vs push history, keys desconocidas, undefined como borrar. `virtualTable`: render subset, sizer altura, setRows, scrollToIndex, onVisibleRangeChange, destroy cleanup.
+- **P3.5**: CI actualizado: `test:cov` con threshold (lines/funcs/stmts 80%, branches 75%), `audit:xss` step, `npm audit --audit-level=high --omit=dev` (runtime-only, ignora workbox dev chain), upload coverage artifact. Coverage real: 95.93%/88.04%/93.22%/96.99%.
+- **P3.6**: 18 `alert()` reemplazados con `window.notify(msg, kind, ms)` donde `kind = "error" | "warn" | "ok" | "info"` según contexto. Los únicos `alert(` restantes en el HTML son comentarios descriptivos (líneas 692, 757). El shim `alert→notify` del legado sigue activo como red de seguridad.
+
+Tests totales: 148 → **178** (+30 en P3).
 
 ---
 

@@ -1691,7 +1691,7 @@ function loadWBSemanal(wb, fname){
       const rawHdr = XLSX.utils.sheet_to_json(ws,{header:1,defval:""})[0]||[];
       const hdr = rawHdr.map(h=>String(h).toLowerCase().trim());
       const rows = XLSX.utils.sheet_to_json(ws,{defval:"",raw:true});
-      if(!rows.length){alert("El reporte semanal no contiene filas de datos.");document.getElementById("ldr").style.display="none";return;}
+      if(!rows.length){window.notify("El reporte semanal no contiene filas de datos.","warn",6000);document.getElementById("ldr").style.display="none";return;}
 
       // ── Detección flexible de columnas ───────────────────
       const ci = kw => hdr.findIndex(h=>h.includes(kw));
@@ -1783,7 +1783,7 @@ function loadWBSemanal(wb, fname){
         });
       });
 
-      if(!entries.length){alert("No se encontraron filas válidas en el reporte semanal.");document.getElementById("ldr").style.display="none";return;}
+      if(!entries.length){window.notify("No se encontraron filas válidas en el reporte semanal.","warn",6000);document.getElementById("ldr").style.display="none";return;}
 
       // ── Calcular periodo ISO-week desde la primera fecha ─
       // Si fecha es "DD/MM/YYYY" intentar parsearla; si no, usar fecha actual
@@ -1822,7 +1822,7 @@ function loadWBSemanal(wb, fname){
 
     }catch(err){
       console.error("[loadWBSemanal]",err);
-      alert("Error procesando el reporte semanal:\n"+err.message);
+      window.notify(`Error procesando el reporte semanal: ${err.message||err}`,"error",7000);
       document.getElementById("ldr").style.display="none";
     }
   },20);
@@ -3074,9 +3074,9 @@ function renderActionsTab(u,body){
 
 async function exportPDF(){
   const u=units.find(x=>x.uid===selId);
-  if(!u){ alert("Selecciona una unidad primero."); return; }
+  if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
   const {jsPDF}=window.jspdf;
-  if(!jsPDF){ alert("La librería PDF no cargó. Verifica tu conexión."); return; }
+  if(!jsPDF){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
 
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const PW=210, PH=297, M=14, CW=PW-M*2;
@@ -3298,7 +3298,7 @@ async function exportPDF(){
 // RESUMEN EJECUTIVO — Texto copiable one-click
 // ════════════════════════════════════════════════════════════
 function showResumenEjecutivo(){
-  if(!units.length){alert("No hay datos cargados.");return;}
+  if(!units.length){window.notify("No hay datos cargados.","warn",4000);return;}
   const t=units.length;
   const u=units.filter(x=>x.risk==="Urgente");
   const rv=units.filter(x=>x.risk==="Revisar");
@@ -3392,9 +3392,9 @@ function showResumenEjecutivo(){
 // FLEET PDF — Reporte ejecutivo de toda la flotilla
 // ════════════════════════════════════════════════════════════
 async function exportFleetPDF(){
-  if(!units.length){ alert("No hay unidades cargadas."); return; }
+  if(!units.length){ window.notify("No hay unidades cargadas.","warn",4000); return; }
   const {jsPDF}=window.jspdf;
-  if(!jsPDF){ alert("La librería PDF no cargó. Verifica tu conexión."); return; }
+  if(!jsPDF){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
 
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const PW=210, PH=297, M=14, CW=PW-M*2;
@@ -3951,7 +3951,7 @@ function renderPeriodoBar(){
 }
 
 function showTendencias(){
-  if(periodos.length<2){alert("Se necesitan al menos 2 períodos para comparar.");return;}
+  if(periodos.length<2){window.notify("Se necesitan al menos 2 períodos para comparar.","warn",5000);return;}
   const ov=document.getElementById("tendencias-overlay");
   const ct=document.getElementById("tendencias-content");
   ov.style.display="flex";
@@ -4563,7 +4563,7 @@ function openSwPhotos(uid){
     .filter(item=>item.url); // solo las que están disponibles en weeklyZipImgs
 
   if(!lbImgs.length){
-    alert("Las fotos del ZIP semanal no están disponibles en esta sesión.\nVuelve a cargar el ZIP de esa semana para verlas.");
+    window.notify("Las fotos del ZIP semanal no están disponibles en esta sesión. Vuelve a cargar el ZIP de esa semana para verlas.","warn",7000);
     return;
   }
   lbOpen(0);
@@ -5100,10 +5100,10 @@ function renderHistorial(){
 
 // ── Exportar Historial Taller a Excel ────────────────────
 function exportTallerActivasExcel(){
-  if(!window.XLSX){alert("SheetJS no disponible.");return;}
+  if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
   const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
   const activas=tallerEntries.filter(e=>!isClosed(e));
-  if(!activas.length){alert("No hay unidades activas en taller.");return;}
+  if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
 
   const rows=[["No. Unidad","Placas","Modelo","Sucursal","Área","Tipo","Estado","F. Reporte","F. Entrada","F. Salida Est.","Días en Taller","Técnico","Gasto Ref ($)","Gasto M.O. ($)","Gasto Total ($)","Refacciones","Comentario"]];
   activas.sort((a,b)=>{
@@ -5125,7 +5125,7 @@ function exportTallerActivasExcel(){
 }
 
 function exportTallerHistorialExcel(){
-  if(!window.XLSX){alert("SheetJS no disponible.");return;}
+  if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
   const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
 
   // Agrupar por unitKey (igual que renderHistorial)
@@ -5174,7 +5174,7 @@ function doTallerExcel(file){
       const wb = XLSX.read(e.target.result, {type:"array", cellDates:true});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
-      if(rows.length < 2){ alert("El archivo no contiene datos."); return; }
+      if(rows.length < 2){ window.notify("El archivo no contiene datos.","warn",5000); return; }
 
       // Detectar encabezados (fila 1)
       const hdr = rows[0].map(h => String(h).trim().toLowerCase());
@@ -5242,7 +5242,7 @@ function doTallerExcel(file){
         });
       }
 
-      if(!imported.length){ alert("No se encontraron filas con datos."); return; }
+      if(!imported.length){ window.notify("No se encontraron filas con datos.","warn",5000); return; }
 
       const accion = tallerEntries.length === 0 ? "importar" :
         confirm(`Se importaran ${imported.length} unidades.\n\n¿Reemplazar todos los registros actuales?\n\nAceptar = Reemplazar todo\nCancelar = Agregar a los existentes`)
@@ -5256,7 +5256,7 @@ function doTallerExcel(file){
           (x.eco && x.eco === e.eco) || (x.plate && x.plate === e.plate));
         const nuevas = imported.filter(e => !existe(e));
         tallerEntries.push(...nuevas);
-        alert(`Se agregaron ${nuevas.length} registros nuevos (${imported.length - nuevas.length} ya existian).`);
+        window.notify(`Se agregaron ${nuevas.length} registros nuevos (${imported.length - nuevas.length} ya existian).`,"ok",5000);
       }
 
       saveTallerDB().then(()=>{
@@ -5268,7 +5268,7 @@ function doTallerExcel(file){
         if(nav) nav.style.display = "flex";
       });
     } catch(err){
-      alert("Error al leer el archivo:\n" + err.message);
+      window.notify(`Error al leer el archivo: ${err.message||err}`,"error",7000);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -5584,7 +5584,7 @@ function tlAcSelectNew(val){
 async function saveTallerEntry(){
   const eco  = document.getElementById("tf-eco").value.trim();
   const plate= document.getElementById("tf-plate").value.trim();
-  if(!eco && !plate){ alert("Ingresa al menos el No. de Unidad o las Placas."); return; }
+  if(!eco && !plate){ window.notify("Ingresa al menos el No. de Unidad o las Placas.","warn",4000); return; }
 
   const newEntryId = _tallerEditId || "tl_"+Date.now();
   const srcEntry = _tallerEditId ? tallerEntries.find(x=>x.id===_tallerEditId) : null;

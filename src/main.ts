@@ -14,6 +14,12 @@
 import { renderTable as renderTableNew } from "./ui/renderTable";
 import { buildUnitReport } from "./pdf/unitReport";
 import { appStore, bindLegacyWindow } from "./state/appState";
+import {
+  type FilterState,
+  onUrlStateChange,
+  readUrlState,
+  writeUrlState,
+} from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
 declare global {
@@ -33,6 +39,14 @@ declare global {
     __newRenderAvailable?: boolean;
     /** store expuesto en dev para inspección via devtools. */
     __appStore?: typeof appStore;
+    /** sync manual de URL state desde el legado. */
+    __syncUrlState?: (patch: Partial<FilterState>) => void;
+    /** setters del legado — usados por el sync de URL state. */
+    setTab?: (id: string) => void;
+    setF?: (id: string) => void;
+    setBranch?: (id: string) => void;
+    setSearch?: (q: string) => void;
+    setPeriodo?: (p: string) => void;
   }
 }
 
@@ -126,4 +140,39 @@ if (readFlag("USE_STORE_LOG")) {
     console.info("[appStore] change:", changed, { next: state, prev });
   });
   console.info("[control-flotilla] USE_STORE_LOG activo — cambios impresos en console.");
+}
+
+// ─── Feature flag: URL deep-linking (P3.2) ─────────────────────────────
+if (readFlag("USE_URL_STATE")) {
+  /**
+   * Aplica state de URL → setters del legado. Si un setter no existe (tab
+   * recién cargada sin UI), simplemente se ignora esa clave.
+   */
+  function applyToLegacy(s: FilterState): void {
+    if (s.tab && window.setTab) window.setTab(s.tab);
+    if (s.filter && window.setF) window.setF(s.filter);
+    if (s.branch && window.setBranch) window.setBranch(s.branch);
+    if (s.search !== undefined && window.setSearch) window.setSearch(s.search);
+    if (s.unit && window.selUnit) window.selUnit(s.unit);
+    if (s.periodo && window.setPeriodo) window.setPeriodo(s.periodo);
+  }
+
+  // Al cargar: lee la URL y aplica filtros al legado (si los setters están listos)
+  const initialState = readUrlState();
+  // Delay mínimo para que el legado defina setTab/setF/etc.
+  if (Object.keys(initialState).length > 0) {
+    queueMicrotask(() => applyToLegacy(initialState));
+  }
+
+  // Popstate (back/forward): re-aplica
+  onUrlStateChange(applyToLegacy);
+
+  // Helper expuesto: el legado puede llamar window.__syncUrlState({...}) cuando
+  // cambia un filtro para que la URL lo refleje.
+  window.__syncUrlState = (patch) => writeUrlState(patch);
+
+  console.info(
+    "[control-flotilla] USE_URL_STATE activo — filtros sincronizan con URL. " +
+      "Usa window.__syncUrlState({tab, filter, branch, search}) para escribir.",
+  );
 }

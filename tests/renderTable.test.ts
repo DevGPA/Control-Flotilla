@@ -2,6 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fcell, mkpill, renderTable, tcell } from "../src/ui/renderTable";
 import type { Unit } from "../src/types";
 
+// happy-dom no tiene ResizeObserver ni rAF real. Necesario para virtualTable.
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+}
+vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
+  cb(0);
+  return 0;
+});
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function makeUnit(overrides: Partial<Unit> = {}): Unit {
@@ -253,5 +267,41 @@ describe("renderTable", () => {
     expect(c.querySelectorAll(".tr")).toHaveLength(2);
     renderTable(c, { units: [makeUnit({ uid: "u3" })] });
     expect(c.querySelectorAll(".tr")).toHaveLength(1);
+  });
+
+  it("virtualize=true: container usa sizer + viewport (no renderiza todas las filas)", () => {
+    // happy-dom necesita clientHeight explícito para virtualTable
+    const c = setupContainer();
+    Object.defineProperty(c, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(c, "clientWidth", { value: 800, configurable: true });
+    const units = Array.from({ length: 500 }, (_, i) => makeUnit({ uid: `u${i}`, eco: `E-${i}` }));
+    renderTable(c, { units, virtualize: true, rowHeight: 40 });
+    // Estructura esperada: 2 children top-level (sizer, viewport). Las filas
+    // viven DENTRO del viewport, solo subset.
+    expect(c.children.length).toBe(2);
+    const allRows = c.querySelectorAll(".tr");
+    expect(allRows.length).toBeLessThan(500); // virtualizado
+    expect(allRows.length).toBeGreaterThan(0);
+    // Sizer refleja altura total: 500 × 40 = 20000px
+    const sizer = c.firstElementChild as HTMLElement;
+    expect(sizer.style.height).toBe("20000px");
+  });
+
+  it("auto-virtualización cuando units.length >= 200 (threshold)", () => {
+    const c = setupContainer();
+    Object.defineProperty(c, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(c, "clientWidth", { value: 800, configurable: true });
+    const units = Array.from({ length: 250 }, (_, i) => makeUnit({ uid: `u${i}` }));
+    renderTable(c, { units });
+    // En modo virtualizado NO todas las filas renderizan
+    const allRows = c.querySelectorAll(".tr");
+    expect(allRows.length).toBeLessThan(250);
+  });
+
+  it("virtualize=false fuerza modo clásico aunque sean muchas filas", () => {
+    const c = setupContainer();
+    const units = Array.from({ length: 300 }, (_, i) => makeUnit({ uid: `u${i}` }));
+    renderTable(c, { units, virtualize: false });
+    expect(c.querySelectorAll(".tr")).toHaveLength(300);
   });
 });

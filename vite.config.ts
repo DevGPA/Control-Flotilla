@@ -20,7 +20,18 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
-    coverage: { reporter: ["text", "html"], include: ["src/**"] },
+    coverage: {
+      reporter: ["text", "html", "json-summary"],
+      include: ["src/**"],
+      exclude: ["src/main.ts", "src/**/*.d.ts"],
+      // Threshold 80% — si baja, CI falla (P3.5 roadmap)
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 75,
+        statements: 80,
+      },
+    },
   },
   plugins: [
     VitePWA({
