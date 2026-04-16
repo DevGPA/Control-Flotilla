@@ -1,0 +1,25 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "plugins": ["@typescript-eslint"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "prettier"
+  ],
+  "env": { "browser": true, "es2022": true, "node": true },
+  "rules": {
+    "no-inner-declarations": "off",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "AssignmentExpression[left.property.name='innerHTML']",
+        "message": "No uses innerHTML con datos de usuario. Usa textContent o la plantilla safeHTML/escHtml."
+      }
+    ]
+  },
+  "ignorePatterns": ["dist", "node_modules", "*.backup.html"]
+}

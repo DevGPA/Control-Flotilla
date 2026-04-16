@@ -1,0 +1,25 @@
+node_modules
+dist
+.vite
+coverage
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+temp_semanal/
+*.backup.html
+Control vehicular Semanal ROF-export.zip
+Seguimiento de unidades en el taller.xlsx
+_legacy/
+.husky/_
+
+# Claude Code / IDE locales (launch.json sí se commitea)
+.claude/settings.local.json
+.vscode/
+.idea/
+*.swp
+
+# Build extra
+dev-dist/
