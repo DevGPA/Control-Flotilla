@@ -93,14 +93,25 @@ Mover código del HTML monolito a módulos TS. **Un módulo por PR**, no big-ban
 
 | #   | Tarea                                                            | Estrategia                              |
 | --- | ---------------------------------------------------------------- | --------------------------------------- |
-| 2.1 | Extraer CSS monolito → `src/styles/`                             | Split por tab / componente              |
+| 2.1 | Extraer CSS monolito → `src/styles/main.css` ✅ 2026-04-16       | `<link>` en legacy (-54KB HTML)         |
 | 2.2 | Partir JS legado en módulos TS — **orden**:                      |                                         |
-|     | a) `excel-loader` (envuelve `xlsx`)                              | Aisla dep externa                       |
-|     | b) `zip-loader` (ya `zipReader.ts`)                              | Wire consumers existentes               |
+|     | a) `excel-loader` ✅ 2026-04-16                                   | `src/io/excelLoader.ts`, 7 tests        |
+|     | b) `zip-loader` ✅ 2026-04-16 (combina readZip + loadExcel)      | `src/io/zipLoader.ts`, 5 tests          |
 |     | c) `render-table` + `render-detail`                              | Consumir `safeHTML`                     |
 |     | d) `pdf-export` (envuelve `jsPDF`)                               | Snapshot test                           |
 |     | e) `state` / store central                                       | Última — depende del resto              |
 | 2.3 | Migrar consumers HTML → módulos TS uno a uno con flag opcional   | Feature flag `USE_NEW_MODULE` por tab   |
+
+**P2.1 notas**:
+- CSS inline (`<style>` líneas 150-971) extraído a `src/styles/main.css` con header documentando que es autoritativo.
+- HTML: `<style>...</style>` → `<link rel="stylesheet" href="./src/styles/main.css"/>`.
+- HTML legado pasó de 332KB → 278KB (-16%).
+- Verificado en preview: 486 CSS rules cargadas, body bg correcto, responsive intacto.
+
+**P2.2(a-b) notas**:
+- `loadExcel(file)` valida magic bytes ZIP (PK\x03\x04) antes de parsear — evita que xlsx trague basura como CSV vacío. Retorna `LoadedReport` con clasificación mensual/semanal.
+- `loadZip(file)` combina `readZip` + `loadExcel`: separa imágenes (jpg/png/gif/webp) del XLSX embebido, filtra `__MACOSX/` y archivos ocultos. Retorna `LoadedZip`.
+- Ambos DOM-agnostic (testeables sin browser). Clases de error dedicadas con `cause` preservado.
 
 ---
 
