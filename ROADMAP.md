@@ -113,7 +113,7 @@ Pulido, cierre de gaps de testing, publicación.
 | 3.1 | Virtualización tabla >500 filas — `virtualTable.ts` ya existe, wire en UI  | README 3.3         |
 | 3.2 | URL deep-linking — `urlState.ts` ya existe, wire en tabs/filtros           | README 3.5         |
 | 3.3 | Tests faltantes: `writeUrlState`, `virtualTable`, `setSafeText`            | `tests/`           |
-| 3.4 | Publicar en GitHub privado                                                 | README 3.6         |
+| 3.4 | Publicar en GitHub privado — `Eminav-117/control-flotilla` ✅ 2026-04-16    | README 3.6         |
 | 3.5 | CI: agregar `npm audit --audit-level=high` + `audit:xss` + coverage threshold 80% | `.github/workflows/ci.yml` |
 | 3.6 | Migrar ~15 `alert()` restantes en legado a `notify()` explícito             | `Control de flotilla.html` |
 
