@@ -1,3 +1,8 @@
+/* Extraído de Control de flotilla.html (P2.1 roadmap) — 2026-04-16.
+ * Este archivo es autoritativo; el HTML lo incluye via <link>.
+ * Cualquier edición a estilos debe hacerse aquí, NO en el HTML.
+ */
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   /* ═══ GPA Fleet Command ═══
@@ -6,13 +11,13 @@
   --bg:#FFFFFF;--bg2:#EFF1F5;--bg3:#E8EAF0;--bg4:#DCDEE6;--bg5:#B8BAC2;
   --ln:#E5E6EB;--ln2:#F0F1F4;
   --w1:#0F172A;--w2:#1E293B;
-  --s1:#475569;--s2:#64748B;--s3:#94A3B8;--s4:#CBD5E1;
+  --s1:#475569;--s2:#64748B;--s3:#6B7280;--s4:#9CA3AF;
 
   --R:#DC2626;--Rd:rgba(220,38,38,.05);--Rl:rgba(220,38,38,.16);
   --A:#D97706;--Ad:rgba(217,119,6,.05);--Al:rgba(217,119,6,.16);
   --G:#059669;--Gd:rgba(5,150,105,.05);--Gl:rgba(5,150,105,.16);
   --B:#7C3AED;--Bd:rgba(124,58,237,.05);--Bl:rgba(124,58,237,.16);
-  --O:#D97706;
+  --O:var(--A); /* alias legado — usar --A */
 
   --ac:#0D9488;--ac2:#0F766E;
   --acd:rgba(13,148,136,.06);--acl:rgba(13,148,136,.18);
@@ -50,31 +55,43 @@ button,input,select{font-family:var(--fb)}
   background:#FFFFFF;
 }
 .hbrand{
-  display:flex;align-items:center;gap:12px;
-  padding:0 20px;height:100%;
-  border-right:1px solid var(--ln);min-width:210px;
+  display:flex;align-items:center;gap:10px;
+  padding:0 14px;height:100%;
+  border-right:1px solid var(--ln);flex:0 0 auto;min-width:0;
 }
+.hbrand>div:last-child{min-width:0;display:flex;flex-direction:column;justify-content:center}
 .hico{
   width:30px;height:30px;border-radius:8px;flex-shrink:0;
   background:linear-gradient(135deg,#0F766E,#14B8A6);
   display:flex;align-items:center;justify-content:center;font-size:14px;
   box-shadow:0 2px 6px rgba(13,148,136,.3);
 }
-.hname{font-size:13px;font-weight:700;color:var(--w1);letter-spacing:-.3px;line-height:1.15}
-.hsub{font-size:8.5px;color:var(--s2);letter-spacing:2px;text-transform:uppercase;margin-top:2px;font-weight:500}
+.hname{font-size:13px;font-weight:700;color:var(--w1);letter-spacing:-.3px;line-height:1.15;white-space:nowrap}
+.hsub{font-size:10px;color:var(--s2);letter-spacing:1.2px;text-transform:uppercase;margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hstat{display:flex;align-items:center;gap:7px;padding:0 16px;border-right:1px solid var(--ln);height:100%}
 .hdot{width:6px;height:6px;border-radius:50%;background:var(--s4);flex-shrink:0;transition:all .4s}
 .hdot.live{background:var(--G);animation:glow 2.5s ease-in-out infinite}
 .hstxt{font-size:10.5px;color:var(--s1);font-weight:500}
-.hfile{padding:0 14px;font-size:10px;color:var(--s2);line-height:1.6;border-right:1px solid var(--ln);display:none;min-width:160px}
+.hfile{padding:0 14px;font-size:10px;color:var(--s2);line-height:1.45;border-right:1px solid var(--ln);display:none;flex:0 0 auto;max-width:240px;white-space:nowrap;overflow:hidden}
+.hfile>div,.hfile>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%}
 .hfile b{color:var(--w1);font-weight:600}
-.hacts{margin-left:auto;display:flex;align-items:center;gap:5px;padding:0 14px}
+.hacts{margin-left:auto;display:flex;align-items:center;gap:4px;padding:0 10px;flex-wrap:nowrap}
+.hacts>*{flex-shrink:0}
+@media (max-width:1500px){
+  .hacts .ubtn-collapse:not(.ubtn-x):not(.ubtn-z){padding:6px 7px}
+  .hacts .ubtn-collapse:not(.ubtn-x):not(.ubtn-z) .ubtn-txt{display:none}
+}
+@media (max-width:1200px){
+  .hacts .ubtn-collapse{padding:6px 7px}
+  .hacts .ubtn-collapse .ubtn-txt{display:none}
+  .hfile{display:none !important}
+}
 .ubtn{
   display:flex;align-items:center;gap:5px;
-  border-radius:var(--r1);padding:5px 10px;
+  border-radius:var(--r1);padding:5px 9px;
   font-size:10.5px;font-weight:600;cursor:pointer;
   border:1px solid var(--ln);transition:all .12s;
-  background:#fff;color:var(--s1);
+  background:#fff;color:var(--s1);white-space:nowrap;
 }
 .ubtn:hover{background:var(--bg3);border-color:var(--s3);color:var(--w2)}
 .ubtn-z{color:var(--O)}
@@ -102,19 +119,24 @@ button,input,select{font-family:var(--fb)}
 .hero-lbl{font-size:9px;color:var(--s2);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-top:2px}
 .hero-sub{font-size:9px;color:var(--s3);margin-top:1px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-donut{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 14px;background:#fff;
+  display:flex;align-items:center;gap:14px;
+  padding:10px 16px;background:#fff;
   border:1px solid var(--ln);border-radius:var(--r2);
   box-shadow:var(--shadow-sm);flex:0 0 auto;
 }
-.dwrap{position:relative;width:56px;height:56px;flex-shrink:0}
-.dsvg{transform:rotate(-90deg)}
-.dmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.dpct{font-size:13px;font-weight:800;color:var(--w1)}
-.dtag{font-size:7px;color:var(--s2);letter-spacing:.5px;text-transform:uppercase;font-weight:600;margin-top:1px}
-.dleg{display:flex;flex-direction:column;gap:3px}
-.dleg-i{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--w2);font-weight:500}
-.dleg-sq{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+.dwrap{position:relative;width:66px;height:66px;flex-shrink:0}
+.dsvg{transform:rotate(-90deg);overflow:visible}
+.dsvg circle{transition:stroke-dashoffset .6s cubic-bezier(.22,1,.36,1),opacity .18s}
+.dmid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.dpct{font-size:18px;font-weight:800;color:var(--w1);line-height:1;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.dtag{font-size:7.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:700;padding:2px 6px;border-radius:6px;background:#DC262615;color:var(--R);line-height:1;transition:color .18s,background .18s}
+.dleg{display:grid;grid-template-columns:auto auto;gap:4px 10px;align-items:center}
+.dleg-i{display:contents;cursor:default}
+.dleg-i>.dleg-lbl{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--w2);font-weight:500;text-transform:uppercase;letter-spacing:.4px}
+.dleg-i>.dleg-num{font-size:11px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;min-width:22px}
+.dleg-sq{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dleg-i.dim .dleg-lbl,.dleg-i.dim .dleg-num{opacity:.35}
+.dsvg circle.dim{opacity:.15}
 
 /* ════ KPI CARDS (Taller + Semanales) ═══════════════════ */
 .kpi-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -741,8 +763,10 @@ button,input,select{font-family:var(--fb)}
   .hacts{width:100%;padding:6px 10px;justify-content:flex-start;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
   .hacts::-webkit-scrollbar{height:3px}
   #mainnav{width:100%;padding:0 10px 6px;display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-top:1px solid var(--ln)}
-  #mainnav .mnav{flex-shrink:0;font-size:11px;padding:6px 10px}
-  .ubtn{padding:6px 10px;font-size:11px;min-height:32px}
+  /* Tap targets ≥44px por Apple HIG / Google Material (accesibilidad móvil) */
+  #mainnav .mnav{flex-shrink:0;font-size:11px;padding:12px 14px;min-height:44px;display:inline-flex;align-items:center}
+  .ubtn{padding:10px 14px;font-size:12px;min-height:44px}
+  .hacts .ubtn,.hfile .ubtn{min-height:40px}
 
   /* Hero / KPI: stack vertical */
   #kpi{padding:8px 10px 0}
