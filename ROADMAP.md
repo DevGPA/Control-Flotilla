@@ -160,7 +160,34 @@ Tests totales: 148 → **178** (+30 en P3).
 
 ---
 
-## P4 — Corte definitivo (3-4 meses)
+## P4 — Cutover (estrategia fases) — EN PROGRESO
+
+**Estrategia adoptada**: opción C (cutover por fases). Módulos nuevos activan por feature flag hasta feature parity.
+
+### Fases
+
+| Fase | Estado | Scope |
+|------|--------|-------|
+| Fase 1 — Hardening (P0+P1+P2+P3) | ✅ completa 2026-04-16 | deps, tests, CI, store, loaders, render-table, pdf, CSS extract |
+| Fase 2 — Panel detalle | 🟡 en progreso | Checklist done (2026-04-17). Pendientes: Llantas, Fotos, Notas, Acciones, Servicio |
+| Fase 3 — Taller completo | ⏳ | 16 funciones (activas, historial, filtros, modal, export) |
+| Fase 4 — Semanales + Períodos | ⏳ | 15 funciones (renderSemanales, periodos snapshot, tendencias) |
+| Cutover final | ⏳ | Flags activos por default, legado → `_legacy/` |
+
+**Feature parity audit completo**: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
+### Fase 2 detalle
+
+| Sub-tab | Legado fn | Módulo TS | Status |
+|---------|-----------|-----------|--------|
+| Hallazgos/Checklist | `renderChecklist` | `src/ui/detail/renderChecklist.ts` | ✅ 2026-04-17 (16 tests) |
+| Llantas TACO | inline `renderDetBody` case "t" | — | ⏳ |
+| Fotos + lightbox | `renderPhotos`, `lbOpen/lbNav/lbClose` | — | ⏳ |
+| Notas | `renderNotes` | — | ⏳ |
+| Acciones correctivas | `renderActionsTab`, `addAction`, etc. | — | ⏳ |
+| Servicio/Historial | `renderDetBody` case "o" | — | ⏳ |
+
+### P4 original (Corte definitivo) — referencia
 
 Matar legado. Sin esto, drift entre dos implementaciones acumula indefinidamente.
 

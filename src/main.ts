@@ -12,6 +12,7 @@
 //      - USE_STORE:      log de cambios del store (debug)
 
 import { renderTable as renderTableNew } from "./ui/renderTable";
+import { renderChecklist as renderChecklistNew } from "./ui/detail/renderChecklist";
 import { buildUnitReport } from "./pdf/unitReport";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import {
@@ -34,6 +35,8 @@ declare global {
     /** override del legado — si feature flag activa. */
     renderTable?: () => void;
     exportPDF?: () => void | Promise<void>;
+    renderChecklist?: (u: Unit, body: HTMLElement) => void;
+    toggleCheckItem?: (uid: string, text: string) => void;
     filt?: () => Unit[];
     /** flag interno para detectar si el module-script se cargó. */
     __newRenderAvailable?: boolean;
@@ -128,6 +131,29 @@ if (readFlag("USE_NEW_PDF")) {
   console.info(
     "[control-flotilla] USE_NEW_PDF activo — exportPDF usa src/pdf/unitReport.ts. " +
       "Desactiva con: localStorage.removeItem('USE_NEW_PDF')",
+  );
+}
+
+// ─── Feature flag: panel detalle Checklist (P4 fase 2) ────────────────
+if (readFlag("USE_NEW_DETAIL")) {
+  const legacyRenderChecklist = window.renderChecklist;
+
+  window.renderChecklist = function renderChecklistShim(u: Unit, body: HTMLElement) {
+    try {
+      renderChecklistNew(body, {
+        unit: u,
+        checklistDB: appStore.get("checklistDB"),
+        onToggle: window.toggleCheckItem,
+      });
+    } catch (err) {
+      console.error("[renderChecklist/new] falló, fallback a legado:", err);
+      if (legacyRenderChecklist) legacyRenderChecklist(u, body);
+    }
+  };
+
+  console.info(
+    "[control-flotilla] USE_NEW_DETAIL activo — sub-tab Checklist usa src/ui/detail/renderChecklist. " +
+      "Desactiva con: localStorage.removeItem('USE_NEW_DETAIL')",
   );
 }
 
