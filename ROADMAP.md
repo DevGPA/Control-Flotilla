@@ -170,11 +170,21 @@ Tests totales: 148 → **178** (+30 en P3).
 |------|--------|-------|
 | Fase 1 — Hardening (P0+P1+P2+P3) | ✅ completa 2026-04-16 | deps, tests, CI, store, loaders, render-table, pdf, CSS extract |
 | Fase 2 — Panel detalle | 🟡 en progreso | Checklist done (2026-04-17). Pendientes: Llantas, Fotos, Notas, Acciones, Servicio |
-| Fase 3 — Taller completo | 🟡 pure logic ✅ (2026-04-17), renderers en legado | `src/taller/tallerStore.ts` + 38 tests |
+| Fase 3 — Taller completo | 🟡 renderActivas ✅ (2026-04-17), historial en legado | `src/taller/tallerStore.ts` + `renderActivas.ts` + 63 tests |
 | Fase 4 — Semanales + Períodos | 🟡 pure logic ✅ (2026-04-17), renderers en legado | `src/weekly/weeklyStore.ts` + 30 tests |
 | Cutover final | ⏳ decisiones de negocio | Plan detallado: [docs/CUTOVER_PLAN.md](docs/CUTOVER_PLAN.md) |
 
 **Feature parity audit completo**: [docs/FEATURE_PARITY.md](docs/FEATURE_PARITY.md).
+
+### Fase 3 detalle
+
+| Vista | Legado fn | Módulo TS | Status |
+|-------|-----------|-----------|--------|
+| Operaciones Activas (tabla + contador + thead) | `renderActivas` | `src/taller/renderActivas.ts` | ✅ 2026-04-17 (25 tests) |
+| Operaciones Activas (KPI bar + donut + alert strip) | inline en `renderActivas` | ⏳ pending | en legado |
+| Historial / Expedientes | `renderHistorial` | ⏳ pending | en legado |
+
+Feature flag: `localStorage.setItem('USE_NEW_TALLER','1')`. Shim en `main.ts` lee filtros del DOM, sort state del legado (`tlSortCol/Dir`), y delega callbacks a `openTallerModal` / `finalizarUnidad` / `openHistorialModal` / `tlSort`.
 
 ### Fase 2 detalle
 

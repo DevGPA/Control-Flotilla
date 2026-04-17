@@ -27,6 +27,9 @@ import {
   type ActionStatus,
 } from "./ui/detail/renderActions";
 import { buildUnitReport } from "./pdf/unitReport";
+import { renderActivas as renderActivasNew } from "./taller/renderActivas";
+import type { SortKey as TallerSortKey } from "./taller/tallerStore";
+import type { TallerEntry } from "./taller/types";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import {
   type FilterState,
@@ -83,6 +86,17 @@ declare global {
     setBranch?: (id: string) => void;
     setSearch?: (q: string) => void;
     setPeriodo?: (p: string) => void;
+    /** Taller legacy state + callbacks — leídos por el shim. */
+    tallerEntries?: TallerEntry[];
+    tlSubView?: "activas" | "historial";
+    tlSortCol?: string | null;
+    tlSortDir?: 1 | -1;
+    tlSort?: (col: string) => void;
+    openTallerModal?: (id?: string) => void;
+    finalizarUnidad?: (id: string) => void;
+    openHistorialModal?: (unitKey: string) => void;
+    renderTaller?: () => void;
+    renderActivas?: () => void;
   }
 }
 
@@ -275,6 +289,60 @@ if (readFlag("USE_NEW_DETAIL")) {
   console.info(
     "[control-flotilla] USE_NEW_DETAIL activo — sub-tabs Checklist + Notas + Acciones + Tires + Fotos usan src/ui/detail/. " +
       "Lightbox global en window.__lightbox. Desactiva con: localStorage.removeItem('USE_NEW_DETAIL')",
+  );
+}
+
+// ─── Feature flag: Taller Activas (P4 fase 3) ─────────────────────────
+if (readFlag("USE_NEW_TALLER")) {
+  const legacyRenderActivas = window.renderActivas;
+  const SORT_KEYS: Set<string> = new Set(["fentrada", "dias", "gasto", "eco", "estado", "sucursal"]);
+
+  function readFilterFromDom(): { sucursal?: string; area?: string; tipo?: string; search?: string } {
+    const g = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "all";
+    return {
+      sucursal: g("tl-filt-suc"),
+      area: g("tl-filt-area"),
+      tipo: g("tl-filt-tipo"),
+      search: (document.getElementById("tl-filt-q") as HTMLInputElement | null)?.value?.trim() ?? "",
+    };
+  }
+
+  window.renderActivas = function renderActivasShim() {
+    // Solo corremos cuando la sub-vista activa es "activas"; historial sigue en legado.
+    if (window.tlSubView && window.tlSubView !== "activas") {
+      legacyRenderActivas?.();
+      return;
+    }
+    const tbody = document.getElementById("tl-tbody");
+    const thead = document.querySelector("#tl-thead tr") as HTMLElement | null;
+    const rcnt = document.getElementById("tl-rcnt");
+    if (!tbody) {
+      legacyRenderActivas?.();
+      return;
+    }
+    try {
+      const entries = window.tallerEntries ?? [];
+      const rawSort = window.tlSortCol ?? null;
+      const sortCol = rawSort && SORT_KEYS.has(rawSort) ? (rawSort as TallerSortKey) : null;
+      renderActivasNew(tbody, thead, rcnt, {
+        entries,
+        filter: readFilterFromDom(),
+        sortCol,
+        sortDir: window.tlSortDir ?? -1,
+        onOpen: (id) => window.openTallerModal?.(id),
+        onFinalize: (id) => window.finalizarUnidad?.(id),
+        onOpenHist: (key) => window.openHistorialModal?.(key),
+        onSort: (col) => window.tlSort?.(col),
+      });
+    } catch (err) {
+      console.error("[renderActivas/new] falló, fallback a legado:", err);
+      legacyRenderActivas?.();
+    }
+  };
+
+  console.info(
+    "[control-flotilla] USE_NEW_TALLER activo — tabla Operaciones Activas usa src/taller/renderActivas.ts. " +
+      "Historial sigue en legado. Desactiva con: localStorage.removeItem('USE_NEW_TALLER')",
   );
 }
 
