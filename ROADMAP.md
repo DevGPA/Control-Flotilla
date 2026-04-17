@@ -183,7 +183,7 @@ Tests totales: 148 → **178** (+30 en P3).
 | Hallazgos/Checklist | `renderChecklist` | `src/ui/detail/renderChecklist.ts` | ✅ 2026-04-17 (16 tests) |
 | Llantas TACO | inline `renderDetBody` case "t" | — | ⏳ |
 | Fotos + lightbox | `renderPhotos`, `lbOpen/lbNav/lbClose` | — | ⏳ |
-| Notas | `renderNotes` | — | ⏳ |
+| Notas | `renderNotes` | `src/ui/detail/renderNotes.ts` | ✅ 2026-04-17 (14 tests) |
 | Acciones correctivas | `renderActionsTab`, `addAction`, etc. | — | ⏳ |
 | Servicio/Historial | `renderDetBody` case "o" | — | ⏳ |
 

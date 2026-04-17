@@ -13,6 +13,7 @@
 
 import { renderTable as renderTableNew } from "./ui/renderTable";
 import { renderChecklist as renderChecklistNew } from "./ui/detail/renderChecklist";
+import { renderNotes as renderNotesNew, type NotesDB, type NoteType } from "./ui/detail/renderNotes";
 import { buildUnitReport } from "./pdf/unitReport";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import {
@@ -36,7 +37,13 @@ declare global {
     renderTable?: () => void;
     exportPDF?: () => void | Promise<void>;
     renderChecklist?: (u: Unit, body: HTMLElement) => void;
+    renderNotes?: (u: Unit, body: HTMLElement) => void;
     toggleCheckItem?: (uid: string, text: string) => void;
+    addNote?: (uid: string) => void;
+    deleteNote?: (uid: string, noteId: string) => void;
+    notesDB?: NotesDB;
+    saveNotes?: (uid: string) => Promise<void>;
+    renderDet?: () => void;
     filt?: () => Unit[];
     /** flag interno para detectar si el module-script se cargó. */
     __newRenderAvailable?: boolean;
@@ -151,8 +158,41 @@ if (readFlag("USE_NEW_DETAIL")) {
     }
   };
 
+  const legacyRenderNotes = window.renderNotes;
+  window.renderNotes = function renderNotesShim(u: Unit, body: HTMLElement) {
+    try {
+      renderNotesNew(body, {
+        unit: u,
+        notesDB: window.notesDB,
+        onAdd: (uid, text, type) => {
+          // Emula la lógica de addNote() del legado: inserta + persiste + re-render
+          const db = window.notesDB ?? {};
+          if (!db[uid]) db[uid] = [];
+          db[uid].push({
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+            text,
+            type: type as NoteType,
+            ts: new Date().toISOString(),
+          });
+          window.notesDB = db;
+          window.saveNotes?.(uid).then(() => window.renderDet?.());
+        },
+        onDelete: (uid, noteId) => {
+          const db = window.notesDB ?? {};
+          if (!db[uid]) return;
+          db[uid] = db[uid].filter((n) => n.id !== noteId);
+          window.notesDB = db;
+          window.saveNotes?.(uid).then(() => window.renderDet?.());
+        },
+      });
+    } catch (err) {
+      console.error("[renderNotes/new] falló, fallback a legado:", err);
+      if (legacyRenderNotes) legacyRenderNotes(u, body);
+    }
+  };
+
   console.info(
-    "[control-flotilla] USE_NEW_DETAIL activo — sub-tab Checklist usa src/ui/detail/renderChecklist. " +
+    "[control-flotilla] USE_NEW_DETAIL activo — sub-tabs Checklist + Notas usan src/ui/detail/. " +
       "Desactiva con: localStorage.removeItem('USE_NEW_DETAIL')",
   );
 }
