@@ -16,6 +16,12 @@ import { renderChecklist as renderChecklistNew } from "./ui/detail/renderCheckli
 import { renderNotes as renderNotesNew, type NotesDB, type NoteType } from "./ui/detail/renderNotes";
 import { renderTires as renderTiresNew } from "./ui/detail/renderTires";
 import {
+  renderPhotoGallery,
+  type ManualPhoto,
+  type PhotoEntry,
+} from "./ui/detail/photoGallery";
+import { createLightbox, type LightboxApi } from "./ui/detail/lightbox";
+import {
   renderActions as renderActionsNew,
   type ActionsDB,
   type ActionStatus,
@@ -45,6 +51,14 @@ declare global {
     renderChecklist?: (u: Unit, body: HTMLElement) => void;
     renderNotes?: (u: Unit, body: HTMLElement) => void;
     renderActionsTab?: (u: Unit, body: HTMLElement) => void;
+    renderPhotos?: (u: Unit, body: HTMLElement) => void;
+    imgUrl?: (fname: string) => string | null;
+    manualPhotoUrl?: (data: Uint8Array | string, cacheKey: string) => string;
+    manualPhotosDB?: Record<string, ManualPhoto[]>;
+    addManualPhoto?: (uid: string) => void;
+    deleteManualPhoto?: (uid: string, photoId: string) => void;
+    lazyObserver?: IntersectionObserver;
+    __lightbox?: LightboxApi;
     toggleCheckItem?: (uid: string, text: string) => void;
     addNote?: (uid: string) => void;
     deleteNote?: (uid: string, noteId: string) => void;
@@ -220,6 +234,35 @@ if (readFlag("USE_NEW_DETAIL")) {
     }
   };
 
+  // ── Lightbox singleton (compartido) ─────────────────────────
+  // Usa el imgUrl del legado para lazy-resolve de fotos del ZIP.
+  const lightbox = createLightbox({
+    resolveUrl: (fname) => window.imgUrl?.(fname) ?? null,
+  });
+  window.__lightbox = lightbox;
+
+  const legacyRenderPhotos = window.renderPhotos;
+  window.renderPhotos = function renderPhotosShim(u: Unit, body: HTMLElement) {
+    try {
+      const manualPhotos = (window.manualPhotosDB?.[u.uid] ?? []) as ManualPhoto[];
+      renderPhotoGallery(body, {
+        unit: u as Unit & { photos?: PhotoEntry[] },
+        manualPhotos,
+        hasZip: Boolean(appStore.get("hasZip")),
+        lightbox,
+        resolveZipUrl: (fname) => window.imgUrl?.(fname) ?? null,
+        resolveManualUrl: (p) =>
+          window.manualPhotoUrl ? window.manualPhotoUrl(p.data, p.id) : "",
+        lazyObserver: window.lazyObserver,
+        onAddManualPhoto: (uid) => window.addManualPhoto?.(uid),
+        onDeleteManualPhoto: (uid, pid) => window.deleteManualPhoto?.(uid, pid),
+      });
+    } catch (err) {
+      console.error("[renderPhotos/new] falló, fallback a legado:", err);
+      if (legacyRenderPhotos) legacyRenderPhotos(u, body);
+    }
+  };
+
   // Tires NO es función separada en legado — es inline en renderDetBody.
   // Exponemos como función por si se quiere wire directo. El legado switch
   // sigue usando su inline render; para activar el nuestro requiere refactor
@@ -230,8 +273,8 @@ if (readFlag("USE_NEW_DETAIL")) {
     };
 
   console.info(
-    "[control-flotilla] USE_NEW_DETAIL activo — sub-tabs Checklist + Notas + Acciones + Tires usan src/ui/detail/. " +
-      "Desactiva con: localStorage.removeItem('USE_NEW_DETAIL')",
+    "[control-flotilla] USE_NEW_DETAIL activo — sub-tabs Checklist + Notas + Acciones + Tires + Fotos usan src/ui/detail/. " +
+      "Lightbox global en window.__lightbox. Desactiva con: localStorage.removeItem('USE_NEW_DETAIL')",
   );
 }
 

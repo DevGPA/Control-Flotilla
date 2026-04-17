@@ -51,7 +51,9 @@ export type Unit = {
   insp?: string;
   obs?: string;
   obsArr?: string[];
-  photos?: string[];
+  // photos puede ser string[] (legacy) o objetos {fname, col, group} (nuevo).
+  // Tratamos como array genérico aquí; cada renderer tipa a lo que espera.
+  photos?: unknown[];
   km?: number | string;
 };
 

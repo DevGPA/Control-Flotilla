@@ -182,7 +182,7 @@ Tests totales: 148 → **178** (+30 en P3).
 |---------|-----------|-----------|--------|
 | Hallazgos/Checklist | `renderChecklist` | `src/ui/detail/renderChecklist.ts` | ✅ 2026-04-17 (16 tests) |
 | Llantas TACO | inline `renderDetBody` case "t" | `src/ui/detail/renderTires.ts` | ✅ 2026-04-17 (15 tests) |
-| Fotos + lightbox | `renderPhotos`, `lbOpen/lbNav/lbClose` | — | 🟡 deferido (arquitectura propia: lightbox global, lazy, blob URL) |
+| Fotos + lightbox | `renderPhotos`, `lbOpen/lbNav/lbClose` | `src/ui/detail/photoGallery.ts` + `lightbox.ts` | ✅ 2026-04-17 (35 tests) |
 | Notas | `renderNotes` | `src/ui/detail/renderNotes.ts` | ✅ 2026-04-17 (14 tests) |
 | Acciones correctivas | `renderActionsTab`, `addAction`, etc. | `src/ui/detail/renderActions.ts` | ✅ 2026-04-17 (17 tests) |
 | Servicio/Historial | `renderDetBody` case "o" | `src/ui/detail/renderService.ts` | ✅ 2026-04-17 (12 tests) |
