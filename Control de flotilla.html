@@ -3814,7 +3814,7 @@ async function exportFleetPDF(){
 // ════════════════════════════════════════════════════════════
 // MÓDULO TALLER — Seguimiento de unidades en taller
 // ════════════════════════════════════════════════════════════
-let tallerEntries = [];   // Array de objetos de seguimiento
+var tallerEntries = [];   // Array de objetos de seguimiento
 let periodos = [];        // [{id, label, mes, anio, uploadedAt, filename, units[]}]
 let activePeriodoId = null;
 let _pendingPeriodoFname = null; // filename waiting for period assignment
@@ -4163,8 +4163,8 @@ async function confirmPeriodo(){
   if(periodos.length>1) buildKPIs(); // refresh to show period info
 }
 let unitsEnTaller = new Set(); // ECOs y placas con ingresos activos en taller
-let tlSortCol = null, tlSortDir = 1; // columna y dirección de ordenamiento
-let tlSubView = "activas"; // "activas" | "historial"
+var tlSortCol = null, tlSortDir = 1; // columna y dirección de ordenamiento
+var tlSubView = "activas"; // "activas" | "historial"
 let _tallerEditId = null; // ID en edición (null = nuevo)
 let _tallerReingresoKey = null; // unitKey del origen al hacer reingresar
 
