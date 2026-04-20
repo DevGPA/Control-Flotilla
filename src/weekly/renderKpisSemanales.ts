@@ -145,17 +145,19 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
     }),
   );
 
+  const operativas = k.ok + k.revisar;
   row.appendChild(
     buildCard({
       topColor: "var(--G)",
       iconKey: "check-circle-2",
       label: "Operativas",
-      value: k.ok,
+      value: operativas,
       valueColor: "var(--G)",
-      sub: [`${pct(k.ok, k.total)}% de la flota`],
+      sub: [`${pct(operativas, k.total)}% de la flota`],
       progressColor: "var(--G)",
-      progressPct: pct(k.ok, k.total),
-      onClick: () => onFilter("OK"),
+      progressPct: pct(operativas, k.total),
+      onClick: () => onFilter("all"),
+      title: "Unidades que siguen operando (OK + Revisar). Solo Urgente queda fuera.",
     }),
   );
 

@@ -115,7 +115,7 @@ describe("renderKpisSemanales", () => {
     expect(onFilter).toHaveBeenNthCalledWith(1, "all");
     expect(onFilter).toHaveBeenNthCalledWith(2, "Urgente");
     expect(onFilter).toHaveBeenNthCalledWith(3, "Revisar");
-    expect(onFilter).toHaveBeenNthCalledWith(4, "OK");
+    expect(onFilter).toHaveBeenNthCalledWith(4, "all");
     expect(onFilter).toHaveBeenNthCalledWith(5, "carroceria");
     expect(onFilter).toHaveBeenNthCalledWith(6, "llanta");
   });
@@ -135,7 +135,7 @@ describe("renderKpisSemanales", () => {
     expect(cards[0]!.querySelector(".kval")?.textContent).toBe("3");
     expect(cards[1]!.querySelector(".kval")?.textContent).toBe("1");
     expect(cards[2]!.querySelector(".kval")?.textContent).toBe("1");
-    expect(cards[3]!.querySelector(".kval")?.textContent).toBe("1");
+    expect(cards[3]!.querySelector(".kval")?.textContent).toBe("2");
   });
 
   it("carrocería muestra 'Sin daños' cuando 0", () => {

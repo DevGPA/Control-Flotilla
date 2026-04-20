@@ -4434,12 +4434,12 @@ function buildKPIsSemanales(){
       <div class="ksub">${pct(nRev)}% · programar mantenimiento</div>
       <div class="kprog" style="background:var(--A);width:${pct(nRev)}%"></div>
     </div>
-    <div class="kc btn" onclick="swSetF('OK')">
+    <div class="kc btn" onclick="swSetF('all')" title="Unidades que siguen operando (OK + Revisar). Solo Urgente queda fuera.">
       <div class="ktop" style="background:var(--G)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="check-circle-2" style="width:11px;height:11px"></i> Operativas</div>
-      <div class="kval" style="color:var(--G)">${nOK}</div>
-      <div class="ksub">${pct(nOK)}% de la flota</div>
-      <div class="kprog" style="background:var(--G);width:${pct(nOK)}%"></div>
+      <div class="kval" style="color:var(--G)">${nOK+nRev}</div>
+      <div class="ksub">${pct(nOK+nRev)}% de la flota</div>
+      <div class="kprog" style="background:var(--G);width:${pct(nOK+nRev)}%"></div>
     </div>
     <div class="kc btn" onclick="swSetF('carroceria')" title="Filtrar por daños en carrocería">
       <div class="ktop" style="background:#F59E0B"></div>
