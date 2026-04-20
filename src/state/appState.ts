@@ -67,7 +67,13 @@ export function bindLegacyWindow(
 
   for (const [winKey, stateKey] of BRIDGES) {
     const k = winKey as string;
-    descriptors.push([k, Object.getOwnPropertyDescriptor(target, k)]);
+    const existing = Object.getOwnPropertyDescriptor(target, k);
+    descriptors.push([k, existing]);
+    // Si el legado ya expuso un getter/setter (p.ej. bridge dentro del HTML
+    // que lee `let units` via closure), encadenamos: el getter legado es la
+    // fuente de verdad, y sincronizamos el store en cada lectura/escritura.
+    const legacyGet = existing?.get;
+    const legacySet = existing?.set;
     const initial = (target as unknown as Record<string, unknown>)[k];
     if (initial !== undefined) {
       (appStore as unknown as { _state: Record<string, unknown> })._state[stateKey as string] = initial;
@@ -76,9 +82,15 @@ export function bindLegacyWindow(
       configurable: true,
       enumerable: true,
       get() {
+        if (legacyGet) {
+          const val = legacyGet.call(target);
+          (appStore as unknown as { _state: Record<string, unknown> })._state[stateKey as string] = val as unknown;
+          return val;
+        }
         return appStore.get(stateKey) as unknown;
       },
       set(v: unknown) {
+        if (legacySet) legacySet.call(target, v);
         appStore.set(stateKey, v as AppState[typeof stateKey]);
       },
     });

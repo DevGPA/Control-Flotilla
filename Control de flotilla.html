@@ -5698,6 +5698,26 @@ async function deleteTallerEntry(id){
     if(nav) nav.style.display="flex";
   }
 })();
+
+// ── Bridge de estado hacia window para los shims TS de src/main.ts ──
+// Los módulos TS nuevos leen window.weeklyPeriodos/periodos/tallerEntries/etc.
+// Exponemos getters que leen las vars locales del script legado en tiempo real.
+(function bridgeLegacyState(){
+  const expose = (key, getFn, setFn) => {
+    try { Object.defineProperty(window, key, { configurable: true, get: getFn, set: setFn }); }
+    catch(e) { console.warn("[bridge]", key, e); }
+  };
+  expose("weeklyPeriodos",       ()=>weeklyPeriodos,       v=>{weeklyPeriodos=v;});
+  expose("activeWeeklyPeriodoId",()=>activeWeeklyPeriodoId,v=>{activeWeeklyPeriodoId=v;});
+  expose("periodos",             ()=>periodos,             v=>{periodos=v;});
+  expose("activePeriodoId",      ()=>activePeriodoId,      v=>{activePeriodoId=v;});
+  expose("tallerEntries",        ()=>tallerEntries,        v=>{tallerEntries=v;});
+  expose("units",                ()=>units,                v=>{units=v;});
+  expose("swCurF",               ()=>swCurF,               v=>{swCurF=v;});
+  expose("swCurS",               ()=>swCurS,               v=>{swCurS=v;});
+  expose("swSortCol",            ()=>swSortCol,            v=>{swSortCol=v;});
+  expose("swSortDir",            ()=>swSortDir,            v=>{swSortDir=v;});
+})();
 </script>
 <!-- Módulos TS nuevos (Vite dev server resuelve en /src/). Feature flag:
      localStorage.setItem('USE_NEW_RENDER','1') para probar renderTable nuevo.

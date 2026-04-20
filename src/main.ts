@@ -173,17 +173,18 @@ if (readFlag("USE_NEW_RENDER")) {
   window.renderTable = function renderTableShim() {
     const tbody = document.getElementById("tbody");
     if (!tbody) return;
-    // window.filt() es el filtro legado; si no existe, usa units del store.
-    const rows = window.filt ? window.filt() : appStore.get("units");
-    const totalUnits = appStore.get("units").length;
+    // Leer via window.* fuerza al bridge legado (getter HTML) a sincronizar el store.
+    const allUnits = (window.units ?? []) as Unit[];
+    const rows = window.filt ? window.filt() : allUnits;
+    const totalUnits = allUnits.length;
     const rcnt = document.getElementById("rcnt");
     if (rcnt) rcnt.textContent = `${rows.length}/${totalUnits}`;
     try {
       renderTableNew(tbody, {
         units: rows,
         selectedUid: appStore.get("selectedUid"),
-        checklistDB: appStore.get("checklistDB"),
-        hasZip: appStore.get("hasZip"),
+        checklistDB: (window.checklistDB ?? appStore.get("checklistDB")) as ChecklistDB,
+        hasZip: (window.hasZip ?? appStore.get("hasZip")) as boolean,
         isUnitEnTaller: window.isUnitEnTaller,
         parseSvcDate: window.parseSvcDate,
         onSelect: window.selUnit,
