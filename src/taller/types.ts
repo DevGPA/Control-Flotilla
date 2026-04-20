@@ -30,11 +30,14 @@ export type TallerEntry = {
   freporte?: string;
   fentrada?: string;
   fsalidaEst?: string;
+  fsalidaReal?: string;
   fcierre?: string;
 
   // Costos
   gastoRef?: number;
   gastoMO?: number;
+  /** Campo legacy para entries previas al desglose Ref+MO. */
+  gasto?: number;
 
   // Texto libre
   tecnico?: string;

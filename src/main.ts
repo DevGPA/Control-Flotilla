@@ -28,6 +28,10 @@ import {
 } from "./ui/detail/renderActions";
 import { buildUnitReport } from "./pdf/unitReport";
 import { renderActivas as renderActivasNew } from "./taller/renderActivas";
+import {
+  renderHistorial as renderHistorialNew,
+  type HistorialSortKey,
+} from "./taller/renderHistorial";
 import type { SortKey as TallerSortKey } from "./taller/tallerStore";
 import type { TallerEntry } from "./taller/types";
 import { appStore, bindLegacyWindow } from "./state/appState";
@@ -97,6 +101,8 @@ declare global {
     openHistorialModal?: (unitKey: string) => void;
     renderTaller?: () => void;
     renderActivas?: () => void;
+    renderHistorial?: () => void;
+    reingresoDesdeHistorial?: (unitKey: string) => void;
   }
 }
 
@@ -292,10 +298,12 @@ if (readFlag("USE_NEW_DETAIL")) {
   );
 }
 
-// ─── Feature flag: Taller Activas (P4 fase 3) ─────────────────────────
+// ─── Feature flag: Taller Activas + Historial (P4 fase 3) ────────────
 if (readFlag("USE_NEW_TALLER")) {
   const legacyRenderActivas = window.renderActivas;
+  const legacyRenderHistorial = window.renderHistorial;
   const SORT_KEYS: Set<string> = new Set(["fentrada", "dias", "gasto", "eco", "estado", "sucursal"]);
+  const HIST_SORT_KEYS: Set<string> = new Set(["eco", "plate", "brand", "sucursal", "fentrada", "fsalidaReal"]);
 
   function readFilterFromDom(): { sucursal?: string; area?: string; tipo?: string; search?: string } {
     const g = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "all";
@@ -307,8 +315,38 @@ if (readFlag("USE_NEW_TALLER")) {
     };
   }
 
+  function readHistFilterFromDom(): { sucursal?: string; tipo?: string; search?: string; desde?: string; hasta?: string } {
+    const g = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
+    return {
+      sucursal: g("tl-hist-suc") || "all",
+      tipo: g("tl-hist-tipo") || "all",
+      search: (document.getElementById("tl-hist-q") as HTMLInputElement | null)?.value?.trim() ?? "",
+      desde: g("tl-hist-desde"),
+      hasta: g("tl-hist-hasta"),
+    };
+  }
+
+  function populateHistSucursalSelect(entries: TallerEntry[]): void {
+    const sel = document.getElementById("tl-hist-suc") as HTMLSelectElement | null;
+    if (!sel || sel.options.length > 1) return;
+    const current = sel.value || "all";
+    const sucs = [...new Set(entries.map((e) => e.sucursal).filter((s): s is string => !!s))].sort();
+    sel.replaceChildren();
+    const optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = "Todas las sucursales";
+    sel.appendChild(optAll);
+    for (const s of sucs) {
+      const o = document.createElement("option");
+      o.value = s;
+      o.textContent = s;
+      if (s === current) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+
   window.renderActivas = function renderActivasShim() {
-    // Solo corremos cuando la sub-vista activa es "activas"; historial sigue en legado.
+    // Solo corremos cuando la sub-vista activa es "activas"; historial tiene su propio shim.
     if (window.tlSubView && window.tlSubView !== "activas") {
       legacyRenderActivas?.();
       return;
@@ -340,9 +378,39 @@ if (readFlag("USE_NEW_TALLER")) {
     }
   };
 
+  window.renderHistorial = function renderHistorialShim() {
+    const tbody = document.getElementById("tl-tbody");
+    const thead = document.querySelector("#tl-thead tr") as HTMLElement | null;
+    const rcnt = document.getElementById("tl-hist-rcnt");
+    const kpiBar = document.getElementById("hist-kpi-bar");
+    if (!tbody) {
+      legacyRenderHistorial?.();
+      return;
+    }
+    try {
+      const entries = window.tallerEntries ?? [];
+      populateHistSucursalSelect(entries);
+      const rawSort = window.tlSortCol ?? null;
+      const sortCol = rawSort && HIST_SORT_KEYS.has(rawSort) ? (rawSort as HistorialSortKey) : null;
+      renderHistorialNew(tbody, thead, rcnt, {
+        entries,
+        filter: readHistFilterFromDom(),
+        sortCol,
+        sortDir: window.tlSortDir ?? -1,
+        kpiBar,
+        onOpen: (key) => window.openHistorialModal?.(key),
+        onReingreso: (key) => window.reingresoDesdeHistorial?.(key),
+        onSort: (col) => window.tlSort?.(col),
+      });
+    } catch (err) {
+      console.error("[renderHistorial/new] falló, fallback a legado:", err);
+      legacyRenderHistorial?.();
+    }
+  };
+
   console.info(
-    "[control-flotilla] USE_NEW_TALLER activo — tabla Operaciones Activas usa src/taller/renderActivas.ts. " +
-      "Historial sigue en legado. Desactiva con: localStorage.removeItem('USE_NEW_TALLER')",
+    "[control-flotilla] USE_NEW_TALLER activo — Activas e Historial usan src/taller/*.ts. " +
+      "Desactiva con: localStorage.removeItem('USE_NEW_TALLER')",
   );
 }
 
