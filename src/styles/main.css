@@ -42,10 +42,10 @@
   --w1:#E2E8F0;--w2:#CBD5E1;
   --s1:#94A3B8;--s2:#7C8AA0;--s3:#64748B;--s4:#475569;
 
-  --R:#F87171;--Rd:rgba(248,113,113,.10);--Rl:rgba(248,113,113,.30);
-  --A:#FBBF24;--Ad:rgba(251,191,36,.10);--Al:rgba(251,191,36,.30);
-  --G:#34D399;--Gd:rgba(52,211,153,.10);--Gl:rgba(52,211,153,.30);
-  --B:#A78BFA;--Bd:rgba(167,139,250,.10);--Bl:rgba(167,139,250,.30);
+  --R:#E88A8A;--Rd:rgba(232,138,138,.08);--Rl:rgba(232,138,138,.22);
+  --A:#E8B86B;--Ad:rgba(232,184,107,.08);--Al:rgba(232,184,107,.22);
+  --G:#6BC49A;--Gd:rgba(107,196,154,.08);--Gl:rgba(107,196,154,.22);
+  --B:#A89ADA;--Bd:rgba(168,154,218,.08);--Bl:rgba(168,154,218,.22);
 
   --ac:#2DD4BF;--ac2:#5EEAD4;
   --acd:rgba(45,212,191,.08);--acl:rgba(45,212,191,.28);
@@ -55,14 +55,70 @@
   --shadow-xl:0 20px 40px rgba(0,0,0,.5),0 8px 16px rgba(0,0,0,.35);
 }
 
-/* Overrides de chips con colores hardcoded — versión dark */
-:root[data-theme="dark"] #btn-obs.chip-on{background:rgba(99,102,241,.15);border-color:rgba(129,140,248,.4);color:#A5B4FC}
-:root[data-theme="dark"] #btn-taller.chip-on{background:rgba(167,139,250,.15);border-color:rgba(196,181,253,.4);color:#C4B5FD}
-:root[data-theme="dark"] #btn-svcvencido.chip-on{background:rgba(239,68,68,.15);border-color:rgba(248,113,113,.4);color:#FCA5A5}
-:root[data-theme="dark"] .taller-badge-row{background:rgba(167,139,250,.15);border-color:rgba(196,181,253,.4);color:#C4B5FD}
-:root[data-theme="dark"] .sw-pill-info{background:rgba(99,102,241,.15);color:#A5B4FC;border-color:rgba(129,140,248,.4)}
-:root[data-theme="dark"] .sw-pill-note{background:rgba(250,204,21,.12);color:#FDE68A;border-color:rgba(253,224,71,.35)}
-:root[data-theme="dark"] .tcmt{border-left-color:rgba(125,211,252,.5);background:rgba(125,211,252,.06);color:var(--w2)}
+/* Overrides de chips/pills con colores hardcoded — versión dark */
+:root[data-theme="dark"] #btn-obs.chip-on{background:rgba(99,102,241,.10);border-color:rgba(129,140,248,.28);color:#A5B4FC}
+:root[data-theme="dark"] #btn-taller.chip-on{background:rgba(167,139,250,.10);border-color:rgba(196,181,253,.28);color:#C4B5FD}
+:root[data-theme="dark"] #btn-svcvencido.chip-on{background:rgba(239,68,68,.10);border-color:rgba(248,113,113,.28);color:#FCA5A5}
+:root[data-theme="dark"] .taller-badge-row{background:rgba(167,139,250,.10);border-color:rgba(196,181,253,.28);color:#C4B5FD}
+:root[data-theme="dark"] .sw-pill-info{background:rgba(99,102,241,.10);color:#A5B4FC;border-color:rgba(129,140,248,.28)}
+:root[data-theme="dark"] .sw-pill-note{background:rgba(250,204,21,.08);color:#FDE68A;border-color:rgba(253,224,71,.25)}
+:root[data-theme="dark"] .tcmt{border-left-color:rgba(125,211,252,.22);background:rgba(125,211,252,.03);color:var(--w2)}
+
+/* Hero-icon tiles con color hardcoded en el HTML — muteados en dark */
+:root[data-theme="dark"] .hero-icon[style*="#EF4444"]{background:#6B3A3A !important}
+:root[data-theme="dark"] .hero-icon[style*="#7c3aed"],
+:root[data-theme="dark"] .hero-icon[style*="#7C3AED"]{background:#4A3A6B !important}
+:root[data-theme="dark"] .hero-icon svg{color:#E2E8F0 !important;opacity:.85}
+
+/* Badge TALLER rojo hardcoded */
+:root[data-theme="dark"] #taller-badge{background:#7A2020 !important;color:#FCA5A5 !important}
+:root[data-theme="dark"] #db-badge{background:rgba(107,196,154,.10) !important;border-color:rgba(107,196,154,.28) !important}
+
+/* Alerts panel (amarillo pastel que chocaba) */
+:root[data-theme="dark"] #alerts-panel{background:rgba(232,184,107,.06) !important;border-color:rgba(232,184,107,.22) !important;border-left-color:var(--A) !important;color:var(--w2) !important}
+
+/* Chip dots (puntos 6x6 en tabs) — solo saturación ligera */
+:root[data-theme="dark"] .chip-dot{opacity:.75}
+
+/* Reducir intensidad de pills URGENTE/REVISAR/COMPLETAR — bg cercano a transparente */
+:root[data-theme="dark"] .pill,
+:root[data-theme="dark"] .pu,
+:root[data-theme="dark"] .pr,
+:root[data-theme="dark"] .pc,
+:root[data-theme="dark"] .po{font-weight:600;letter-spacing:.4px}
+
+/* Rows tinted (.tr.ru/.rr) — hardcoded rgba lavaban toda la fila en dark.
+   En dark: sin wash; el estatus se lee por stripe izquierda + badge URGENTE */
+:root[data-theme="dark"] .tr.ru{background:transparent}
+:root[data-theme="dark"] .tr.rr{background:transparent}
+:root[data-theme="dark"] .tr.ru:hover{background:var(--bg3)}
+:root[data-theme="dark"] .tr.rr:hover{background:var(--bg3)}
+:root[data-theme="dark"] .tr.sel.ru{background:rgba(232,138,138,.06);box-shadow:inset 3px 0 0 var(--R)}
+:root[data-theme="dark"] .tr.sel.rr{background:rgba(232,184,107,.06);box-shadow:inset 3px 0 0 var(--A)}
+:root[data-theme="dark"] .tr.sel.ro{background:rgba(107,196,154,.06);box-shadow:inset 3px 0 0 var(--G)}
+
+/* Tabs + findings + checklist con tints hardcoded — override dark */
+:root[data-theme="dark"] .dtab.onr{color:var(--R);background:rgba(232,138,138,.08);border-color:rgba(232,138,138,.22)}
+:root[data-theme="dark"] .dtab.onr .dtab-badge{background:rgba(232,138,138,.14);color:var(--R);border-color:rgba(232,138,138,.24)}
+:root[data-theme="dark"] .fiu{background:rgba(232,138,138,.07);border-left-color:var(--R)}
+:root[data-theme="dark"] .fir{background:rgba(232,184,107,.07);border-left-color:var(--A)}
+:root[data-theme="dark"] .ck-ok{background:rgba(107,196,154,.06);color:var(--s2)}
+:root[data-theme="dark"] .ck-done{background:rgba(107,196,154,.08);color:var(--s2)}
+
+/* Taller tipo pills (hardcoded pink/lavender) */
+:root[data-theme="dark"] .tl-tipo.correctivo{background:rgba(232,138,138,.10);color:#FCA5A5}
+:root[data-theme="dark"] .tl-tipo.preventivo{background:rgba(168,154,218,.10);color:#C4B5FD}
+
+/* Semanales rows con wash rosa/cream en light — transparente en dark */
+:root[data-theme="dark"] .sw-table tr.sw-urg td{background:transparent}
+:root[data-theme="dark"] .sw-table tr.sw-rev td{background:transparent}
+:root[data-theme="dark"] .sw-table tr.sw-urg:hover td{background:var(--bg3)}
+:root[data-theme="dark"] .sw-table tr.sw-rev:hover td{background:var(--bg3)}
+
+/* Modal overlays (00000055 se vuelve casi invisible en dark porque ya es oscuro) */
+:root[data-theme="dark"] .pm-overlay,
+:root[data-theme="dark"] #taller-modal,
+:root[data-theme="dark"] #hist-modal{background:rgba(0,0,0,.72)}
 
 /* Transición suave al togglear */
 html,body,.hero-card,.hero-donut,.kt,.chip,#det,#hdr,#tb,.dcard,.dxl,#bsel,#srch{
@@ -247,6 +303,7 @@ button,input,select{font-family:var(--fb)}
 
 /* ════ TABLE ═════════════════════════════════════════════ */
 #tw{flex:1;overflow-y:auto;transition:flex .22s cubic-bezier(.4,0,.2,1);background:#FAF8F5}
+:root[data-theme="dark"] #tw{background:var(--bg2)}
 #tw.narrow{flex:0 0 400px;min-width:340px}
 .thd{
   display:grid;
