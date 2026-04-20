@@ -4,6 +4,18 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GPA Fleet Command</title>
+<script>
+  // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
+  // Precedencia: localStorage.theme > prefers-color-scheme > 'light'.
+  (function(){
+    try{
+      var saved = localStorage.getItem('gpa-theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = saved || (prefersDark ? 'dark' : 'light');
+      if(theme === 'dark') document.documentElement.setAttribute('data-theme','dark');
+    }catch(e){}
+  })();
+</script>
 <!--
   CDN deps con fallback local. Si el CDN falla (offline, bloqueo corporativo)
   o el navegador rechaza el hash SRI, se carga desde ./vendor/.
@@ -206,6 +218,9 @@ g.inflateBytes=async function(src){
     </button>
     <button class="ubtn ubtn-collapse" id="btn-resumen" onclick="showResumenEjecutivo()" style="display:none;background:var(--bg);border:1px solid var(--ac);color:var(--ac);padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer" title="Generar resumen ejecutivo de texto">
       <i data-lucide="file-text" style="width:11px;height:11px;vertical-align:-2px"></i> <span class="ubtn-txt">Resumen</span>
+    </button>
+    <button class="ubtn theme-toggle" id="btn-theme" onclick="toggleTheme()" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">
+      <i data-lucide="moon" id="theme-icon" style="width:13px;height:13px"></i>
     </button>
   </div>
 </div>
@@ -972,6 +987,36 @@ async function _restoreStateImpl(){
     return false;
   }
 }
+
+function toggleTheme(){
+  const html = document.documentElement;
+  const isDark = html.getAttribute("data-theme") === "dark";
+  const next = isDark ? "light" : "dark";
+  if(next === "dark") html.setAttribute("data-theme","dark");
+  else html.removeAttribute("data-theme");
+  try{ localStorage.setItem("gpa-theme", next); }catch(e){}
+  const icon = document.getElementById("theme-icon");
+  if(icon){
+    icon.setAttribute("data-lucide", next === "dark" ? "sun" : "moon");
+    if(typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  }
+  const btn = document.getElementById("btn-theme");
+  if(btn) btn.title = next === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
+}
+
+// Init: sincronizar icono con tema aplicado por anti-FOUC
+(function initThemeIcon(){
+  function sync(){
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const icon = document.getElementById("theme-icon");
+    const btn  = document.getElementById("btn-theme");
+    if(icon) icon.setAttribute("data-lucide", isDark ? "sun" : "moon");
+    if(btn)  btn.title = isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
+    if(typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", sync);
+  else sync();
+})();
 
 async function clearStoredData(){
   if(!confirm("¿Eliminar todos los datos guardados y empezar desde cero?")) return;
