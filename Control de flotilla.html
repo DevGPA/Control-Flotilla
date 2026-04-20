@@ -5253,13 +5253,15 @@ function doTallerExcel(file){
       };
 
       // Determinar estado y tipo desde columna Estado del Excel
+      // IMPORTANTE: estado canónico es "En Revisión" (con acento) — matchea types.ts + KPIs
       const mapEstado = raw => {
         const v = String(raw||"").trim();
-        if(v === "OK") return {estado:"Listo", tipo:""};
-        if(v === "En Revision") return {estado:"En Revision", tipo:""};
-        if(v.toLowerCase().includes("correctivo")) return {estado:"En Revision", tipo:"Correctivo"};
-        if(v.toLowerCase().includes("preventivo")) return {estado:"En Revision", tipo:"Preventivo"};
-        return {estado:"En Revision", tipo:""};
+        const vn = v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+        if(v === "OK" || vn === "ok") return {estado:"Listo", tipo:""};
+        if(vn === "en revision") return {estado:"En Revisión", tipo:""};
+        if(vn.includes("correctivo")) return {estado:"En Revisión", tipo:"Correctivo"};
+        if(vn.includes("preventivo")) return {estado:"En Revisión", tipo:"Preventivo"};
+        return {estado:"En Revisión", tipo:""};
       };
 
       const imported = [];
