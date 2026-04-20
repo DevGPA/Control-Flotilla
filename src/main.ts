@@ -28,6 +28,7 @@ import {
 } from "./ui/detail/renderActions";
 import { buildUnitReport } from "./pdf/unitReport";
 import { renderActivas as renderActivasNew } from "./taller/renderActivas";
+import { renderActivasKpis as renderActivasKpisNew } from "./taller/renderActivasKpis";
 import {
   renderHistorial as renderHistorialNew,
   type HistorialSortKey,
@@ -96,6 +97,7 @@ declare global {
     tlSortCol?: string | null;
     tlSortDir?: 1 | -1;
     tlSort?: (col: string) => void;
+    tlSortByUrgencia?: () => void;
     openTallerModal?: (id?: string) => void;
     finalizarUnidad?: (id: string) => void;
     openHistorialModal?: (unitKey: string) => void;
@@ -103,6 +105,7 @@ declare global {
     renderActivas?: () => void;
     renderHistorial?: () => void;
     reingresoDesdeHistorial?: (unitKey: string) => void;
+    refreshIcons?: () => void;
   }
 }
 
@@ -360,11 +363,29 @@ if (readFlag("USE_NEW_TALLER")) {
     }
     try {
       const entries = window.tallerEntries ?? [];
+      const filter = readFilterFromDom();
       const rawSort = window.tlSortCol ?? null;
       const sortCol = rawSort && SORT_KEYS.has(rawSort) ? (rawSort as TallerSortKey) : null;
+
+      // KPI bar + donut + alert strip
+      const kpis = document.getElementById("tl-kpis");
+      if (kpis) {
+        renderActivasKpisNew(kpis, {
+          entries,
+          filter,
+          onFilterTipo: (tipo) => {
+            const sel = document.getElementById("tl-filt-tipo") as HTMLSelectElement | null;
+            if (sel) sel.value = tipo;
+            window.renderTaller?.();
+          },
+          onSortUrgencia: () => window.tlSortByUrgencia?.(),
+        });
+        window.refreshIcons?.();
+      }
+
       renderActivasNew(tbody, thead, rcnt, {
         entries,
-        filter: readFilterFromDom(),
+        filter,
         sortCol,
         sortDir: window.tlSortDir ?? -1,
         onOpen: (id) => window.openTallerModal?.(id),
