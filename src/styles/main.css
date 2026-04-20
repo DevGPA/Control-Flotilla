@@ -196,6 +196,8 @@ button,input,select{font-family:var(--fb)}
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;padding:0;color:var(--s1);background:var(--bg);border:1px solid var(--ln);border-radius:var(--r1);cursor:pointer;transition:all .15s}
 .theme-toggle:hover{color:var(--ac);border-color:var(--ac);background:var(--acd)}
 .theme-toggle:active{transform:scale(.94)}
+/* Icons dentro de botones: los clicks pasan siempre al botón padre. */
+.ubtn > svg,.ubtn > i,.theme-toggle > svg,.theme-toggle > i{pointer-events:none}
 
 /* ════ KPI BAR ═══════════════════════════════════════════ */
 #kpi{display:none;flex-shrink:0;padding:10px 16px 0;background:var(--bg2)}

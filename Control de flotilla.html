@@ -995,9 +995,14 @@ function toggleTheme(){
   if(next === "dark") html.setAttribute("data-theme","dark");
   else html.removeAttribute("data-theme");
   try{ localStorage.setItem("gpa-theme", next); }catch(e){}
-  const icon = document.getElementById("theme-icon");
-  if(icon){
-    icon.setAttribute("data-lucide", next === "dark" ? "sun" : "moon");
+  const old = document.getElementById("theme-icon");
+  if(old){
+    // Reemplazar por <i> fresco para evitar acumulación de clases lucide-sun lucide-moon.
+    const fresh = document.createElement("i");
+    fresh.id = "theme-icon";
+    fresh.setAttribute("data-lucide", next === "dark" ? "sun" : "moon");
+    fresh.style.cssText = "width:13px;height:13px";
+    old.replaceWith(fresh);
     if(typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
   }
   const btn = document.getElementById("btn-theme");
@@ -1008,9 +1013,16 @@ function toggleTheme(){
 (function initThemeIcon(){
   function sync(){
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const want = isDark ? "sun" : "moon";
     const icon = document.getElementById("theme-icon");
     const btn  = document.getElementById("btn-theme");
-    if(icon) icon.setAttribute("data-lucide", isDark ? "sun" : "moon");
+    if(icon && icon.getAttribute("data-lucide") !== want){
+      const fresh = document.createElement("i");
+      fresh.id = "theme-icon";
+      fresh.setAttribute("data-lucide", want);
+      fresh.style.cssText = "width:13px;height:13px";
+      icon.replaceWith(fresh);
+    }
     if(btn)  btn.title = isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
     if(typeof lucide !== "undefined" && lucide.createIcons) lucide.createIcons();
   }
