@@ -304,7 +304,7 @@ g.inflateBytes=async function(src){
     <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
     <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>Revisar <span class="chip-n" id="fc1"></span></button>
     <button class="chip" id="btn-Completar" onclick="setF('Completar')"><span class="chip-dot" style="background:var(--B)"></span>Completar <span class="chip-n" id="fc4"></span></button>
-    <button class="chip" id="btn-operativas" onclick="setF('operativas')"><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
+    <button class="chip" id="btn-OK" onclick="setF('OK')"><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:#6366F1"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-taller" onclick="setF('taller')"><span class="chip-dot" style="background:#7c3aed"></span>Taller <span class="chip-n" id="fc_taller"></span></button>
     <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:#EF4444"></span>Svc Vencido <span class="chip-n" id="fc_svc"></span></button>
@@ -1429,7 +1429,6 @@ const isUnitEnTaller = u =>
 
 const filt=()=>sortedUnits(units.filter(u=>{
   if(curF==="taller")     return isUnitEnTaller(u);
-  if(curF==="operativas") return !isUnitEnTaller(u);
   if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);return ds&&ds<=d30b;}
   if(curF==="obs"&&!u.obs)return false;
   if(curF==="Completar"&&!u.F.some(f=>f.lv==="Completar"))return false;
@@ -2024,11 +2023,12 @@ function buildKPIs(){
   // Single pass — all counters accumulated in one loop
   const today0=new Date();today0.setHours(0,0,0,0);
   const d30=new Date(today0);d30.setDate(d30.getDate()+30);
-  let u=0,rv=0,comp=0,ok=0,ct=0,enTaller=0,nSvcVencido=0,nSvcProximo=0,withObs=0;
+  let u=0,rv=0,cpl=0,comp=0,ok=0,ct=0,enTaller=0,nSvcVencido=0,nSvcProximo=0,withObs=0;
   for(let i=0;i<t;i++){
     const x=units[i];
     if(x.risk==="Urgente") u++;
     else if(x.risk==="Revisar") rv++;
+    else if(x.risk==="Completar") cpl++;
     else ok++;
     if(x.F.some(f=>f.lv==="Completar")) comp++;
     if(x.minT!==null&&x.minT<=TCRIT) ct++;
@@ -2040,7 +2040,6 @@ function buildKPIs(){
       else if(sd<=d30) nSvcProximo++;
     }
   }
-  const operativas=t-enTaller;
   const nSvcAlert=nSvcVencido+nSvcProximo;
   const pct=n=>t?((n/t)*100).toFixed(0)+"%":"—";
   // Hero cards
@@ -2065,11 +2064,11 @@ function buildKPIs(){
   if(btnFleet) btnFleet.style.display=t?"flex":"none";
   const btnResumen=document.getElementById("btn-resumen");
   if(btnResumen) btnResumen.style.display=t?"inline-flex":"none";
-  // donut — exclusive categories only (Urgente, Revisar, OK) to avoid overlap
-  // "Completar" is NOT a separate risk level — it overlaps with Urgente/Revisar/OK.
-  // The donut shows the mutually exclusive worst-risk distribution.
+  // donut — distribución exclusiva por peor riesgo (Urgente > Revisar > Completar > OK).
+  // Cada unidad cae en exactamente un segmento (coincide con pill de tabla).
+  // Chip "Completar" (fc4) usa solapamiento por hallazgos (variable `comp`), por diseño.
   const R=26,cx=32,cy=32,circ=2*Math.PI*R,sw=8;let off=0;
-  const rawSegs=[["u",u,"var(--R)"],["rv",rv,"var(--A)"],["ok",ok,"var(--G)"]];
+  const rawSegs=[["u",u,"var(--R)"],["rv",rv,"var(--A)"],["cpl",cpl,"var(--B)"],["ok",ok,"var(--G)"]];
   const present=rawSegs.filter(([,v])=>v>0);
   const donutT=Math.max(t,1);
   const gap=present.length>1?circ*0.012:0; // ~2° gap entre segmentos
@@ -2084,24 +2083,27 @@ function buildKPIs(){
   const dp=document.getElementById("dpct");
   const dtag=document.getElementById("dtag");
   // Default = dominant segment (label and % stay consistent)
-  const dom=u>=rv&&u>=ok?["URGENTE","var(--R)",u]:rv>=ok?["REVISAR","var(--A)",rv]:["OK","var(--G)",ok];
+  const domSegs=[["URGENTE","var(--R)",u],["REVISAR","var(--A)",rv],["COMPLETAR","var(--B)",cpl],["OK","var(--G)",ok]];
+  const dom=domSegs.reduce((a,b)=>b[2]>a[2]?b:a);
   const domPct=t?Math.round((dom[2]/t)*100):0;
   dp.textContent=domPct+"%";dp.style.color=dom[1];
   if(dtag){
-    dtag.textContent=dom[0];dtag.style.color=dom[1];dtag.style.background=dom[1]==="var(--R)"?"#DC262615":dom[1]==="var(--A)"?"#F59E0B15":"#06D6A015";
+    const domBg=dom[1]==="var(--R)"?"#DC262615":dom[1]==="var(--A)"?"#F59E0B15":dom[1]==="var(--B)"?"#2563EB15":"#06D6A015";
+    dtag.textContent=dom[0];dtag.style.color=dom[1];dtag.style.background=domBg;
   }
-  const legRows=[["u","var(--R)","Urgente",u],["rv","var(--A)","Revisar",rv],["ok","var(--G)","OK",ok],["comp","var(--B)","Completar*",comp]];
-  document.getElementById("dleg").innerHTML=
-    legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("")
-    +`<div style="grid-column:1/-1;font-size:8px;color:var(--s3);margin-top:2px;font-weight:500">*Completar se solapa con otros estados</div>`;
+  const legRows=[["u","var(--R)","Urgente",u],["rv","var(--A)","Revisar",rv],["cpl","var(--B)","Completar",cpl],["ok","var(--G)","OK",ok]];
+  const dleg=document.getElementById("dleg");
+  dleg.title="Distribución por peor riesgo (mutuamente excluyente). Coincide con pill de tabla.";
+  dleg.innerHTML=
+    legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
   // hover: leyenda ↔ segmento + % y tag dinámico
   const pctOf = n => t ? Math.round((n/t)*100) : 0;
   const DTAG_BG={"var(--R)":"#DC262615","var(--A)":"#F59E0B15","var(--G)":"#06D6A015","var(--B)":"#2563EB15"};
   const hoverMap={
     u:{pct:pctOf(u),lbl:"URGENTE",color:"var(--R)"},
     rv:{pct:pctOf(rv),lbl:"REVISAR",color:"var(--A)"},
-    ok:{pct:pctOf(ok),lbl:"OK",color:"var(--G)"},
-    comp:{pct:pctOf(comp),lbl:"COMPLETAR",color:"var(--B)"}
+    cpl:{pct:pctOf(cpl),lbl:"COMPLETAR",color:"var(--B)"},
+    ok:{pct:pctOf(ok),lbl:"OK",color:"var(--G)"}
   };
   const defaultPct=dp.textContent, defaultPctColor=dp.style.color;
   const defaultTag=dtag?{txt:dtag.textContent,color:dtag.style.color,bg:dtag.style.background}:null;
