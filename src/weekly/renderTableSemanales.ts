@@ -195,7 +195,7 @@ function llantaCell(entry: WeeklyEntry): HTMLElement {
   if (!entry.llantaRisk || entry.llantaRisk === "OK") {
     const s = document.createElement("span");
     s.className = "sw-pill sw-pill-ok";
-    s.textContent = "✓ Funcional";
+    s.textContent = "✓ Con refacción";
     return s;
   }
   const s = document.createElement("span");
@@ -371,7 +371,13 @@ export function renderTableSemanales(deps: RenderTableSemanalesDeps): TableSeman
     tr.appendChild(td(riskPill(e.radiadorRisk, e.radiador || e.radiadorRisk || "OK")));
     tr.appendChild(td(carroceriaCell(e)));
     tr.appendChild(td(llantaCell(e)));
-    tr.appendChild(td(riskPill(effectiveRisk, effectiveRisk)));
+    const estadoLabel =
+      effectiveRisk === "OK"
+        ? "Operativa"
+        : effectiveRisk === "Revisar"
+          ? "Operativa · Revisar"
+          : "Urgente";
+    tr.appendChild(td(riskPill(effectiveRisk, estadoLabel)));
 
     const respSpan = document.createElement("span");
     respSpan.className = "sw-resp";

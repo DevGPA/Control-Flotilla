@@ -4585,10 +4585,10 @@ function renderTableSemanales(){
       <td>${(()=>{
         // Llanta refacción: accesorio — OK=verde, faltante=ámbar-note informativo
         if(!e.llantaRisk || e.llantaRisk==="OK")
-          return `<span class="sw-pill sw-pill-ok">✓ Funcional</span>`;
+          return `<span class="sw-pill sw-pill-ok">✓ Con refacción</span>`;
         return `<span class="sw-pill sw-pill-note">◌ Completar refacción</span>`;
       })()}</td>
-      <td>${swPill(effectiveRisk, effectiveRisk)}</td>
+      <td>${swPill(effectiveRisk, effectiveRisk==="OK"?"Operativa":effectiveRisk==="Revisar"?"Operativa · Revisar":"Urgente")}</td>
       <td><span class="sw-resp" title="${escHtml(e.responsable||"")}">${escHtml(e.responsable||"—")}</span></td>
       <td style="font-size:10px;color:var(--s2)">${escHtml(e.fecha||"—")}</td>
       <td>${tallerBtn}</td>
