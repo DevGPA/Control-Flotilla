@@ -97,6 +97,11 @@ declare global {
     saveActions?: (uid: string) => Promise<void>;
     renderDet?: () => void;
     filt?: () => Unit[];
+    /** toast helpers expuestos por el legado — usados por módulos TS. */
+    notify?: (msg: string, kind?: string, ms?: number) => void;
+    notifyUndo?: (msg: string, onCommit: () => void, ms?: number, onUndo?: () => void) => void;
+    runSafe?: <T>(label: string, fn: () => T | Promise<T>) => Promise<T | undefined>;
+    __rawAlert?: typeof window.alert;
     /** flag interno para detectar si el module-script se cargó. */
     __newRenderAvailable?: boolean;
     /** store expuesto en dev para inspección via devtools. */

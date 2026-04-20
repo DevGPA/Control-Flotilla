@@ -23,19 +23,19 @@
     xlsx 0.20.3 (SheetJS CDN), jspdf 2.5.1 (cdnjs), lucide 1.8.0 (unpkg).
   Fase 2 eliminará esta cadena via bundling Vite.
 -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer
         integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT"
         crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/xlsx.full.min.js';s.integrity='sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';s.crossOrigin='anonymous';s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('XLSX')};document.head.appendChild(s);"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/xlsx.full.min.js';s.integrity='sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('XLSX')};document.head.appendChild(s);"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/jspdf.umd.min.js';s.integrity='sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';s.crossOrigin='anonymous';s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('jsPDF')};document.head.appendChild(s);"></script>
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/jspdf.umd.min.js';s.integrity='sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('jsPDF')};document.head.appendChild(s);"></script>
 <!-- Lucide icons — SVG. Pin 1.8.0 (antes @latest = riesgo supply-chain). -->
-<script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"
+<script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js" defer
         integrity="sha384-+8nbzwDAyu5kAjqtR/XKxIgPHQD2TflvbZgeDZn5t3JP+OOogNH1jXnfel8ZAgzS"
         crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/lucide.min.js';s.integrity='sha384-+8nbzwDAyu5kAjqtR/XKxIgPHQD2TflvbZgeDZn5t3JP+OOogNH1jXnfel8ZAgzS';s.crossOrigin='anonymous';s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('Lucide')};document.head.appendChild(s);"></script>
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/lucide.min.js';s.integrity='sha384-+8nbzwDAyu5kAjqtR/XKxIgPHQD2TflvbZgeDZn5t3JP+OOogNH1jXnfel8ZAgzS';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('Lucide')};document.head.appendChild(s);"></script>
 <script>
 // Silence benign SheetJS "Bad uncompressed size" warnings emitted when parsing
 // MoreApp-generated xlsx files — data is still recovered correctly.
@@ -307,7 +307,7 @@ g.inflateBytes=async function(src){
     <button class="chip" id="btn-OK" onclick="setF('OK')"><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:#6366F1"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-taller" onclick="setF('taller')"><span class="chip-dot" style="background:#7c3aed"></span>Taller <span class="chip-n" id="fc_taller"></span></button>
-    <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:#EF4444"></span>Svc Vencido <span class="chip-n" id="fc_svc"></span></button>
+    <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:#EF4444"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)"><option value="all">Todas las sucursales</option></select>
   <div class="sw">
@@ -633,7 +633,7 @@ g.inflateBytes=async function(src){
       <div class="tl-field">
         <label>Estado</label>
         <select id="tf-estado">
-          <option value="En Revision">En Revisión (Activo)</option>
+          <option value="En Revisión">En Revisión (Activo)</option>
           <option value="Finalizado">Finalizado</option>
         </select>
       </div>
@@ -1450,6 +1450,7 @@ const filt=()=>sortedUnits(units.filter(u=>{
     return[u.plate,u.brand,u.insp,u.eco,u.branch,u.area,u.obs].some(v=>String(v||"").toLowerCase().includes(q))}
   return true;
 }));
+window.filt=filt;
 
 // Lucide: auto-materializa <i data-lucide> en cambios de DOM (debounced 50ms).
 window.refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
@@ -2207,11 +2208,31 @@ function buildAlertsSummary(){
   // Render
   if(!alerts.length){panel.style.display="none";return;}
   panel.style.display="block";
-  list.innerHTML=alerts.map(a=>
-    `<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;${a.action?'cursor:pointer':''}" ${a.action?`onclick="setF('${a.action}')"`:''}>`+
-    `<span style="flex-shrink:0">${a.icon}</span>`+
-    `<div><span style="color:${a.color}">${a.text}</span>${a.detail?`<span style="color:#78716C;margin-left:4px;font-size:11px"> — ${a.detail}</span>`:''}</div></div>`
-  ).join("");
+  // XSS-safe: sin inline onclick. icon/text/detail son author-controlled
+  // (escHtml aplicado arriba a datos de usuario); action adjunto via listener.
+  list.replaceChildren();
+  for(const a of alerts){
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;"+(a.action?"cursor:pointer":"");
+    if(a.action){const act=a.action;row.addEventListener("click",()=>setF(act));}
+    const ico=document.createElement("span");
+    ico.style.flexShrink="0";
+    ico.innerHTML=a.icon;
+    row.appendChild(ico);
+    const box=document.createElement("div");
+    const txt=document.createElement("span");
+    txt.style.color=a.color;
+    txt.innerHTML=a.text;
+    box.appendChild(txt);
+    if(a.detail){
+      const det=document.createElement("span");
+      det.style.cssText="color:#78716C;margin-left:4px;font-size:11px";
+      det.innerHTML=" — "+a.detail;
+      box.appendChild(det);
+    }
+    row.appendChild(box);
+    list.appendChild(row);
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -4260,7 +4281,7 @@ function buildTallerSet(){
 function updateTallerBadge(){
   buildTallerSet();
   if(units.length) buildKPIs(); // Refrescar KPIs de inspecciones con nueva info de taller
-  const active = tallerEntries.filter(e=>e.estado==="En Revision").length;
+  const active = tallerEntries.filter(e=>e.estado==="En Revisión").length;
   const badge = document.getElementById("taller-badge");
   if(badge){ badge.style.display=active?"inline":"none"; badge.textContent=active; }
   const cnt = document.getElementById("tl-act-cnt");
@@ -4662,7 +4683,7 @@ function enviarATallerDesdeInspeccion(uid){
   fld("tf-km",     e.km||"");
   fld("tf-tecnico",e.responsable||"");
   fld("tf-tipo",   "Correctivo");
-  fld("tf-estado", "En Revision");
+  fld("tf-estado", "En Revisión");
   fld("tf-fentrada", new Date().toISOString().slice(0,10));
   fld("tf-comentario", nota);
   // Recalcular gasto (en caso de que ya hubiera valores residuales)
@@ -4776,7 +4797,7 @@ function renderActivas(){
   const latestArr = [...latestMap.values()];
   const nTot  = filtered.length; // total visibles (activos filtrados)
   const nActAll = latestArr.filter(e=>!isClosed(e)).length; // activos totales sin filtro
-  const nRev  = latestArr.filter(e=>e.estado==="En Revision").length;
+  const nRev  = latestArr.filter(e=>e.estado==="En Revisión").length;
   const nSin  = latestArr.filter(e=>!e.estado).length;
   const nCorr = filtered.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = filtered.filter(e=>e.tipo==="Preventivo").length;
@@ -4790,10 +4811,10 @@ function renderActivas(){
   const diasCompArr = tallerEntries.filter(e=>isClosed(e)&&e.fentrada&&e.fsalidaReal)
     .map(e=>Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/86400000)));
   const promDiasComp = diasCompArr.length?Math.round(diasCompArr.reduce((a,b)=>a+b,0)/diasCompArr.length):null;
-  const diasEstArr = filtered.filter(e=>e.estado==="En Revision"&&e.fentrada&&e.fsalidaEst)
+  const diasEstArr = filtered.filter(e=>e.estado==="En Revisión"&&e.fentrada&&e.fsalidaEst)
     .map(e=>Math.max(0,Math.round((new Date(e.fsalidaEst)-new Date(e.fentrada))/86400000)));
   const promDiasEst = diasEstArr.length?Math.round(diasEstArr.reduce((a,b)=>a+b,0)/diasEstArr.length):null;
-  const diasRevArr = filtered.filter(e=>e.estado==="En Revision"&&e.fentrada)
+  const diasRevArr = filtered.filter(e=>e.estado==="En Revisión"&&e.fentrada)
     .map(e=>Math.round((Date.now()-new Date(e.fentrada))/86400000)).filter(d=>d>=0);
   const promDiasRev = diasRevArr.length?Math.round(diasRevArr.reduce((a,b)=>a+b,0)/diasRevArr.length):null;
   const tlPct = n => nActAll ? Math.round((n/nActAll)*100) : 0;
@@ -5354,7 +5375,7 @@ function openTallerModal(id){
   document.getElementById("tf-brand").value        = e?.brand||"";
   document.getElementById("tf-branch").value       = e?.sucursal||"";
   document.getElementById("tf-area").value         = e?.area||"";
-  document.getElementById("tf-estado").value       = e?.estado||"En Revision";
+  document.getElementById("tf-estado").value       = e?.estado||"En Revisión";
   document.getElementById("tf-tipo").value         = e?.tipo||"Correctivo";
   document.getElementById("tf-freporte").value     = e?.freporte||"";
   document.getElementById("tf-fentrada").value     = e?.fentrada||"";
@@ -5395,7 +5416,7 @@ function reingresoTaller(){
   document.getElementById("tf-brand").value         = src.brand||"";
   document.getElementById("tf-branch").value        = src.sucursal||"";
   document.getElementById("tf-area").value          = src.area||"";
-  document.getElementById("tf-estado").value        = "En Revision";
+  document.getElementById("tf-estado").value        = "En Revisión";
   document.getElementById("tf-tipo").value          = "Correctivo";
   clearTallerEntryFields();
   document.getElementById("btn-reingreso").style.display = "none";
@@ -5472,12 +5493,12 @@ function renderHistorialModal(){
 
   const itemsHtml = entries.length ? entries.map((e,i)=>{
     const isCl = e.estado==="Finalizado"||e.estado==="Listo";
-    const pillCls = !e.estado?"sinreg":e.estado==="En Revision"?"revision":"finalizado";
-    const pillLbl = !e.estado?"Sin registro":e.estado==="En Revision"?"En Revisión":"Finalizado";
+    const pillCls = !e.estado?"sinreg":e.estado==="En Revisión"?"revision":"finalizado";
+    const pillLbl = !e.estado?"Sin registro":e.estado==="En Revisión"?"En Revisión":"Finalizado";
     const tipoCls = e.tipo==="Correctivo"?"correctivo":e.tipo==="Preventivo"?"preventivo":"";
     // "ACTUAL" se calcula contra la lista completa, no la filtrada
     const isLatest = e === allEntries[0];
-    const rowBg = e.estado==="En Revision"?"background:#FFFBEB":isCl?"background:#F0FDF4":"";
+    const rowBg = e.estado==="En Revisión"?"background:#FFFBEB":isCl?"background:#F0FDF4":"";
     const diasReales = e.fentrada&&e.fsalidaReal ? Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/(86400*1000))) : null;
     const idxInAll = allEntries.indexOf(e);
     const numLabel = allEntries.length - idxInAll;
@@ -5558,7 +5579,7 @@ function reingresoDesdeHistorial(unitKey){
   document.getElementById("tf-brand").value         = src.brand||"";
   document.getElementById("tf-branch").value        = src.sucursal||"";
   document.getElementById("tf-area").value          = src.area||"";
-  document.getElementById("tf-estado").value        = "En Revision";
+  document.getElementById("tf-estado").value        = "En Revisión";
   document.getElementById("tf-tipo").value          = "Correctivo";
   clearTallerEntryFields();
   document.getElementById("btn-reingreso").style.display = "none";
