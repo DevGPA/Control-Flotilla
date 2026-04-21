@@ -237,7 +237,7 @@ g.inflateBytes=async function(src){
   <div style="background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:720px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 14px;border-bottom:1px solid var(--ln);flex-shrink:0">
       <div style="font-size:15px;font-weight:700;color:var(--w1);display:flex;align-items:center;gap:8px"><i data-lucide="trending-up" style="width:16px;height:16px"></i> Tendencias de Flota por Período</div>
-      <button onclick="document.getElementById('tendencias-overlay').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--s2)">✕</button>
+      <button onclick="document.getElementById('tendencias-overlay').style.display='none'" aria-label="Cerrar tendencias" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--s2)">✕</button>
     </div>
     <div id="tendencias-content" style="flex:1;overflow-y:auto;min-height:0;padding:16px 24px 24px"></div>
   </div>
@@ -292,7 +292,7 @@ g.inflateBytes=async function(src){
 <div id="alerts-panel" style="display:none;margin:0 12px 6px;padding:10px 14px 10px 16px;background:#FEF9E7;border:1px solid #F3E4B9;border-left:3px solid var(--A);border-radius:8px;font-size:12px;line-height:1.55">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
     <span style="font-weight:700;color:#92400E;font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota</span>
-    <button onclick="document.getElementById('alerts-panel').style.display='none'" style="background:none;border:none;cursor:pointer;color:#92400E;font-size:14px;padding:0 2px;line-height:1" title="Cerrar">✕</button>
+    <button onclick="document.getElementById('alerts-panel').style.display='none'" aria-label="Cerrar alertas" style="background:none;border:none;cursor:pointer;color:#92400E;font-size:14px;padding:0 2px;line-height:1" title="Cerrar">✕</button>
   </div>
   <div id="alerts-list"></div>
 </div>
@@ -303,7 +303,7 @@ g.inflateBytes=async function(src){
     <button class="chip chip-on" id="btn-all" onclick="setF('all')">Todos <span class="chip-n" id="fc_all"></span></button>
     <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
     <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>Revisar <span class="chip-n" id="fc1"></span></button>
-    <button class="chip" id="btn-Completar" onclick="setF('Completar')"><span class="chip-dot" style="background:var(--B)"></span>Completar <span class="chip-n" id="fc4"></span></button>
+    <button class="chip" id="btn-Completar" onclick="setF('Completar')" title="Unidades con al menos un hallazgo pendiente (foto, doc, info). Pendiente admin, no riesgo operativo."><span class="chip-dot" style="background:var(--B)"></span>Pendientes <span class="chip-n" id="fc4"></span></button>
     <button class="chip" id="btn-OK" onclick="setF('OK')"><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:#6366F1"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-taller" onclick="setF('taller')"><span class="chip-dot" style="background:#7c3aed"></span>Taller <span class="chip-n" id="fc_taller"></span></button>
@@ -374,7 +374,7 @@ g.inflateBytes=async function(src){
       <button class="det-pdf" onclick="exportPDF()" title="Exportar PDF">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       </button>
-      <button class="dcls" onclick="closeDet()">✕</button>
+      <button class="dcls" onclick="closeDet()" aria-label="Cerrar detalle">✕</button>
       <div class="dpr"><div class="dplate" id="dplate"></div><div id="dpill"></div></div>
       <div class="dbrand" id="dbrand"></div>
       <div class="dmeta" id="dmeta"></div>
@@ -386,7 +386,7 @@ g.inflateBytes=async function(src){
 
 <!-- LIGHTBOX -->
 <div id="lb" onclick="lbBg(event)">
-  <button id="lbclose" onclick="lbClose()">✕</button>
+  <button id="lbclose" onclick="lbClose()" aria-label="Cerrar visor de imagen">✕</button>
   <img id="lbimg" src="" alt=""/>
   <div id="lblabel"></div>
   <div id="lbnav">
@@ -595,7 +595,7 @@ g.inflateBytes=async function(src){
   <div class="tl-mcard">
     <div class="tl-mhdr">
       <div class="tl-mttl" id="tl-mttl">Agregar unidad al taller</div>
-      <button class="dcls" onclick="closeTallerModal()" style="position:static">✕</button>
+      <button class="dcls" onclick="closeTallerModal()" aria-label="Cerrar modal de taller" style="position:static">✕</button>
     </div>
     <div class="tl-mbody">
       <div class="tl-field full tl-ac-wrap">
@@ -696,7 +696,7 @@ g.inflateBytes=async function(src){
   <div class="hist-card">
     <div class="hist-hdr">
       <div style="font-size:14px;font-weight:700;color:var(--w1)" id="hist-ttl">Historial de unidad</div>
-      <button class="dcls" onclick="closeHistorialModal()" style="position:static">✕</button>
+      <button class="dcls" onclick="closeHistorialModal()" aria-label="Cerrar historial" style="position:static">✕</button>
     </div>
     <div id="hist-body"></div>
   </div>
@@ -3462,7 +3462,7 @@ function showResumenEjecutivo(){
       <span style="font-size:14px;font-weight:700;color:var(--w1);display:inline-flex;align-items:center;gap:8px"><i data-lucide="file-text" style="width:15px;height:15px"></i> Resumen Ejecutivo</span>
       <div style="display:flex;gap:6px">
         <button onclick="navigator.clipboard.writeText(document.getElementById('resumen-text').value).then(()=>this.textContent='Copiado ✓')" style="padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Copiar al portapapeles</button>
-        <button onclick="this.closest('div[style]').parentElement.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--s2)">✕</button>
+        <button onclick="this.closest('div[style]').parentElement.parentElement.remove()" aria-label="Cerrar resumen" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--s2)">✕</button>
       </div>
     </div>
     <div style="flex:1;overflow-y:auto;min-height:0;padding:0 24px 24px;display:flex;flex-direction:column">
@@ -4446,6 +4446,11 @@ function buildKPIsSemanales(){
     if(e.carroceriaRisk==="Urgente") nBodyUrg++; else if(e.carroceriaRisk==="Revisar") nBodyRev++;
     if(e.llantaRisk==="Revisar") nTireRev++;
   }
+  // Actualiza contadores de chips filtro (sw-fc-*)
+  const setFc=(id,n)=>{const el=document.getElementById(id);if(el)el.textContent=n?`(${n})`:"";};
+  setFc("sw-fc-urg",nUrg);
+  setFc("sw-fc-rev",nRev);
+  setFc("sw-fc-ok", nOK);
   const pct = n => t ? Math.round((n/t)*100) : 0;
 
   kpisEl.innerHTML=`<div class="kpi-row" style="padding:10px 16px 6px">
