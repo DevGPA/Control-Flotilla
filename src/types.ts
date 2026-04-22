@@ -13,6 +13,8 @@ export type AnalyzeResult = {
   F: Finding[];
   T: TireReadings;
   minT: number | null;
+  /** Siempre array. Vacío = ok. analyzeRow garantiza que nunca es undefined. */
+  validationErrors: string[];
 };
 
 export type ExcelRow = Record<string, string | number | Date | undefined>;

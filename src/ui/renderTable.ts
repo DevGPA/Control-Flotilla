@@ -303,7 +303,10 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
   const d30 = new Date(today0);
   d30.setDate(d30.getDate() + 30);
 
-  const ctx: BuildRowCtx = {
+  // Object.freeze evita mutación accidental dentro de buildRow (que se invoca
+  // miles de veces en virtualTable). Detecta bugs temprano si algún consumer
+  // intentara mutar ctx en lugar de pasar un nuevo objeto.
+  const ctx: Readonly<BuildRowCtx> = Object.freeze({
     selectedUid,
     checklistDB,
     hasZip,
@@ -314,7 +317,7 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     d30,
     tcrit,
     twarn,
-  };
+  });
 
   // Decide modo virtualizado: explicit opt-in, o auto si muchas filas.
   const useVirtual = virtualize ?? units.length >= VIRTUALIZE_THRESHOLD;

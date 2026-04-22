@@ -61,7 +61,9 @@ export function computeDiff(
     } else if (!cur && prev) {
       diff.resolved.push({ item, lv: prev });
     } else if (cur && prev && cur !== prev) {
-      if ((RISK_ORDER[cur] ?? 0) > (RISK_ORDER[prev] ?? 0)) {
+      // RISK_ORDER es Record<RiskLevel, number> exhaustivo — lookup siempre definido.
+      // Sin `?? 0` defensivo: dejar que TS detecte si alguien rompe el invariante.
+      if (RISK_ORDER[cur] > RISK_ORDER[prev]) {
         diff.worsened.push({ item, from: prev, to: cur });
       } else {
         diff.improved.push({ item, from: prev, to: cur });

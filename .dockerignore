@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.git
+.github
+.vscode
+.claude
+.gemini
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+README.md
+ROADMAP.md
+BRIEFING.md
+PROJECT_CONTEXT_PROMPT.md

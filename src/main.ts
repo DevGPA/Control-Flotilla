@@ -171,6 +171,29 @@ function readFlag(key: string): boolean {
   }
 }
 
+/**
+ * Type guard mínimo para arrays de Unit leídos desde window.*.
+ * No valida shape completo (overhead alto en flotillas grandes); solo verifica
+ * que es array y que el primer elemento tiene los campos críticos. Si el legado
+ * corrompe la estructura, devolvemos array vacío + warning en lugar de propagar
+ * datos malformados aguas abajo.
+ */
+function safeUnitArray(value: unknown, label: string): Unit[] {
+  if (!Array.isArray(value)) {
+    if (value !== undefined && value !== null) {
+      console.warn(`[main] ${label}: esperado Unit[], recibido`, typeof value);
+    }
+    return [];
+  }
+  if (value.length === 0) return value as Unit[];
+  const first = value[0] as Partial<Unit> | undefined;
+  if (!first || typeof first !== "object" || typeof first.uid !== "string") {
+    console.warn(`[main] ${label}: shape de Unit inválido en [0]`, first);
+    return [];
+  }
+  return value as Unit[];
+}
+
 // ─── Feature flag: render-table (P2.2c) ────────────────────────────────
 if (readFlag("USE_NEW_RENDER")) {
   const legacyRenderTable = window.renderTable;
@@ -179,8 +202,20 @@ if (readFlag("USE_NEW_RENDER")) {
     const tbody = document.getElementById("tbody");
     if (!tbody) return;
     // Leer via window.* fuerza al bridge legado (getter HTML) a sincronizar el store.
-    const allUnits = (window.units ?? []) as Unit[];
-    const rows = window.filt ? window.filt() : allUnits;
+    const allUnits = safeUnitArray(window.units, "window.units (renderTable)");
+    let rows: Unit[];
+    if (window.filt) {
+      try {
+        const r = window.filt();
+        rows = safeUnitArray(r, "window.filt() result");
+        if (rows.length === 0 && allUnits.length > 0) rows = allUnits;
+      } catch (err) {
+        console.warn("[renderTable] window.filt() lanzó, fallback a allUnits:", err);
+        rows = allUnits;
+      }
+    } else {
+      rows = allUnits;
+    }
     const totalUnits = allUnits.length;
     const rcnt = document.getElementById("rcnt");
     if (rcnt) rcnt.textContent = `${rows.length}/${totalUnits}`;
@@ -211,8 +246,11 @@ if (readFlag("USE_NEW_PDF")) {
   const legacyExportPDF = window.exportPDF;
 
   window.exportPDF = async function exportPDFShim() {
-    const units = appStore.get("units");
-    const selId = appStore.get("selectedUid");
+    // Leer via window.* fuerza al bridge legado (getter closure) a sincronizar
+    // el store. appStore.get() directo puede estar stale si el legado mutó la
+    // closure sin que nadie haya leído window.* desde entonces.
+    const units = safeUnitArray(window.units ?? appStore.get("units"), "exportPDF units");
+    const selId = (window.selId ?? appStore.get("selectedUid")) as string | null;
     const unit = units.find((u) => u.uid === selId);
     if (!unit) {
       alert("Selecciona una unidad primero.");
@@ -220,7 +258,7 @@ if (readFlag("USE_NEW_PDF")) {
     }
     try {
       const doc = buildUnitReport(unit, {
-        checklistDB: appStore.get("checklistDB"),
+        checklistDB: (window.checklistDB ?? appStore.get("checklistDB")) as ChecklistDB,
         generatedAt: new Date(),
       });
       const filename = `reporte_${unit.eco || unit.plate || unit.uid}_${new Date().toISOString().slice(0, 10)}.pdf`;

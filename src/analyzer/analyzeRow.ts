@@ -14,8 +14,8 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   const refRaw = row["Cuenta con llanta de Refacción?"] ?? row["Llanta de refaccion funcional"] ?? "";
   const tieneRefaccion = String(refRaw).trim().toLowerCase() !== "no";
   if (!tieneRefaccion) {
-    F.push({ cat: "Checklist", text: "Sin llanta de refacción", lv: "Completar" });
-    bump("Completar");
+    F.push({ cat: "Checklist", text: "Sin llanta de refacción funcional", lv: "Revisar" });
+    bump("Revisar");
   }
 
   // Gating llantas internas: si "¿Cuenta con...?" === "No" → skip.
@@ -64,5 +64,18 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   }
 
   const tv = Object.values(T);
-  return { max, F, T, minT: tv.length ? Math.min(...tv) : null };
+  const validationErrors: string[] = [];
+  if (
+    !row["# Economico - id"] &&
+    !row["# Economico - PLACAS"] &&
+    !row["No. de unidad / ECO"] &&
+    !row["Número de unidad"]
+  ) {
+    validationErrors.push("Falta identificador de unidad (ECO/Placas)");
+  }
+  if (tv.length < 4) {
+    validationErrors.push(`Datos de llantas incompletos (${tv.length}/4)`);
+  }
+
+  return { max, F, T, minT: tv.length ? Math.min(...tv) : null, validationErrors };
 }

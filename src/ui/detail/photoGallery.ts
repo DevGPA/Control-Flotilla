@@ -47,6 +47,24 @@ function lucideIcon(name: string, size = 12, extra = ""): HTMLElement {
   return i;
 }
 
+/** Legacy PHOTO_GROUPS.label viene con HTML tipo `<i data-lucide="car"...></i> Carrocería`.
+ *  Parseamos el nombre del icono y texto restante para renderizar DOM-API. */
+function parseGroupLabel(raw: string): { icon: string | null; text: string } {
+  const m = raw.match(/<i\s+data-lucide=["']([^"']+)["'][^>]*>\s*<\/i>\s*(.*)$/i);
+  if (m) return { icon: m[1] ?? null, text: (m[2] ?? "").trim() };
+  return { icon: null, text: raw };
+}
+
+function buildGroupTitle(grp: string): HTMLElement {
+  const title = document.createElement("div");
+  title.className = "pgcat-title";
+  title.style.cssText = "display:flex;align-items:center;gap:6px";
+  const { icon, text } = parseGroupLabel(grp);
+  if (icon) title.appendChild(lucideIcon(icon, 13, "vertical-align:-2px"));
+  title.appendChild(document.createTextNode(text));
+  return title;
+}
+
 function shortLbl(col: string): string {
   const cleaned = col
     .replace(/^Foto(s)?\s+(de(l|los|la|las)?\s+|vehiculo\s+|del\s+|con\s+|gato.*)/i, "")
@@ -258,9 +276,18 @@ export function renderPhotoGallery(container: HTMLElement, deps: PhotoGalleryDep
   const cats = document.createElement("div");
   cats.className = "pg-cats";
 
-  // Build lightbox items array. Lazy photos get pre-pushed so indices align.
+  // Group ZIP photos by group
+  const grouped: Record<string, PhotoEntry[]> = {};
+  for (const p of photos) {
+    (grouped[p.group] = grouped[p.group] ?? []).push(p);
+  }
+
+  // Build lightbox items en ORDEN AGRUPADO (mismo orden de render) para que
+  // el índice del thumb clickeado apunte a la foto correcta.
   const lbItems: LightboxItem[] = [];
-  for (const p of photos) lbItems.push({ fname: p.fname, label: p.col });
+  for (const items of Object.values(grouped)) {
+    for (const p of items) lbItems.push({ fname: p.fname, label: p.col });
+  }
   for (const mp of manualPhotos) {
     lbItems.push({
       url: resolveManualUrl ? resolveManualUrl(mp) : undefined,
@@ -269,22 +296,10 @@ export function renderPhotoGallery(container: HTMLElement, deps: PhotoGalleryDep
     });
   }
 
-  // Pre-resolve ZIP URLs lazily via lightbox.resolveUrl but we also need sync
-  // resolution for thumb display. Let the IntersectionObserver handle thumbs.
-
-  // Group ZIP photos by group
-  const grouped: Record<string, PhotoEntry[]> = {};
-  for (const p of photos) {
-    (grouped[p.group] = grouped[p.group] ?? []).push(p);
-  }
-
   let zipIdx = 0;
   for (const [grp, items] of Object.entries(grouped)) {
     const grpWrap = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "pgcat-title";
-    title.textContent = grp;
-    grpWrap.appendChild(title);
+    grpWrap.appendChild(buildGroupTitle(grp));
 
     const grid = document.createElement("div");
     grid.className = "pgrid";

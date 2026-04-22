@@ -7,7 +7,13 @@ const norm = (v: unknown): string =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-const FLUID_URG = [
+/**
+ * Normaliza listas de keywords con la misma regla que norm() para evitar
+ * regresiones si alguien agrega una keyword con mayúsculas o tildes.
+ */
+const normKws = (arr: readonly string[]): string[] => arr.map((s) => norm(s));
+
+const FLUID_URG = normKws([
   "vacio",
   "sin aceite",
   "sin refrigerante",
@@ -21,9 +27,9 @@ const FLUID_URG = [
   "no tiene fluido",
   "perdida de aceite",
   "sin oil",
-];
+]);
 
-const FLUID_OK = [
+const FLUID_OK = normKws([
   "ok",
   "correcto",
   "correcta",
@@ -61,7 +67,7 @@ const FLUID_OK = [
   "estable",
   "perfecto",
   "perfecta",
-];
+]);
 
 export function normFluidRisk(val: unknown): RiskLevel {
   const v = norm(val);
@@ -72,8 +78,8 @@ export function normFluidRisk(val: unknown): RiskLevel {
   return "Revisar";
 }
 
-const BODY_OK_EXACT = ["no", "ninguno", "ninguna", "n/a", "na", "ningun"];
-const BODY_OK_KW = [
+const BODY_OK_EXACT = normKws(["no", "ninguno", "ninguna", "n/a", "na", "ningun"]);
+const BODY_OK_KW = normKws([
   "sin golpe",
   "sin raspadura",
   "sin dano",
@@ -89,8 +95,8 @@ const BODY_OK_KW = [
   "ningun dano",
   "ningun golpe",
   "sin novedad",
-];
-const BODY_URG = [
+]);
+const BODY_URG = normKws([
   "inoperable",
   "dano estructural",
   "no puede circular",
@@ -107,7 +113,7 @@ const BODY_URG = [
   "fuera de servicio",
   "no opera",
   "dano mayor en chasis",
-];
+]);
 
 export function normBodyRisk(val: unknown): RiskLevel {
   const v = norm(val);
@@ -118,7 +124,7 @@ export function normBodyRisk(val: unknown): RiskLevel {
   return "Revisar";
 }
 
-const TIRE_OK = [
+const TIRE_OK = normKws([
   "si",
   "funcional",
   "ok",
@@ -136,7 +142,7 @@ const TIRE_OK = [
   "infla",
   "buen estado",
   "lista",
-];
+]);
 
 export function normTireRisk(val: unknown): RiskLevel {
   const v = norm(val);

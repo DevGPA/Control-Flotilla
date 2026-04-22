@@ -20,14 +20,27 @@ const SEÑALES = [
   "kilometraje",
 ];
 
+/**
+ * Match con word boundary — evita que "carroceria con golpe" haga match en
+ * "carroceria con golpes o raspaduras" (header del reporte mensual).
+ * Escapa metacaracteres regex en signal antes de armar el patrón.
+ */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function hasWord(haystack: string, needle: string): boolean {
+  const re = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegex(needle)}(?:[^\\p{L}\\p{N}]|$)`, "u");
+  return re.test(haystack);
+}
+
 export function classifyReport(hdrs: string[], filename?: string): ReportKind {
   const fn = stripDiacritics(filename || "");
-  if (fn.includes("mensual")) return "mensual";
-  if (fn.includes("semanal")) return "semanal";
+  if (hasWord(fn, "mensual")) return "mensual";
+  if (hasWord(fn, "semanal")) return "semanal";
 
   const normHdrs = hdrs.map(stripDiacritics);
-  const hits = SEÑALES.filter((sig) => normHdrs.some((h) => h.includes(sig))).length;
-  const tieneExclusiva = EXCLUSIVAS.some((sig) => normHdrs.some((h) => h.includes(sig)));
+  const hits = SEÑALES.filter((sig) => normHdrs.some((h) => hasWord(h, sig))).length;
+  const tieneExclusiva = EXCLUSIVAS.some((sig) => normHdrs.some((h) => hasWord(h, sig)));
   if (hits >= 3 && tieneExclusiva) return "semanal";
 
   return "mensual";

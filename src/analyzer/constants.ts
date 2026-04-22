@@ -86,7 +86,7 @@ export function isBinFail(val: unknown): boolean {
   const s = String(val ?? "")
     .trim()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
   if (!s) return false;
   if (s === "no aplica" || s === "n/a" || s === "na") return false;

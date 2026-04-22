@@ -50,6 +50,8 @@ export async function dbGet<T>(store: Store, key: IDBValidKey): Promise<T | unde
     const req = tx.objectStore(store).get(key);
     req.onsuccess = () => resolve(req.result as T | undefined);
     req.onerror = () => reject(req.error);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Transaction aborted"));
   });
 }
 

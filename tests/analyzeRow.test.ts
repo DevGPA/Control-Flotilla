@@ -28,7 +28,7 @@ describe("analyzeRow", () => {
       "Llanta de refaccion funcional": "No",
       "Nivel TACO de llanta REFACCION": 2,
     });
-    expect(r.F.some((f) => f.text === "Sin llanta de refacción")).toBe(true);
+    expect(r.F.some((f) => f.text === "Sin llanta de refacción funcional")).toBe(true);
     expect(r.F.some((f) => f.cat === "Llantas" && f.text.includes("Refacción"))).toBe(false);
   });
 
@@ -37,8 +37,8 @@ describe("analyzeRow", () => {
       "Cuenta con llanta de Refacción?": "No",
       "Nivel TACO de llanta REFACCION": 0,
     });
-    expect(r.max).toBe("Completar");
-    expect(r.F.some((f) => f.text === "Sin llanta de refacción")).toBe(true);
+    expect(r.max).toBe("Revisar");
+    expect(r.F.some((f) => f.text === "Sin llanta de refacción funcional")).toBe(true);
     expect(r.F.some((f) => f.cat === "Llantas" && f.lv === "Urgente")).toBe(false);
     expect(r.T["Refacción"]).toBeUndefined();
   });

@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
+     Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -17,25 +20,16 @@
   })();
 </script>
 <!--
-  CDN deps con fallback local. Si el CDN falla (offline, bloqueo corporativo)
-  o el navegador rechaza el hash SRI, se carga desde ./vendor/.
-  SRI aplicado 2026-04-16 (P0.3 roadmap). Versiones pinneadas:
-    xlsx 0.20.3 (SheetJS CDN), jspdf 2.5.1 (cdnjs), lucide 1.8.0 (unpkg).
-  Fase 2 eliminará esta cadena via bundling Vite.
+  Vendor local — todas las deps bundled en ./vendor/ para air-gap compliance.
+  CDNs eliminadas 2026-04-22 (Fase 1 hardening).
+  SRI omitido para vendor local: Vite dev server transforma archivos rompiendo el hash.
+  Defensa: CSP `script-src 'self'` + control de archivos en repo.
+  Versiones: xlsx 0.20.3, jspdf 2.5.1, lucide 1.8.0.
 -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer
-        integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT"
-        crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/xlsx.full.min.js';s.integrity='sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('XLSX')};document.head.appendChild(s);"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer
-        integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
-        crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/jspdf.umd.min.js';s.integrity='sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('jsPDF')};document.head.appendChild(s);"></script>
-<!-- Lucide icons — SVG. Pin 1.8.0 (antes @latest = riesgo supply-chain). -->
-<script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js" defer
-        integrity="sha384-+8nbzwDAyu5kAjqtR/XKxIgPHQD2TflvbZgeDZn5t3JP+OOogNH1jXnfel8ZAgzS"
-        crossorigin="anonymous" referrerpolicy="no-referrer"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='./vendor/lucide.min.js';s.integrity='sha384-+8nbzwDAyu5kAjqtR/XKxIgPHQD2TflvbZgeDZn5t3JP+OOogNH1jXnfel8ZAgzS';s.crossOrigin='anonymous';s.defer=true;s.onerror=function(){window.__cdnFail=(window.__cdnFail||[]).concat('Lucide')};document.head.appendChild(s);"></script>
+<script src="./vendor/xlsx.full.min.js" defer></script>
+<script src="./vendor/jspdf.umd.min.js" defer></script>
+<!-- Lucide icons — SVG. Pin 1.8.0. -->
+<script src="./vendor/lucide.min.js" defer></script>
 <script>
 // Silence benign SheetJS "Bad uncompressed size" warnings emitted when parsing
 // MoreApp-generated xlsx files — data is still recovered correctly.
@@ -222,6 +216,7 @@ g.inflateBytes=async function(src){
     <button class="ubtn theme-toggle" id="btn-theme" onclick="toggleTheme()" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">
       <i data-lucide="moon" id="theme-icon" style="width:13px;height:13px"></i>
     </button>
+    <button class="ubtn" id="btn-health" style="display:none;gap:4px;align-items:center;font-weight:600;margin-left:6px;border-color:currentColor" onclick="showHealthReport()"></button>
   </div>
 </div>
 
@@ -873,26 +868,24 @@ async function dbClear(store){
 
 // Save processed state to IndexedDB
 async function persistState(filename){
-  try{
-    const db = await openDB();
-    const savedAt = new Date().toISOString();
-    
-    // 1. Iniciar una transacción única para meta e imágenes (Rendimiento optimizado)
+  const db = await openDB();
+  const savedAt = new Date().toISOString();
+  const keys = Object.keys(zipImgs);
+
+  return new Promise((resolve, reject) => {
     const tx = db.transaction(["meta", "images"], "readwrite");
     const metaStore = tx.objectStore("meta");
     const imgStore = tx.objectStore("images");
-    
+
     metaStore.put({
       units,
       filename,
       savedAt,
       hasZip,
-      imgCount: Object.keys(zipImgs).length
+      imgCount: keys.length
     }, "session");
 
-    // Limpiar imágenes viejas y guardar nuevas en la misma transacción
     imgStore.clear();
-    const keys = Object.keys(zipImgs);
     for(const k of keys){
       imgStore.put(zipImgs[k], k);
     }
@@ -905,13 +898,18 @@ async function persistState(filename){
         badge.title = `Guardado a las ${t}`;
       }
       console.log(`[DB] Guardado optimizado: ${units.length} unidades, ${keys.length} imágenes`);
+      resolve();
     };
-    
-    tx.onerror = (e) => console.warn("[DB] Error en transacción:", e.target.error);
 
-  }catch(e){
-    console.warn("[DB] Error guardando:", e);
-  }
+    tx.onerror = () => {
+      console.error("[DB] Error en transacción:", tx.error);
+      reject(tx.error || new Error("IDB transaction failed"));
+    };
+    tx.onabort = () => {
+      console.error("[DB] Transacción abortada:", tx.error);
+      reject(tx.error || new Error("IDB transaction aborted"));
+    };
+  });
 }
 
 // Restore state from IndexedDB on page load — con error boundary
@@ -1410,6 +1408,29 @@ function normTireRisk(val){
 
   // 🟡 Revisar — catch-all (texto desconocido = alguien anotó algo)
   return "Revisar";
+}let healthLog = [];
+function logHealth(msg, lv="warn"){
+  healthLog.push({msg,lv,t:new Date()});
+  console.log(`[Health] ${lv.toUpperCase()}: ${msg}`);
+}
+function showHealthReport(){
+  if(!healthLog.length) return window.notify("No se detectaron irregularidades en los datos cargados.","ok");
+  const lines = healthLog.map(l => `• ${l.msg}`).join("\n");
+  alert(`Reporte de Salud de Datos:\n\n${lines}\n\nSe recomienda revisar las columnas del Excel si faltan unidades.`);
+}
+function updateHealthUI(){
+  const btn = document.getElementById("btn-health");
+  if(!btn) return;
+  const errs = healthLog.filter(l=>l.lv==="error").length;
+  const warns = healthLog.filter(l=>l.lv==="warn").length;
+  if(errs > 0){
+    btn.style.display="flex"; btn.style.color="var(--R)"; btn.innerHTML=`<i data-lucide="shield-alert" style="width:12px;height:12px"></i> Crítico (${errs})`;
+  } else if(warns > 0){
+    btn.style.display="flex"; btn.style.color="var(--A)"; btn.innerHTML=`<i data-lucide="shield-check" style="width:12px;height:12px"></i> Salud (${warns})`;
+  } else {
+    btn.style.display="none";
+  }
+  if(window.lucide) window.lucide.createIcons();
 }
 
 // Estatus integral: aceite + radiador + carrocería + llanta
@@ -1567,7 +1588,10 @@ function showDash(){
 // EXCEL LOADER
 // ════════════════════════════════════════════════════════════
 function doExcel(file){
-  if(!file)return;showLoader("Leyendo Excel…");
+  if(!file)return;
+  healthLog = [];
+  if(window.clearUrlCache) window.clearUrlCache();
+  showLoader("Leyendo Excel…");
   const r=new FileReader();
   r.onload=e=>{
     try{
@@ -1632,48 +1656,75 @@ function doArchivoSemanal(file){
 // context: "auto" | "mensual" | "semanal"
 // Cuando el contexto es explícito, se valida que el ZIP corresponda al módulo
 // correcto y se bloquea la carga con alerta si hay una discrepancia.
+// context: "auto" | "mensual" | "semanal"
+// Cuando el contexto es explícito, se valida que el ZIP corresponda al módulo
+// correcto y se bloquea la carga con alerta si hay una discrepancia.
 async function doZip(file, context = "auto"){
   if(!file) return;
   showLoader("Leyendo ZIP…");
+  const size = file.size;
+  healthLog = [];
 
-  // Pequeño delay para que el loader se muestre antes de bloquear el hilo
+  // Limpiar caché de imágenes previa para evitar fugas de memoria
+  if(window.clearUrlCache) window.clearUrlCache();
   await new Promise(r => setTimeout(r, 30));
 
   try{
-    const buf   = await file.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    const dv    = new DataView(buf);
     const td    = new TextDecoder("utf-8", {fatal:false});
     const IEXT  = /\.(jpe?g|png|gif|webp)$/i;
     const XEXT  = /\.xlsx?$/i;
 
     // ── 1. Encontrar EOCD (End of Central Directory) ─────────
-    let eocd = -1;
-    for(let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65558); i--){
-      if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
-    }
-    if(eocd < 0) throw new Error("Archivo ZIP inválido — no se encontró EOCD.\nAsegúrate de subir el ZIP completo descargado de MoreApp.");
+    // El EOCD mide 22 bytes + comentario (hasta 64KB).
+    const eocdScanSize = Math.min(size, 65558);
+    const eocdBlob = file.slice(size - eocdScanSize);
+    const eocdBuf = await eocdBlob.arrayBuffer();
+    const eocdBytes = new Uint8Array(eocdBuf);
+    const eocdDv = new DataView(eocdBuf);
 
-    const cdCount  = dv.getUint16(eocd + 10, true);
-    const cdOffset = dv.getUint32(eocd + 16, true);
+    let eocdPos = -1;
+    for (let i = eocdBytes.length - 22; i >= 0; i--) {
+      if (eocdDv.getUint32(i, true) === 0x06054b50) {
+        eocdPos = i;
+        break;
+      }
+    }
+    if(eocdPos < 0) throw new Error("Archivo ZIP inválido — no se encontró EOCD.\nAsegúrate de subir el ZIP completo descargado de MoreApp.");
+
+    const cdCount  = eocdDv.getUint16(eocdPos + 10, true);
+    const cdSize   = eocdDv.getUint32(eocdPos + 12, true);
+    const cdOffset = eocdDv.getUint32(eocdPos + 16, true);
 
     if(cdCount === 0) throw new Error("El ZIP está vacío (0 archivos).");
 
     // ── 2. Leer Central Directory ─────────────────────────────
+    // El Central Directory suele ser pequeño (<1MB), lo leemos completo.
+    const cdBlob = file.slice(cdOffset, cdOffset + cdSize);
+    const cdBuf = await cdBlob.arrayBuffer();
+    const cdBytes = new Uint8Array(cdBuf);
+    const cdDv = new DataView(cdBuf);
+
     const imgs = {}, xls = [];
-    let p = cdOffset, found = 0;
+    let p = 0, found = 0;
 
     for(let entry = 0; entry < cdCount; entry++){
-      if(p + 46 > bytes.length) break;
-      if(dv.getUint32(p, true) !== 0x02014b50) break;
+      // Yield cada 100 entries para evitar bloquear UI en ZIPs grandes (miles de entries).
+      if(entry > 0 && entry % 100 === 0){
+        await new Promise(r => setTimeout(r, 0));
+        const ldrtxt = document.getElementById("ldrtxt");
+        if(ldrtxt) ldrtxt.textContent = `Procesando entries… ${entry}/${cdCount}`;
+      }
+      if(p + 46 > cdBytes.length) break;
+      if(cdDv.getUint32(p, true) !== 0x02014b50) break;
 
-      const method = dv.getUint16(p + 10, true);
-      const csize  = dv.getUint32(p + 20, true);
-      const fnLen  = dv.getUint16(p + 28, true);
-      const exLen  = dv.getUint16(p + 30, true);
-      const cmtLen = dv.getUint16(p + 32, true);
-      const lhOff  = dv.getUint32(p + 42, true);
-      const fname  = td.decode(bytes.subarray(p + 46, p + 46 + fnLen));
+      const flags  = cdDv.getUint16(p + 8, true);
+      const method = cdDv.getUint16(p + 10, true);
+      const csize  = cdDv.getUint32(p + 20, true);
+      const fnLen  = cdDv.getUint16(p + 28, true);
+      const exLen  = cdDv.getUint16(p + 30, true);
+      const cmtLen = cdDv.getUint16(p + 32, true);
+      const lhOff  = cdDv.getUint32(p + 42, true);
+      const fname  = td.decode(cdBytes.subarray(p + 46, p + 46 + fnLen));
 
       p += 46 + fnLen + exLen + cmtLen;
 
@@ -1681,21 +1732,27 @@ async function doZip(file, context = "auto"){
       if(fname.endsWith("/") || fname.includes("__MACOSX") || fname.startsWith(".")) continue;
       if(csize === 0) continue;
 
-      // Leer datos desde el local file header
-      if(lhOff + 30 > bytes.length) continue;
-      const lhFnLen  = dv.getUint16(lhOff + 26, true);
-      const lhExLen  = dv.getUint16(lhOff + 28, true);
-      const dataStart = lhOff + 30 + lhFnLen + lhExLen;
-      if(dataStart + csize > bytes.length) continue;
+      // Leer datos desde el local file header usando streaming perezoso
+      // El Local Header mide 30 bytes + filename + extra.
+      // Leemos un bloque generoso para evitar múltiples slices.
+      const lhBlob = file.slice(lhOff, lhOff + 30 + 1024);
+      const lhBuf = await lhBlob.arrayBuffer();
+      const lhDv = new DataView(lhBuf);
+      if(lhDv.getUint32(0, true) !== 0x04034b50) continue;
 
-      const raw = bytes.subarray(dataStart, dataStart + csize);
+      const lhFnLen = lhDv.getUint16(26, true);
+      const lhExLen = lhDv.getUint16(28, true);
+      const dataStart = lhOff + 30 + lhFnLen + lhExLen;
+
+      const dataBlob = file.slice(dataStart, dataStart + csize);
+      const raw = new Uint8Array(await dataBlob.arrayBuffer());
       const key = fname.split("/").pop().toLowerCase().trim();
       if(!key) continue;
 
       try{
         let data;
         if(method === 0){
-          data = raw.slice(); // stored, no compression
+          data = raw; // stored, no compression
         } else if(method === 8){
           data = await window.inflateBytes(raw); // deflate (native DecompressionStream con fallback)
         } else {
@@ -1722,7 +1779,6 @@ async function doZip(file, context = "auto"){
 
     // ── Routing: detección ANTES de tocar cualquier variable de estado ──────
     // Nunca asignamos zipImgs = imgs antes de saber si es mensual o semanal.
-    // Esto evita que un ZIP semanal contamine temporalmente el estado mensual.
     const cnt = Object.keys(imgs).length;
 
     if(xls.length){
@@ -1749,7 +1805,7 @@ async function doZip(file, context = "auto"){
 
       if(detectedSemanal){
         // ZIP semanal → fotos a weeklyZipImgs ÚNICAMENTE. zipImgs/hasZip no se tocan.
-        clearWeeklyUrlCache();
+        if(window.clearWeeklyUrlCache) window.clearWeeklyUrlCache();
         weeklyZipImgs = imgs; weeklyHasZip = true;
         loadWBSemanal(wb, xls[0].name);
       } else {
@@ -1762,7 +1818,7 @@ async function doZip(file, context = "auto"){
 
     } else if(context === "semanal"){
       // ZIP semanal sin Excel (solo fotos) → actualizar estado semanal
-      clearWeeklyUrlCache();
+      if(window.clearWeeklyUrlCache) window.clearWeeklyUrlCache();
       weeklyZipImgs = imgs; weeklyHasZip = true;
       document.getElementById("ldr").style.display = "none";
       window.notify(`ZIP semanal: ${cnt} fotos cargadas. Carga ahora el Excel semanal para el análisis.`,"ok",5000);
@@ -1773,7 +1829,7 @@ async function doZip(file, context = "auto"){
       const zlbl = document.getElementById("zlbl");
       if(zlbl) zlbl.textContent = `ZIP · ${cnt} fotos`;
       showDash(); buildKPIs(); renderTable(); buildAlertsSummary();
-      if(selId){ document.getElementById("det").classList.add("open"); initFloatPanel(); renderDet(); }
+      if(selId){ document.getElementById("det").classList.add("open"); if(window.initFloatPanel) window.initFloatPanel(); renderDet(); }
 
     } else {
       // ZIP mensual sin Excel y sin datos previos
@@ -1790,6 +1846,7 @@ async function doZip(file, context = "auto"){
     document.getElementById("dz").style.display  = "flex";
   }
 }
+
 
 
 // ════════════════════════════════════════════════════════════
@@ -1947,7 +2004,7 @@ function loadWBSemanal(wb, fname){
 // ════════════════════════════════════════════════════════════
 // WORKBOOK → UNITS
 // ════════════════════════════════════════════════════════════
-function loadWB(wb,fname){
+async function loadWB(wb,fname){
   // Get data + preserve hyperlinks by reading raw cells
   const ws=wb.Sheets[wb.SheetNames[0]];
   const headers=XLSX.utils.sheet_to_json(ws,{header:1,defval:""})[0];
@@ -1976,7 +2033,11 @@ function loadWB(wb,fname){
     const eco=String(row["# Economico - id"]||"").trim();
     const plate=String(row["# Economico - PLACAS"]||"").trim();
     const uid=plate||eco||"SIN_ID";
-    const{max,F,T,minT}=analyzeRow(row);
+    const r = analyzeRow(row);
+    if(r.validationErrors && r.validationErrors.length){
+      r.validationErrors.forEach(msg => logHealth(`Unidad en fila ${ri+2}: ${msg}`, "warn"));
+    }
+    const{max,F,T,minT} = r;
 
     // Collect photos for this row using hyperlinks
     const photos=[];
@@ -2044,10 +2105,20 @@ function loadWB(wb,fname){
   hf.appendChild(document.createElement("br"));
   hf.appendChild(document.createTextNode(new Date().toLocaleTimeString("es-MX")));
   showDash();buildKPIs();buildBranches();renderTable();buildAlertsSummary();
-  // Persist to IndexedDB so session survives page reload
-  persistState(fname);
+  // Persist to IndexedDB so session survives page reload — await para evitar
+  // pérdida si usuario cierra tab antes de que IDB termine.
+  try{
+    document.getElementById("hstxt").textContent="Guardando sesión...";
+    await persistState(fname);
+    document.getElementById("hstxt").textContent="Datos cargados";
+  }catch(e){
+    console.error("[persistState] fallo:", e);
+    if(typeof window.notify==="function") window.notify("Error guardando sesión en IndexedDB","error");
+    document.getElementById("hstxt").textContent="Datos cargados (sin persistir)";
+  }
   loadAllNotes();
   // Show period naming modal after a short delay so the dashboard renders first
+  updateHealthUI();
   setTimeout(()=>showPeriodoModal(fname), 400);
 }
 
@@ -2056,15 +2127,25 @@ function loadWB(wb,fname){
 // ════════════════════════════════════════════════════════════
 const urlCache={};
 function clearUrlCache(){
-  for(const k in urlCache){URL.revokeObjectURL(urlCache[k]);delete urlCache[k];}
+  console.log(`[Cache] Liberando ${Object.keys(urlCache).length} URLs de imagen...`);
+  for(const k in urlCache){
+    if(urlCache[k]) URL.revokeObjectURL(urlCache[k]);
+    delete urlCache[k];
+  }
 }
 function imgUrl(fname){
   if(!fname)return null;
   const k=fname.toLowerCase();
   if(urlCache[k])return urlCache[k];
-  if(zipImgs[k]){
-    const url=URL.createObjectURL(new Blob([zipImgs[k]],{type:"image/jpeg"}));
-    urlCache[k]=url;return url;
+  if(zipImgs && zipImgs[k]){
+    try {
+      const url=URL.createObjectURL(new Blob([zipImgs[k]],{type:"image/jpeg"}));
+      urlCache[k]=url;
+      return url;
+    } catch(e) {
+      console.error("[imgUrl] Error creando Blob URL:", k, e);
+      return null;
+    }
   }
   return null;
 }
@@ -5820,29 +5901,38 @@ async function deleteTallerEntry(id){
 // Exponemos getters que leen las vars locales del script legado en tiempo real.
 (function bridgeLegacyState(){
   const expose = (key, getFn, setFn) => {
-    try { Object.defineProperty(window, key, { configurable: true, get: getFn, set: setFn }); }
-    catch(e) { console.warn("[bridge]", key, e); }
+    try { 
+      const desc = Object.getOwnPropertyDescriptor(window, key);
+      if (desc && !desc.configurable) return;
+      Object.defineProperty(window, key, { configurable: true, enumerable: true, get: getFn, set: setFn }); 
+    } catch(e) { console.warn("[bridge]", key, e); }
   };
-  expose("weeklyPeriodos",       ()=>weeklyPeriodos,       v=>{weeklyPeriodos=v;});
-  expose("activeWeeklyPeriodoId",()=>activeWeeklyPeriodoId,v=>{activeWeeklyPeriodoId=v;});
-  expose("periodos",             ()=>periodos,             v=>{periodos=v;});
-  expose("activePeriodoId",      ()=>activePeriodoId,      v=>{activePeriodoId=v;});
-  expose("tallerEntries",        ()=>tallerEntries,        v=>{tallerEntries=v;});
-  expose("units",                ()=>units,                v=>{units=v;});
-  expose("hasZip",               ()=>hasZip,               v=>{hasZip=v;});
-  expose("zipImgs",              ()=>zipImgs,              v=>{zipImgs=v;});
-  expose("selId",                ()=>selId,                v=>{selId=v;});
-  expose("checklistDB",          ()=>checklistDB,          v=>{checklistDB=v;});
-  expose("notesDB",              ()=>notesDB,              v=>{notesDB=v;});
-  expose("actionsDB",            ()=>actionsDB,            v=>{actionsDB=v;});
-  expose("manualPhotosDB",       ()=>manualPhotosDB,       v=>{manualPhotosDB=v;});
-  // lazyObserver es const (read-only desde TS)
-  try { Object.defineProperty(window, "lazyObserver", { configurable:true, get: ()=>lazyObserver }); }
-  catch(e){ console.warn("[bridge] lazyObserver", e); }
-  expose("swCurF",               ()=>swCurF,               v=>{swCurF=v;});
-  expose("swCurS",               ()=>swCurS,               v=>{swCurS=v;});
-  expose("swSortCol",            ()=>swSortCol,            v=>{swSortCol=v;});
-  expose("swSortDir",            ()=>swSortDir,            v=>{swSortDir=v;});
+  // Usamos las variables locales del scope del script (disponibles por clausura)
+  // para evitar recursión infinita al llamar a window.X dentro del bridge.
+  try {
+    expose("weeklyPeriodos",       ()=>weeklyPeriodos,       v=>{weeklyPeriodos=v;});
+    expose("activeWeeklyPeriodoId",()=>activeWeeklyPeriodoId,v=>{activeWeeklyPeriodoId=v;});
+    expose("periodos",             ()=>periodos,             v=>{periodos=v;});
+    expose("activePeriodoId",      ()=>activePeriodoId,      v=>{activePeriodoId=v;});
+    expose("tallerEntries",        ()=>tallerEntries,        v=>{tallerEntries=v;});
+    expose("units",                ()=>units,                v=>{units=v;});
+    expose("hasZip",               ()=>hasZip,               v=>{hasZip=v;});
+    expose("zipImgs",              ()=>zipImgs,              v=>{zipImgs=v;});
+    expose("selId",                ()=>selId,                v=>{selId=v;});
+    expose("checklistDB",          ()=>checklistDB,          v=>{checklistDB=v;});
+    expose("notesDB",              ()=>notesDB,              v=>{notesDB=v;});
+    expose("actionsDB",            ()=>actionsDB,            v=>{actionsDB=v;});
+    expose("manualPhotosDB",       ()=>manualPhotosDB,       v=>{manualPhotosDB=v;});
+    expose("swCurF",               ()=>swCurF,               v=>{swCurF=v;});
+    expose("swCurS",               ()=>swCurS,               v=>{swCurS=v;});
+    expose("swSortCol",            ()=>swSortCol,            v=>{swSortCol=v;});
+    expose("swSortDir",            ()=>swSortDir,            v=>{swSortDir=v;});
+    
+    const desc = Object.getOwnPropertyDescriptor(window, "lazyObserver");
+    if (!desc || desc.configurable) {
+      Object.defineProperty(window, "lazyObserver", { configurable:true, get: ()=>lazyObserver }); 
+    }
+  } catch(e) { console.error("[bridge] Fatal error during setup:", e); }
 })();
 </script>
 <!-- Módulos TS nuevos (Vite dev server resuelve en /src/). Feature flag:

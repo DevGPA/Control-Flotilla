@@ -76,7 +76,8 @@ export function bindLegacyWindow(
     const legacySet = existing?.set;
     const initial = (target as unknown as Record<string, unknown>)[k];
     if (initial !== undefined) {
-      (appStore as unknown as { _state: Record<string, unknown> })._state[stateKey as string] = initial;
+      // Bootstrap inicial via setter público — dispara subscribers desde el primer valor
+      appStore.set(stateKey, initial as AppState[typeof stateKey]);
     }
     Object.defineProperty(target, k, {
       configurable: true,
@@ -84,7 +85,10 @@ export function bindLegacyWindow(
       get() {
         if (legacyGet) {
           const val = legacyGet.call(target);
-          (appStore as unknown as { _state: Record<string, unknown> })._state[stateKey as string] = val as unknown;
+          // Sync via setter público para mantener subscribers notificados si cambió
+          if (appStore.get(stateKey) !== val) {
+            appStore.set(stateKey, val as AppState[typeof stateKey]);
+          }
           return val;
         }
         return appStore.get(stateKey) as unknown;

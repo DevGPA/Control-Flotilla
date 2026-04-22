@@ -11,6 +11,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:cov": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "lint": "eslint \"src/**/*.{ts,js}\"",
     "audit:xss": "node scripts/xss-audit.mjs \"Control de flotilla.html\"",
     "audit:baseline": "node scripts/verify-baseline.mjs",
@@ -18,10 +21,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "jspdf": "^4.2.1",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "jspdf": "2.5.1",
+    "xlsx": "0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",

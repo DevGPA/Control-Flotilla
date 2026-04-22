@@ -114,16 +114,17 @@ describe("readZip", () => {
       { name: new TextEncoder().encode("refacción.txt"), data: new TextEncoder().encode("tildes ok"), method: 8, utf8: true },
     ]);
     const out = await readZip(zip);
-    expect(Object.keys(out).sort()).toEqual(["hola.txt", "refacción.txt"]);
-    expect(new TextDecoder().decode(out["hola.txt"])).toBe("Hola mundo");
-    expect(new TextDecoder().decode(out["refacción.txt"])).toBe("tildes ok");
+    expect(Object.keys(out.entries).sort()).toEqual(["hola.txt", "refacción.txt"]);
+    expect(new TextDecoder().decode(out.entries["hola.txt"])).toBe("Hola mundo");
+    expect(new TextDecoder().decode(out.entries["refacción.txt"])).toBe("tildes ok");
+    expect(out.failures).toEqual([]);
   });
 
   it("parsea archivos stored (method 0, sin compresión)", async () => {
     const data = new TextEncoder().encode("no comprimido");
     const zip = await buildZip([{ name: new TextEncoder().encode("raw.bin"), data, method: 0, utf8: true }]);
     const out = await readZip(zip);
-    expect(new TextDecoder().decode(out["raw.bin"])).toBe("no comprimido");
+    expect(new TextDecoder().decode(out.entries["raw.bin"])).toBe("no comprimido");
   });
 
   it("decodifica filenames CP437 cuando el flag UTF-8 no está seteado", async () => {
@@ -131,7 +132,7 @@ describe("readZip", () => {
     const cp437Name = new Uint8Array([0x52, 0x65, 0x66, 0x61, 0x63, 0x63, 0x69, 0xA2, 0x6E, 0x2E, 0x78, 0x6C, 0x73, 0x78]);
     const zip = await buildZip([{ name: cp437Name, data: new TextEncoder().encode("payload"), method: 8, utf8: false }]);
     const out = await readZip(zip);
-    const keys = Object.keys(out);
+    const keys = Object.keys(out.entries);
     expect(keys).toHaveLength(1);
     expect(keys[0]).toBe("Refacción.xlsx");
   });

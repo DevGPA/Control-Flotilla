@@ -70,6 +70,22 @@ export async function loadExcel(file: File | Blob, filename?: string): Promise<L
   // Rows como objetos keyed por header (compatible con analyzeRow)
   const rows = XLSX.utils.sheet_to_json<ExcelRow>(ws, { defval: "" });
 
+  // sheet_to_json silenciosamente filtra filas totalmente vacías. Comparamos contra
+  // el conteo crudo (raw - 1 por header) para detectar discrepancias grandes que
+  // indiquen archivo malformado o rows raggeadas que SheetJS no pudo parsear.
+  const expectedRowCount = raw.length - 1;
+  const skipped = expectedRowCount - rows.length;
+  if (skipped > 0) {
+    const pct = expectedRowCount > 0 ? (skipped / expectedRowCount) * 100 : 0;
+    if (pct >= 10) {
+      console.warn(
+        `[excelLoader] ${name}: ${skipped}/${expectedRowCount} filas omitidas (${pct.toFixed(1)}%) — verifica formato`,
+      );
+    } else if (skipped > 0) {
+      console.info(`[excelLoader] ${name}: ${skipped} filas vacías omitidas`);
+    }
+  }
+
   return {
     kind,
     filename: name,
