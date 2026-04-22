@@ -300,6 +300,17 @@ g.inflateBytes=async function(src){
   <div id="alerts-list"></div>
 </div>
 
+<!-- DASHBOARD CHARTS (Tremor + ECharts — Fase A: donut) -->
+<div id="kpi-charts-row" style="display:none;margin:0 12px 10px;gap:12px">
+  <div class="chart-card" style="flex:1;background:var(--bg);border:1px solid var(--ln);border-radius:var(--r3);padding:16px 16px 12px;box-shadow:var(--shadow-sm);min-width:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--w2);letter-spacing:.2px">Composición de riesgo</div>
+      <div style="font-size:10px;color:var(--s2);text-transform:uppercase;letter-spacing:.5px">Click segmento → filtrar</div>
+    </div>
+    <div id="kpi-donut" style="width:100%;height:240px"></div>
+  </div>
+</div>
+
 <!-- FILTER BAR -->
 <div id="tb">
   <div class="chip-row">
@@ -2308,6 +2319,33 @@ function buildKPIs(){
     el.onmouseenter=()=>enterK(el.dataset.k);
     el.onmouseleave=leaveK;
   });
+
+  // ─── ECharts premium donut (Fase A) — widget adicional en #kpi-charts-row.
+  // Convive con el donut SVG legacy del hero (éste se mantiene por compat).
+  // Click segmento dispara setF() equivalente al chip de la toolbar.
+  const kpiRow = document.getElementById("kpi-charts-row");
+  const kpiDonutEl = document.getElementById("kpi-donut");
+  if (kpiRow && kpiDonutEl && typeof window.renderDonutChart === "function" && t > 0) {
+    kpiRow.style.display = "flex";
+    try {
+      window.renderDonutChart(kpiDonutEl, {
+        urgente: u,
+        revisar: rv,
+        completar: comp,
+        ok: ok,
+      }, {
+        onSegmentClick: (key) => {
+          const map = { urgente: "Urgente", revisar: "Revisar", completar: "Completar", ok: "OK" };
+          if (map[key] && typeof setF === "function") setF(map[key]);
+        },
+      });
+    } catch (e) {
+      console.warn("[buildKPIs] ECharts donut falló, fallback solo legacy SVG:", e);
+      kpiRow.style.display = "none";
+    }
+  } else if (kpiRow && t === 0) {
+    kpiRow.style.display = "none";
+  }
 }
 function buildBranches(){
   const bs=[...new Set(units.map(u=>u.branch).filter(Boolean))].sort();

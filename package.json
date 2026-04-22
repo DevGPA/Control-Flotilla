@@ -24,6 +24,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "echarts": "6.0.0",
     "jspdf": "2.5.1",
     "xlsx": "0.18.5"
   },

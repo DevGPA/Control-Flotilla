@@ -13,13 +13,13 @@
 
 import { renderTable as renderTableNew } from "./ui/renderTable";
 import { renderChecklist as renderChecklistNew } from "./ui/detail/renderChecklist";
-import { renderNotes as renderNotesNew, type NotesDB, type NoteType } from "./ui/detail/renderNotes";
-import { renderTires as renderTiresNew } from "./ui/detail/renderTires";
 import {
-  renderPhotoGallery,
-  type ManualPhoto,
-  type PhotoEntry,
-} from "./ui/detail/photoGallery";
+  renderNotes as renderNotesNew,
+  type NotesDB,
+  type NoteType,
+} from "./ui/detail/renderNotes";
+import { renderTires as renderTiresNew } from "./ui/detail/renderTires";
+import { renderPhotoGallery, type ManualPhoto, type PhotoEntry } from "./ui/detail/photoGallery";
 import { createLightbox, type LightboxApi } from "./ui/detail/lightbox";
 import {
   renderActions as renderActionsNew,
@@ -53,12 +53,7 @@ import {
 } from "./weekly/renderPeriodoBar";
 import type { WeeklyPeriodo } from "./weekly/weeklyStore";
 import { appStore, bindLegacyWindow } from "./state/appState";
-import {
-  type FilterState,
-  onUrlStateChange,
-  readUrlState,
-  writeUrlState,
-} from "./state/urlState";
+import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
 declare global {
@@ -152,11 +147,24 @@ declare global {
     switchPeriodo?: (id: string) => void;
     deletePeriodo?: (id: string) => void;
     renderPeriodoBar?: () => void;
+    /** Dashboard charts — ECharts wrappers (fase A: solo donut). */
+    renderDonutChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").RiskCounts,
+      handlers?: {
+        onSegmentClick?: (key: "urgente" | "revisar" | "completar" | "ok") => void;
+      },
+    ) => unknown;
   }
 }
 
 window.__newRenderAvailable = true;
 window.__appStore = appStore;
+
+// Expose ECharts-backed dashboard widgets al legacy (buildKPIs los usa).
+import("./dashboard/charts").then(({ renderDonut }) => {
+  window.renderDonutChart = renderDonut;
+});
 
 // Bridge bidireccional window.* ↔ appStore. Siempre activo para que los
 // módulos nuevos puedan leer del store, y el legado siga escribiendo como
@@ -359,8 +367,7 @@ if (readFlag("USE_NEW_DETAIL")) {
         hasZip: Boolean(appStore.get("hasZip")),
         lightbox,
         resolveZipUrl: (fname) => window.imgUrl?.(fname) ?? null,
-        resolveManualUrl: (p) =>
-          window.manualPhotoUrl ? window.manualPhotoUrl(p.data, p.id) : "",
+        resolveManualUrl: (p) => (window.manualPhotoUrl ? window.manualPhotoUrl(p.data, p.id) : ""),
         lazyObserver: window.lazyObserver,
         onAddManualPhoto: (uid) => window.addManualPhoto?.(uid),
         onDeleteManualPhoto: (uid, pid) => window.deleteManualPhoto?.(uid, pid),
@@ -405,25 +412,54 @@ if (readFlag("USE_NEW_DETAIL")) {
 if (readFlag("USE_NEW_TALLER")) {
   const legacyRenderActivas = window.renderActivas;
   const legacyRenderHistorial = window.renderHistorial;
-  const SORT_KEYS: Set<string> = new Set(["fentrada", "dias", "gasto", "eco", "estado", "sucursal"]);
-  const HIST_SORT_KEYS: Set<string> = new Set(["eco", "plate", "brand", "sucursal", "fentrada", "fsalidaReal"]);
+  const SORT_KEYS: Set<string> = new Set([
+    "fentrada",
+    "dias",
+    "gasto",
+    "eco",
+    "estado",
+    "sucursal",
+  ]);
+  const HIST_SORT_KEYS: Set<string> = new Set([
+    "eco",
+    "plate",
+    "brand",
+    "sucursal",
+    "fentrada",
+    "fsalidaReal",
+  ]);
 
-  function readFilterFromDom(): { sucursal?: string; area?: string; tipo?: string; search?: string } {
-    const g = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "all";
+  function readFilterFromDom(): {
+    sucursal?: string;
+    area?: string;
+    tipo?: string;
+    search?: string;
+  } {
+    const g = (id: string): string =>
+      (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "all";
     return {
       sucursal: g("tl-filt-suc"),
       area: g("tl-filt-area"),
       tipo: g("tl-filt-tipo"),
-      search: (document.getElementById("tl-filt-q") as HTMLInputElement | null)?.value?.trim() ?? "",
+      search:
+        (document.getElementById("tl-filt-q") as HTMLInputElement | null)?.value?.trim() ?? "",
     };
   }
 
-  function readHistFilterFromDom(): { sucursal?: string; tipo?: string; search?: string; desde?: string; hasta?: string } {
-    const g = (id: string): string => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
+  function readHistFilterFromDom(): {
+    sucursal?: string;
+    tipo?: string;
+    search?: string;
+    desde?: string;
+    hasta?: string;
+  } {
+    const g = (id: string): string =>
+      (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
     return {
       sucursal: g("tl-hist-suc") || "all",
       tipo: g("tl-hist-tipo") || "all",
-      search: (document.getElementById("tl-hist-q") as HTMLInputElement | null)?.value?.trim() ?? "",
+      search:
+        (document.getElementById("tl-hist-q") as HTMLInputElement | null)?.value?.trim() ?? "",
       desde: g("tl-hist-desde"),
       hasta: g("tl-hist-hasta"),
     };
@@ -433,7 +469,9 @@ if (readFlag("USE_NEW_TALLER")) {
     const sel = document.getElementById("tl-hist-suc") as HTMLSelectElement | null;
     if (!sel || sel.options.length > 1) return;
     const current = sel.value || "all";
-    const sucs = [...new Set(entries.map((e) => e.sucursal).filter((s): s is string => !!s))].sort();
+    const sucs = [
+      ...new Set(entries.map((e) => e.sucursal).filter((s): s is string => !!s)),
+    ].sort();
     sel.replaceChildren();
     const optAll = document.createElement("option");
     optAll.value = "all";
