@@ -8,56 +8,58 @@ import * as echarts from "echarts/core";
 import { PieChart } from "echarts/charts";
 import { TooltipComponent, LegendComponent, TitleComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { getTremorPalette, onThemeChange, type ThemeMode } from "./chartTheme";
+import { getTremorPalette, onThemeChange } from "./chartTheme";
 
 echarts.use([PieChart, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer]);
 
-export type RiskCounts = {
-  urgente: number;
-  revisar: number;
-  completar: number;
-  ok: number;
+export type DonutSegment = {
+  /** Clave estable usada en onSegmentClick — independiente del label. */
+  key: string;
+  label: string;
+  value: number;
+  /** Color literal (hex o rgba). Leer de CSS vars vía getTremorPalette en el caller. */
+  color: string;
 };
 
-type RiskKey = "urgente" | "revisar" | "completar" | "ok";
 type DonutHandlers = {
-  onSegmentClick?: (key: RiskKey) => void;
+  onSegmentClick?: (key: string) => void;
 };
 
 /**
- * Donut de composición de riesgo — 4 segmentos exclusivos que suman a total.
- * Reemplaza el SVG custom de `#dsvg` con ECharts interactivo:
- * tooltip con %, click-to-filter via onSegmentClick, dark-mode auto.
+ * Donut compacto genérico. Sin legend built-in — caller provee leyenda custom
+ * para máxima flexibilidad (ej. legend con dim-on-hover del legacy).
+ * Center label muestra el % del segmento dominante.
  */
 export function renderDonut(
   container: HTMLElement,
-  data: RiskCounts,
+  segments: DonutSegment[],
   handlers: DonutHandlers = {},
 ): echarts.ECharts {
-  // Evita múltiples instancias sobre el mismo contenedor (caller debería disposear,
-  // pero defensa por si buildKPIs corre varias veces sin cleanup).
+  // Dispose previa si existe (buildKPIs corre múltiples veces).
   const existing = echarts.getInstanceByDom(container);
   if (existing) existing.dispose();
 
   const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(buildDonutOption(data, getTremorPalette().mode));
+  chart.setOption(buildDonutOption(segments));
 
   chart.on("click", "series", (params) => {
     if (!handlers.onSegmentClick) return;
-    const name = (params.data as { key?: RiskKey }).key;
-    if (name) handlers.onSegmentClick(name);
+    const key = (params.data as { key?: string }).key;
+    if (key) handlers.onSegmentClick(key);
   });
 
-  // Re-sync colores en theme toggle — usa CSS vars frescas del :root dark.
-  const off = onThemeChange((mode) => {
-    chart.setOption(buildDonutOption(data, mode));
+  // Re-sync colores en theme toggle — re-lee CSS vars del :root dark.
+  const off = onThemeChange(() => {
+    // Caller debe re-invocar renderDonut con colores nuevos; aquí solo resize
+    // por seguridad (theme change también puede afectar tooltip bg).
+    chart.setOption(buildDonutOption(segments));
   });
 
   // Resize responsive
   const ro = new ResizeObserver(() => chart.resize());
   ro.observe(container);
 
-  // Cleanup — ECharts no expone teardown automático, caller debe invocar dispose
+  // Cleanup wrap
   const origDispose = chart.dispose.bind(chart);
   chart.dispose = () => {
     off();
@@ -68,64 +70,64 @@ export function renderDonut(
   return chart;
 }
 
-function buildDonutOption(data: RiskCounts, _mode: ThemeMode): echarts.EChartsCoreOption {
+function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {
   const p = getTremorPalette();
-  const total = data.urgente + data.revisar + data.completar + data.ok;
+  const visible = segments.filter((s) => s.value > 0);
+  const total = visible.reduce((acc, s) => acc + s.value, 0);
+  // Segmento dominante para center label
+  const dominant = visible.reduce((a, b) => (b.value > a.value ? b : a), visible[0] || null);
+  const dominantPct = total && dominant ? Math.round((dominant.value / total) * 100) : 0;
+
   return {
     tooltip: {
       trigger: "item",
       backgroundColor: p.bg2,
       borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 12 },
+      textStyle: { color: p.text, fontSize: 11 },
+      padding: [6, 10],
       formatter: (params: unknown) => {
         const pp = params as { name: string; value: number; percent: number };
-        return `${pp.name}<br/><b>${pp.value}</b> (${pp.percent.toFixed(0)}%)`;
+        return `${pp.name} <b>${pp.value}</b> (${pp.percent.toFixed(0)}%)`;
       },
-    },
-    legend: {
-      bottom: 0,
-      textStyle: { color: p.textSub, fontSize: 11 },
-      icon: "circle",
     },
     series: [
       {
         name: "Riesgo",
         type: "pie",
-        radius: ["62%", "82%"],
-        center: ["50%", "44%"],
-        avoidLabelOverlap: true,
+        radius: ["62%", "88%"],
+        center: ["50%", "50%"],
+        avoidLabelOverlap: false,
+        silent: false,
         label: {
-          show: true,
+          show: !!dominant,
           position: "center",
           formatter: () => {
-            const worst =
-              data.urgente > 0
-                ? { label: "Urgente", value: data.urgente, color: p.R }
-                : data.revisar > 0
-                  ? { label: "Revisar", value: data.revisar, color: p.A }
-                  : data.completar > 0
-                    ? { label: "Completar", value: data.completar, color: p.B }
-                    : { label: "Operativa", value: data.ok, color: p.G };
-            const pct = total ? ((worst.value / total) * 100).toFixed(0) : "0";
-            return `{v|${pct}%}\n{l|${worst.label}}`;
+            if (!dominant) return "";
+            return `{v|${dominantPct}%}\n{l|${dominant.label}}`;
           },
           rich: {
-            v: { fontSize: 22, fontWeight: 700, color: p.text, lineHeight: 26 },
-            l: { fontSize: 11, color: p.textSub, lineHeight: 16 },
+            v: { fontSize: 17, fontWeight: 800, color: p.text, lineHeight: 18 },
+            l: {
+              fontSize: 8.5,
+              fontWeight: 700,
+              color: p.textSub,
+              lineHeight: 12,
+              letterSpacing: 0.4,
+            },
           },
         },
         labelLine: { show: false },
         itemStyle: {
           borderColor: p.bg,
           borderWidth: 2,
-          borderRadius: 4,
+          borderRadius: 3,
         },
-        data: [
-          { name: "Urgente", value: data.urgente, itemStyle: { color: p.R }, key: "urgente" },
-          { name: "Revisar", value: data.revisar, itemStyle: { color: p.A }, key: "revisar" },
-          { name: "Completar", value: data.completar, itemStyle: { color: p.B }, key: "completar" },
-          { name: "OK", value: data.ok, itemStyle: { color: p.G }, key: "ok" },
-        ].filter((s) => s.value > 0),
+        data: visible.map((s) => ({
+          name: s.label,
+          value: s.value,
+          itemStyle: { color: s.color },
+          key: s.key,
+        })),
       },
     ],
   };

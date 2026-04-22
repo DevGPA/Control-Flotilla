@@ -150,10 +150,8 @@ declare global {
     /** Dashboard charts — ECharts wrappers (fase A: solo donut). */
     renderDonutChart?: (
       el: HTMLElement,
-      data: import("./dashboard/charts").RiskCounts,
-      handlers?: {
-        onSegmentClick?: (key: "urgente" | "revisar" | "completar" | "ok") => void;
-      },
+      segments: import("./dashboard/charts").DonutSegment[],
+      handlers?: { onSegmentClick?: (key: string) => void },
     ) => unknown;
   }
 }

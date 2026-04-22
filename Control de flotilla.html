@@ -282,10 +282,7 @@ g.inflateBytes=async function(src){
       </div>
     </div>
     <div class="hero-donut">
-      <div class="dwrap">
-        <svg class="dsvg" width="66" height="66" viewBox="0 0 64 64" id="dsvg"></svg>
-        <div class="dmid"><div class="dtag" id="dtag">URGENTE</div><div class="dpct" id="dpct">—</div></div>
-      </div>
+      <div id="kpi-donut" style="width:88px;height:88px;flex-shrink:0"></div>
       <div class="dleg" id="dleg"></div>
     </div>
   </div>
@@ -298,17 +295,6 @@ g.inflateBytes=async function(src){
     <button onclick="document.getElementById('alerts-panel').style.display='none'" aria-label="Cerrar alertas" style="background:none;border:none;cursor:pointer;color:#92400E;font-size:14px;padding:0 2px;line-height:1" title="Cerrar">✕</button>
   </div>
   <div id="alerts-list"></div>
-</div>
-
-<!-- DASHBOARD CHARTS (Tremor + ECharts — Fase A: donut) -->
-<div id="kpi-charts-row" style="display:none;margin:0 12px 10px;gap:12px">
-  <div class="chart-card" style="flex:1;background:var(--bg);border:1px solid var(--ln);border-radius:var(--r3);padding:16px 16px 12px;box-shadow:var(--shadow-sm);min-width:0">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--w2);letter-spacing:.2px">Composición de riesgo</div>
-      <div style="font-size:10px;color:var(--s2);text-transform:uppercase;letter-spacing:.5px">Click segmento → filtrar</div>
-    </div>
-    <div id="kpi-donut" style="width:100%;height:240px"></div>
-  </div>
 </div>
 
 <!-- FILTER BAR -->
@@ -2259,92 +2245,32 @@ function buildKPIs(){
   // donut — 3 segmentos exclusivos: Urgente / Revisar / Operativa.
   // Operativa = unidades sin pending Urg ni Rev (incluye Completar pending o todo OK).
   // Chips son overlap (Modelo C-mod) — donut NO, usa vars *Donut.
-  const R=26,cx=32,cy=32,circ=2*Math.PI*R,sw=8;let off=0;
-  const rawSegs=[["u",uDonut,"var(--R)"],["rv",rvDonut,"var(--A)"],["ok",okDonut,"var(--G)"]];
-  const present=rawSegs.filter(([,v])=>v>0);
-  const donutT=Math.max(t,1);
-  const gap=present.length>1?circ*0.012:0; // ~2° gap entre segmentos
-  const paths=present.map(([k,v,c])=>{
-    const raw=(v/donutT)*circ;
-    const d=Math.max(raw-gap,circ*0.005);
-    const g=circ-d;
-    const p=`<circle data-k="${k}" cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${d} ${g}" stroke-dashoffset="${-off}"/>`;
-    off+=d+gap;return p;
-  }).join("");
-  document.getElementById("dsvg").innerHTML=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--bg4)" stroke-width="${sw}"/>${paths}`;
-  const dp=document.getElementById("dpct");
-  const dtag=document.getElementById("dtag");
-  // Default = dominant segment (label and % stay consistent)
-  const domSegs=[["URGENTE","var(--R)",uDonut],["REVISAR","var(--A)",rvDonut],["OPERATIVA","var(--G)",okDonut]];
-  const dom=domSegs.reduce((a,b)=>b[2]>a[2]?b:a);
-  const domPct=t?Math.round((dom[2]/t)*100):0;
-  dp.textContent=domPct+"%";dp.style.color=dom[1];
-  if(dtag){
-    const domBg=dom[1]==="var(--R)"?"#DC262615":dom[1]==="var(--A)"?"#F59E0B15":"#06D6A015";
-    dtag.textContent=dom[0];dtag.style.color=dom[1];dtag.style.background=domBg;
+  // Render via ECharts (src/dashboard/charts.ts), leyenda custom abajo.
+  const donutEl = document.getElementById("kpi-donut");
+  if (donutEl && typeof window.renderDonutChart === "function") {
+    const cs = getComputedStyle(document.documentElement);
+    const cR = cs.getPropertyValue("--R").trim() || "#E11D48";
+    const cA = cs.getPropertyValue("--A").trim() || "#D97706";
+    const cG = cs.getPropertyValue("--G").trim() || "#059669";
+    try {
+      window.renderDonutChart(donutEl, [
+        { key: "Urgente", label: "Urgente", value: uDonut, color: cR },
+        { key: "Revisar", label: "Revisar", value: rvDonut, color: cA },
+        { key: "OK",      label: "Operativa", value: okDonut, color: cG },
+      ], {
+        onSegmentClick: (key) => { if (typeof setF === "function") setF(key); },
+      });
+    } catch (e) { console.warn("[buildKPIs] donut ECharts falló:", e); }
   }
+  // Leyenda custom al lado del donut (hover dim + numbers actualizados).
+  // ECharts maneja el donut pero la leyenda sigue siendo nuestra — le da
+  // control sobre el hover cross-highlighting y se integra con CSS dark mode.
   const legRows=[["u","var(--R)","Urgente",uDonut],["rv","var(--A)","Revisar",rvDonut],["ok","var(--G)","Operativa",okDonut]];
   const dleg=document.getElementById("dleg");
-  dleg.title="Urgente · Revisar · Operativa (OK + Completar). Completar es pendiente admin, no riesgo.";
-  dleg.innerHTML=
-    legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
-  // hover: leyenda ↔ segmento + % y tag dinámico
-  const pctOf = n => t ? Math.round((n/t)*100) : 0;
-  const DTAG_BG={"var(--R)":"#DC262615","var(--A)":"#F59E0B15","var(--G)":"#06D6A015"};
-  const hoverMap={
-    u:{pct:pctOf(uDonut),lbl:"URGENTE",color:"var(--R)"},
-    rv:{pct:pctOf(rvDonut),lbl:"REVISAR",color:"var(--A)"},
-    ok:{pct:pctOf(okDonut),lbl:"OPERATIVA",color:"var(--G)"}
-  };
-  const defaultPct=dp.textContent, defaultPctColor=dp.style.color;
-  const defaultTag=dtag?{txt:dtag.textContent,color:dtag.style.color,bg:dtag.style.background}:null;
-  const enterK=k=>{
-    document.querySelectorAll("#dleg .dleg-i[data-k]").forEach(x=>{if(x.dataset.k!==k)x.classList.add("dim")});
-    document.querySelectorAll("#dsvg circle[data-k]").forEach(x=>{if(x.dataset.k!==k)x.classList.add("dim")});
-    const h=hoverMap[k];if(!h)return;
-    dp.textContent=h.pct+"%";dp.style.color=h.color;
-    if(dtag){dtag.textContent=h.lbl;dtag.style.color=h.color;dtag.style.background=DTAG_BG[h.color]||"#F3F4F6";}
-  };
-  const leaveK=()=>{
-    document.querySelectorAll("#dleg .dleg-i.dim,#dsvg circle.dim").forEach(x=>x.classList.remove("dim"));
-    dp.textContent=defaultPct;dp.style.color=defaultPctColor;
-    if(dtag&&defaultTag){dtag.textContent=defaultTag.txt;dtag.style.color=defaultTag.color;dtag.style.background=defaultTag.bg;}
-  };
-  document.querySelectorAll("#dleg .dleg-i[data-k]").forEach(el=>{
-    el.onmouseenter=()=>enterK(el.dataset.k);
-    el.onmouseleave=leaveK;
-  });
-  document.querySelectorAll("#dsvg circle[data-k]").forEach(el=>{
-    el.style.cursor="pointer";
-    el.onmouseenter=()=>enterK(el.dataset.k);
-    el.onmouseleave=leaveK;
-  });
-
-  // ─── ECharts premium donut (Fase A) — widget adicional en #kpi-charts-row.
-  // Convive con el donut SVG legacy del hero (éste se mantiene por compat).
-  // Click segmento dispara setF() equivalente al chip de la toolbar.
-  const kpiRow = document.getElementById("kpi-charts-row");
-  const kpiDonutEl = document.getElementById("kpi-donut");
-  if (kpiRow && kpiDonutEl && typeof window.renderDonutChart === "function" && t > 0) {
-    kpiRow.style.display = "flex";
-    try {
-      window.renderDonutChart(kpiDonutEl, {
-        urgente: u,
-        revisar: rv,
-        completar: comp,
-        ok: ok,
-      }, {
-        onSegmentClick: (key) => {
-          const map = { urgente: "Urgente", revisar: "Revisar", completar: "Completar", ok: "OK" };
-          if (map[key] && typeof setF === "function") setF(map[key]);
-        },
-      });
-    } catch (e) {
-      console.warn("[buildKPIs] ECharts donut falló, fallback solo legacy SVG:", e);
-      kpiRow.style.display = "none";
-    }
-  } else if (kpiRow && t === 0) {
-    kpiRow.style.display = "none";
+  if(dleg){
+    dleg.title="Urgente · Revisar · Operativa (OK + Completar). Completar es pendiente admin, no riesgo.";
+    dleg.innerHTML=
+      legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
   }
 }
 function buildBranches(){
