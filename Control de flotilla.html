@@ -297,6 +297,34 @@ g.inflateBytes=async function(src){
   <div id="alerts-list"></div>
 </div>
 
+<!-- ANALYTICS PANEL (colapsable, default closed — tabla = protagonista) -->
+<div class="analytics-panel" id="analytics-panel">
+  <button type="button" class="analytics-toggle" id="analytics-toggle" aria-expanded="false" aria-controls="analytics-content" onclick="toggleAnalyticsPanel()">
+    <i data-lucide="chevron-right" class="analytics-arrow" style="width:14px;height:14px"></i>
+    <i data-lucide="bar-chart-3" style="width:13px;height:13px;color:var(--ac)"></i>
+    <span>Análisis avanzado</span>
+    <span class="analytics-hint">Sucursales · Categorías</span>
+  </button>
+  <div class="analytics-content" id="analytics-content" hidden>
+    <div class="analytics-grid">
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-title">Sucursales por riesgo</div>
+          <div class="chart-hint">Click barra → filtrar</div>
+        </div>
+        <div id="chart-branches" style="width:100%;height:260px"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-title">Hallazgos por categoría</div>
+          <div class="chart-hint">5 categorías · 3 niveles</div>
+        </div>
+        <div id="chart-categories" style="width:100%;height:260px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- FILTER BAR -->
 <div id="tb">
   <div class="chip-row">
@@ -1554,6 +1582,7 @@ window.refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
 
 window.addEventListener("DOMContentLoaded", () => {
   if(window.lucide) lucide.createIcons();
+  restoreAnalyticsPanelState();
   restoreState();
 });
 
@@ -2272,11 +2301,102 @@ function buildKPIs(){
     dleg.innerHTML=
       legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
   }
+
+  // Refresca analytics panel si está abierto (no-op si cerrado).
+  if(typeof buildAnalytics === "function") buildAnalytics();
 }
 function buildBranches(){
   const bs=[...new Set(units.map(u=>u.branch).filter(Boolean))].sort();
   const s=document.getElementById("bsel");
   s.innerHTML=`<option value="all">Todas las sucursales</option>`+bs.map(b=>`<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
+}
+
+// ════════════════════════════════════════════════════════════
+// ANALYTICS PANEL — colapsable, lazy render, persist state.
+// ════════════════════════════════════════════════════════════
+const ANALYTICS_LS_KEY = "gpa-analytics-open";
+
+function toggleAnalyticsPanel(){
+  const btn = document.getElementById("analytics-toggle");
+  const content = document.getElementById("analytics-content");
+  if(!btn || !content) return;
+  const isOpen = btn.getAttribute("aria-expanded") === "true";
+  const next = !isOpen;
+  btn.setAttribute("aria-expanded", String(next));
+  if(next){ content.hidden = false; buildAnalytics(); }
+  else { content.hidden = true; }
+  try { localStorage.setItem(ANALYTICS_LS_KEY, next ? "1" : "0"); } catch(e) {}
+}
+
+function restoreAnalyticsPanelState(){
+  let open = false;
+  try { open = localStorage.getItem(ANALYTICS_LS_KEY) === "1"; } catch(e) {}
+  if(open){
+    const btn = document.getElementById("analytics-toggle");
+    const content = document.getElementById("analytics-content");
+    if(btn && content){
+      btn.setAttribute("aria-expanded", "true");
+      content.hidden = false;
+    }
+  }
+}
+
+// Cálculo de stats — se ejecuta solo si el panel está abierto (perf).
+function buildAnalytics(){
+  const btn = document.getElementById("analytics-toggle");
+  if(!btn || btn.getAttribute("aria-expanded") !== "true") return;
+  if(!units || !units.length) return;
+
+  // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
+  const branchMap = new Map();
+  for(const x of units){
+    const branch = x.branch || "(Sin sucursal)";
+    let stat = branchMap.get(branch);
+    if(!stat){ stat = { branch, urgente:0, revisar:0, operativa:0 }; branchMap.set(branch, stat); }
+    const dm = checklistDB[x.uid] || {};
+    const pend = x.F.filter(f => !(dm[f.text] && dm[f.text].done));
+    const hasU = pend.some(f => f.lv === "Urgente");
+    const hasR = pend.some(f => f.lv === "Revisar");
+    if(hasU) stat.urgente++;
+    else if(hasR) stat.revisar++;
+    else stat.operativa++;
+  }
+  const branchesData = Array.from(branchMap.values());
+
+  // ─── Categorías: por hallazgo (no por unidad), counter por cat × nivel
+  const catOrder = ["Llantas", "Checklist", "Documentos", "Fluidos", "Mantenimiento"];
+  const catMap = new Map(catOrder.map(c => [c, { cat:c, urgente:0, revisar:0, completar:0 }]));
+  for(const x of units){
+    const dm = checklistDB[x.uid] || {};
+    for(const f of x.F){
+      if(dm[f.text] && dm[f.text].done) continue; // skip atendidos
+      const stat = catMap.get(f.cat);
+      if(!stat) continue;
+      if(f.lv === "Urgente") stat.urgente++;
+      else if(f.lv === "Revisar") stat.revisar++;
+      else if(f.lv === "Completar") stat.completar++;
+    }
+  }
+  const categoriesData = Array.from(catMap.values());
+
+  // Render vía ECharts (módulo TS via window.*). Fallback silencioso si no cargado.
+  const branchesEl = document.getElementById("chart-branches");
+  const categoriesEl = document.getElementById("chart-categories");
+  if(branchesEl && typeof window.renderBranchesChart === "function"){
+    try {
+      window.renderBranchesChart(branchesEl, branchesData, {
+        onBranchClick: (name) => {
+          const bsel = document.getElementById("bsel");
+          if(bsel && typeof setB === "function"){ bsel.value = name; setB(name); }
+        },
+      });
+    } catch(e){ console.warn("[analytics] branches chart falló:", e); }
+  }
+  if(categoriesEl && typeof window.renderCategoriesChart === "function"){
+    try {
+      window.renderCategoriesChart(categoriesEl, categoriesData);
+    } catch(e){ console.warn("[analytics] categorías chart falló:", e); }
+  }
 }
 
 // ════════════════════════════════════════════════════════════

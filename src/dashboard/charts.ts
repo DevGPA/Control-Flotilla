@@ -5,12 +5,25 @@
 // ECharts para permitir .resize() o .dispose() desde el caller.
 
 import * as echarts from "echarts/core";
-import { PieChart } from "echarts/charts";
-import { TooltipComponent, LegendComponent, TitleComponent } from "echarts/components";
+import { PieChart, BarChart } from "echarts/charts";
+import {
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent,
+  GridComponent,
+} from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange } from "./chartTheme";
 
-echarts.use([PieChart, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer]);
+echarts.use([
+  PieChart,
+  BarChart,
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent,
+  GridComponent,
+  CanvasRenderer,
+]);
 
 export type DonutSegment = {
   /** Clave estable usada en onSegmentClick — independiente del label. */
@@ -68,6 +81,221 @@ export function renderDonut(
   };
 
   return chart;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SUCURSALES BAR (horizontal stacked)
+// ═══════════════════════════════════════════════════════════════════
+
+export type BranchStat = {
+  branch: string;
+  urgente: number;
+  revisar: number;
+  operativa: number;
+};
+
+export function renderBranchesBar(
+  container: HTMLElement,
+  data: BranchStat[],
+  handlers: { onBranchClick?: (branch: string) => void } = {},
+): echarts.ECharts {
+  const existing = echarts.getInstanceByDom(container);
+  if (existing) existing.dispose();
+
+  const chart = echarts.init(container, null, { renderer: "canvas" });
+  chart.setOption(buildBranchesOption(data));
+
+  chart.on("click", "series", (params) => {
+    if (!handlers.onBranchClick) return;
+    const branch = params.name;
+    if (typeof branch === "string") handlers.onBranchClick(branch);
+  });
+
+  const off = onThemeChange(() => chart.setOption(buildBranchesOption(data)));
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(container);
+
+  const origDispose = chart.dispose.bind(chart);
+  chart.dispose = () => {
+    off();
+    ro.disconnect();
+    origDispose();
+  };
+
+  return chart;
+}
+
+function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
+  const p = getTremorPalette();
+  // Sort desc por urgente (peor arriba en horizontal bar = primera en eje Y inverso)
+  const sorted = [...data].sort((a, b) => b.urgente - a.urgente || b.revisar - a.revisar);
+  const branches = sorted.map((d) => d.branch);
+  const urgente = sorted.map((d) => d.urgente);
+  const revisar = sorted.map((d) => d.revisar);
+  const operativa = sorted.map((d) => d.operativa);
+
+  return {
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      backgroundColor: p.bg2,
+      borderColor: p.ln,
+      textStyle: { color: p.text, fontSize: 11 },
+      padding: [8, 12],
+    },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 12,
+      textStyle: { color: p.textSub, fontSize: 10 },
+      icon: "circle",
+    },
+    grid: { left: 8, right: 12, top: 26, bottom: 4, containLabel: true },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: p.textSub, fontSize: 10 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.ln } },
+    },
+    yAxis: {
+      type: "category",
+      data: branches,
+      inverse: true,
+      axisLabel: { color: p.text, fontSize: 10.5, fontWeight: 500 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [
+      {
+        name: "Urgente",
+        type: "bar",
+        stack: "total",
+        data: urgente,
+        itemStyle: { color: p.R, borderRadius: [3, 0, 0, 3] },
+        emphasis: { focus: "series" },
+        cursor: "pointer",
+      },
+      {
+        name: "Revisar",
+        type: "bar",
+        stack: "total",
+        data: revisar,
+        itemStyle: { color: p.A },
+        emphasis: { focus: "series" },
+        cursor: "pointer",
+      },
+      {
+        name: "Operativa",
+        type: "bar",
+        stack: "total",
+        data: operativa,
+        itemStyle: { color: p.G, borderRadius: [0, 3, 3, 0] },
+        emphasis: { focus: "series" },
+        cursor: "pointer",
+      },
+    ],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CATEGORÍAS BAR (grouped by risk level)
+// ═══════════════════════════════════════════════════════════════════
+
+export type CategoryStat = {
+  cat: string;
+  urgente: number;
+  revisar: number;
+  completar: number;
+};
+
+export function renderCategoriesBar(container: HTMLElement, data: CategoryStat[]): echarts.ECharts {
+  const existing = echarts.getInstanceByDom(container);
+  if (existing) existing.dispose();
+
+  const chart = echarts.init(container, null, { renderer: "canvas" });
+  chart.setOption(buildCategoriesOption(data));
+
+  const off = onThemeChange(() => chart.setOption(buildCategoriesOption(data)));
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(container);
+
+  const origDispose = chart.dispose.bind(chart);
+  chart.dispose = () => {
+    off();
+    ro.disconnect();
+    origDispose();
+  };
+
+  return chart;
+}
+
+function buildCategoriesOption(data: CategoryStat[]): echarts.EChartsCoreOption {
+  const p = getTremorPalette();
+  const cats = data.map((d) => d.cat);
+  const urgente = data.map((d) => d.urgente);
+  const revisar = data.map((d) => d.revisar);
+  const completar = data.map((d) => d.completar);
+
+  return {
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      backgroundColor: p.bg2,
+      borderColor: p.ln,
+      textStyle: { color: p.text, fontSize: 11 },
+      padding: [8, 12],
+    },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 12,
+      textStyle: { color: p.textSub, fontSize: 10 },
+      icon: "circle",
+    },
+    grid: { left: 8, right: 12, top: 26, bottom: 4, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: cats,
+      axisLabel: { color: p.text, fontSize: 10, fontWeight: 500, interval: 0 },
+      axisLine: { lineStyle: { color: p.ln } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: p.textSub, fontSize: 10 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.ln } },
+    },
+    series: [
+      {
+        name: "Urgente",
+        type: "bar",
+        data: urgente,
+        itemStyle: { color: p.R, borderRadius: [3, 3, 0, 0] },
+        emphasis: { focus: "series" },
+      },
+      {
+        name: "Revisar",
+        type: "bar",
+        data: revisar,
+        itemStyle: { color: p.A, borderRadius: [3, 3, 0, 0] },
+        emphasis: { focus: "series" },
+      },
+      {
+        name: "Completar",
+        type: "bar",
+        data: completar,
+        itemStyle: { color: p.B, borderRadius: [3, 3, 0, 0] },
+        emphasis: { focus: "series" },
+      },
+    ],
+  };
 }
 
 function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {

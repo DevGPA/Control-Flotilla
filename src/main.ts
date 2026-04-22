@@ -147,11 +147,20 @@ declare global {
     switchPeriodo?: (id: string) => void;
     deletePeriodo?: (id: string) => void;
     renderPeriodoBar?: () => void;
-    /** Dashboard charts — ECharts wrappers (fase A: solo donut). */
+    /** Dashboard charts — ECharts wrappers. */
     renderDonutChart?: (
       el: HTMLElement,
       segments: import("./dashboard/charts").DonutSegment[],
       handlers?: { onSegmentClick?: (key: string) => void },
+    ) => unknown;
+    renderBranchesChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").BranchStat[],
+      handlers?: { onBranchClick?: (branch: string) => void },
+    ) => unknown;
+    renderCategoriesChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").CategoryStat[],
     ) => unknown;
   }
 }
@@ -160,8 +169,10 @@ window.__newRenderAvailable = true;
 window.__appStore = appStore;
 
 // Expose ECharts-backed dashboard widgets al legacy (buildKPIs los usa).
-import("./dashboard/charts").then(({ renderDonut }) => {
+import("./dashboard/charts").then(({ renderDonut, renderBranchesBar, renderCategoriesBar }) => {
   window.renderDonutChart = renderDonut;
+  window.renderBranchesChart = renderBranchesBar;
+  window.renderCategoriesChart = renderCategoriesBar;
 });
 
 // Bridge bidireccional window.* ↔ appStore. Siempre activo para que los
