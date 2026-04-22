@@ -103,6 +103,57 @@ describe("analyzeRow", () => {
     expect(r.F.some((f) => f.text.includes("Póliza de seguro vencida"))).toBe(true);
   });
 
+  it("DOC_KEYS: póliza vencida → cat='Documentos' (no Checklist)", () => {
+    const r = analyzeRow({ "Poliza de seguro vigente": "Si vencida" });
+    const f = r.F.find((f) => f.text.includes("Póliza"));
+    expect(f?.cat).toBe("Documentos");
+  });
+
+  it("DOC_KEYS: tarjeta circulación vencida → cat='Documentos'", () => {
+    const r = analyzeRow({ "Tarjeta de circulacion vigente": "Si vencida" });
+    const f = r.F.find((f) => f.text.includes("Tarjeta"));
+    expect(f?.cat).toBe("Documentos");
+  });
+
+  it("DOC_KEYS: falla NO-documento (claxon) sigue en cat='Checklist'", () => {
+    const r = analyzeRow({ "Bocina del claxon funcionando": "No" });
+    const f = r.F.find((f) => f.text.includes("Claxon"));
+    expect(f?.cat).toBe("Checklist");
+  });
+
+  it("Mantenimiento por fecha: 'Fecha estimada del siguiente servicio' vencida → Urgente", () => {
+    const past = new Date(Date.now() - 5 * 86400000);
+    const dd = String(past.getDate()).padStart(2, "0");
+    const mm = String(past.getMonth() + 1).padStart(2, "0");
+    const yyyy = past.getFullYear();
+    const r = analyzeRow({ "Fecha estimada del siguiente servicio": `${dd}/${mm}/${yyyy}` });
+    expect(r.max).toBe("Urgente");
+    const f = r.F.find((f) => f.cat === "Mantenimiento");
+    expect(f).toBeDefined();
+    expect(f?.text).toContain("VENCIDO");
+    expect(f?.lv).toBe("Urgente");
+  });
+
+  it("Mantenimiento por fecha: próximo <=30 días → Revisar", () => {
+    const soon = new Date(Date.now() + 15 * 86400000);
+    const dd = String(soon.getDate()).padStart(2, "0");
+    const mm = String(soon.getMonth() + 1).padStart(2, "0");
+    const yyyy = soon.getFullYear();
+    const r = analyzeRow({ "Fecha estimada del siguiente servicio": `${dd}/${mm}/${yyyy}` });
+    const f = r.F.find((f) => f.cat === "Mantenimiento");
+    expect(f).toBeDefined();
+    expect(f?.lv).toBe("Revisar");
+  });
+
+  it("Mantenimiento por fecha: >30 días → no dispara finding", () => {
+    const far = new Date(Date.now() + 90 * 86400000);
+    const dd = String(far.getDate()).padStart(2, "0");
+    const mm = String(far.getMonth() + 1).padStart(2, "0");
+    const yyyy = far.getFullYear();
+    const r = analyzeRow({ "Fecha estimada del siguiente servicio": `${dd}/${mm}/${yyyy}` });
+    expect(r.F.some((f) => f.cat === "Mantenimiento")).toBe(false);
+  });
+
   it("BIN_LABELS: usa label friendly, no key crudo", () => {
     const r = analyzeRow({ "Espejo retrovisor en buenas condiciones": "No" });
     expect(r.F.some((f) => f.text === "Espejo retrovisor dañado")).toBe(true);
