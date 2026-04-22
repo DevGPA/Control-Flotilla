@@ -321,6 +321,22 @@ g.inflateBytes=async function(src){
         </div>
         <div id="chart-categories" style="width:100%;height:260px"></div>
       </div>
+      <div class="chart-card" id="chart-card-trend">
+        <div class="chart-card-header">
+          <div class="chart-title">Tendencia por período</div>
+          <div class="chart-hint">% Urgente · Revisar · Operativa</div>
+        </div>
+        <div id="chart-trend" style="width:100%;height:260px"></div>
+        <div id="chart-trend-empty" class="chart-empty" hidden>Carga ≥2 períodos mensuales para ver tendencia histórica.</div>
+      </div>
+      <div class="chart-card" id="chart-card-heatmap">
+        <div class="chart-card-header">
+          <div class="chart-title">Taller · ingresos por día</div>
+          <div class="chart-hint">90 días · hover ver count</div>
+        </div>
+        <div id="chart-heatmap" style="width:100%;height:260px"></div>
+        <div id="chart-heatmap-empty" class="chart-empty" hidden>Sin ingresos a taller registrados en los últimos 90 días.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -2396,6 +2412,68 @@ function buildAnalytics(){
     try {
       window.renderCategoriesChart(categoriesEl, categoriesData);
     } catch(e){ console.warn("[analytics] categorías chart falló:", e); }
+  }
+
+  // ─── Trend histórico: % por periodo mensual cargado.
+  // Requiere ≥ 2 periodos para una línea de tendencia real.
+  const trendEl = document.getElementById("chart-trend");
+  const trendEmpty = document.getElementById("chart-trend-empty");
+  const allPeriodos = Array.isArray(window.periodos) ? window.periodos : [];
+  const hasTrend = allPeriodos.length >= 2;
+  if(trendEl){
+    if(hasTrend && typeof window.renderTrendChart === "function"){
+      trendEl.style.display = "";
+      if(trendEmpty) trendEmpty.hidden = true;
+      const trendData = allPeriodos.map(p => {
+        const us = Array.isArray(p.units) ? p.units : [];
+        let pu=0, pr=0, po=0;
+        for(const u of us){
+          if(u.risk === "Urgente") pu++;
+          else if(u.risk === "Revisar") pr++;
+          else po++;
+        }
+        return { label: p.label || p.id || "—", total: us.length, urgente: pu, revisar: pr, operativa: po };
+      });
+      try { window.renderTrendChart(trendEl, trendData); }
+      catch(e){ console.warn("[analytics] trend chart falló:", e); }
+    } else {
+      trendEl.style.display = "none";
+      if(trendEmpty) trendEmpty.hidden = false;
+    }
+  }
+
+  // ─── Taller heatmap: ingresos por día, 90 días rolling.
+  const heatEl = document.getElementById("chart-heatmap");
+  const heatEmpty = document.getElementById("chart-heatmap-empty");
+  const allTallerEntries = Array.isArray(window.tallerEntries) ? window.tallerEntries : [];
+  if(heatEl){
+    const today0 = new Date(); today0.setHours(0,0,0,0);
+    const cutoff = new Date(today0); cutoff.setDate(cutoff.getDate() - 89);
+    // Normaliza fentrada a YYYY-MM-DD y agrupa counts.
+    const dayMap = new Map();
+    for(const e of allTallerEntries){
+      const raw = String(e.fentrada || "").trim();
+      if(!raw) continue;
+      let iso = null;
+      // DD/MM/YYYY
+      const m1 = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if(m1){ iso = `${m1[3]}-${String(m1[2]).padStart(2,"0")}-${String(m1[1]).padStart(2,"0")}`; }
+      else if(/^\d{4}-\d{2}-\d{2}/.test(raw)){ iso = raw.slice(0,10); }
+      if(!iso) continue;
+      const d = new Date(iso + "T00:00:00");
+      if(isNaN(d.getTime()) || d < cutoff || d > today0) continue;
+      dayMap.set(iso, (dayMap.get(iso) || 0) + 1);
+    }
+    const heatData = Array.from(dayMap.entries()).map(([date, count]) => ({ date, count }));
+    if(heatData.length && typeof window.renderTallerHeatmapChart === "function"){
+      heatEl.style.display = "";
+      if(heatEmpty) heatEmpty.hidden = true;
+      try { window.renderTallerHeatmapChart(heatEl, heatData); }
+      catch(e){ console.warn("[analytics] heatmap falló:", e); }
+    } else {
+      heatEl.style.display = "none";
+      if(heatEmpty) heatEmpty.hidden = false;
+    }
   }
 }
 

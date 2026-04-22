@@ -162,18 +162,36 @@ declare global {
       el: HTMLElement,
       data: import("./dashboard/charts").CategoryStat[],
     ) => unknown;
+    renderTrendChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").PeriodTrend[],
+    ) => unknown;
+    renderTallerHeatmapChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").DayCount[],
+    ) => unknown;
   }
 }
 
 window.__newRenderAvailable = true;
 window.__appStore = appStore;
 
-// Expose ECharts-backed dashboard widgets al legacy (buildKPIs los usa).
-import("./dashboard/charts").then(({ renderDonut, renderBranchesBar, renderCategoriesBar }) => {
-  window.renderDonutChart = renderDonut;
-  window.renderBranchesChart = renderBranchesBar;
-  window.renderCategoriesChart = renderCategoriesBar;
-});
+// Expose ECharts-backed dashboard widgets al legacy (buildKPIs / buildAnalytics).
+import("./dashboard/charts").then(
+  ({
+    renderDonut,
+    renderBranchesBar,
+    renderCategoriesBar,
+    renderTrendLine,
+    renderTallerHeatmap,
+  }) => {
+    window.renderDonutChart = renderDonut;
+    window.renderBranchesChart = renderBranchesBar;
+    window.renderCategoriesChart = renderCategoriesBar;
+    window.renderTrendChart = renderTrendLine;
+    window.renderTallerHeatmapChart = renderTallerHeatmap;
+  },
+);
 
 // Bridge bidireccional window.* ↔ appStore. Siempre activo para que los
 // módulos nuevos puedan leer del store, y el legado siga escribiendo como

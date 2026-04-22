@@ -8,6 +8,7 @@ export type TremorPalette = {
   mode: ThemeMode;
   bg: string;
   bg2: string;
+  bg3: string;
   ln: string;
   text: string;
   textSub: string;
@@ -34,6 +35,7 @@ export function getTremorPalette(): TremorPalette {
     mode: getThemeMode(),
     bg: readVar("--bg"),
     bg2: readVar("--bg2"),
+    bg3: readVar("--bg3"),
     ln: readVar("--ln"),
     text: readVar("--w1"),
     textSub: readVar("--s2"),
