@@ -170,6 +170,10 @@ declare global {
       el: HTMLElement,
       data: import("./dashboard/charts").DayCount[],
     ) => unknown;
+    renderKmScatterChart?: (
+      el: HTMLElement,
+      data: import("./dashboard/charts").KmScatterPoint[],
+    ) => unknown;
   }
 }
 
@@ -184,12 +188,14 @@ import("./dashboard/charts").then(
     renderCategoriesBar,
     renderTrendLine,
     renderTallerHeatmap,
+    renderKmScatter,
   }) => {
     window.renderDonutChart = renderDonut;
     window.renderBranchesChart = renderBranchesBar;
     window.renderCategoriesChart = renderCategoriesBar;
     window.renderTrendChart = renderTrendLine;
     window.renderTallerHeatmapChart = renderTallerHeatmap;
+    window.renderKmScatterChart = renderKmScatter;
   },
 );
 

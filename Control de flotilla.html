@@ -337,6 +337,14 @@ g.inflateBytes=async function(src){
         <div id="chart-heatmap" style="width:100%;height:260px"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>Sin ingresos a taller registrados en los últimos 90 días.</div>
       </div>
+      <div class="chart-card chart-card-wide" id="chart-card-km">
+        <div class="chart-card-header">
+          <div class="chart-title">Km actual vs servicio programado</div>
+          <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
+        </div>
+        <div id="chart-km" style="width:100%;height:320px"></div>
+        <div id="chart-km-empty" class="chart-empty" hidden>Sin unidades con km_actual y km_siguiente_servicio poblados.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -2473,6 +2481,30 @@ function buildAnalytics(){
     } else {
       heatEl.style.display = "none";
       if(heatEmpty) heatEmpty.hidden = false;
+    }
+  }
+
+  // ─── Scatter km actual vs km siguiente servicio (Traccar).
+  // Filtra units que tengan ambos km > 0. Colorea por u.risk.
+  const kmEl = document.getElementById("chart-km");
+  const kmEmpty = document.getElementById("chart-km-empty");
+  if(kmEl){
+    const kmPoints = [];
+    for(const u of units){
+      const kmA = parseFloat(String(u.km||""));
+      const kmN = parseFloat(String(u.kmNextSvc||""));
+      if(!(kmA>0) || !(kmN>0)) continue;
+      const risk = (u.risk === "Urgente" || u.risk === "Revisar" || u.risk === "Completar" || u.risk === "OK") ? u.risk : "OK";
+      kmPoints.push({ km: kmA, kmNext: kmN, label: u.eco || u.plate || u.uid || "—", risk });
+    }
+    if(kmPoints.length && typeof window.renderKmScatterChart === "function"){
+      kmEl.style.display = "";
+      if(kmEmpty) kmEmpty.hidden = true;
+      try { window.renderKmScatterChart(kmEl, kmPoints); }
+      catch(e){ console.warn("[analytics] km scatter falló:", e); }
+    } else {
+      kmEl.style.display = "none";
+      if(kmEmpty) kmEmpty.hidden = false;
     }
   }
 }

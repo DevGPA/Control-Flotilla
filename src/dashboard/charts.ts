@@ -5,7 +5,8 @@
 // ECharts para permitir .resize() o .dispose() desde el caller.
 
 import * as echarts from "echarts/core";
-import { PieChart, BarChart, LineChart, HeatmapChart } from "echarts/charts";
+import { PieChart, BarChart, LineChart, HeatmapChart, ScatterChart } from "echarts/charts";
+import { MarkLineComponent } from "echarts/components";
 import {
   TooltipComponent,
   LegendComponent,
@@ -22,12 +23,14 @@ echarts.use([
   BarChart,
   LineChart,
   HeatmapChart,
+  ScatterChart,
   TooltipComponent,
   LegendComponent,
   TitleComponent,
   GridComponent,
   CalendarComponent,
   VisualMapComponent,
+  MarkLineComponent,
   CanvasRenderer,
 ]);
 
@@ -572,5 +575,150 @@ function buildHeatmapOption(data: DayCount[]): echarts.EChartsCoreOption {
         data: values,
       },
     ],
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  KM vs SERVICIO SCATTER — Traccar-style predictive visual
+// ═══════════════════════════════════════════════════════════════════
+
+export type KmScatterPoint = {
+  /** Kilometraje actual de la unidad. */
+  km: number;
+  /** Kilometraje del siguiente servicio programado. */
+  kmNext: number;
+  /** Identificador legible (ECO o placa). */
+  label: string;
+  /** Nivel de riesgo actual — dicta color del punto. */
+  risk: "Urgente" | "Revisar" | "Completar" | "OK";
+};
+
+export function renderKmScatter(container: HTMLElement, data: KmScatterPoint[]): echarts.ECharts {
+  const existing = echarts.getInstanceByDom(container);
+  if (existing) existing.dispose();
+
+  const chart = echarts.init(container, null, { renderer: "canvas" });
+  chart.setOption(buildKmScatterOption(data));
+
+  const off = onThemeChange(() => chart.setOption(buildKmScatterOption(data)));
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(container);
+
+  const origDispose = chart.dispose.bind(chart);
+  chart.dispose = () => {
+    off();
+    ro.disconnect();
+    origDispose();
+  };
+
+  return chart;
+}
+
+function buildKmScatterOption(data: KmScatterPoint[]): echarts.EChartsCoreOption {
+  const p = getTremorPalette();
+  const byRisk = {
+    Urgente: { color: p.R, points: [] as [number, number, string][] },
+    Revisar: { color: p.A, points: [] as [number, number, string][] },
+    Completar: { color: p.B, points: [] as [number, number, string][] },
+    OK: { color: p.G, points: [] as [number, number, string][] },
+  };
+  for (const d of data) {
+    byRisk[d.risk].points.push([d.km, d.kmNext, d.label]);
+  }
+
+  const maxKm = data.reduce((m, d) => Math.max(m, d.km, d.kmNext), 0);
+  const axisMax = maxKm > 0 ? Math.ceil((maxKm * 1.1) / 1000) * 1000 : 100000;
+
+  return {
+    tooltip: {
+      trigger: "item",
+      backgroundColor: p.bg2,
+      borderColor: p.ln,
+      textStyle: { color: p.text, fontSize: 11 },
+      padding: [8, 12],
+      formatter: (params: unknown) => {
+        const pp = params as { seriesName: string; value: [number, number, string] };
+        const [km, kmNext, label] = pp.value;
+        const diff = kmNext - km;
+        const diffStr =
+          diff <= 0
+            ? `<span style="color:${p.R}"><b>VENCIDO</b> ${Math.abs(diff).toLocaleString("es-MX")}km</span>`
+            : `<span style="color:${p.G}">${diff.toLocaleString("es-MX")}km restantes</span>`;
+        return `<b>${label}</b><br/>${pp.seriesName}<br/>Actual: ${km.toLocaleString("es-MX")}km<br/>Siguiente: ${kmNext.toLocaleString("es-MX")}km<br/>${diffStr}`;
+      },
+    },
+    legend: {
+      top: 0,
+      right: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 12,
+      textStyle: { color: p.textSub, fontSize: 10 },
+      icon: "circle",
+    },
+    grid: { left: 8, right: 12, top: 26, bottom: 24, containLabel: true },
+    xAxis: {
+      type: "value",
+      name: "Km actual",
+      nameLocation: "middle",
+      nameGap: 28,
+      nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
+      min: 0,
+      max: axisMax,
+      axisLabel: {
+        color: p.textSub,
+        fontSize: 10,
+        formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
+      },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.ln } },
+    },
+    yAxis: {
+      type: "value",
+      name: "Km siguiente servicio",
+      nameLocation: "middle",
+      nameGap: 46,
+      nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
+      min: 0,
+      max: axisMax,
+      axisLabel: {
+        color: p.textSub,
+        fontSize: 10,
+        formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
+      },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.ln } },
+    },
+    series: (Object.keys(byRisk) as Array<keyof typeof byRisk>).map((risk, idx) => {
+      const s = byRisk[risk];
+      const base: Record<string, unknown> = {
+        name: risk,
+        type: "scatter",
+        data: s.points,
+        itemStyle: { color: s.color, opacity: 0.85 },
+        symbolSize: 9,
+        emphasis: { itemStyle: { opacity: 1, borderColor: p.bg, borderWidth: 2 } },
+      };
+      if (idx === 0) {
+        // MarkLine diagonal y=x — linea de "servicio vigente".
+        // Puntos DEBAJO = km_actual > km_siguiente = VENCIDO.
+        base.markLine = {
+          symbol: "none",
+          silent: true,
+          animation: false,
+          lineStyle: { color: p.textSub, type: "dashed", width: 1.2, opacity: 0.6 },
+          label: {
+            color: p.textSub,
+            fontSize: 9,
+            position: "end",
+            formatter: "Servicio vigente",
+          },
+          data: [[{ coord: [0, 0] }, { coord: [axisMax, axisMax] }]],
+        };
+      }
+      return base;
+    }),
   };
 }
