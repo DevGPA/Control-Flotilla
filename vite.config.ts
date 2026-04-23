@@ -6,13 +6,17 @@ import { resolve } from "node:path";
 // Valida que los iconos referenciados en el manifest PWA existan en public/.
 // Si falta alguno, falla el build con mensaje claro en lugar de producir un manifest roto
 // que rompería "Add to Home Screen" silenciosamente en producción.
-const PWA_ICONS = ["icon-192.png", "icon-512.png", "favicon.svg"];
+// Post-fix (2026-04-23): se unificó a un solo favicon.svg con type="image/svg+xml" y
+// sizes="any" — modern PWA spec lo acepta para todos los tamaños. Si en el futuro se
+// requiere soporte iOS home-screen legacy, añadir icon-180.png y listarla aquí.
+const PWA_ICONS = ["favicon.svg"];
 const verifyPwaIcons = {
   name: "verify-pwa-icons",
   buildStart() {
     const missing = PWA_ICONS.filter((f) => !existsSync(resolve("public", f)));
     if (missing.length) {
-      const msg = `PWA manifest referencia iconos inexistentes en public/: ${missing.join(", ")}. ` +
+      const msg =
+        `PWA manifest referencia iconos inexistentes en public/: ${missing.join(", ")}. ` +
         `Genera o copia los archivos antes de build, o actualiza vite.config.ts.`;
       this.warn(msg);
     }
@@ -63,8 +67,12 @@ export default defineConfig({
         display: "standalone",
         start_url: "./",
         icons: [
-          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icon-512.png", sizes: "512x512", type: "image/png" },
+          {
+            src: "favicon.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "any maskable",
+          },
         ],
       },
       workbox: {
