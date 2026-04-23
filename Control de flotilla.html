@@ -1101,8 +1101,9 @@ async function clearStoredData(){
   await dbClear("checklist");
   await dbClear("taller");
   clearWeeklyUrlCache();
-  // Limpiar caches de blob URLs de fotos manuales
-  for(const k in manualUrlCache){URL.revokeObjectURL(manualUrlCache[k]);delete manualUrlCache[k];}
+  // Limpiar caches de blob URLs de fotos manuales (Map API — audit #29)
+  for(const url of manualUrlCache.values()) URL.revokeObjectURL(url);
+  manualUrlCache.clear();
   weeklyZipImgs = {}; weeklyHasZip = false;
   periodos = []; activePeriodoId = null;
   weeklyPeriodos = []; activeWeeklyPeriodoId = null;
@@ -1548,18 +1549,21 @@ let swSortCol="risk",swSortDir=-1; // ordenamiento: urgentes primero por default
 // Fotos semanales — independientes del mensual (zipImgs)
 let weeklyZipImgs={};          // {fname: Uint8Array} — última sesión de ZIP semanal
 let weeklyHasZip=false;
-const weeklyUrlCache={};       // {fname: blobUrl} — cache de URLs para evitar fugas
+const weeklyUrlCache=new Map(); // fname → blobUrl. Map > plain obj: .clear() atómico,
+                                //                   .values() iterator explícito, audit #29.
 
 function clearWeeklyUrlCache(){
-  for(const k in weeklyUrlCache){URL.revokeObjectURL(weeklyUrlCache[k]);delete weeklyUrlCache[k];}
+  for(const url of weeklyUrlCache.values()) URL.revokeObjectURL(url);
+  weeklyUrlCache.clear();
 }
 function weeklyImgUrl(fname){
   if(!fname) return null;
   const k=fname.toLowerCase();
-  if(weeklyUrlCache[k]) return weeklyUrlCache[k];
+  const cached=weeklyUrlCache.get(k);
+  if(cached) return cached;
   if(weeklyZipImgs[k]){
     const url=URL.createObjectURL(new Blob([weeklyZipImgs[k]],{type:"image/jpeg"}));
-    weeklyUrlCache[k]=url; return url;
+    weeklyUrlCache.set(k, url); return url;
   }
   return null;
 }
@@ -1613,16 +1617,19 @@ window.addEventListener("DOMContentLoaded", () => {
 // ════════════════════════════════════════════════════════════
 // FILE INPUT WIRING
 // ════════════════════════════════════════════════════════════
-document.getElementById("xinput").onchange=e=>doExcel(e.target.files[0]);
-document.getElementById("zinput").onchange=e=>doZip(e.target.files[0],"mensual");
+// Event wiring — addEventListener consistente (audit #27).
+// Antes: mezcla de .onchange/.ondrag/etc. sobrescribía cualquier handler previo.
+// addEventListener compone múltiples listeners si hiciera falta y explicita intent.
+document.getElementById("xinput").addEventListener("change", e => doExcel(e.target.files[0]));
+document.getElementById("zinput").addEventListener("change", e => doZip(e.target.files[0], "mensual"));
 const dcard=document.getElementById("dcard");
-dcard.ondragover=e=>{e.preventDefault();dcard.classList.add("ov")};
-dcard.ondragleave=()=>dcard.classList.remove("ov");
-dcard.ondrop=e=>{
-  e.preventDefault();dcard.classList.remove("ov");
-  const f=e.dataTransfer.files[0];if(!f)return;
-  f.name.toLowerCase().endsWith(".zip")?doZip(f,"mensual"):doExcel(f);
-};
+dcard.addEventListener("dragover", e => { e.preventDefault(); dcard.classList.add("ov"); });
+dcard.addEventListener("dragleave", () => dcard.classList.remove("ov"));
+dcard.addEventListener("drop", e => {
+  e.preventDefault(); dcard.classList.remove("ov");
+  const f=e.dataTransfer.files[0]; if(!f) return;
+  f.name.toLowerCase().endsWith(".zip") ? doZip(f,"mensual") : doExcel(f);
+});
 
 function showLoader(t="Procesando…"){
   document.getElementById("dz").style.display="none";
@@ -2187,22 +2194,21 @@ async function loadWB(wb,fname){
 // ════════════════════════════════════════════════════════════
 // IMAGE HELPERS & LAZY LOADING
 // ════════════════════════════════════════════════════════════
-const urlCache={};
+const urlCache=new Map(); // fname → blobUrl (audit #29: Map vs plain obj)
 function clearUrlCache(){
-  console.log(`[Cache] Liberando ${Object.keys(urlCache).length} URLs de imagen...`);
-  for(const k in urlCache){
-    if(urlCache[k]) URL.revokeObjectURL(urlCache[k]);
-    delete urlCache[k];
-  }
+  console.log(`[Cache] Liberando ${urlCache.size} URLs de imagen...`);
+  for(const url of urlCache.values()) URL.revokeObjectURL(url);
+  urlCache.clear();
 }
 function imgUrl(fname){
   if(!fname)return null;
   const k=fname.toLowerCase();
-  if(urlCache[k])return urlCache[k];
+  const cached=urlCache.get(k);
+  if(cached)return cached;
   if(zipImgs && zipImgs[k]){
     try {
       const url=URL.createObjectURL(new Blob([zipImgs[k]],{type:"image/jpeg"}));
-      urlCache[k]=url;
+      urlCache.set(k, url);
       return url;
     } catch(e) {
       console.error("[imgUrl] Error creando Blob URL:", k, e);
@@ -3103,7 +3109,7 @@ async function loadManualPhotos(){
 async function addManualPhoto(uid){
   const input=document.createElement("input");
   input.type="file";input.accept="image/*";input.multiple=true;
-  input.onchange=async()=>{
+  input.addEventListener("change", async () => {
     const files=Array.from(input.files);
     if(!files.length)return;
     const db=await openDB();
@@ -3113,11 +3119,13 @@ async function addManualPhoto(uid){
       const id="manual_"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
       const entry={uid,label:file.name.replace(/\.[^.]+$/,""),data:new Uint8Array(buf)};
       const tx=db.transaction("images","readwrite");
+      tx.onerror=()=>{console.error("[addManualPhoto] tx error:",tx.error);window.notify?.("Error guardando foto manual","error");};
+      tx.onabort=()=>{console.error("[addManualPhoto] tx abort:",tx.error);window.notify?.("Guardado de foto abortado","error");};
       tx.objectStore("images").put(entry,id);
       manualPhotosDB[uid].push({id,fname:id,label:entry.label,data:entry.data});
     }
     renderDet();
-  };
+  });
   input.click();
 }
 
@@ -3125,17 +3133,23 @@ async function deleteManualPhoto(uid,photoId){
   if(!confirm("Eliminar esta foto?"))return;
   const db=await openDB();
   const tx=db.transaction("images","readwrite");
+  tx.onerror=()=>{console.error("[deleteManualPhoto] tx error:",tx.error);window.notify?.("Error eliminando foto","error");};
+  tx.onabort=()=>{console.error("[deleteManualPhoto] tx abort:",tx.error);};
   tx.objectStore("images").delete(photoId);
   if(manualPhotosDB[uid]) manualPhotosDB[uid]=manualPhotosDB[uid].filter(p=>p.id!==photoId);
-  if(manualUrlCache[photoId]){URL.revokeObjectURL(manualUrlCache[photoId]);delete manualUrlCache[photoId];}
+  const cached=manualUrlCache.get(photoId);
+  if(cached){URL.revokeObjectURL(cached);manualUrlCache.delete(photoId);}
   renderDet();
 }
 
-const manualUrlCache={};
+const manualUrlCache=new Map(); // photoId → blobUrl (audit #29)
 function manualPhotoUrl(photoData, cacheKey){
-  if(cacheKey && manualUrlCache[cacheKey]) return manualUrlCache[cacheKey];
+  if(cacheKey){
+    const c=manualUrlCache.get(cacheKey);
+    if(c) return c;
+  }
   const url=URL.createObjectURL(new Blob([photoData],{type:"image/jpeg"}));
-  if(cacheKey) manualUrlCache[cacheKey]=url;
+  if(cacheKey) manualUrlCache.set(cacheKey, url);
   return url;
 }
 
