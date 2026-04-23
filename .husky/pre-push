@@ -7,6 +7,9 @@
 #
 # Remover cuando billing se resuelva y workflow_dispatch vuelva a push auto.
 
+# Ensure node+npm en PATH (git hooks Windows MSYS pierden PATH user).
+export PATH="/c/Program Files/nodejs:$PATH"
+
 set -e
 
 echo "→ [1/4] Typecheck (tsc --noEmit)..."

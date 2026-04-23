@@ -1,1 +1,4 @@
+#!/usr/bin/env sh
+# Ensure node+npm en PATH (git hooks Windows MSYS pierden PATH user).
+export PATH="/c/Program Files/nodejs:$PATH"
 npx lint-staged
