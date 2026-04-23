@@ -3,7 +3,11 @@ import * as XLSX from "xlsx";
 import { ExcelLoadError, loadExcel } from "../src/io/excelLoader";
 
 // ─── Helper: construye un XLSX mínimo en memoria ───────────────
-function buildXlsx(headers: string[], rows: Array<Record<string, unknown>>, sheetName = "Hoja1"): Blob {
+function buildXlsx(
+  headers: string[],
+  rows: Array<Record<string, unknown>>,
+  sheetName = "Hoja1",
+): Blob {
   const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -24,7 +28,7 @@ describe("loadExcel", () => {
     expect(r.filename).toBe("Control Vehicular Mensual.xlsx");
     expect(r.sheetName).toBe("Hoja1");
     expect(r.rowCount).toBe(1);
-    expect(r.rows[0].Eco).toBe("A-117");
+    expect(r.rows[0]!.Eco).toBe("A-117");
   });
 
   it("clasifica como 'semanal' cuando headers tienen ≥3 señales y exclusiva", async () => {
@@ -34,17 +38,14 @@ describe("loadExcel", () => {
       "Nombre de quien verifica",
       "Kilometraje al momento",
     ];
-    const blob = buildXlsx(
-      headers,
-      [
-        {
-          "Llanta de refaccion funcional": "Si",
-          "Carroceria con golpes": "No",
-          "Nombre de quien verifica": "Juan",
-          "Kilometraje al momento": 45000,
-        },
-      ],
-    );
+    const blob = buildXlsx(headers, [
+      {
+        "Llanta de refaccion funcional": "Si",
+        "Carroceria con golpes": "No",
+        "Nombre de quien verifica": "Juan",
+        "Kilometraje al momento": 45000,
+      },
+    ]);
     const r = await loadExcel(blob, "Export-sin-nombre-claro.xlsx");
     expect(r.kind).toBe("semanal");
     expect(r.headers).toEqual(headers);

@@ -22,8 +22,8 @@ describe("Store", () => {
     s.set("count", 5);
     expect(s.get("count")).toBe(5);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener.mock.calls[0][0].count).toBe(5);
-    expect(listener.mock.calls[0][1].count).toBe(0);
+    expect(listener.mock.calls[0]![0].count).toBe(5);
+    expect(listener.mock.calls[0]![1].count).toBe(0);
   });
 
   it("set con mismo valor NO emite (optimización referencial)", () => {
@@ -156,9 +156,11 @@ describe("AppState store + bindLegacyWindow", () => {
   it("bindLegacyWindow: window.units = [...] sincroniza al store", async () => {
     const { appStore, bindLegacyWindow } = await import("../src/state/appState");
     unbind = bindLegacyWindow();
-    (window as unknown as { units: unknown[] }).units = [{ uid: "u1", risk: "OK", F: [], T: {}, minT: null }];
+    (window as unknown as { units: unknown[] }).units = [
+      { uid: "u1", risk: "OK", F: [], T: {}, minT: null },
+    ];
     expect(appStore.get("units")).toHaveLength(1);
-    expect(appStore.get("units")[0].uid).toBe("u1");
+    expect(appStore.get("units")[0]!.uid).toBe("u1");
     unbind();
   });
 

@@ -37,7 +37,7 @@ describe("renderService", () => {
     renderService(c, { unit: makeUnit({ obs: "revisión general" }) });
     const cards = c.querySelectorAll(".obscard");
     expect(cards).toHaveLength(1);
-    expect(cards[0].textContent).toContain("revisión general");
+    expect(cards[0]!.textContent).toContain("revisión general");
     // Sin badge de count
     expect(c.querySelector(".obscard-hdr")).toBeNull();
   });
@@ -122,9 +122,18 @@ describe("renderService", () => {
   it("weekly cross-ref: ordena descendente por periodo label", () => {
     const c = setupContainer();
     const periodos: WeeklyPeriodo[] = [
-      { label: "Enero 2026", entries: [{ uid: "u1", fecha: "2026-01-15", aceiteRisk: "OK", radiadorRisk: "OK" }] },
-      { label: "Marzo 2026", entries: [{ uid: "u1", fecha: "2026-03-15", aceiteRisk: "OK", radiadorRisk: "OK" }] },
-      { label: "Febrero 2026", entries: [{ uid: "u1", fecha: "2026-02-15", aceiteRisk: "OK", radiadorRisk: "OK" }] },
+      {
+        label: "Enero 2026",
+        entries: [{ uid: "u1", fecha: "2026-01-15", aceiteRisk: "OK", radiadorRisk: "OK" }],
+      },
+      {
+        label: "Marzo 2026",
+        entries: [{ uid: "u1", fecha: "2026-03-15", aceiteRisk: "OK", radiadorRisk: "OK" }],
+      },
+      {
+        label: "Febrero 2026",
+        entries: [{ uid: "u1", fecha: "2026-02-15", aceiteRisk: "OK", radiadorRisk: "OK" }],
+      },
     ];
     renderService(c, { unit: makeUnit(), weeklyPeriodos: periodos });
     expect(c.textContent).toContain("Marzo 2026");

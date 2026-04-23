@@ -38,7 +38,16 @@ describe("effRisk", () => {
     expect(effRisk(mkE({ aceiteRisk: "OK", radiadorRisk: "OK" }))).toBe("OK");
   });
   it("carroceria/llanta se ignoran", () => {
-    expect(effRisk(mkE({ aceiteRisk: "OK", radiadorRisk: "OK", carroceriaRisk: "Urgente", llantaRisk: "Revisar" }))).toBe("OK");
+    expect(
+      effRisk(
+        mkE({
+          aceiteRisk: "OK",
+          radiadorRisk: "OK",
+          carroceriaRisk: "Urgente",
+          llantaRisk: "Revisar",
+        }),
+      ),
+    ).toBe("OK");
   });
   it("undefined → OK", () => expect(effRisk(undefined)).toBe("OK"));
 });
@@ -71,7 +80,12 @@ describe("buildKpisFromEntries", () => {
 
   it("desglose por tipo de risk (aceite/radiador/carroceria/llanta)", () => {
     const e: WeeklyEntry[] = [
-      mkE({ aceiteRisk: "Urgente", radiadorRisk: "Revisar", carroceriaRisk: "Revisar", llantaRisk: "Revisar" }),
+      mkE({
+        aceiteRisk: "Urgente",
+        radiadorRisk: "Revisar",
+        carroceriaRisk: "Revisar",
+        llantaRisk: "Revisar",
+      }),
       mkE({ aceiteRisk: "Revisar", radiadorRisk: "Urgente", carroceriaRisk: "Urgente" }),
     ];
     const k = buildKpisFromEntries(e);
@@ -119,13 +133,15 @@ describe("applyWeeklyFilters", () => {
     mkE({ uid: "3", eco: "C-300", branch: "Norte", aceiteRisk: "OK" }),
   ];
   it("sin filtros → todas", () => expect(applyWeeklyFilters(e)).toHaveLength(3));
-  it("riskFilter Urgente → 1", () => expect(applyWeeklyFilters(e, { riskFilter: "Urgente" })).toHaveLength(1));
-  it("sucursal Norte → 2", () => expect(applyWeeklyFilters(e, { sucursal: "Norte" })).toHaveLength(2));
+  it("riskFilter Urgente → 1", () =>
+    expect(applyWeeklyFilters(e, { riskFilter: "Urgente" })).toHaveLength(1));
+  it("sucursal Norte → 2", () =>
+    expect(applyWeeklyFilters(e, { sucursal: "Norte" })).toHaveLength(2));
   it("search por eco", () => expect(applyWeeklyFilters(e, { search: "B-200" })).toHaveLength(1));
   it("combinados", () => {
     const r = applyWeeklyFilters(e, { sucursal: "Norte", riskFilter: "OK" });
     expect(r).toHaveLength(1);
-    expect(r[0].eco).toBe("C-300");
+    expect(r[0]!.eco).toBe("C-300");
   });
   it("'all' sentinel ignora filtro", () => {
     expect(applyWeeklyFilters(e, { sucursal: "all", riskFilter: "all" })).toHaveLength(3);
@@ -134,17 +150,17 @@ describe("applyWeeklyFilters", () => {
 
 describe("uniqueWeeklySucursales", () => {
   it("únicas ordenadas alfabético es", () => {
-    const e: WeeklyEntry[] = [mkE({ branch: "Zona" }), mkE({ branch: "Alpha" }), mkE({ branch: "Mitad" })];
+    const e: WeeklyEntry[] = [
+      mkE({ branch: "Zona" }),
+      mkE({ branch: "Alpha" }),
+      mkE({ branch: "Mitad" }),
+    ];
     expect(uniqueWeeklySucursales(e)).toEqual(["Alpha", "Mitad", "Zona"]);
   });
 });
 
 describe("sortPeriodos / latestPeriodo / findPeriodo", () => {
-  const periodos: WeeklyPeriodo[] = [
-    mkP("2026-W15"),
-    mkP("2026-W10"),
-    mkP("2026-W20"),
-  ];
+  const periodos: WeeklyPeriodo[] = [mkP("2026-W15"), mkP("2026-W10"), mkP("2026-W20")];
   it("sort ascendente por id", () => {
     expect(sortPeriodos(periodos).map((p) => p.id)).toEqual(["2026-W10", "2026-W15", "2026-W20"]);
   });

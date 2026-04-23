@@ -33,18 +33,21 @@ describe("computeDiff", () => {
   ];
 
   it("detecta nuevos findings", () => {
-    const cur: Finding[] = [...prev, { cat: "Documentos", text: "tarjeta vencida", lv: "Completar" }];
+    const cur: Finding[] = [
+      ...prev,
+      { cat: "Documentos", text: "tarjeta vencida", lv: "Completar" },
+    ];
     const d = computeDiff(cur, prev, "Marzo");
     expect(d.newFails).toHaveLength(1);
-    expect(d.newFails[0].item).toBe("tarjeta vencida");
-    expect(d.newFails[0].lv).toBe("Completar");
+    expect(d.newFails[0]!.item).toBe("tarjeta vencida");
+    expect(d.newFails[0]!.lv).toBe("Completar");
   });
 
   it("detecta resueltos", () => {
     const cur: Finding[] = prev.slice(0, 2); // quitado "asientos"
     const d = computeDiff(cur, prev, "Marzo");
     expect(d.resolved).toHaveLength(1);
-    expect(d.resolved[0].item).toBe("asientos");
+    expect(d.resolved[0]!.item).toBe("asientos");
   });
 
   it("detecta empeorados", () => {
@@ -53,18 +56,16 @@ describe("computeDiff", () => {
     );
     const d = computeDiff(cur, prev, "Marzo");
     expect(d.worsened).toHaveLength(1);
-    expect(d.worsened[0].item).toBe("aceite bajo");
-    expect(d.worsened[0].from).toBe("Revisar");
-    expect(d.worsened[0].to).toBe("Urgente");
+    expect(d.worsened[0]!.item).toBe("aceite bajo");
+    expect(d.worsened[0]!.from).toBe("Revisar");
+    expect(d.worsened[0]!.to).toBe("Urgente");
   });
 
   it("detecta mejorados", () => {
-    const cur: Finding[] = prev.map((f) =>
-      f.text === "piloto 3mm" ? { ...f, lv: "Revisar" } : f,
-    );
+    const cur: Finding[] = prev.map((f) => (f.text === "piloto 3mm" ? { ...f, lv: "Revisar" } : f));
     const d = computeDiff(cur, prev, "Marzo");
     expect(d.improved).toHaveLength(1);
-    expect(d.improved[0].item).toBe("piloto 3mm");
+    expect(d.improved[0]!.item).toBe("piloto 3mm");
   });
 
   it("sin cambios → diff vacío", () => {
@@ -178,7 +179,9 @@ describe("renderChecklist", () => {
       ],
     });
     renderChecklist(c, { unit: u });
-    const items = [...c.querySelectorAll(".ck-item")].map((i) => i.textContent?.replace(/[✓]/g, "").trim());
+    const items = [...c.querySelectorAll(".ck-item")].map((i) =>
+      i.textContent?.replace(/[✓]/g, "").trim(),
+    );
     expect(items).toEqual(["urg1", "rev1", "comp1"]);
   });
 

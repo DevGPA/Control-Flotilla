@@ -58,8 +58,8 @@ describe("buildHistorialRows", () => {
       mk({ id: "a3", unitKey: "U1", estado: "Listo" }),
     ]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].closedCount).toBe(2);
-    expect(rows[0].entries).toHaveLength(3);
+    expect(rows[0]!.closedCount).toBe(2);
+    expect(rows[0]!.entries).toHaveLength(3);
   });
 
   it("omite unidades sin ingresos cerrados", () => {
@@ -68,7 +68,7 @@ describe("buildHistorialRows", () => {
       mk({ id: "a2", unitKey: "U2", estado: "Finalizado" }),
     ]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].unitKey).toBe("U2");
+    expect(rows[0]!.unitKey).toBe("U2");
   });
 
   it("suma gastos solo de cerradas", () => {
@@ -77,64 +77,120 @@ describe("buildHistorialRows", () => {
       mk({ id: "a2", unitKey: "U1", estado: "Finalizado", gastoRef: 50, gastoMO: 50 }),
       mk({ id: "a3", unitKey: "U1", estado: "Reparando", gastoRef: 999, gastoMO: 999 }),
     ]);
-    expect(rows[0].totalGasto).toBe(400);
-    expect(rows[0].totalGastoRef).toBe(150);
-    expect(rows[0].totalGastoMO).toBe(250);
+    expect(rows[0]!.totalGasto).toBe(400);
+    expect(rows[0]!.totalGastoRef).toBe(150);
+    expect(rows[0]!.totalGastoMO).toBe(250);
   });
 
   it("usa e.gasto como fallback si no hay gastoRef/gastoMO", () => {
     const rows = buildHistorialRows([
       mk({ id: "a1", unitKey: "U1", estado: "Finalizado", gastoRef: 0, gastoMO: 0, gasto: 777 }),
     ]);
-    expect(rows[0].totalGasto).toBe(777);
+    expect(rows[0]!.totalGasto).toBe(777);
   });
 
   it("filtro desde descarta cerradas anteriores", () => {
     const rows = buildHistorialRows(
       [
-        mk({ id: "a1", unitKey: "U1", estado: "Finalizado", fentrada: "2026-03-01", gastoRef: 100, gastoMO: 0 }),
-        mk({ id: "a2", unitKey: "U1", estado: "Finalizado", fentrada: "2026-04-15", gastoRef: 200, gastoMO: 0 }),
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-03-01",
+          gastoRef: 100,
+          gastoMO: 0,
+        }),
+        mk({
+          id: "a2",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-04-15",
+          gastoRef: 200,
+          gastoMO: 0,
+        }),
       ],
       { desde: "2026-04-01" },
     );
-    expect(rows[0].closedCount).toBe(1);
-    expect(rows[0].totalGasto).toBe(200);
+    expect(rows[0]!.closedCount).toBe(1);
+    expect(rows[0]!.totalGasto).toBe(200);
   });
 
   it("filtro hasta descarta cerradas posteriores", () => {
     const rows = buildHistorialRows(
       [
-        mk({ id: "a1", unitKey: "U1", estado: "Finalizado", fentrada: "2026-03-01", gastoRef: 100, gastoMO: 0 }),
-        mk({ id: "a2", unitKey: "U1", estado: "Finalizado", fentrada: "2026-05-15", gastoRef: 200, gastoMO: 0 }),
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-03-01",
+          gastoRef: 100,
+          gastoMO: 0,
+        }),
+        mk({
+          id: "a2",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-05-15",
+          gastoRef: 200,
+          gastoMO: 0,
+        }),
       ],
       { hasta: "2026-04-01" },
     );
-    expect(rows[0].closedCount).toBe(1);
-    expect(rows[0].totalGasto).toBe(100);
+    expect(rows[0]!.closedCount).toBe(1);
+    expect(rows[0]!.totalGasto).toBe(100);
   });
 
   it("filtro tipo descarta cerradas no coincidentes", () => {
     const rows = buildHistorialRows(
       [
-        mk({ id: "a1", unitKey: "U1", estado: "Finalizado", tipo: "Correctivo", gastoRef: 100, gastoMO: 0 }),
-        mk({ id: "a2", unitKey: "U1", estado: "Finalizado", tipo: "Preventivo", gastoRef: 200, gastoMO: 0 }),
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          tipo: "Correctivo",
+          gastoRef: 100,
+          gastoMO: 0,
+        }),
+        mk({
+          id: "a2",
+          unitKey: "U1",
+          estado: "Finalizado",
+          tipo: "Preventivo",
+          gastoRef: 200,
+          gastoMO: 0,
+        }),
       ],
       { tipo: "Preventivo" },
     );
-    expect(rows[0].closedCount).toBe(1);
-    expect(rows[0].totalGasto).toBe(200);
+    expect(rows[0]!.closedCount).toBe(1);
+    expect(rows[0]!.totalGasto).toBe(200);
   });
 
   it("tipo=sin captura cerradas sin campo tipo", () => {
     const rows = buildHistorialRows(
       [
-        mk({ id: "a1", unitKey: "U1", estado: "Finalizado", tipo: undefined, gastoRef: 50, gastoMO: 0 }),
-        mk({ id: "a2", unitKey: "U1", estado: "Finalizado", tipo: "Correctivo", gastoRef: 999, gastoMO: 0 }),
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          tipo: undefined,
+          gastoRef: 50,
+          gastoMO: 0,
+        }),
+        mk({
+          id: "a2",
+          unitKey: "U1",
+          estado: "Finalizado",
+          tipo: "Correctivo",
+          gastoRef: 999,
+          gastoMO: 0,
+        }),
       ],
       { tipo: "sin" },
     );
-    expect(rows[0].closedCount).toBe(1);
-    expect(rows[0].totalGasto).toBe(50);
+    expect(rows[0]!.closedCount).toBe(1);
+    expect(rows[0]!.totalGasto).toBe(50);
   });
 });
 
@@ -144,9 +200,33 @@ describe("buildHistorialRows", () => {
 
 describe("filterAndSortHistorial", () => {
   const base = buildHistorialRows([
-    mk({ id: "a1", unitKey: "U1", eco: "A-101", sucursal: "GDL", plate: "AAA-111", fentrada: "2026-04-10", updatedAt: "2026-04-10T10:00:00Z" }),
-    mk({ id: "b1", unitKey: "U2", eco: "B-202", sucursal: "MTY", plate: "BBB-222", fentrada: "2026-04-15", updatedAt: "2026-04-15T10:00:00Z" }),
-    mk({ id: "c1", unitKey: "U3", eco: "C-303", sucursal: "GDL", plate: "CCC-333", fentrada: "2026-04-05", updatedAt: "2026-04-05T10:00:00Z" }),
+    mk({
+      id: "a1",
+      unitKey: "U1",
+      eco: "A-101",
+      sucursal: "GDL",
+      plate: "AAA-111",
+      fentrada: "2026-04-10",
+      updatedAt: "2026-04-10T10:00:00Z",
+    }),
+    mk({
+      id: "b1",
+      unitKey: "U2",
+      eco: "B-202",
+      sucursal: "MTY",
+      plate: "BBB-222",
+      fentrada: "2026-04-15",
+      updatedAt: "2026-04-15T10:00:00Z",
+    }),
+    mk({
+      id: "c1",
+      unitKey: "U3",
+      eco: "C-303",
+      sucursal: "GDL",
+      plate: "CCC-333",
+      fentrada: "2026-04-05",
+      updatedAt: "2026-04-05T10:00:00Z",
+    }),
   ]);
 
   it("filtro sucursal", () => {
@@ -157,12 +237,12 @@ describe("filterAndSortHistorial", () => {
   it("filtro search por eco", () => {
     const out = filterAndSortHistorial(base, { search: "B-2" }, null, -1);
     expect(out).toHaveLength(1);
-    expect(out[0].latestClosed.eco).toBe("B-202");
+    expect(out[0]!.latestClosed.eco).toBe("B-202");
   });
 
   it("filtro search por plate (case-insensitive)", () => {
     const out = filterAndSortHistorial(base, { search: "ccc" }, null, -1);
-    expect(out[0].latestClosed.eco).toBe("C-303");
+    expect(out[0]!.latestClosed.eco).toBe("C-303");
   });
 
   it("sort fentrada asc", () => {
@@ -177,7 +257,7 @@ describe("filterAndSortHistorial", () => {
 
   it("tie-break por updatedAt desc cuando no hay sortCol", () => {
     const out = filterAndSortHistorial(base, {}, null, -1);
-    expect(out[0].latestClosed.eco).toBe("B-202"); // updatedAt más reciente
+    expect(out[0]!.latestClosed.eco).toBe("B-202"); // updatedAt más reciente
   });
 });
 
@@ -203,14 +283,14 @@ describe("renderHistorial", () => {
     expect(tr).toBeTruthy();
     const tds = tr!.querySelectorAll("td");
     expect(tds.length).toBe(9);
-    expect(tds[0].textContent).toContain("A-117");
-    expect(tds[1].textContent).toContain("ABC-123");
-    expect(tds[2].textContent).toContain("Toyota Hilux");
-    expect(tds[3].textContent).toContain("GDL");
-    expect(tds[5].textContent).toBe("10/04/2026");
-    expect(tds[6].textContent).toContain("12/04/2026");
-    expect(tds[7].textContent).toBe("2d");
-    expect(tds[8].textContent).toContain("$1,500");
+    expect(tds[0]!.textContent).toContain("A-117");
+    expect(tds[1]!.textContent).toContain("ABC-123");
+    expect(tds[2]!.textContent).toContain("Toyota Hilux");
+    expect(tds[3]!.textContent).toContain("GDL");
+    expect(tds[5]!.textContent).toBe("10/04/2026");
+    expect(tds[6]!.textContent).toContain("12/04/2026");
+    expect(tds[7]!.textContent).toBe("2d");
+    expect(tds[8]!.textContent).toContain("$1,500");
   });
 
   it("muestra tag EN TALLER si última entry es activa", () => {
@@ -274,7 +354,7 @@ describe("renderHistorial", () => {
       onSort,
     });
     const ths = thead.querySelectorAll("th");
-    expect(ths[0].textContent).toContain("▲");
+    expect(ths[0]!.textContent).toContain("▲");
     (ths[1] as HTMLElement).click();
     expect(onSort).toHaveBeenCalledWith("plate");
   });
@@ -365,6 +445,7 @@ describe("renderHistorial", () => {
 
   it("reemplaza contenido previo del tbody", () => {
     const { tbody, thead, rcnt } = setup();
+    // eslint-disable-next-line no-restricted-syntax -- test seed, string literal controlado
     tbody.innerHTML = "<tr><td>STALE</td></tr>";
     renderHistorial(tbody, thead, rcnt, {
       entries: [mk({ id: "a1", unitKey: "U1" })],

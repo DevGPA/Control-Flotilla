@@ -101,7 +101,7 @@ describe("createVirtualTable", () => {
       onVisibleRangeChange: onRange,
     });
     expect(onRange).toHaveBeenCalled();
-    const [start, end] = onRange.mock.calls[0];
+    const [start, end] = onRange.mock.calls[0]!;
     expect(start).toBe(0);
     expect(end).toBeGreaterThan(0);
     ctrl.destroy();

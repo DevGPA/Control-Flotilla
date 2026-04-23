@@ -59,7 +59,8 @@ describe("diasEnTaller", () => {
     expect(diasEnTaller(e, today)).toBe(7);
   });
   it("sin fentrada → null", () => expect(diasEnTaller(mk({}))).toBeNull());
-  it("fentrada inválida → null", () => expect(diasEnTaller(mk({ fentrada: "invalid" }))).toBeNull());
+  it("fentrada inválida → null", () =>
+    expect(diasEnTaller(mk({ fentrada: "invalid" }))).toBeNull());
   it("fentrada futura → 0 (max 0)", () => {
     const today = new Date("2026-04-10");
     const e = mk({ fentrada: "2026-04-20" });
@@ -75,7 +76,8 @@ describe("gastoTotal", () => {
 
 describe("matchesSearch", () => {
   it("query vacío → true", () => expect(matchesSearch(mk(), "")).toBe(true));
-  it("matches eco case-insensitive", () => expect(matchesSearch(mk({ eco: "A-117" }), "a-117")).toBe(true));
+  it("matches eco case-insensitive", () =>
+    expect(matchesSearch(mk({ eco: "A-117" }), "a-117")).toBe(true));
   it("matches tildes normalizadas", () => {
     expect(matchesSearch(mk({ comentario: "Reparación" }), "reparacion")).toBe(true);
   });
@@ -95,12 +97,14 @@ describe("applyFilters", () => {
     mk({ id: "3", sucursal: "Norte", area: "Carrocería", tipo: "Correctivo" }),
   ];
   it("sin filtros → todas", () => expect(applyFilters(entries)).toHaveLength(3));
-  it("sucursal 'all' ignora filtro", () => expect(applyFilters(entries, { sucursal: "all" })).toHaveLength(3));
-  it("sucursal Norte → 2", () => expect(applyFilters(entries, { sucursal: "Norte" })).toHaveLength(2));
+  it("sucursal 'all' ignora filtro", () =>
+    expect(applyFilters(entries, { sucursal: "all" })).toHaveLength(3));
+  it("sucursal Norte → 2", () =>
+    expect(applyFilters(entries, { sucursal: "Norte" })).toHaveLength(2));
   it("combinados (Norte + Correctivo) → 1", () => {
     const r = applyFilters(entries, { sucursal: "Norte", tipo: "Correctivo" });
     expect(r).toHaveLength(1);
-    expect(r[0].id).toBe("3");
+    expect(r[0]!.id).toBe("3");
   });
 });
 
@@ -131,8 +135,8 @@ describe("groupByUnit", () => {
   it("dentro del grupo, ordenado desc por fentrada", () => {
     const g = groupByUnit(e);
     const u1 = g.get("U1")!;
-    expect(u1[0].id).toBe("2"); // más reciente
-    expect(u1[1].id).toBe("1");
+    expect(u1[0]!.id).toBe("2"); // más reciente
+    expect(u1[1]!.id).toBe("1");
   });
   it("fallback keys: eco > plate > id", () => {
     const ent: TallerEntry[] = [
@@ -150,9 +154,30 @@ describe("groupByUnit", () => {
 describe("sortEntries", () => {
   const today = new Date("2026-04-17");
   const e: TallerEntry[] = [
-    mk({ id: "1", fentrada: "2026-04-10", gastoRef: 500, gastoMO: 100, eco: "B-200", sucursal: "Sur" }),
-    mk({ id: "2", fentrada: "2026-04-15", gastoRef: 200, gastoMO: 50, eco: "A-117", sucursal: "Norte" }),
-    mk({ id: "3", fentrada: "2026-04-05", gastoRef: 1000, gastoMO: 200, eco: "C-300", sucursal: "Norte" }),
+    mk({
+      id: "1",
+      fentrada: "2026-04-10",
+      gastoRef: 500,
+      gastoMO: 100,
+      eco: "B-200",
+      sucursal: "Sur",
+    }),
+    mk({
+      id: "2",
+      fentrada: "2026-04-15",
+      gastoRef: 200,
+      gastoMO: 50,
+      eco: "A-117",
+      sucursal: "Norte",
+    }),
+    mk({
+      id: "3",
+      fentrada: "2026-04-05",
+      gastoRef: 1000,
+      gastoMO: 200,
+      eco: "C-300",
+      sucursal: "Norte",
+    }),
   ];
   it("sort por fentrada desc", () => {
     const ids = sortEntries(e, "fentrada", "desc").map((x) => x.id);

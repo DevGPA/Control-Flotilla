@@ -71,9 +71,17 @@ export function buildUnitReport(unit: Unit, opts: UnitReportOptions = {}): PdfDo
   const rows: Array<[string, string]> = [
     ["Fecha de inspección", unit.fecha || "—"],
     ["Sucursal", unit.branch || "—"],
-    ["Kilometraje", unit.km !== undefined && unit.km !== "" ? `${Number(unit.km).toLocaleString("es-MX")} km` : "—"],
+    [
+      "Kilometraje",
+      unit.km !== undefined && unit.km !== ""
+        ? `${Number(unit.km).toLocaleString("es-MX")} km`
+        : "—",
+    ],
     ["Próximo servicio", unit.nextSvc || "—"],
-    ["Llanta mínima (TACO)", unit.minT !== null && Number.isFinite(unit.minT) ? `${unit.minT} mm` : "—"],
+    [
+      "Llanta mínima (TACO)",
+      unit.minT !== null && Number.isFinite(unit.minT) ? `${unit.minT} mm` : "—",
+    ],
     ["Refacción disponible", unit.hasRefaccion === false ? "NO" : "Sí"],
   ];
   for (const [label, value] of rows) {
@@ -92,7 +100,7 @@ export function buildUnitReport(unit: Unit, opts: UnitReportOptions = {}): PdfDo
   doc.y += 4;
 
   const dm = checklistDB[unit.uid] || {};
-  const pending = unit.F.filter((f) => !(dm[f.text] && dm[f.text].done));
+  const pending = unit.F.filter((f) => !dm[f.text]?.done);
   if (pending.length === 0) {
     doc.text("Sin hallazgos pendientes. Unidad operativa.", doc.margin, doc.y, {
       size: 9,
@@ -146,11 +154,7 @@ function drawFooter(doc: PdfDoc, generatedAt: Date): void {
     doc.raw.setPage(i);
     doc.raw.setFontSize(7);
     doc.raw.setTextColor(PDF_COLORS.s2);
-    doc.raw.text(
-      `Generado ${generatedAt.toLocaleString("es-MX")}`,
-      doc.margin,
-      doc.size.h - 6,
-    );
+    doc.raw.text(`Generado ${generatedAt.toLocaleString("es-MX")}`, doc.margin, doc.size.h - 6);
     doc.raw.text(`Página ${i} de ${total}`, doc.size.w - doc.margin - 25, doc.size.h - 6);
   }
 }

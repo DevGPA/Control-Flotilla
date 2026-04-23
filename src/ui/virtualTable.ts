@@ -46,7 +46,9 @@ export function createVirtualTable<T>(opts: VirtualTableOptions<T>): Controller<
     viewport.style.transform = `translateY(${first * rowHeight}px)`;
     viewport.replaceChildren();
     for (let i = first; i < last; i++) {
-      const el = renderRow(rows[i], i);
+      const row = rows[i];
+      if (row === undefined) continue;
+      const el = renderRow(row, i);
       el.style.height = `${rowHeight}px`;
       viewport.appendChild(el);
     }

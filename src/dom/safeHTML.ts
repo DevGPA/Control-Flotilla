@@ -24,7 +24,7 @@ export function safeHTML(
   strings: TemplateStringsArray,
   ...values: Array<Primitive | Raw | Array<Primitive | Raw>>
 ): string {
-  let out = strings[0];
+  let out = strings[0] ?? "";
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
     let piece: string;
@@ -32,7 +32,7 @@ export function safeHTML(
     else if (Array.isArray(v)) piece = v.map((x) => (isRaw(x) ? x.__raw : escHtml(x))).join("");
     else if (isRaw(v)) piece = v.__raw;
     else piece = escHtml(v);
-    out += piece + strings[i + 1];
+    out += piece + (strings[i + 1] ?? "");
   }
   return out;
 }

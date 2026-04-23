@@ -171,9 +171,9 @@ describe("renderTable", () => {
     });
     const rows = c.querySelectorAll(".tr");
     expect(rows).toHaveLength(3);
-    expect(rows[0].className).toContain("ru");
-    expect(rows[1].className).toContain("rr");
-    expect(rows[2].className).toContain("ro");
+    expect(rows[0]!.className).toContain("ru");
+    expect(rows[1]!.className).toContain("rr");
+    expect(rows[2]!.className).toContain("ro");
   });
 
   it("selectedUid → agrega clase 'sel' solo a la fila correspondiente", () => {
@@ -183,8 +183,8 @@ describe("renderTable", () => {
       selectedUid: "u2",
     });
     const rows = c.querySelectorAll(".tr");
-    expect(rows[0].className).not.toContain(" sel");
-    expect(rows[1].className).toContain(" sel");
+    expect(rows[0]!.className).not.toContain(" sel");
+    expect(rows[1]!.className).toContain(" sel");
   });
 
   it("click en fila dispara onSelect con uid", () => {
@@ -198,14 +198,14 @@ describe("renderTable", () => {
   it("input hostil en eco/plate/obs se trata como texto (XSS safe)", () => {
     const c = setupContainer();
     renderTable(c, {
-      units: [makeUnit({ eco: '<img src=x onerror=alert(1)>', obs: '<script>evil</script>' })],
+      units: [makeUnit({ eco: "<img src=x onerror=alert(1)>", obs: "<script>evil</script>" })],
     });
     const plate = c.querySelector(".tplate");
-    expect(plate?.textContent).toBe('<img src=x onerror=alert(1)>');
+    expect(plate?.textContent).toBe("<img src=x onerror=alert(1)>");
     expect(c.querySelector("img")).toBeNull();
     expect(c.querySelector("script")).toBeNull();
     const cmt = c.querySelector(".tcmt");
-    expect(cmt?.textContent).toContain('<script>evil</script>');
+    expect(cmt?.textContent).toContain("<script>evil</script>");
   });
 
   it("hasZip + photos → agrega icono cámara", () => {

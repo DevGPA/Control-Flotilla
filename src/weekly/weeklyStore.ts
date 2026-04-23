@@ -37,9 +37,9 @@ export function getISOWeek(date: Date): { year: number; week: number } {
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
   const week1 = new Date(d.getFullYear(), 0, 4);
-  const week = 1 + Math.round(
-    ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7,
-  );
+  const week =
+    1 +
+    Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
   return { year: d.getFullYear(), week };
 }
 
@@ -166,7 +166,7 @@ export function sortPeriodos(periodos: WeeklyPeriodo[]): WeeklyPeriodo[] {
 /** Devuelve el período más reciente (último en sort asc). */
 export function latestPeriodo(periodos: WeeklyPeriodo[]): WeeklyPeriodo | null {
   if (periodos.length === 0) return null;
-  return sortPeriodos(periodos)[periodos.length - 1];
+  return sortPeriodos(periodos)[periodos.length - 1] ?? null;
 }
 
 /** Busca período por id. */
@@ -182,6 +182,7 @@ export function latestEntryForUnit(
   const sorted = sortPeriodos(periodos);
   for (let i = sorted.length - 1; i >= 0; i--) {
     const p = sorted[i];
+    if (!p) continue;
     const e = p.entries.find(
       (x) =>
         (match.uid && x.uid === match.uid) ||

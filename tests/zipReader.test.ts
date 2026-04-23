@@ -34,7 +34,9 @@ type ZipFile = {
   utf8Flag: boolean;
 };
 
-async function buildZip(files: Array<{ name: Uint8Array; data: Uint8Array; method?: number; utf8?: boolean }>): Promise<Blob> {
+async function buildZip(
+  files: Array<{ name: Uint8Array; data: Uint8Array; method?: number; utf8?: boolean }>,
+): Promise<Blob> {
   const entries: ZipFile[] = [];
   for (const f of files) {
     const method = f.method ?? 8;
@@ -55,7 +57,8 @@ async function buildZip(files: Array<{ name: Uint8Array; data: Uint8Array; metho
       u16(20), // version needed
       u16(flags),
       u16(e.method),
-      u16(0), u16(0), // time, date
+      u16(0),
+      u16(0), // time, date
       u32(0), // crc32 (no lo validamos en el reader)
       u32(e.compressed.length),
       u32(e.data.length),
@@ -69,22 +72,26 @@ async function buildZip(files: Array<{ name: Uint8Array; data: Uint8Array; metho
   }
 
   for (let i = 0; i < entries.length; i++) {
-    const e = entries[i];
+    const e = entries[i]!;
     const flags = e.utf8Flag ? 0x0800 : 0x0000;
     const cd = concat(
       u32(0x02014b50), // central dir sig
-      u16(20), u16(20), // version made by / needed
+      u16(20),
+      u16(20), // version made by / needed
       u16(flags),
       u16(e.method),
-      u16(0), u16(0),
+      u16(0),
+      u16(0),
       u32(0),
       u32(e.compressed.length),
       u32(e.data.length),
       u16(e.name.length),
-      u16(0), u16(0), // extra, comment
-      u16(0), u16(0), // disk, internal attrs
+      u16(0),
+      u16(0), // extra, comment
+      u16(0),
+      u16(0), // disk, internal attrs
       u32(0), // external attrs
-      u32(offsets[i]),
+      u32(offsets[i]!),
       e.name,
     );
     centralChunks.push(cd);
@@ -94,8 +101,10 @@ async function buildZip(files: Array<{ name: Uint8Array; data: Uint8Array; metho
   const cdBytes = concat(...centralChunks);
   const eocd = concat(
     u32(0x06054b50),
-    u16(0), u16(0),
-    u16(entries.length), u16(entries.length),
+    u16(0),
+    u16(0),
+    u16(entries.length),
+    u16(entries.length),
     u32(cdBytes.length),
     u32(cdStart),
     u16(0),
@@ -110,8 +119,18 @@ async function buildZip(files: Array<{ name: Uint8Array; data: Uint8Array; metho
 describe("readZip", () => {
   it("parsea archivos deflate-compressed con nombres UTF-8", async () => {
     const zip = await buildZip([
-      { name: new TextEncoder().encode("hola.txt"), data: new TextEncoder().encode("Hola mundo"), method: 8, utf8: true },
-      { name: new TextEncoder().encode("refacción.txt"), data: new TextEncoder().encode("tildes ok"), method: 8, utf8: true },
+      {
+        name: new TextEncoder().encode("hola.txt"),
+        data: new TextEncoder().encode("Hola mundo"),
+        method: 8,
+        utf8: true,
+      },
+      {
+        name: new TextEncoder().encode("refacción.txt"),
+        data: new TextEncoder().encode("tildes ok"),
+        method: 8,
+        utf8: true,
+      },
     ]);
     const out = await readZip(zip);
     expect(Object.keys(out.entries).sort()).toEqual(["hola.txt", "refacción.txt"]);
@@ -122,15 +141,21 @@ describe("readZip", () => {
 
   it("parsea archivos stored (method 0, sin compresión)", async () => {
     const data = new TextEncoder().encode("no comprimido");
-    const zip = await buildZip([{ name: new TextEncoder().encode("raw.bin"), data, method: 0, utf8: true }]);
+    const zip = await buildZip([
+      { name: new TextEncoder().encode("raw.bin"), data, method: 0, utf8: true },
+    ]);
     const out = await readZip(zip);
     expect(new TextDecoder().decode(out.entries["raw.bin"])).toBe("no comprimido");
   });
 
   it("decodifica filenames CP437 cuando el flag UTF-8 no está seteado", async () => {
     // "Refacción.xlsx" en CP437: R=0x52 e=0x65 f=0x66 a=0x61 c=0x63 c=0x63 i=0x69 ó=0xA2 n=0x6E . x l s x
-    const cp437Name = new Uint8Array([0x52, 0x65, 0x66, 0x61, 0x63, 0x63, 0x69, 0xA2, 0x6E, 0x2E, 0x78, 0x6C, 0x73, 0x78]);
-    const zip = await buildZip([{ name: cp437Name, data: new TextEncoder().encode("payload"), method: 8, utf8: false }]);
+    const cp437Name = new Uint8Array([
+      0x52, 0x65, 0x66, 0x61, 0x63, 0x63, 0x69, 0xa2, 0x6e, 0x2e, 0x78, 0x6c, 0x73, 0x78,
+    ]);
+    const zip = await buildZip([
+      { name: cp437Name, data: new TextEncoder().encode("payload"), method: 8, utf8: false },
+    ]);
     const out = await readZip(zip);
     const keys = Object.keys(out.entries);
     expect(keys).toHaveLength(1);
@@ -143,14 +168,7 @@ describe("readZip", () => {
   });
 
   it("lanza error si el ZIP está vacío (cdCount=0)", async () => {
-    const eocd = concat(
-      u32(0x06054b50),
-      u16(0), u16(0),
-      u16(0), u16(0),
-      u32(0),
-      u32(0),
-      u16(0),
-    );
+    const eocd = concat(u32(0x06054b50), u16(0), u16(0), u16(0), u16(0), u32(0), u32(0), u16(0));
     await expect(readZip(new Blob([eocd as BlobPart]))).rejects.toThrow(/vacío/);
   });
 });

@@ -312,7 +312,10 @@ function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {
   const visible = segments.filter((s) => s.value > 0);
   const total = visible.reduce((acc, s) => acc + s.value, 0);
   // Segmento dominante para center label
-  const dominant = visible.reduce((a, b) => (b.value > a.value ? b : a), visible[0] || null);
+  const dominant = visible.reduce<DonutSegment | null>(
+    (a, b) => (a === null || b.value > a.value ? b : a),
+    visible[0] ?? null,
+  );
   const dominantPct = total && dominant ? Math.round((dominant.value / total) * 100) : 0;
 
   return {

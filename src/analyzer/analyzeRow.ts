@@ -19,9 +19,11 @@ function parseSvcDate(s: unknown): Date | null {
   const str = String(s ?? "").trim();
   if (!str || str === "—") return null;
   const m1 = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m1) return new Date(+m1[3], +m1[2] - 1, +m1[1]);
+  // m1 regex has 3 capture groups — guaranteed present when match succeeds
+  if (m1) return new Date(+m1[3]!, +m1[2]! - 1, +m1[1]!);
   const m2 = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m2) return new Date(+m2[1], +m2[2] - 1, +m2[3]);
+  // m2 regex has 3 capture groups — guaranteed present when match succeeds
+  if (m2) return new Date(+m2[1]!, +m2[2]! - 1, +m2[3]!);
   return null;
 }
 

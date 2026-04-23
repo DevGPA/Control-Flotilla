@@ -8,7 +8,9 @@ import {
 } from "../src/ui/detail/photoGallery";
 import type { Unit } from "../src/types";
 
-function makeUnit(overrides: Partial<Unit & { photos?: PhotoEntry[] }> = {}): Unit & { photos?: PhotoEntry[] } {
+function makeUnit(
+  overrides: Partial<Unit & { photos?: PhotoEntry[] }> = {},
+): Unit & { photos?: PhotoEntry[] } {
   return {
     uid: "u1",
     risk: "OK",
@@ -154,14 +156,18 @@ describe("renderPhotoGallery — con fotos ZIP", () => {
     const thumb = c.querySelectorAll(".pgitem")[1] as HTMLElement;
     thumb.click();
     expect(openSpy).toHaveBeenCalledWith(expect.any(Array), 1);
-    expect(openSpy.mock.calls[0][0]).toHaveLength(2);
+    expect(openSpy.mock.calls[0]![0]).toHaveLength(2);
     lb.destroy();
   });
 
   it("lazyObserver invocado para cada thumb", () => {
     const c = setup();
     const observe = vi.fn();
-    const fakeObs = { observe, unobserve: vi.fn(), disconnect: vi.fn() } as unknown as IntersectionObserver;
+    const fakeObs = {
+      observe,
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as IntersectionObserver;
     renderPhotoGallery(c, {
       unit: makeUnit({
         photos: [
@@ -202,7 +208,7 @@ describe("renderPhotoGallery — fotos manuales", () => {
     const c = setup();
     renderPhotoGallery(c, {
       unit: makeUnit(),
-      manualPhotos: [fakeManual[0]],
+      manualPhotos: [fakeManual[0]!],
       hasZip: true,
       resolveManualUrl: (p) => `blob:resolved-${p.id}`,
     });
@@ -214,10 +220,16 @@ describe("renderPhotoGallery — fotos manuales", () => {
     const c = setup();
     const onDelete = vi.fn();
     const openSpy = vi.fn();
-    const fakeLb = { open: openSpy, close: vi.fn(), next: vi.fn(), prev: vi.fn(), destroy: vi.fn() };
+    const fakeLb = {
+      open: openSpy,
+      close: vi.fn(),
+      next: vi.fn(),
+      prev: vi.fn(),
+      destroy: vi.fn(),
+    };
     renderPhotoGallery(c, {
       unit: makeUnit(),
-      manualPhotos: [fakeManual[0]],
+      manualPhotos: [fakeManual[0]!],
       hasZip: true,
       resolveManualUrl: () => "blob:x",
       onDeleteManualPhoto: onDelete,
@@ -239,7 +251,7 @@ describe("renderPhotoGallery — fotos manuales", () => {
       unit: makeUnit({
         photos: [{ fname: "z1.jpg", col: "Z1", group: "G" }],
       }),
-      manualPhotos: [fakeManual[0]],
+      manualPhotos: [fakeManual[0]!],
       hasZip: true,
       lightbox: lb,
       resolveManualUrl: () => "blob:x",
@@ -249,9 +261,9 @@ describe("renderPhotoGallery — fotos manuales", () => {
     ) as HTMLElement;
     manualThumb.click();
     expect(openSpy).toHaveBeenCalledWith(expect.any(Array), 1); // index 1 = segundo (manual)
-    const items = openSpy.mock.calls[0][0];
-    expect(items[0].label).toBe("Z1");
-    expect(items[1].label).toBe("Manual 1");
+    const items = openSpy.mock.calls[0]![0];
+    expect(items[0]!.label).toBe("Z1");
+    expect(items[1]!.label).toBe("Manual 1");
     lb.destroy();
   });
 });

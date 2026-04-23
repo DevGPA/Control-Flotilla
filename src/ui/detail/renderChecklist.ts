@@ -99,18 +99,31 @@ function emptyState(): HTMLElement {
 }
 
 function diffSection(diff: PeriodDiff): HTMLElement | null {
-  if (!diff.newFails.length && !diff.resolved.length && !diff.worsened.length && !diff.improved.length) {
+  if (
+    !diff.newFails.length &&
+    !diff.resolved.length &&
+    !diff.worsened.length &&
+    !diff.improved.length
+  ) {
     return null;
   }
   const wrap = document.createElement("div");
-  wrap.style.cssText = "margin-bottom:12px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--ln)";
+  wrap.style.cssText =
+    "margin-bottom:12px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--ln)";
 
   const title = document.createElement("div");
-  title.style.cssText = "font-size:10px;font-weight:700;color:var(--s1);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px";
+  title.style.cssText =
+    "font-size:10px;font-weight:700;color:var(--s1);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px";
   title.textContent = `Cambios vs ${diff.label}`;
   wrap.appendChild(title);
 
-  const makeRow = (marker: string, markerColor: string, text: string, extraText?: string, extraColor?: string): HTMLElement => {
+  const makeRow = (
+    marker: string,
+    markerColor: string,
+    text: string,
+    extraText?: string,
+    extraColor?: string,
+  ): HTMLElement => {
     const row = document.createElement("div");
     row.style.cssText = "font-size:10px;margin-bottom:2px";
     const markerSpan = document.createElement("span");
@@ -178,7 +191,10 @@ function chipSpan(text: string, color: string): HTMLElement {
   return span;
 }
 
-function summaryLine(counts: { urg: number; rev: number; comp: number; done: number }, total: number): HTMLElement {
+function summaryLine(
+  counts: { urg: number; rev: number; comp: number; done: number },
+  total: number,
+): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "ck-inline-summary";
   const chips: HTMLElement[] = [];
@@ -217,7 +233,13 @@ function findingItem(
   onToggle?: (uid: string, text: string) => void,
 ): HTMLElement {
   const el = document.createElement("div");
-  const cls = isDone ? "ck-done" : f.lv === "Urgente" ? "ck-fail-u" : f.lv === "Completar" ? "ck-fail-c" : "ck-fail-r";
+  const cls = isDone
+    ? "ck-done"
+    : f.lv === "Urgente"
+      ? "ck-fail-u"
+      : f.lv === "Completar"
+        ? "ck-fail-c"
+        : "ck-fail-r";
   el.className = `ck-item ${cls}${isDone ? "" : " ck-actionable"}`;
   if (highlightChange) el.style.boxShadow = "inset 0 0 0 1.5px var(--O)";
 
@@ -227,7 +249,13 @@ function findingItem(
 
   const iconSpan = document.createElement("span");
   iconSpan.className = "ck-icon";
-  const color = isDone ? "var(--G)" : f.lv === "Urgente" ? "var(--R)" : f.lv === "Completar" ? "var(--B)" : "var(--A)";
+  const color = isDone
+    ? "var(--G)"
+    : f.lv === "Urgente"
+      ? "var(--R)"
+      : f.lv === "Completar"
+        ? "var(--B)"
+        : "var(--A)";
   iconSpan.style.color = color;
   if (isDone) {
     iconSpan.textContent = "✓";
@@ -282,9 +310,7 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
     (groups[f.cat] = groups[f.cat] ?? []).push(f);
   }
   const ord = categoryOrder();
-  const cats = Object.keys(groups).sort(
-    (a, b) => (ord[a] ?? 99) - (ord[b] ?? 99),
-  );
+  const cats = Object.keys(groups).sort((a, b) => (ord[a] ?? 99) - (ord[b] ?? 99));
 
   const catsWrap = document.createElement("div");
   catsWrap.className = "ck-cats";
@@ -307,6 +333,7 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
   };
 
   for (const cat of cats) {
+    const findings = groups[cat] ?? [];
     const catWrap = document.createElement("div");
     const title = document.createElement("div");
     title.className = "ck-cat-ttl";
@@ -314,15 +341,15 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
     title.appendChild(document.createTextNode(`${icon} ${cat} `));
     const count = document.createElement("span");
     count.style.cssText = "font-size:9px;font-weight:600;color:var(--s2);font-style:normal";
-    count.textContent = String(groups[cat].length);
+    count.textContent = String(findings.length);
     title.appendChild(count);
     catWrap.appendChild(title);
 
     // Sort within category: Urgente → Revisar → Completar
     const sorted = [
-      ...groups[cat].filter((f) => f.lv === "Urgente"),
-      ...groups[cat].filter((f) => f.lv === "Revisar"),
-      ...groups[cat].filter((f) => f.lv === "Completar"),
+      ...findings.filter((f) => f.lv === "Urgente"),
+      ...findings.filter((f) => f.lv === "Revisar"),
+      ...findings.filter((f) => f.lv === "Completar"),
     ];
 
     const grid = document.createElement("div");

@@ -33,68 +33,120 @@ function setup(): HTMLElement {
 
 describe("computeActivasKpis", () => {
   it("cuenta activos tomando latest-per-unit", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", updatedAt: "2026-04-10T10:00:00Z" }),
-      mk({ id: "a2", unitKey: "U1", updatedAt: "2026-04-18T10:00:00Z", estado: "Finalizado" }),
-      mk({ id: "b1", unitKey: "U2", updatedAt: "2026-04-15T10:00:00Z" }),
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({ id: "a1", unitKey: "U1", updatedAt: "2026-04-10T10:00:00Z" }),
+        mk({ id: "a2", unitKey: "U1", updatedAt: "2026-04-18T10:00:00Z", estado: "Finalizado" }),
+        mk({ id: "b1", unitKey: "U2", updatedAt: "2026-04-15T10:00:00Z" }),
+      ],
+      {},
+      TODAY,
+    );
     // U1 latest = Finalizado (cerrada), U2 latest = activa
     expect(k.nActAll).toBe(1);
   });
 
   it("nRev solo cuenta estado='En Revisión'", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", estado: "En Revisión" }),
-      mk({ id: "a2", unitKey: "U2", estado: "Reparando" }),
-      mk({ id: "a3", unitKey: "U3", estado: "En Revisión" }),
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({ id: "a1", unitKey: "U1", estado: "En Revisión" }),
+        mk({ id: "a2", unitKey: "U2", estado: "Reparando" }),
+        mk({ id: "a3", unitKey: "U3", estado: "En Revisión" }),
+      ],
+      {},
+      TODAY,
+    );
     expect(k.nRev).toBe(2);
   });
 
   it("nCorr / nPrev contra filtered, respeta filtro sucursal", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", sucursal: "GDL", tipo: "Correctivo" }),
-      mk({ id: "a2", unitKey: "U2", sucursal: "MTY", tipo: "Correctivo" }),
-      mk({ id: "a3", unitKey: "U3", sucursal: "GDL", tipo: "Preventivo" }),
-    ], { sucursal: "GDL" }, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({ id: "a1", unitKey: "U1", sucursal: "GDL", tipo: "Correctivo" }),
+        mk({ id: "a2", unitKey: "U2", sucursal: "MTY", tipo: "Correctivo" }),
+        mk({ id: "a3", unitKey: "U3", sucursal: "GDL", tipo: "Preventivo" }),
+      ],
+      { sucursal: "GDL" },
+      TODAY,
+    );
     expect(k.nCorr).toBe(1);
     expect(k.nPrev).toBe(1);
     expect(k.nFiltered).toBe(2);
   });
 
   it("nUrg cuenta >7 días y omite cerradas/sin fecha", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", fentrada: "2026-04-01" }), // 19 días
-      mk({ id: "a2", unitKey: "U2", fentrada: "2026-04-18" }), // 2 días
-      mk({ id: "a3", unitKey: "U3", fentrada: "2026-04-05", estado: "Finalizado" }), // cerrada
-      mk({ id: "a4", unitKey: "U4" }), // sin fentrada
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({ id: "a1", unitKey: "U1", fentrada: "2026-04-01" }), // 19 días
+        mk({ id: "a2", unitKey: "U2", fentrada: "2026-04-18" }), // 2 días
+        mk({ id: "a3", unitKey: "U3", fentrada: "2026-04-05", estado: "Finalizado" }), // cerrada
+        mk({ id: "a4", unitKey: "U4" }), // sin fentrada
+      ],
+      {},
+      TODAY,
+    );
     expect(k.nUrg).toBe(1);
     expect(k.urgentEcos).toEqual(["A-117"]);
   });
 
   it("promDiasComp = media de días cerrados (fsalidaReal - fentrada)", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", estado: "Finalizado", fentrada: "2026-04-01", fsalidaReal: "2026-04-05" }), // 4
-      mk({ id: "a2", unitKey: "U2", estado: "Listo", fentrada: "2026-04-10", fsalidaReal: "2026-04-20" }), // 10
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-04-01",
+          fsalidaReal: "2026-04-05",
+        }), // 4
+        mk({
+          id: "a2",
+          unitKey: "U2",
+          estado: "Listo",
+          fentrada: "2026-04-10",
+          fsalidaReal: "2026-04-20",
+        }), // 10
+      ],
+      {},
+      TODAY,
+    );
     expect(k.promDiasComp).toBe(7);
   });
 
   it("promDiasEst = media de estado 'En Revisión' con fsalidaEst", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", estado: "En Revisión", fentrada: "2026-04-10", fsalidaEst: "2026-04-14" }), // 4
-      mk({ id: "a2", unitKey: "U2", estado: "En Revisión", fentrada: "2026-04-12", fsalidaEst: "2026-04-20" }), // 8
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "En Revisión",
+          fentrada: "2026-04-10",
+          fsalidaEst: "2026-04-14",
+        }), // 4
+        mk({
+          id: "a2",
+          unitKey: "U2",
+          estado: "En Revisión",
+          fentrada: "2026-04-12",
+          fsalidaEst: "2026-04-20",
+        }), // 8
+      ],
+      {},
+      TODAY,
+    );
     expect(k.promDiasEst).toBe(6);
   });
 
   it("promDiasRev = media de días de activos 'En Revisión' vs today", () => {
-    const k = computeActivasKpis([
-      // TODAY = 2026-04-20T12:00Z → entradas a 00:00Z dan media día extra
-      mk({ id: "a1", unitKey: "U1", estado: "En Revisión", fentrada: "2026-04-10" }),
-      mk({ id: "a2", unitKey: "U2", estado: "En Revisión", fentrada: "2026-04-14" }),
-    ], {}, TODAY);
+    const k = computeActivasKpis(
+      [
+        // TODAY = 2026-04-20T12:00Z → entradas a 00:00Z dan media día extra
+        mk({ id: "a1", unitKey: "U1", estado: "En Revisión", fentrada: "2026-04-10" }),
+        mk({ id: "a2", unitKey: "U2", estado: "En Revisión", fentrada: "2026-04-14" }),
+      ],
+      {},
+      TODAY,
+    );
     expect(k.promDiasRev).toBe(9);
   });
 
@@ -107,10 +159,14 @@ describe("computeActivasKpis", () => {
   });
 
   it("filtro search matchea contra eco/plate/tecnico/brand", () => {
-    const k = computeActivasKpis([
-      mk({ id: "a1", unitKey: "U1", eco: "A-100" }),
-      mk({ id: "a2", unitKey: "U2", eco: "B-200", brand: "Toyota" }),
-    ], { search: "toyota" }, TODAY);
+    const k = computeActivasKpis(
+      [
+        mk({ id: "a1", unitKey: "U1", eco: "A-100" }),
+        mk({ id: "a2", unitKey: "U2", eco: "B-200", brand: "Toyota" }),
+      ],
+      { search: "toyota" },
+      TODAY,
+    );
     expect(k.nFiltered).toBe(1);
   });
 });
@@ -129,7 +185,11 @@ describe("renderActivasKpis", () => {
   it("card Correctivo dispara onFilterTipo con 'Correctivo'", () => {
     const c = setup();
     const onFilterTipo = vi.fn();
-    renderActivasKpis(c, { entries: [mk({ id: "a1", unitKey: "U1" })], today: TODAY, onFilterTipo });
+    renderActivasKpis(c, {
+      entries: [mk({ id: "a1", unitKey: "U1" })],
+      today: TODAY,
+      onFilterTipo,
+    });
     const cards = c.querySelectorAll(".kpi-row > .kc");
     (cards[1] as HTMLElement).click();
     expect(onFilterTipo).toHaveBeenCalledWith("Correctivo");
@@ -138,7 +198,11 @@ describe("renderActivasKpis", () => {
   it("card Preventivo dispara onFilterTipo con 'Preventivo'", () => {
     const c = setup();
     const onFilterTipo = vi.fn();
-    renderActivasKpis(c, { entries: [mk({ id: "a1", unitKey: "U1" })], today: TODAY, onFilterTipo });
+    renderActivasKpis(c, {
+      entries: [mk({ id: "a1", unitKey: "U1" })],
+      today: TODAY,
+      onFilterTipo,
+    });
     const cards = c.querySelectorAll(".kpi-row > .kc");
     (cards[2] as HTMLElement).click();
     expect(onFilterTipo).toHaveBeenCalledWith("Preventivo");
@@ -253,21 +317,33 @@ describe("renderActivasKpis", () => {
     renderActivasKpis(c, { entries: [], today: TODAY });
     const cards = c.querySelectorAll(".kpi-row > .kc");
     const promCard = cards[4];
-    expect(promCard.querySelector(".kval")?.textContent).toBe("—");
+    expect(promCard!.querySelector(".kval")?.textContent).toBe("—");
   });
 
   it("prefiere promDiasComp sobre est/rev en tarjeta", () => {
     const c = setup();
     renderActivasKpis(c, {
       entries: [
-        mk({ id: "a1", unitKey: "U1", estado: "Finalizado", fentrada: "2026-04-01", fsalidaReal: "2026-04-05" }), // 4
-        mk({ id: "a2", unitKey: "U2", estado: "En Revisión", fentrada: "2026-04-10", fsalidaEst: "2026-04-20" }),
+        mk({
+          id: "a1",
+          unitKey: "U1",
+          estado: "Finalizado",
+          fentrada: "2026-04-01",
+          fsalidaReal: "2026-04-05",
+        }), // 4
+        mk({
+          id: "a2",
+          unitKey: "U2",
+          estado: "En Revisión",
+          fentrada: "2026-04-10",
+          fsalidaEst: "2026-04-20",
+        }),
       ],
       today: TODAY,
     });
     const cards = c.querySelectorAll(".kpi-row > .kc");
-    expect(cards[4].querySelector(".kval")?.textContent).toBe("4d");
-    expect(cards[4].querySelector(".ksub")?.textContent).toContain("real");
+    expect(cards[4]!.querySelector(".kval")?.textContent).toBe("4d");
+    expect(cards[4]!.querySelector(".ksub")?.textContent).toContain("real");
   });
 
   it("XSS safe — eco con <script> escapa en alert strip", () => {
@@ -282,6 +358,7 @@ describe("renderActivasKpis", () => {
 
   it("reemplaza contenido previo del container", () => {
     const c = setup();
+    // eslint-disable-next-line no-restricted-syntax -- test seed, string literal controlado
     c.innerHTML = "<span>STALE</span>";
     renderActivasKpis(c, { entries: [], today: TODAY });
     expect(c.textContent).not.toContain("STALE");

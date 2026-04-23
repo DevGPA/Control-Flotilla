@@ -47,19 +47,31 @@ describe("latestActivasPerUnit", () => {
     ];
     const out = latestActivasPerUnit(entries);
     expect(out).toHaveLength(1);
-    expect(out[0].key).toBe("U1");
-    expect(out[0].latest.id).toBe("2");
-    expect(out[0].count).toBe(2);
+    expect(out[0]!.key).toBe("U1");
+    expect(out[0]!.latest.id).toBe("2");
+    expect(out[0]!.count).toBe(2);
   });
 
   it("usa updatedAt para desempatar latest (no fentrada)", () => {
     const entries = [
-      mk({ id: "1", unitKey: "U1", fentrada: "2026-04-15", updatedAt: "2026-04-16T00:00:00Z", estado: "Reparando" }),
-      mk({ id: "2", unitKey: "U1", fentrada: "2026-04-16", updatedAt: "2026-04-15T00:00:00Z", estado: "Finalizado" }),
+      mk({
+        id: "1",
+        unitKey: "U1",
+        fentrada: "2026-04-15",
+        updatedAt: "2026-04-16T00:00:00Z",
+        estado: "Reparando",
+      }),
+      mk({
+        id: "2",
+        unitKey: "U1",
+        fentrada: "2026-04-16",
+        updatedAt: "2026-04-15T00:00:00Z",
+        estado: "Finalizado",
+      }),
     ];
     const out = latestActivasPerUnit(entries);
     expect(out).toHaveLength(1);
-    expect(out[0].latest.id).toBe("1");
+    expect(out[0]!.latest.id).toBe("1");
   });
 
   it("empty array → empty out", () => {
@@ -160,7 +172,7 @@ describe("renderActivas", () => {
     renderActivas(tbody, null, null, { entries, today: TODAY });
     const rows = tbody.querySelectorAll("tr");
     expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toContain("A-117");
+    expect(rows[0]!.textContent).toContain("A-117");
   });
 
   it("días tag colorea por umbral: verde ≤3, ámbar 4-7, rojo >7", () => {
@@ -243,9 +255,7 @@ describe("renderActivas", () => {
     const { tbody } = setup();
     const pwned = { v: false };
     (window as unknown as { __pwned?: { v: boolean } }).__pwned = pwned;
-    const entries = [
-      mk({ eco: "<img src=x onerror='window.__pwned.v=true'>" }),
-    ];
+    const entries = [mk({ eco: "<img src=x onerror='window.__pwned.v=true'>" })];
     renderActivas(tbody, null, null, { entries, today: TODAY });
     expect(pwned.v).toBe(false);
     expect(tbody.querySelector("img")).toBeNull();

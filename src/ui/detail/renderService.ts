@@ -54,7 +54,8 @@ function obsSection(unit: UnitSvc): HTMLElement {
   title.appendChild(document.createTextNode(" Comentarios del responsable"));
   if (arr.length > 1) {
     const badge = document.createElement("span");
-    badge.style.cssText = "font-size:9px;background:var(--Bd);color:var(--B);padding:1px 8px;border-radius:4px;font-weight:700";
+    badge.style.cssText =
+      "font-size:9px;background:var(--Bd);color:var(--B);padding:1px 8px;border-radius:4px;font-weight:700";
     badge.textContent = String(arr.length);
     title.appendChild(document.createTextNode(" "));
     title.appendChild(badge);
@@ -75,7 +76,7 @@ function obsSection(unit: UnitSvc): HTMLElement {
     }
     const txt = document.createElement("div");
     txt.className = "obscard-txt";
-    txt.textContent = arr[i];
+    txt.textContent = arr[i] ?? "";
     card.appendChild(txt);
     wrap.appendChild(card);
   }
@@ -133,6 +134,7 @@ function weeklyCrossRefCard(unit: Unit, weeklyPeriodos: WeeklyPeriodo[]): HTMLEl
   // Sort descendente por label (periodos en formato ISO-ish suelen ordenar bien)
   candidates.sort((a, b) => (b._periodo || "").localeCompare(a._periodo || ""));
   const latest = candidates[0];
+  if (!latest) return null;
 
   const card = document.createElement("div");
   card.className = "sw-svccard";

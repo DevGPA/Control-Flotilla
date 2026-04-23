@@ -28,7 +28,9 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-async function buildZipWithEntries(files: Array<{ name: string; data: Uint8Array }>): Promise<Blob> {
+async function buildZipWithEntries(
+  files: Array<{ name: string; data: Uint8Array }>,
+): Promise<Blob> {
   type Entry = { name: Uint8Array; compressed: Uint8Array; size: number; offset: number };
   const enc = new TextEncoder();
   const entries: Entry[] = [];
@@ -122,7 +124,7 @@ describe("loadZip", () => {
     expect(Object.keys(r.images).sort()).toEqual(["img_001.jpg", "img_002.png"]);
     expect(r.report).not.toBeNull();
     expect(r.report?.rowCount).toBe(1);
-    expect(r.report?.rows[0].Eco).toBe("A-117");
+    expect(r.report?.rows[0]!.Eco).toBe("A-117");
   });
 
   it("ignora __MACOSX y archivos ocultos", async () => {

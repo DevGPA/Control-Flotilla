@@ -55,10 +55,13 @@ function lucideIcon(name: string, size = 10, extraStyle = ""): HTMLElement {
 /** Genera el badge de riesgo. Las clases `pu/pr/pc/po` están en main.css. */
 export function mkpill(r: RiskLevel): HTMLElement {
   const [cl, lb] =
-    r === "Urgente" ? ["pu", "Urgente"] :
-    r === "Revisar" ? ["pr", "Revisar"] :
-    r === "Completar" ? ["pc", "Completar"] :
-    ["po", "OK"];
+    r === "Urgente"
+      ? ["pu", "Urgente"]
+      : r === "Revisar"
+        ? ["pr", "Revisar"]
+        : r === "Completar"
+          ? ["pc", "Completar"]
+          : ["po", "OK"];
   const span = document.createElement("span");
   span.className = `pill ${cl}`;
   const dot = document.createElement("span");
@@ -88,7 +91,7 @@ function dotRow(color: string, text: string): HTMLElement {
  */
 export function fcell(u: Unit, checklistDB: ChecklistDB = {}): HTMLElement {
   const dm = checklistDB[u.uid] || {};
-  const pending = u.F.filter((f) => !(dm[f.text] && dm[f.text].done));
+  const pending = u.F.filter((f) => !dm[f.text]?.done);
   const a = pending.filter((f) => f.lv === "Urgente").length;
   const b = pending.filter((f) => f.lv === "Revisar").length;
   const c = pending.filter((f) => f.lv === "Completar").length;
@@ -154,7 +157,18 @@ type BuildRowCtx = {
 /** Construye una fila `.tr` para la unidad. Extraído para reuso entre render
  *  fragment-based y virtualizado. */
 function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
-  const { selectedUid, checklistDB, hasZip, isUnitEnTaller, parseSvcDate, onSelect, today0, d30, tcrit, twarn } = ctx;
+  const {
+    selectedUid,
+    checklistDB,
+    hasZip,
+    isUnitEnTaller,
+    parseSvcDate,
+    onSelect,
+    today0,
+    d30,
+    tcrit,
+    twarn,
+  } = ctx;
   const enTaller = isUnitEnTaller(u);
   const riskClass = u.risk === "Urgente" ? "ru" : u.risk === "Revisar" ? "rr" : "ro";
   const tr = document.createElement("div");
@@ -188,7 +202,8 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   idCell.appendChild(plate);
   if (u.eco && u.plate) {
     const sub = document.createElement("div");
-    sub.style.cssText = "font-size:9px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
+    sub.style.cssText =
+      "font-size:9px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
     sub.textContent = u.plate;
     idCell.appendChild(sub);
   }
@@ -228,11 +243,12 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
     const arr = u.obsArr && u.obsArr.length ? u.obsArr : [u.obs];
     if (arr.length > 1) {
       const countBadge = document.createElement("span");
-      countBadge.style.cssText = "font-size:8px;color:var(--B);font-weight:700;background:rgba(77,158,255,.15);padding:1px 6px;border-radius:3px;margin-right:6px";
+      countBadge.style.cssText =
+        "font-size:8px;color:var(--B);font-weight:700;background:rgba(77,158,255,.15);padding:1px 6px;border-radius:3px;margin-right:6px";
       countBadge.textContent = String(arr.length);
       cmt.appendChild(countBadge);
     }
-    cmt.appendChild(document.createTextNode(arr[0]));
+    cmt.appendChild(document.createTextNode(arr[0] ?? ""));
     obsCell.appendChild(cmt);
   } else {
     const empty = document.createElement("span");
@@ -253,7 +269,8 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   kmCell.className = "tc";
   const km = document.createElement("div");
   km.className = "tkm";
-  km.textContent = u.km !== undefined && u.km !== "" ? `${Number(u.km).toLocaleString("es-MX")}km` : "—";
+  km.textContent =
+    u.km !== undefined && u.km !== "" ? `${Number(u.km).toLocaleString("es-MX")}km` : "—";
   kmCell.appendChild(km);
   const dt = document.createElement("div");
   dt.className = "tdt";

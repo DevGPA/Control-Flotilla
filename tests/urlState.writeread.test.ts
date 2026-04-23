@@ -80,7 +80,7 @@ describe("onUrlStateChange", () => {
     writeUrlState({ tab: "taller" });
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].tab).toBe("taller");
+    expect(handler.mock.calls[0]![0].tab).toBe("taller");
     unsub();
   });
 
