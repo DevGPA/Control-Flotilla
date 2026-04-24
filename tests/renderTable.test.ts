@@ -225,7 +225,7 @@ describe("renderTable", () => {
     });
     expect(c.querySelector(".taller-badge-row")).not.toBeNull();
     const row = c.querySelector(".tr") as HTMLElement;
-    expect(row.style.outline).toContain("#c4b5fd");
+    expect(row.style.outline).toContain("var(--B)");
   });
 
   it("obsArr.length > 1 → muestra count badge", () => {

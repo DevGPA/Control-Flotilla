@@ -320,7 +320,7 @@ function buildDataRow(
     mix.style.cssText = "font-size:8px;margin-top:2px;white-space:nowrap;line-height:1.1";
     if (nCor) {
       const cSpan = document.createElement("span");
-      cSpan.style.cssText = "color:#B91C1C;font-weight:700";
+      cSpan.style.cssText = "color:var(--R);font-weight:700";
       cSpan.title = `${nCor} correctivo${nCor !== 1 ? "s" : ""}`;
       cSpan.textContent = `${nCor}C`;
       mix.appendChild(cSpan);
@@ -333,7 +333,7 @@ function buildDataRow(
     }
     if (nPrev) {
       const pSpan = document.createElement("span");
-      pSpan.style.cssText = "color:#5B21B6;font-weight:700";
+      pSpan.style.cssText = "color:var(--B);font-weight:700";
       pSpan.title = `${nPrev} preventivo${nPrev !== 1 ? "s" : ""}`;
       pSpan.textContent = `${nPrev}P`;
       mix.appendChild(pSpan);

@@ -174,7 +174,7 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   const tr = document.createElement("div");
   tr.className = `tr ${riskClass}${selectedUid === u.uid ? " sel" : ""}`;
   tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
-  if (enTaller) tr.style.outline = "1.5px solid #c4b5fd";
+  if (enTaller) tr.style.outline = "1.5px solid var(--B)";
   if (onSelect) tr.addEventListener("click", () => onSelect(u.uid));
 
   // ── 1. Índice
@@ -363,13 +363,13 @@ function svcAlertEl(serviceDate: Date, today0: Date, d30: Date): HTMLElement | n
   const el = document.createElement("div");
   el.style.cssText = "font-size:8px;margin-top:2px;font-weight:700";
   if (serviceDate < today0) {
-    el.style.color = "#EF4444";
+    el.style.color = "var(--R)";
     el.appendChild(lucideIcon("alert-triangle", 10, "vertical-align:-2px;"));
     el.appendChild(document.createTextNode(" Svc vencido"));
     return el;
   }
   if (serviceDate <= d30) {
-    el.style.color = "#F59E0B";
+    el.style.color = "var(--A)";
     el.appendChild(lucideIcon("clock", 10, "vertical-align:-2px;"));
     el.appendChild(document.createTextNode(" Svc próximo"));
     return el;

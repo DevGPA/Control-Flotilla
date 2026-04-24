@@ -24,22 +24,42 @@ export type PdfDocOptions = {
   onNewPage?: (doc: PdfDoc) => void;
 };
 
-/** Paleta alineada con la UI (main.css vars). */
+/**
+ * Paleta PDF — hex literales Tremor (sync con :root en src/styles/main.css).
+ * jsPDF no acepta CSS vars — siempre hex literal. PDF printable = always light.
+ *
+ * Si Tremor cambia en main.css, actualizar aquí manual. No usar runtime
+ * getComputedStyle() porque jsPDF 4.x es strict con formatos y el overhead
+ * de resolución no vale.
+ */
 export const PDF_COLORS = {
-  R: "#DC2626",
-  A: "#D97706",
-  G: "#059669",
-  B: "#7C3AED",
-  T: "#0D9488",
+  R: "#E11D48", // rose-600
+  A: "#D97706", // amber-600
+  G: "#059669", // emerald-600
+  B: "#1D4ED8", // blue-700 (secondary)
+  O: "#EA580C", // orange-600
+  T: "#2563EB", // blue-600 primary
+  T2: "#1D4ED8", // blue-700 hover
   bg: "#FFFFFF",
-  bg2: "#F7F8FA",
-  bg3: "#F0F1F4",
-  ln: "#EAEBED",
-  s1: "#64748B",
-  s2: "#94A3B8",
-  s3: "#CBD5E1",
+  bg2: "#EFF1F5",
+  bg3: "#E8EAF0",
+  ln: "#E5E6EB",
+  s1: "#475569",
+  s2: "#64748B",
+  s3: "#6B7280",
   w1: "#0F172A",
-  w2: "#334155",
+  w2: "#1E293B",
+  // Tints opacos (Tremor color-200/50)
+  Rl: "#FECDD3",
+  Rd: "#FFF1F2",
+  Al: "#FDE68A",
+  Ad: "#FFFBEB",
+  Gl: "#A7F3D0",
+  Gd: "#ECFDF5",
+  Bl: "#BFDBFE",
+  Bd: "#EFF6FF",
+  Ol: "#FED7AA",
+  Od: "#FFF7ED",
 } as const;
 
 /**

@@ -142,8 +142,8 @@ export function buildUnitReport(unit: Unit, opts: UnitReportOptions = {}): PdfDo
 
   function drawPageHeader(d: PdfDoc) {
     d.rect(0, 0, d.size.w, 18, PDF_COLORS.T);
-    d.text(title, d.margin, 10, { size: 14, bold: true, color: "#FFFFFF" });
-    d.text(subtitle, d.margin, 15, { size: 8, color: "#E0F2F1" });
+    d.text(title, d.margin, 10, { size: 14, bold: true, color: PDF_COLORS.bg });
+    d.text(subtitle, d.margin, 15, { size: 8, color: PDF_COLORS.Bl });
     d.y = 24;
   }
 }

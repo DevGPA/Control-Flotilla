@@ -133,8 +133,8 @@ function diasColorScheme(dias: number): { color: string; bg: string } {
 
 function rowBgStyle(dias: number | null): string {
   if (dias == null) return "";
-  if (dias > 7) return "background:#FFF5F5";
-  if (dias > 3) return "background:#FFFBEB";
+  if (dias > 7) return "background:var(--Rd)";
+  if (dias > 3) return "background:var(--Ad)";
   return "";
 }
 

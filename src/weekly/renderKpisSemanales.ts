@@ -179,7 +179,7 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   if (!bodySum) bodySubParts.push("Sin daños");
   row.appendChild(
     buildCard({
-      topColor: "#F59E0B",
+      topColor: "var(--A)",
       iconKey: "car",
       label: "Carrocería",
       value: bodySum || "0",
@@ -200,7 +200,7 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   }
   row.appendChild(
     buildCard({
-      topColor: "#8B5CF6",
+      topColor: "var(--B)",
       iconKey: "wrench",
       label: "Llanta Ref.",
       value: k.llantaRevisar || "0",
@@ -226,7 +226,7 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   if (!k.aceiteUrgente && !k.aceiteRevisar) aceSubParts.push("Sin alertas");
   row.appendChild(
     buildCard({
-      topColor: "#0EA5E9",
+      topColor: "var(--ac)",
       label: "Aceite Motor",
       value: k.aceiteUrgente || k.aceiteRevisar || "0",
       valueColor: aceColor,
@@ -247,7 +247,7 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   if (!k.radiadorUrgente && !k.radiadorRevisar) radSubParts.push("Sin alertas");
   row.appendChild(
     buildCard({
-      topColor: "#6366F1",
+      topColor: "var(--ac)",
       iconKey: "droplet",
       label: "Radiador",
       value: k.radiadorUrgente || k.radiadorRevisar || "0",

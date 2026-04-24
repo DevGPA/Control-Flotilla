@@ -268,7 +268,7 @@ function buildDonut(kpis: ActivasKpis): {
   mid.className = "dmid";
   const tag = document.createElement("div");
   tag.className = "dtag";
-  tag.style.cssText = "color:var(--A);background:#F59E0B15";
+  tag.style.cssText = "color:var(--A);background:var(--Ad)";
   tag.textContent = "ACTIVOS";
   const pct = document.createElement("div");
   pct.className = "dpct";
@@ -343,8 +343,8 @@ function wireDonutHover(
 ): void {
   const pctOf = (n: number): number => (kpis.nActAll ? Math.round((n / kpis.nActAll) * 100) : 0);
   const map: Record<string, { pct: number; label: string; color: string; bg: string }> = {
-    rev: { pct: pctOf(kpis.nRev), label: "EN REVISIÓN", color: "var(--A)", bg: "#F59E0B15" },
-    sin: { pct: pctOf(kpis.nSin), label: "SIN REG.",    color: "var(--s3)", bg: "#6B728015" },
+    rev: { pct: pctOf(kpis.nRev), label: "EN REVISIÓN", color: "var(--A)", bg: "var(--Ad)" },
+    sin: { pct: pctOf(kpis.nSin), label: "SIN REG.",    color: "var(--s3)", bg: "var(--bg3)" },
   };
   const defPct = { txt: parts.pct.textContent ?? "", color: parts.pct.style.color };
   const defTag = { txt: parts.tag.textContent ?? "", color: parts.tag.style.color, bg: parts.tag.style.background };
@@ -388,7 +388,7 @@ function buildAlertStrip(urgentEcos: string[]): HTMLElement | null {
   if (!urgentEcos.length) return null;
   const strip = document.createElement("div");
   strip.style.cssText =
-    "padding:6px 16px;font-size:11px;background:linear-gradient(90deg,#F59E0B11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)";
+    "padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--Ad),var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)";
   const head = document.createElement("span");
   head.style.cssText = "color:var(--A);display:inline-flex;align-items:center;gap:4px";
   head.appendChild(lucide("alert-triangle", 11));
@@ -445,7 +445,7 @@ export function renderActivasKpis(container: HTMLElement, deps: ActivasKpisDeps)
 
   // 3. Preventivo
   row.appendChild(buildStatCard({
-    color: "#7C3AED",
+    color: "var(--B)",
     iconName: "shield-check",
     label: "Mtto Preventivo",
     value: String(kpis.nPrev),

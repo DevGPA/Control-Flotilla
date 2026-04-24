@@ -9,10 +9,10 @@ describe("PDF constants & helpers", () => {
     expect(LETTER).toEqual({ w: 216, h: 279 });
   });
 
-  it("paleta PDF_COLORS alineada con main.css", () => {
-    expect(PDF_COLORS.R).toBe("#DC2626");
+  it("paleta PDF_COLORS alineada con main.css Tremor", () => {
+    expect(PDF_COLORS.R).toBe("#E11D48");
     expect(PDF_COLORS.G).toBe("#059669");
-    expect(PDF_COLORS.T).toBe("#0D9488");
+    expect(PDF_COLORS.T).toBe("#2563EB");
   });
 
   it.each([
