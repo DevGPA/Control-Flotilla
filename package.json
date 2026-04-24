@@ -18,7 +18,9 @@
     "audit:xss": "node scripts/xss-audit.mjs \"Control de flotilla.html\"",
     "audit:baseline": "node scripts/verify-baseline.mjs",
     "audit:deps": "npm audit --omit=dev",
-    "audit:all": "npm run audit:deps && npm run audit:xss && npm run audit:baseline",
+    "audit:csp": "node scripts/compute-csp-hashes.mjs --check",
+    "csp:sync": "node scripts/compute-csp-hashes.mjs",
+    "audit:all": "npm run audit:deps && npm run audit:xss && npm run audit:baseline && npm run audit:csp",
     "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
