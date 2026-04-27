@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-NSnN+sOC0NmMQF6NzCIWKEXCTyfR/Z4BhZ3yNxNPfu0='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-bgDeQzySf4xrL71QT7g0vLxObp+AvkENgRZGjP3AV3U='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -369,7 +369,7 @@ g.inflateBytes=async function(src){
     <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
     <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>Revisar <span class="chip-n" id="fc1"></span></button>
     <button class="chip" id="btn-Completar" onclick="setF('Completar')" title="Unidades con al menos un hallazgo pendiente (foto, doc, info). Pendiente admin, no riesgo operativo."><span class="chip-dot" style="background:var(--B)"></span>Pendientes <span class="chip-n" id="fc4"></span></button>
-    <button class="chip" id="btn-OK" onclick="setF('OK')"><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
+    <button class="chip" id="btn-OK" onclick="setF('OK')" title="Unidades sin ningún hallazgo pendiente. El donut «Operativa» puede mostrar más unidades porque agrupa OK + Pendientes administrativos (Completar)."><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:var(--ac)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-taller" onclick="setF('taller')"><span class="chip-dot" style="background:var(--B)"></span>Taller <span class="chip-n" id="fc_taller"></span></button>
     <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
@@ -2374,7 +2374,11 @@ function buildKPIs(){
   const kvt=document.getElementById("kv_taller");if(kvt)kvt.textContent=enTaller;
   const kst=document.getElementById("ks_taller");if(kst)kst.textContent=enTaller?pct(enTaller)+" de la flota":"Sin unidades activas";
   const kvsvc=document.getElementById("kv_svc");if(kvsvc)kvsvc.textContent=nSvcAlert||"0";
-  const kssvc=document.getElementById("ks_svc");if(kssvc)kssvc.textContent=nSvcVencido?`${nSvcVencido} vencido${nSvcVencido!==1?"s":""}`:nSvcProximo?`${nSvcProximo} en 30 días`:"Al corriente";
+  const kssvc=document.getElementById("ks_svc");if(kssvc){
+    const venTxt=nSvcVencido?`${nSvcVencido} vencido${nSvcVencido!==1?"s":""}`:"";
+    const proxTxt=nSvcProximo?`${nSvcProximo} próximo${nSvcProximo!==1?"s":""}`:"";
+    kssvc.textContent=venTxt&&proxTxt?`${venTxt} · ${proxTxt}`:venTxt||proxTxt||"Al corriente";
+  }
   // Chip count badges
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
   document.getElementById("fc0").textContent=u?`(${u})`:"";
