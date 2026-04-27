@@ -3967,12 +3967,20 @@ select {
 .chart-card-wide {
   grid-column: 1 / -1; /* span todo el ancho de .analytics-grid */
 }
-/* Vista analytics standalone: charts respiran 320px (override inline 260px) */
-#analytics-panel .chart-card > div[id^="chart-"] {
-  height: 320px !important;
+/* Canvas tokens — driven via CSS vars, sobreescribibles por contexto. */
+.chart-canvas {
+  width: 100%;
+  height: var(--chart-h, 260px);
 }
-#analytics-panel .chart-card-wide > div[id^="chart-"] {
-  height: 360px !important;
+.chart-card-wide .chart-canvas {
+  --chart-h: 320px;
+}
+/* Vista Análisis (4º tab) — charts respiran. */
+#analytics-panel .chart-card .chart-canvas {
+  --chart-h: 320px;
+}
+#analytics-panel .chart-card-wide .chart-canvas {
+  --chart-h: 360px;
 }
 .chart-card-header {
   display: flex;

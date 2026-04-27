@@ -310,21 +310,21 @@ g.inflateBytes=async function(src){
           <div class="chart-title">Sucursales por riesgo</div>
           <div class="chart-hint">Click barra → filtrar</div>
         </div>
-        <div id="chart-branches" style="width:100%;height:260px"></div>
+        <div id="chart-branches" class="chart-canvas"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-header">
           <div class="chart-title">Hallazgos por categoría</div>
           <div class="chart-hint">5 categorías · 3 niveles</div>
         </div>
-        <div id="chart-categories" style="width:100%;height:260px"></div>
+        <div id="chart-categories" class="chart-canvas"></div>
       </div>
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
           <div class="chart-title">Tendencia por período</div>
           <div class="chart-hint">% Urgente · Revisar · Operativa</div>
         </div>
-        <div id="chart-trend" style="width:100%;height:260px"></div>
+        <div id="chart-trend" class="chart-canvas"></div>
         <div id="chart-trend-empty" class="chart-empty" hidden>
           <i data-lucide="trending-up" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin tendencia histórica</div>
@@ -337,7 +337,7 @@ g.inflateBytes=async function(src){
           <div class="chart-title">Taller · ingresos por día</div>
           <div class="chart-hint">90 días · hover ver count</div>
         </div>
-        <div id="chart-heatmap" style="width:100%;height:260px"></div>
+        <div id="chart-heatmap" class="chart-canvas"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>
           <i data-lucide="wrench" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin ingresos a taller</div>
@@ -350,7 +350,7 @@ g.inflateBytes=async function(src){
           <div class="chart-title">Km actual vs servicio programado</div>
           <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
         </div>
-        <div id="chart-km" style="width:100%;height:320px"></div>
+        <div id="chart-km" class="chart-canvas"></div>
         <div id="chart-km-empty" class="chart-empty" hidden>
           <i data-lucide="gauge" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin datos de kilometraje</div>
