@@ -38,7 +38,9 @@ async function setTheme(page: Page, mode: "light" | "dark") {
     else document.documentElement.removeAttribute("data-theme");
     try {
       localStorage.setItem("gpa-theme", m);
-    } catch {}
+    } catch {
+      // localStorage may be unavailable in private mode — ignore
+    }
   }, mode);
   await page.waitForTimeout(300); // dejar que ECharts + custom CSS resyncren
 }
@@ -60,8 +62,8 @@ test.describe("visual smoke — paleta Tremor + dark mode", () => {
       await loadMensual(page);
       await setTheme(page, theme);
 
-      // Expande analytics panel para capturar widgets
-      await page.click("#analytics-toggle");
+      // Cambia a vista Análisis (4º tab) para capturar widgets
+      await page.click("#mn-analytics");
       await page.waitForTimeout(800); // ECharts render
 
       // Screenshot full-page (dashboard + analytics + tabla)
@@ -70,8 +72,7 @@ test.describe("visual smoke — paleta Tremor + dark mode", () => {
         fullPage: true,
       });
 
-      // Verifica que elementos clave estén visibles
-      await expect(page.locator("#kpi-donut")).toBeVisible();
+      // Verifica que charts del panel analytics estén visibles
       await expect(page.locator("#chart-branches")).toBeVisible();
       await expect(page.locator("#chart-categories")).toBeVisible();
     });

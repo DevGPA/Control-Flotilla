@@ -3929,65 +3929,18 @@ select {
   }
 }
 
-/* ═══ Analytics Panel ═══
-   Colapsable default-closed. Prioriza visibilidad tabla — usuario expande
-   cuando necesita analytics. Lazy render al primer expand. */
+/* ═══ Analytics — Vista standalone (4º tab) ═══
+   Hermana de Inspecciones/Taller/Semanales. Charts respiran a pantalla
+   completa. Render lazy via showView('analytics'). */
 .analytics-panel {
-  margin: 0 12px 6px;
-}
-.analytics-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 14px;
-  background: var(--bg);
-  border: 1px solid var(--ln);
-  border-radius: var(--r2);
-  cursor: pointer;
-  font-family: var(--fb);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--w2);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.15s ease;
-}
-.analytics-toggle:hover {
-  background: var(--bg2);
-  border-color: var(--acl);
-}
-.analytics-toggle[aria-expanded="true"] {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
-}
-.analytics-arrow {
-  transition: transform 0.2s ease;
-  color: var(--s2);
-  flex-shrink: 0;
-}
-.analytics-toggle[aria-expanded="true"] .analytics-arrow {
-  transform: rotate(90deg);
-}
-.analytics-hint {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--s3);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.analytics-content {
-  background: var(--bg);
-  border: 1px solid var(--ln);
-  border-top: none;
-  border-radius: 0 0 var(--r2) var(--r2);
-  padding: 14px;
-  box-shadow: var(--shadow-sm);
-  animation: analyticsFadeIn 0.2s ease;
-  max-height: calc(100vh - 240px);
+  flex: 1;
+  margin: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.analytics-content {
+  padding: 16px 14px 24px;
+  animation: analyticsFadeIn 0.2s ease;
 }
 @keyframes analyticsFadeIn {
   from {
@@ -4013,6 +3966,21 @@ select {
 }
 .chart-card-wide {
   grid-column: 1 / -1; /* span todo el ancho de .analytics-grid */
+}
+/* Canvas tokens — driven via CSS vars, sobreescribibles por contexto. */
+.chart-canvas {
+  width: 100%;
+  height: var(--chart-h, 260px);
+}
+.chart-card-wide .chart-canvas {
+  --chart-h: 320px;
+}
+/* Vista Análisis (4º tab) — charts respiran. */
+#analytics-panel .chart-card .chart-canvas {
+  --chart-h: 320px;
+}
+#analytics-panel .chart-card-wide .chart-canvas {
+  --chart-h: 360px;
 }
 .chart-card-header {
   display: flex;

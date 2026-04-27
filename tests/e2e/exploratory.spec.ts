@@ -101,13 +101,15 @@ test.describe("Exploratory — funcionalidad end-to-end", () => {
     const svcVal = await page.locator("#kv_svc").textContent();
 
     r.notes.push(`[B] Mensual cargado — ${rows} unidades`);
-    r.notes.push(`  KPIs: Flota=${flotaVal} · Llantas=${llantasVal} · Taller=${tallerVal} · Svc=${svcVal}`);
+    r.notes.push(
+      `  KPIs: Flota=${flotaVal} · Llantas=${llantasVal} · Taller=${tallerVal} · Svc=${svcVal}`,
+    );
 
-    // Expandir analytics
-    await page.click("#analytics-toggle");
+    // Vista Análisis (4º tab) — kpi-donut vive en hero (oculto en analytics)
+    await page.click("#mn-analytics");
     await page.waitForTimeout(1000);
-    await expect(page.locator("#kpi-donut")).toBeVisible();
     await expect(page.locator("#chart-branches")).toBeVisible();
+    await expect(page.locator("#chart-categories")).toBeVisible();
 
     await page.screenshot({
       path: "test-results/exploratory/02-mensual-cargado.png",
@@ -375,7 +377,7 @@ test.describe("Exploratory — funcionalidad end-to-end", () => {
     await expect(page.locator("#tbody").locator("> *").first()).toBeVisible({ timeout: 10_000 });
     await dismissPeriodoModal(page);
 
-    await page.click("#analytics-toggle");
+    await page.click("#mn-analytics");
     await page.waitForTimeout(800);
 
     // Toggle dark
@@ -384,8 +386,8 @@ test.describe("Exploratory — funcionalidad end-to-end", () => {
     });
     await page.waitForTimeout(500);
 
-    const darkTheme = await page.evaluate(
-      () => document.documentElement.getAttribute("data-theme"),
+    const darkTheme = await page.evaluate(() =>
+      document.documentElement.getAttribute("data-theme"),
     );
     r.notes.push(`[H] Dark theme aplicado: ${darkTheme}`);
 

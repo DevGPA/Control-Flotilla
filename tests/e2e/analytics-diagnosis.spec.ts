@@ -53,7 +53,7 @@ test("analytics diagnosis — estado real de 5 widgets post data load", async ({
     .catch(() => {});
   await dismissPeriodoModal(page);
 
-  await page.click("#analytics-toggle");
+  await page.click("#mn-analytics");
   await page.waitForTimeout(1500); // ECharts render
 
   // Inspect each widget
@@ -111,9 +111,7 @@ test("analytics diagnosis — estado real de 5 widgets post data load", async ({
         visible: cs.display !== "none" && rect.width > 0 && rect.height > 0,
         rect: { w: Math.round(rect.width), h: Math.round(rect.height), top: Math.round(rect.top) },
         hasCanvas: !!canvas,
-        canvasSize: canvas
-          ? { w: canvas.width, h: canvas.height }
-          : null,
+        canvasSize: canvas ? { w: canvas.width, h: canvas.height } : null,
         emptyState: emptyEl
           ? {
               id: emptyId,
@@ -141,7 +139,9 @@ test("analytics diagnosis — estado real de 5 widgets post data load", async ({
   });
 
   console.log("\n═══ ANALYTICS WIDGETS DIAGNOSIS ═══");
-  console.log(`Data: units=${state.units} · periodos=${state.periodos} · taller=${state.tallerEntries}`);
+  console.log(
+    `Data: units=${state.units} · periodos=${state.periodos} · taller=${state.tallerEntries}`,
+  );
   console.log("");
   for (const w of report) {
     console.log(`[${w.id}] ${w.name}`);

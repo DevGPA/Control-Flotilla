@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-W558Hf69Ufct5UEvJq0WmHBlJz+OTFO2vRP8FiI5O7w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-zFP3/bLApJRX4IkTefxDt29vVRIT3zLl97CBBfzCwxs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -188,6 +188,10 @@ g.inflateBytes=async function(src){
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       Semanales <span id="sw-nav-badge"></span>
     </button>
+    <button class="mnav" id="mn-analytics" onclick="showView('analytics')">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Análisis
+    </button>
   </div>
   <div class="hstat">
     <div class="hdot" id="hdot"></div>
@@ -297,36 +301,30 @@ g.inflateBytes=async function(src){
   <div id="alerts-list"></div>
 </div>
 
-<!-- ANALYTICS PANEL (colapsable, default closed — tabla = protagonista) -->
-<div class="analytics-panel" id="analytics-panel">
-  <button type="button" class="analytics-toggle" id="analytics-toggle" aria-expanded="false" aria-controls="analytics-content" onclick="toggleAnalyticsPanel()">
-    <i data-lucide="chevron-right" class="analytics-arrow" style="width:14px;height:14px"></i>
-    <i data-lucide="bar-chart-3" style="width:13px;height:13px;color:var(--ac)"></i>
-    <span>Análisis avanzado</span>
-    <span class="analytics-hint">Sucursales · Categorías</span>
-  </button>
-  <div class="analytics-content" id="analytics-content" hidden>
+<!-- ANALYTICS VIEW (4º tab — full screen, sibling de Inspecciones/Taller/Semanales) -->
+<div class="analytics-panel" id="analytics-panel" style="display:none">
+  <div class="analytics-content" id="analytics-content">
     <div class="analytics-grid">
       <div class="chart-card">
         <div class="chart-card-header">
           <div class="chart-title">Sucursales por riesgo</div>
           <div class="chart-hint">Click barra → filtrar</div>
         </div>
-        <div id="chart-branches" style="width:100%;height:260px"></div>
+        <div id="chart-branches" class="chart-canvas"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-header">
           <div class="chart-title">Hallazgos por categoría</div>
           <div class="chart-hint">5 categorías · 3 niveles</div>
         </div>
-        <div id="chart-categories" style="width:100%;height:260px"></div>
+        <div id="chart-categories" class="chart-canvas"></div>
       </div>
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
           <div class="chart-title">Tendencia por período</div>
           <div class="chart-hint">% Urgente · Revisar · Operativa</div>
         </div>
-        <div id="chart-trend" style="width:100%;height:260px"></div>
+        <div id="chart-trend" class="chart-canvas"></div>
         <div id="chart-trend-empty" class="chart-empty" hidden>
           <i data-lucide="trending-up" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin tendencia histórica</div>
@@ -339,7 +337,7 @@ g.inflateBytes=async function(src){
           <div class="chart-title">Taller · ingresos por día</div>
           <div class="chart-hint">90 días · hover ver count</div>
         </div>
-        <div id="chart-heatmap" style="width:100%;height:260px"></div>
+        <div id="chart-heatmap" class="chart-canvas"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>
           <i data-lucide="wrench" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin ingresos a taller</div>
@@ -352,7 +350,7 @@ g.inflateBytes=async function(src){
           <div class="chart-title">Km actual vs servicio programado</div>
           <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
         </div>
-        <div id="chart-km" style="width:100%;height:320px"></div>
+        <div id="chart-km" class="chart-canvas"></div>
         <div id="chart-km-empty" class="chart-empty" hidden>
           <i data-lucide="gauge" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin datos de kilometraje</div>
@@ -1648,7 +1646,6 @@ window.refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
 
 window.addEventListener("DOMContentLoaded", () => {
   if(window.lucide) lucide.createIcons();
-  restoreAnalyticsPanelState();
   restoreState();
 });
 
@@ -2408,39 +2405,11 @@ function buildBranches(){
 }
 
 // ════════════════════════════════════════════════════════════
-// ANALYTICS PANEL — colapsable, lazy render, persist state.
+// ANALYTICS — vista standalone (4º tab). Render lazy via showView.
 // ════════════════════════════════════════════════════════════
-const ANALYTICS_LS_KEY = "gpa-analytics-open";
 
-function toggleAnalyticsPanel(){
-  const btn = document.getElementById("analytics-toggle");
-  const content = document.getElementById("analytics-content");
-  if(!btn || !content) return;
-  const isOpen = btn.getAttribute("aria-expanded") === "true";
-  const next = !isOpen;
-  btn.setAttribute("aria-expanded", String(next));
-  if(next){ content.hidden = false; buildAnalytics(); }
-  else { content.hidden = true; }
-  try { localStorage.setItem(ANALYTICS_LS_KEY, next ? "1" : "0"); } catch(e) {}
-}
-
-function restoreAnalyticsPanelState(){
-  let open = false;
-  try { open = localStorage.getItem(ANALYTICS_LS_KEY) === "1"; } catch(e) {}
-  if(open){
-    const btn = document.getElementById("analytics-toggle");
-    const content = document.getElementById("analytics-content");
-    if(btn && content){
-      btn.setAttribute("aria-expanded", "true");
-      content.hidden = false;
-    }
-  }
-}
-
-// Cálculo de stats — se ejecuta solo si el panel está abierto (perf).
+// Cálculo de stats — render condicional cuando vista activa (lazy via showView).
 function buildAnalytics(){
-  const btn = document.getElementById("analytics-toggle");
-  if(!btn || btn.getAttribute("aria-expanded") !== "true") return;
   if(!units || !units.length) return;
 
   // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
@@ -4826,15 +4795,18 @@ function tlSwitch(v){
 
 // ── Cambiar vista principal ───────────────────────────────
 function showView(view){
-  const isInsp    = view==="inspecciones";
-  const isTaller  = view==="taller";
-  const isSem     = view==="semanales";
+  const isInsp     = view==="inspecciones";
+  const isTaller   = view==="taller";
+  const isSem      = view==="semanales";
+  const isAnalytics= view==="analytics";
 
   // Activar botón de nav correcto
   document.getElementById("mn-insp").classList.toggle("on",      isInsp);
   document.getElementById("mn-taller").classList.toggle("on",    isTaller);
   const mnSem=document.getElementById("mn-semanales");
   if(mnSem) mnSem.classList.toggle("on", isSem);
+  const mnAna=document.getElementById("mn-analytics");
+  if(mnAna) mnAna.classList.toggle("on", isAnalytics);
 
   // Contenedor principal de Inspecciones
   const main = document.getElementById("main");
@@ -4874,6 +4846,10 @@ function showView(view){
   const sv = document.getElementById("view-semanales");
   if(sv) sv.style.display = isSem ? "flex" : "none";
 
+  // Vista Analytics (4º tab — full screen)
+  const av = document.getElementById("analytics-panel");
+  if(av) av.style.display = isAnalytics ? "block" : "none";
+
   // Inicializar vista correspondiente
   if(isTaller){
     buildTallerSucOptions();
@@ -4881,6 +4857,9 @@ function showView(view){
   }
   if(isSem){
     renderSemanales();
+  }
+  if(isAnalytics){
+    buildAnalytics();
   }
 }
 
