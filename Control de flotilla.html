@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-zFP3/bLApJRX4IkTefxDt29vVRIT3zLl97CBBfzCwxs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-NSnN+sOC0NmMQF6NzCIWKEXCTyfR/Z4BhZ3yNxNPfu0='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1521,10 +1521,20 @@ function updateHealthUI(){
   if(!btn) return;
   const errs = healthLog.filter(l=>l.lv==="error").length;
   const warns = healthLog.filter(l=>l.lv==="warn").length;
+  const setBadge = (icon, color, label, count) => {
+    btn.style.display = "flex";
+    btn.style.color = color;
+    btn.textContent = "";
+    const i = document.createElement("i");
+    i.setAttribute("data-lucide", icon);
+    i.style.cssText = "width:12px;height:12px";
+    btn.appendChild(i);
+    btn.appendChild(document.createTextNode(` ${label} (${count})`));
+  };
   if(errs > 0){
-    btn.style.display="flex"; btn.style.color="var(--R)"; btn.innerHTML=`<i data-lucide="shield-alert" style="width:12px;height:12px"></i> Crítico (${errs})`;
+    setBadge("shield-alert", "var(--R)", "Crítico", errs);
   } else if(warns > 0){
-    btn.style.display="flex"; btn.style.color="var(--A)"; btn.innerHTML=`<i data-lucide="shield-check" style="width:12px;height:12px"></i> Salud (${warns})`;
+    setBadge("shield-check", "var(--A)", "Salud", warns);
   } else {
     btn.style.display="none";
   }
@@ -1730,8 +1740,19 @@ function doExcel(file){
       const wb=XLSX.read(e.target.result,{type:"array",cellDates:false});
       const ws0=wb.Sheets[wb.SheetNames[0]];
       const hdrs0=(XLSX.utils.sheet_to_json(ws0,{header:1,defval:""})[0]||[]).map(h=>String(h).toLowerCase().trim());
-      if(classifyReport(hdrs0,file.name)==="semanal"){loadWBSemanal(wb,file.name);}
-      else{loadWB(wb,file.name);}
+      const onAsyncErr = err => {
+        console.error("[doExcel/load]",err);
+        window.notify(`Error al cargar datos: ${err && err.message ? err.message : err}`,"error",6000);
+        document.getElementById("dz").style.display="flex";
+        document.getElementById("ldr").style.display="none";
+      };
+      if(classifyReport(hdrs0,file.name)==="semanal"){
+        // loadWBSemanal es síncrono; errores síncronos los atrapa el catch externo
+        loadWBSemanal(wb,file.name);
+      } else {
+        // loadWB es async — chain .catch para que rejects no escapen a unhandledrejection
+        Promise.resolve(loadWB(wb,file.name)).catch(onAsyncErr);
+      }
     }
     catch(err){
       console.error("[doExcel]",err);
@@ -2123,6 +2144,10 @@ function loadWBSemanal(wb, fname){
         toast.textContent=`✓ ${periodoLbl} — ${entries.length} unidades importadas`;
         document.body.appendChild(toast);
         setTimeout(()=>toast.remove(),3500);
+      }).catch(err=>{
+        console.error("[loadWBSemanal] persist:",err);
+        document.getElementById("ldr").style.display="none";
+        if(typeof window.notify==="function") window.notify("Datos cargados pero no se persistieron — pueden perderse al recargar.","error",6000);
       });
 
     }catch(err){
@@ -3533,7 +3558,16 @@ async function saveActions(uid){
     const db=await openDB();
     const tx=db.transaction("actions","readwrite");
     tx.objectStore("actions").put({uid,actions:actionsDB[uid]||[]},uid);
-  }catch(e){console.warn("[DB] saveActions:",e);}
+    await new Promise((res,rej)=>{
+      tx.oncomplete=()=>res();
+      tx.onerror=()=>rej(tx.error);
+      tx.onabort=()=>rej(tx.error||new Error("tx aborted"));
+    });
+  }catch(e){
+    console.warn("[DB] saveActions:",e);
+    if(typeof window.notify==="function") window.notify("No se guardó la acción correctiva — reintenta.","error",5000);
+    throw e;
+  }
 }
 
 function addAction(uid,findingText){
@@ -3550,7 +3584,7 @@ function addAction(uid,findingText){
     createdAt:new Date().toISOString(),
     updatedAt:new Date().toISOString()
   });
-  saveActions(uid);
+  saveActions(uid).catch(()=>{});
   renderDet();
 }
 
@@ -3559,7 +3593,7 @@ function updateActionStatus(uid,actionId,newStatus){
   const a=list.find(x=>x.id===actionId);if(!a)return;
   a.status=newStatus;
   a.updatedAt=new Date().toISOString();
-  saveActions(uid);
+  saveActions(uid).catch(()=>{});
   renderDet();
 }
 
@@ -3567,7 +3601,7 @@ function deleteAction(uid,actionId){
   if(!actionsDB[uid])return;
   if(!confirm("Eliminar esta accion?"))return;
   actionsDB[uid]=actionsDB[uid].filter(x=>x.id!==actionId);
-  saveActions(uid);
+  saveActions(uid).catch(()=>{});
   renderDet();
 }
 
@@ -5857,6 +5891,9 @@ function doTallerExcel(file){
         // Mostrar nav si no estaba visible
         const nav = document.getElementById("mainnav");
         if(nav) nav.style.display = "flex";
+      }).catch(err=>{
+        console.error("[importTaller] saveTallerDB:",err);
+        window.notify("Importación cargada en memoria pero no se persistió — reintenta.","error",6000);
       });
     } catch(err){
       window.notify(`Error al leer el archivo: ${err.message||err}`,"error",7000);
@@ -6064,7 +6101,10 @@ function finalizarUnidad(id){
   e.estado = "Finalizado";
   e.fsalidaReal = e.fsalidaReal || new Date().toISOString().slice(0,10);
   e.updatedAt   = new Date().toISOString();
-  saveTallerDB();
+  saveTallerDB().catch(err=>{
+    console.error("[finalizarUnidad] saveTallerDB:",err);
+    if(typeof window.notify==="function") window.notify("No se guardó el cambio en disco — reintenta.","error",5000);
+  });
   updateTallerBadge();
   renderTaller();
 }
