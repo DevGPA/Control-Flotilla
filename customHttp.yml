@@ -4,7 +4,7 @@ customHeaders:
       - key: 'Strict-Transport-Security'
         value: 'max-age=63072000; includeSubDomains; preload'
       - key: 'X-Frame-Options'
-        value: 'SAMEORIGIN'
+        value: 'DENY'
       - key: 'X-Content-Type-Options'
         value: 'nosniff'
       - key: 'X-XSS-Protection'
@@ -17,8 +17,10 @@ customHeaders:
         value: 'same-origin'
       - key: 'Cross-Origin-Resource-Policy'
         value: 'same-origin'
-      - key: 'Content-Security-Policy'
-        value: "default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-0MQU+MpvFNTS12CMmpl5IVQXRY2PVCLDBs1yMXF2OY8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
+      # CSP movida al <meta> del HTML — el script compute-csp-hashes.mjs
+      # la mantiene sincronizada con los hashes de inline scripts. Duplicar
+      # acá causa drift entre header (stale) y meta (fresh) cuando se editan
+      # inline scripts. X-Frame-Options DENY arriba cubre frame-ancestors.
 
   # Service worker NO cache (PWA fresh updates)
   - pattern: '**/sw.js'
