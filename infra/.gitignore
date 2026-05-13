@@ -1,0 +1,10 @@
+node_modules
+dist
+cdk.out
+*.js
+*.d.ts
+!jest.config.js
+.env
+.env.*
+!.env.example
+cdk.context.json
