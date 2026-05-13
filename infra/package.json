@@ -1,0 +1,31 @@
+{
+  "name": "@control-flotilla/infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK v2 infrastructure for control-flotilla (S3 + DynamoDB + Cognito + Lambda + API Gateway)",
+  "bin": {
+    "infra": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy:dev": "cdk deploy --all --context stage=dev --require-approval never",
+    "deploy:prod": "cdk deploy --all --context stage=prod",
+    "destroy:dev": "cdk destroy --all --context stage=dev",
+    "bootstrap": "cdk bootstrap",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "aws-cdk": "^2.1121.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.3.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.253.1",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  }
+}

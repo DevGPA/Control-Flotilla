@@ -39,3 +39,24 @@ tests/**/*.js.map
 # Playwright
 playwright-report/
 test-results/
+
+# AWS CDK (infra/) y backend Lambda build output
+infra/cdk.out/
+infra/cdk.context.json
+infra/dist/
+infra/*.js
+infra/*.d.ts
+infra/lib/*.js
+infra/lib/*.d.ts
+infra/bin/*.js
+infra/bin/*.d.ts
+backend/dist/
+backend/src/**/*.js
+backend/src/**/*.js.map
+backend/src/**/*.d.ts
+
+# AWS credenciales locales — no commitear nunca
+.aws/
+*.pem
+aws-exports.js
+aws-exports.ts
