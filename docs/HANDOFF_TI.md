@@ -146,6 +146,41 @@ Mismos outputs pero stack `prod`. Diferencias automáticas:
 
 ## 6. Verificación post-deploy
 
+### 6.0 Smoke test automatizado (recomendado)
+
+El repo incluye un script que valida los 12 checks principales en ~30 segundos. Correr primero:
+
+```bash
+# Bash / Git Bash / Linux / Mac
+cd infra/scripts
+./smoke-test.sh dev gpa-deploy
+```
+
+```powershell
+# PowerShell (Windows)
+cd infra\scripts
+.\smoke-test.ps1 -Stage dev -Profile gpa-deploy
+```
+
+**Checks que ejecuta**:
+
+1. Credenciales AWS válidas
+2. Stack `storage` en `CREATE_COMPLETE`
+3. Stack `auth` en `CREATE_COMPLETE`
+4. Stack `api` en `CREATE_COMPLETE`
+5. DynamoDB AppTable existe
+6. GSI1 + GSI2 presentes
+7. DDB encryption KMS activa
+8. PITR habilitado
+9. Idempotency table TTL activo
+10. S3 bucket alcanzable
+11. S3 KMS encryption + versioning + public-access-block
+12. Cognito User Pool alcanzable
+13. API Gateway responde 401/403 sin token (authorizer wired)
+14. KMS key habilitada
+
+**Si todo verde → deploy validado.** Si algo en rojo, las secciones 6.1–6.4 abajo dan el detalle manual.
+
 ### 6.1 Recursos creados
 
 ```bash
@@ -254,9 +289,11 @@ Antes de marcar Fase 1 como completada:
 - [ ] IAM user `cdk-deploy-flotilla` creado con perfil local `gpa-deploy`
 - [ ] `cdk bootstrap` ejecutado exitosamente
 - [ ] `npm run deploy:dev` completado sin errores
+- [ ] `infra/scripts/smoke-test.sh dev` o `.ps1 -Stage dev` retorna `0 failed`
 - [ ] 3 stacks `dev` en estado `CREATE_COMPLETE`
 - [ ] Outputs (UserPoolId, ApiUrl, etc.) enviados al desarrollador
 - [ ] Primer usuario admin creado en Cognito
 - [ ] `npm run deploy:prod` completado (cuando dev validado por desarrollador)
+- [ ] `infra/scripts/smoke-test.sh prod` retorna `0 failed`
 - [ ] IAM policy del deployer restringida a permisos mínimos
 - [ ] AWS Backup configurado sobre DynamoDB AppTable (recomendado para prod)
