@@ -10,6 +10,7 @@ import {
   signOut,
   getCurrentUser,
   fetchUserAttributes,
+  confirmSignIn,
   type SignInInput,
 } from "aws-amplify/auth";
 
@@ -20,23 +21,50 @@ export interface AuthSession {
   groups: string[];
 }
 
+export type LoginResult =
+  | { status: "success" }
+  | { status: "requireNewPassword" }
+  | { status: "error"; message: string };
+
 /**
- * Login con email + password. Throws si credenciales inválidas o usuario
- * requiere setNewPassword en primer login.
+ * Login con email + password. Maneja flow de NEW_PASSWORD_REQUIRED
+ * (Cognito fuerza cambio al primer login con temp password).
  *
- * El temp password de Cognito Console fuerza un cambio en primer login —
- * Amplify devuelve `NEW_PASSWORD_REQUIRED` que actualmente NO manejamos
- * (Fase 1 = solo login normal). Para primer login, usa Cognito Hosted UI
- * o cambia la password manualmente via Console antes.
+ * Returns status; el modal decide qué UI mostrar según el resultado.
  */
-export async function login(email: string, password: string): Promise<void> {
+export async function login(email: string, password: string): Promise<LoginResult> {
   const input: SignInInput = { username: email, password };
-  const result = await signIn(input);
-  if (!result.isSignedIn) {
-    throw new Error(
-      `Login incompleto. Next step: ${result.nextStep.signInStep}. ` +
-        `Si es NEW_PASSWORD_REQUIRED, cambia tu password en Cognito Console.`,
-    );
+  try {
+    const result = await signIn(input);
+    if (result.isSignedIn) return { status: "success" };
+    if (
+      result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
+    ) {
+      return { status: "requireNewPassword" };
+    }
+    return {
+      status: "error",
+      message: `Login incompleto. Next step: ${result.nextStep.signInStep}`,
+    };
+  } catch (e) {
+    return { status: "error", message: (e as Error).message || "Error desconocido" };
+  }
+}
+
+/**
+ * Completa el flow de NEW_PASSWORD_REQUIRED. Llamar inmediatamente después de
+ * login() que devolvió `requireNewPassword` con la nueva password elegida.
+ */
+export async function confirmNewPassword(newPassword: string): Promise<LoginResult> {
+  try {
+    const result = await confirmSignIn({ challengeResponse: newPassword });
+    if (result.isSignedIn) return { status: "success" };
+    return {
+      status: "error",
+      message: `Confirm falló. Next step: ${result.nextStep.signInStep}`,
+    };
+  } catch (e) {
+    return { status: "error", message: (e as Error).message || "Error desconocido" };
   }
 }
 

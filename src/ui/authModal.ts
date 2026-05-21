@@ -4,7 +4,7 @@
 // XSS-safe: usa textContent + appendChild (no innerHTML con input usuario).
 // Estilo: inline minimal — heredado del CSS app (--bg, --ac, etc.).
 
-import { login } from "../api/auth";
+import { login, confirmNewPassword } from "../api/auth";
 
 export interface AuthModalOptions {
   /** Mensaje arriba del form (ej: "Sesión expirada"). Default: "Inicia sesión". */
@@ -138,7 +138,100 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
       else emailInput.focus();
     }, 50);
 
-    // Submit handler.
+    // Step 2: form de cambio de password obligatorio.
+    // Se construye on-demand cuando login devuelve requireNewPassword.
+    const showNewPasswordStep = (): void => {
+      // Limpia el form actual del card (mantén el header).
+      while (card.children.length > 2) card.removeChild(card.lastChild!);
+
+      const subInfo = document.createElement("p");
+      subInfo.style.cssText = "margin:0 0 16px 0;font-size:12px;color:var(--A);line-height:1.5";
+      subInfo.textContent =
+        "Tu password actual es temporal. Define una nueva para continuar (mín. 8 caracteres).";
+      card.appendChild(subInfo);
+
+      const newPassLabel = document.createElement("label");
+      newPassLabel.style.cssText =
+        "display:block;font-size:11px;font-weight:600;color:var(--s1);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px";
+      newPassLabel.textContent = "Nueva password";
+      card.appendChild(newPassLabel);
+
+      const newPassInput = document.createElement("input");
+      newPassInput.type = "password";
+      newPassInput.autocomplete = "new-password";
+      newPassInput.required = true;
+      newPassInput.style.cssText = emailInput.style.cssText;
+      card.appendChild(newPassInput);
+
+      const confirmLabel = document.createElement("label");
+      confirmLabel.style.cssText = newPassLabel.style.cssText;
+      confirmLabel.textContent = "Confirmar password";
+      card.appendChild(confirmLabel);
+
+      const confirmInput = document.createElement("input");
+      confirmInput.type = "password";
+      confirmInput.autocomplete = "new-password";
+      confirmInput.required = true;
+      confirmInput.style.cssText = emailInput.style.cssText;
+      confirmInput.style.marginBottom = "20px";
+      card.appendChild(confirmInput);
+
+      const err2 = document.createElement("div");
+      err2.style.cssText = err.style.cssText;
+      card.appendChild(err2);
+
+      const btn2 = document.createElement("button");
+      btn2.type = "button";
+      btn2.textContent = "Cambiar password";
+      btn2.style.cssText = btn.style.cssText;
+      btn2.addEventListener("mouseenter", () => {
+        btn2.style.background = "var(--ac2)";
+      });
+      btn2.addEventListener("mouseleave", () => {
+        btn2.style.background = "var(--ac)";
+      });
+      card.appendChild(btn2);
+
+      const submit2 = async (): Promise<void> => {
+        const newP = newPassInput.value;
+        const confP = confirmInput.value;
+        if (newP.length < 8) {
+          err2.textContent = "Password debe tener al menos 8 caracteres";
+          return;
+        }
+        if (newP !== confP) {
+          err2.textContent = "Las passwords no coinciden";
+          return;
+        }
+        btn2.disabled = true;
+        btn2.textContent = "Guardando...";
+        err2.textContent = "";
+        const res = await confirmNewPassword(newP);
+        if (res.status === "success") {
+          backdrop.remove();
+          resolve();
+        } else {
+          err2.textContent =
+            res.status === "error" ? res.message : "Cognito requiere otro paso";
+          btn2.disabled = false;
+          btn2.textContent = "Cambiar password";
+        }
+      };
+
+      btn2.addEventListener("click", submit2);
+      [newPassInput, confirmInput].forEach((inp) => {
+        inp.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            void submit2();
+          }
+        });
+      });
+
+      setTimeout(() => newPassInput.focus(), 50);
+    };
+
+    // Submit handler step 1.
     const handleSubmit = async (): Promise<void> => {
       const email = emailInput.value.trim();
       const password = passInput.value;
@@ -149,17 +242,21 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
       btn.disabled = true;
       btn.textContent = "Verificando...";
       err.textContent = "";
-      try {
-        await login(email, password);
+      const res = await login(email, password);
+      if (res.status === "success") {
         backdrop.remove();
         resolve();
-      } catch (e) {
-        err.textContent = (e as Error).message || "Error de autenticación";
-        btn.disabled = false;
-        btn.textContent = "Iniciar sesión";
-        passInput.value = "";
-        passInput.focus();
+        return;
       }
+      if (res.status === "requireNewPassword") {
+        showNewPasswordStep();
+        return;
+      }
+      err.textContent = res.message;
+      btn.disabled = false;
+      btn.textContent = "Iniciar sesión";
+      passInput.value = "";
+      passInput.focus();
     };
 
     btn.addEventListener("click", handleSubmit);
