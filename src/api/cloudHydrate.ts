@@ -37,11 +37,23 @@ declare global {
   }
 }
 
+function parseResultados(raw: unknown): ChecklistResultados {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as ChecklistResultados;
+    } catch {
+      return {};
+    }
+  }
+  return raw as ChecklistResultados;
+}
+
 function mergeUnitWithChecklist(
   unit: Schema["Unit"]["type"],
   checklist: Schema["Checklist"]["type"] | undefined,
 ): Unit {
-  const r = (checklist?.resultados ?? {}) as ChecklistResultados;
+  const r = parseResultados(checklist?.resultados);
   const risk = (r.risk ?? r.max ?? "OK") as RiskLevel;
   const findings = (Array.isArray(r.findings) ? r.findings : []) as Finding[];
   return {

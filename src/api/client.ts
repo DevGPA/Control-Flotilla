@@ -149,8 +149,15 @@ export async function upsertChecklist(
   input: ChecklistInput,
 ): Promise<Schema["Checklist"]["type"]> {
   const c = getClient();
-  // resultados es a.json() → cast para que el SDK acepte arbitrary.
-  const payload = input as unknown as Parameters<typeof c.models.Checklist.create>[0];
+  // AWSJSON scalar requiere STRING, no objeto. JSON.stringify explicito.
+  const inputStringified = {
+    ...input,
+    resultados:
+      typeof input.resultados === "string"
+        ? input.resultados
+        : JSON.stringify(input.resultados ?? {}),
+  };
+  const payload = inputStringified as unknown as Parameters<typeof c.models.Checklist.create>[0];
   const created = await c.models.Checklist.create(payload);
   if (!created.errors && created.data) return created.data;
   if (created.errors && isConditionalCheckFailed(created.errors)) {
@@ -231,7 +238,12 @@ export type SemanalInput = {
 
 export async function upsertSemanal(input: SemanalInput): Promise<Schema["Semanal"]["type"]> {
   const c = getClient();
-  const payload = input as unknown as Parameters<typeof c.models.Semanal.create>[0];
+  // AWSJSON scalar requiere STRING, no objeto.
+  const inputStringified = {
+    ...input,
+    datos: typeof input.datos === "string" ? input.datos : JSON.stringify(input.datos ?? {}),
+  };
+  const payload = inputStringified as unknown as Parameters<typeof c.models.Semanal.create>[0];
   const created = await c.models.Semanal.create(payload);
   if (!created.errors) return created.data!;
   if (isConditionalCheckFailed(created.errors)) {
