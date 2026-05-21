@@ -30,6 +30,7 @@ import {
   listPeriodos,
   listSemanales,
 } from "./client";
+import { hydrateFromCloud } from "./cloudHydrate";
 import type { LoadedZip } from "../io/zipLoader";
 
 declare global {
@@ -50,6 +51,8 @@ declare global {
     ) => Promise<BatchResult>;
     /** Refetch todos los datos del tenant — overwrite state local. */
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
+    /** Hidrata window.units desde cloud + trigger re-render UI legacy. */
+    __cloudHydrate?: () => Promise<{ units: number; source: "cloud" | "empty" } | null>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
   }
@@ -132,6 +135,11 @@ export function setupCloud(): void {
       window.notify?.(summary, "warn", 6000);
     } else {
       window.notify?.(summary, "ok", 4000);
+      // Re-hidrata para reflejar el state autoritativo del cloud post-upload.
+      // No bloquea — fire-and-forget. Si falla, el state local actual sigue válido.
+      void hydrateFromCloud(session.tenantId).catch((err) =>
+        console.error("[cloudSyncUnits] re-hydrate falló:", err),
+      );
     }
     return res;
   };
@@ -150,25 +158,51 @@ export function setupCloud(): void {
     return { units, taller, notas, checklists, periodos, semanales };
   };
 
+  window.__cloudHydrate = async (): Promise<{
+    units: number;
+    source: "cloud" | "empty";
+  } | null> => {
+    const session = await getSession();
+    if (!session) return null;
+    return hydrateFromCloud(session.tenantId);
+  };
+
   // Auth gating al boot: si NO hay sesión, modal aparece inmediatamente y
   // bloquea hasta autenticar. Después de login exitoso, app continúa normal.
   // Si SÍ hay sesión activa (refresh, multi-tab), pasa silencioso.
+  // Tras login → hidrata state desde cloud (FASE 6) para que multi-usuario vea
+  // mismos datos sin re-subir ZIP.
   void (async () => {
+    let session: AuthSession | null = null;
     if (await isLoggedIn()) {
-      window.__cloudSession = await getSession();
-      console.info("[cloud] Sesión activa:", window.__cloudSession?.email);
-      return;
+      session = await getSession();
+      window.__cloudSession = session;
+      console.info("[cloud] Sesión activa:", session?.email);
+    } else {
+      if (document.readyState === "loading") {
+        await new Promise<void>((r) => document.addEventListener("DOMContentLoaded", () => r()));
+      }
+      try {
+        await showAuthModal({ title: "Control Flotilla" });
+        session = await getSession();
+        window.__cloudSession = session;
+        console.info("[cloud] Login exitoso:", session?.email);
+      } catch (err) {
+        console.error("[cloud] Auth gating falló:", err);
+        window.__cloudSession = null;
+      }
     }
-    if (document.readyState === "loading") {
-      await new Promise<void>((r) => document.addEventListener("DOMContentLoaded", () => r()));
-    }
-    try {
-      await showAuthModal({ title: "Control Flotilla" });
-      window.__cloudSession = await getSession();
-      console.info("[cloud] Login exitoso:", window.__cloudSession?.email);
-    } catch (err) {
-      console.error("[cloud] Auth gating falló:", err);
-      window.__cloudSession = null;
+    // Hidrata desde cloud — multi-usuario ve mismos datos.
+    if (session) {
+      try {
+        const result = await hydrateFromCloud(session.tenantId);
+        if (result.source === "cloud" && result.units > 0) {
+          window.notify?.(`☁ ${result.units} unidades cargadas del servidor`, "ok", 3000);
+        }
+      } catch (err) {
+        console.error("[cloud] Hydrate falló:", err);
+        window.notify?.("Cloud sync indisponible — usando datos locales", "warn", 4000);
+      }
     }
   })();
 }
