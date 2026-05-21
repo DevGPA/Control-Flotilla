@@ -28,7 +28,7 @@ const schema = a.schema({
       version: a.integer().default(1),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
@@ -48,7 +48,7 @@ const schema = a.schema({
       version: a.integer().default(1),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
@@ -64,7 +64,7 @@ const schema = a.schema({
       timestamp: a.string().required(),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
@@ -82,7 +82,7 @@ const schema = a.schema({
       version: a.integer().default(1),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
@@ -99,7 +99,7 @@ const schema = a.schema({
       version: a.integer().default(1),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
@@ -116,7 +116,7 @@ const schema = a.schema({
       version: a.integer().default(1),
     })
     .authorization((allow) => [
-      allow.groupsDefinedIn("tenantId"),
+      allow.groupDefinedIn("tenantId"),
       allow.group("admin"),
     ])
     .secondaryIndexes((index) => [
