@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-f4f6BL17BVIF2GH94pMlmVf/O2j8iA/MJDHm5mtBJ4Q='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-/PDn/KGHddPwRfzgBmlfm7y4kaLFaIhJnObvVeYTbMo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -367,11 +367,7 @@ g.inflateBytes=async function(src){
   <div class="chip-row">
     <button class="chip chip-on" id="btn-all" onclick="setF('all')">Todos <span class="chip-n" id="fc_all"></span></button>
     <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
-    <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>Revisar <span class="chip-n" id="fc1"></span></button>
-    <button class="chip" id="btn-Completar" onclick="setF('Completar')" title="Unidades con al menos un hallazgo pendiente (foto, doc, info). Pendiente admin, no riesgo operativo."><span class="chip-dot" style="background:var(--B)"></span>Pendientes <span class="chip-n" id="fc4"></span></button>
-    <button class="chip" id="btn-OK" onclick="setF('OK')" title="Unidades sin ningún hallazgo pendiente. El donut «Operativa» puede mostrar más unidades porque agrupa OK + Pendientes administrativos (Completar)."><span class="chip-dot" style="background:var(--G)"></span>OK <span class="chip-n" id="fc2"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:var(--ac)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
-    <button class="chip" id="btn-taller" onclick="setF('taller')"><span class="chip-dot" style="background:var(--B)"></span>Taller <span class="chip-n" id="fc_taller"></span></button>
     <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
@@ -1629,13 +1625,12 @@ const isUnitEnTaller = u =>
 const _hasPending=(u,lv)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv===lv&&!(dm[f.text]&&dm[f.text].done))};
 const _hasAnyPending=(u)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>!(dm[f.text]&&dm[f.text].done))};
 const filt=()=>sortedUnits(units.filter(u=>{
+  // "taller" lo dispara el donut binario (segmento En taller). Chip removido pero
+  // filtro sobrevive para integrarse con donut click.
   if(curF==="taller")     return isUnitEnTaller(u);
   if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);return ds&&ds<=d30b;}
   if(curF==="obs"&&!u.obs)return false;
   if(curF==="Urgente"&&!_hasPending(u,"Urgente"))return false;
-  if(curF==="Revisar"&&!_hasPending(u,"Revisar"))return false;
-  if(curF==="Completar"&&!_hasPending(u,"Completar"))return false;
-  if(curF==="OK"&&_hasAnyPending(u))return false;
   if(curB!=="all"&&u.branch!==curB)return false;
   if(curS){const q=curS.toLowerCase();
     return[u.plate,u.brand,u.insp,u.eco,u.branch,u.area,u.obs].some(v=>String(v||"").toLowerCase().includes(q))}
@@ -2389,14 +2384,10 @@ function buildKPIs(){
     const proxTxt=nSvcProximo?`${nSvcProximo} próximo${nSvcProximo!==1?"s":""}`:"";
     kssvc.textContent=venTxt&&proxTxt?`${venTxt} · ${proxTxt}`:venTxt||proxTxt||"Al corriente";
   }
-  // Chip count badges
+  // Chip count badges — solo chips visibles (Todos / Urgente / Comentarios / Svc ≤30d).
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
-  document.getElementById("fc0").textContent=u?`(${u})`:"";
-  document.getElementById("fc1").textContent=rv?`(${rv})`:"";
-  const fc4=document.getElementById("fc4");if(fc4)fc4.textContent=comp?`(${comp})`:"";
-  document.getElementById("fc2").textContent=ok?`(${ok})`:"";
+  const fc0=document.getElementById("fc0");if(fc0)fc0.textContent=u?`(${u})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
-  const fct=document.getElementById("fc_taller");if(fct)fct.textContent=enTaller?`(${enTaller})`:"";
   const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcAlert?`(${nSvcAlert})`:"";
   // Action buttons
   const btnFleet=document.getElementById("btn-fleet-pdf");
