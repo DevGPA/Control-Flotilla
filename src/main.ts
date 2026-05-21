@@ -11,12 +11,17 @@
 //      - USE_NEW_PDF:    exportPDF via src/pdf/unitReport
 //      - USE_STORE:      log de cambios del store (debug)
 
-// Cloud wire: side-effect import. Configura Amplify Gen 2 SDK + expone
-// window.__cloudSyncZip / __cloudLogin / __cloudFetchAll para que el HTML
-// legado pueda sincronizar ZIP uploads a DynamoDB. No bloquea boot — la
-// app sigue funcionando offline contra IndexedDB hasta que el user invoque
-// una acción cloud.
-import "./api/cloudWire";
+// Cloud wire: configura Amplify Gen 2 SDK + expone window.__cloudSyncZip /
+// __cloudLogin / __cloudFetchAll para que el HTML legado pueda sincronizar
+// ZIP uploads a DynamoDB. Auth gating al boot — si no hay sesión, muestra
+// modal bloqueante.
+//
+// Llamada explícita (no side-effect) — Vite producción tree-shakea
+// side-effect-only imports cuando las assignments a window.* no son leídas
+// desde otros módulos TS (el HTML legado inline las invoca pero el bundler
+// no ve esos accesos).
+import { setupCloud } from "./api/cloudWire";
+setupCloud();
 
 import { renderTable as renderTableNew } from "./ui/renderTable";
 import { renderChecklist as renderChecklistNew } from "./ui/detail/renderChecklist";
