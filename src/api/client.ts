@@ -149,17 +149,31 @@ export async function upsertChecklist(
   input: ChecklistInput,
 ): Promise<Schema["Checklist"]["type"]> {
   const c = getClient();
-  // resultados es a.json() → cast a any para que el SDK acepte arbitrary.
+  // resultados es a.json() → cast para que el SDK acepte arbitrary.
   const payload = input as unknown as Parameters<typeof c.models.Checklist.create>[0];
   const created = await c.models.Checklist.create(payload);
-  if (!created.errors) return created.data!;
-  if (isConditionalCheckFailed(created.errors)) {
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
     const updated = await c.models.Checklist.update(payload);
-    throwOnErrors("upsertChecklist(update)", updated.errors);
-    return updated.data!;
+    if (updated.errors) {
+      throw new Error(`upsertChecklist(update) failed: ${JSON.stringify(updated.errors)}`);
+    }
+    if (!updated.data) {
+      throw new Error(
+        `upsertChecklist(update) returned null data for ${input.unitUid}/${input.fecha}. ` +
+          `Authorization rule may be filtering. Raw response: ${JSON.stringify(updated)}`,
+      );
+    }
+    return updated.data;
   }
-  throwOnErrors("upsertChecklist(create)", created.errors);
-  return created.data!;
+  if (created.errors) {
+    throw new Error(`upsertChecklist(create) failed: ${JSON.stringify(created.errors)}`);
+  }
+  // Sin errors pero sin data — bug típico: authorization filtra post-create.
+  throw new Error(
+    `upsertChecklist(create) returned null data for ${input.unitUid}/${input.fecha}. ` +
+      `Probable authorization filtering. Raw response: ${JSON.stringify(created)}`,
+  );
 }
 
 export async function listChecklists(
