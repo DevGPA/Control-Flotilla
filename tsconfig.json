@@ -17,5 +17,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["vite/client", "vitest/globals", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "amplify/**/*.ts"],
+  "exclude": ["_backup_cdk/**/*", "node_modules", "dist"]
 }

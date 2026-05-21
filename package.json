@@ -23,14 +23,20 @@
     "audit:all": "npm run audit:deps && npm run audit:xss && npm run audit:baseline && npm run audit:csp",
     "format": "prettier --write \"src/**/*.{ts,js,css,html}\"",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "amplify:sandbox": "npx ampx sandbox",
+    "amplify:sandbox:delete": "npx ampx sandbox delete",
+    "amplify:generate": "npx ampx generate outputs"
   },
   "dependencies": {
+    "aws-amplify": "^6.17.0",
     "echarts": "6.0.0",
     "jspdf": "4.2.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@aws-amplify/backend": "^1.22.0",
+    "@aws-amplify/backend-cli": "^1.8.2",
     "@playwright/test": "^1.59.1",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",

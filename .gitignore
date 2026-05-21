@@ -60,3 +60,11 @@ backend/src/**/*.d.ts
 *.pem
 aws-exports.js
 aws-exports.ts
+
+# Amplify Gen 2 — outputs generados y sandbox cache
+.amplify/
+amplify_outputs.json
+amplify_outputs.d.ts
+
+# CDK backup local (migración a Amplify Gen 2 — sin git)
+_backup_cdk/
