@@ -125,19 +125,22 @@ export async function uploadZipToCloud(
         const fechaRaw = pickStr(row, "Fecha y Hora", "Fecha");
         const fecha = fechaRaw.split(/[ T]/)[0] || new Date().toISOString().split("T")[0]!;
         const analyzed = analyzeRow(row as Parameters<typeof analyzeRow>[0]);
+        const resultadosClean = JSON.parse(
+          JSON.stringify({
+            findings: analyzed.F,
+            tires: analyzed.T,
+            max: analyzed.max,
+            minT: analyzed.minT ?? null,
+            validationErrors: analyzed.validationErrors,
+          }),
+        );
         await upsertChecklist({
           tenantId,
           unitUid: placa,
           fecha,
           tipoInspeccion: "mensual",
-          resultados: {
-            findings: analyzed.F,
-            tires: analyzed.T,
-            max: analyzed.max,
-            minT: analyzed.minT,
-            validationErrors: analyzed.validationErrors,
-          },
-          responsable: pickStr(row, "Responsable", "Nombre de quien verifica") || undefined,
+          resultados: resultadosClean,
+          responsable: pickStr(row, "Responsable", "Nombre de quien verifica") || "",
         });
         result.checklist++;
       } else if (kind === "semanal") {
@@ -148,12 +151,13 @@ export async function uploadZipToCloud(
             .replace(/\.zip$/i, "")
             .replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || zip.filename;
         const sucursal = pickStr(row, "Sucursal", "Area") || "—";
+        const datosClean = JSON.parse(JSON.stringify(row));
         await upsertSemanal({
           tenantId,
           periodoId,
           sucursal,
           unitUid: placa,
-          datos: row,
+          datos: datosClean,
         });
         result.semanal++;
       }
@@ -213,22 +217,26 @@ export async function uploadUnitsToCloud(
         // composite identifier (tenantId, unitUid, fecha) requiere consistencia,
         // misma fuente = misma key.
         const fecha = String(u.fecha || "").trim() || new Date().toISOString().split("T")[0]!;
+        // Sanitize: JSON-roundtrip strip undefined (GraphQL rechaza undefined en variables).
+        const resultadosClean = JSON.parse(
+          JSON.stringify({
+            findings: u.F ?? [],
+            tires: u.T ?? {},
+            risk: u.risk ?? "OK",
+            minT: u.minT ?? null,
+            obs: u.obs ?? "",
+            km: u.km ?? "",
+            nextSvc: u.nextSvc ?? "",
+            kmNextSvc: u.kmNextSvc ?? "",
+          }),
+        );
         await upsertChecklist({
           tenantId,
           unitUid: placa,
           fecha,
           tipoInspeccion: "mensual",
-          resultados: {
-            findings: u.F ?? [],
-            tires: u.T ?? {},
-            risk: u.risk,
-            minT: u.minT,
-            obs: u.obs,
-            km: u.km,
-            nextSvc: u.nextSvc,
-            kmNextSvc: u.kmNextSvc,
-          },
-          responsable: u.insp || u.area || undefined,
+          resultados: resultadosClean,
+          responsable: u.insp || u.area || "",
         });
         result.checklist++;
       } else {
@@ -237,17 +245,20 @@ export async function uploadUnitsToCloud(
           fname
             .replace(/\.(zip|xlsx?)$/i, "")
             .replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || fname;
+        const datosClean = JSON.parse(
+          JSON.stringify({
+            findings: u.F ?? [],
+            risk: u.risk ?? "OK",
+            obs: u.obs ?? "",
+            km: u.km ?? "",
+          }),
+        );
         await upsertSemanal({
           tenantId,
           periodoId,
           sucursal: u.branch || "—",
           unitUid: placa,
-          datos: {
-            findings: u.F ?? [],
-            risk: u.risk,
-            obs: u.obs,
-            km: u.km,
-          },
+          datos: datosClean,
         });
         result.semanal++;
       }
