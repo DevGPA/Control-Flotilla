@@ -108,52 +108,56 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     }
   }
 
-  // 🔮 Predictivo (ADN de Traccar): Alertas de mantenimiento
-  // A. Por kilometraje — requiere ambos: kmActual y kmSiguiente pobladas.
+  // 🔮 Predictivo: km autoritativo cuando hay datos. Fecha = fallback.
+  // La fecha "estimada del siguiente servicio" es proyección histórica que puede
+  // quedar stale si la unidad rueda menos de lo esperado. El km es la realidad —
+  // si todavía hay buffer, el servicio NO está vencido aunque la fecha-estimación
+  // diga lo contrario. Bug #78: km buffer 375 + fecha stale → no debe ser Urgente.
   const kmActual = parseFloat(String(row["Kilometraje"] ?? "0"));
   const kmSiguiente = parseFloat(String(row["Kilometraje del siguiente servicio"] ?? "0"));
-  if (kmSiguiente > 0 && kmActual > 0) {
+  const hasKmData = kmActual > 0 && kmSiguiente > 0;
+
+  if (hasKmData) {
     const diff = kmSiguiente - kmActual;
-    if (diff <= 1000 && diff > 0) {
-      F.push({
-        cat: "Mantenimiento",
-        text: `Servicio próximo (${Math.round(diff)}km restantes)`,
-        lv: "Revisar",
-      });
-      bump("Revisar");
-    } else if (diff <= 0) {
+    if (diff <= 0) {
       F.push({
         cat: "Mantenimiento",
         text: `Servicio VENCIDO (${Math.abs(Math.round(diff))}km excedidos)`,
         lv: "Urgente",
       });
       bump("Urgente");
-    }
-  }
-
-  // B. Por fecha — complementa al km-based cuando el XLSX solo tiene fecha
-  // (caso común). Columna exacta del MoreApp: "Fecha estimada del siguiente servicio".
-  // Misma ventana que el hero KPI #kv_svc (30 días).
-  const svcDate = parseSvcDate(row["Fecha estimada del siguiente servicio"]);
-  if (svcDate) {
-    const today0 = new Date();
-    today0.setHours(0, 0, 0, 0);
-    const msDay = 86400000;
-    const diffDays = Math.floor((svcDate.getTime() - today0.getTime()) / msDay);
-    if (diffDays < 0) {
+    } else if (diff <= 1000) {
       F.push({
         cat: "Mantenimiento",
-        text: `Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,
-        lv: "Urgente",
-      });
-      bump("Urgente");
-    } else if (diffDays <= 30) {
-      F.push({
-        cat: "Mantenimiento",
-        text: `Servicio próximo (${diffDays} días)`,
+        text: `Servicio próximo (${Math.round(diff)}km restantes)`,
         lv: "Revisar",
       });
       bump("Revisar");
+    }
+  } else {
+    // Fallback fecha cuando no hay datos de km. Columna MoreApp:
+    // "Fecha estimada del siguiente servicio". Ventana 30 días = hero KPI #kv_svc.
+    const svcDate = parseSvcDate(row["Fecha estimada del siguiente servicio"]);
+    if (svcDate) {
+      const today0 = new Date();
+      today0.setHours(0, 0, 0, 0);
+      const msDay = 86400000;
+      const diffDays = Math.floor((svcDate.getTime() - today0.getTime()) / msDay);
+      if (diffDays < 0) {
+        F.push({
+          cat: "Mantenimiento",
+          text: `Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,
+          lv: "Urgente",
+        });
+        bump("Urgente");
+      } else if (diffDays <= 30) {
+        F.push({
+          cat: "Mantenimiento",
+          text: `Servicio próximo (${diffDays} días)`,
+          lv: "Revisar",
+        });
+        bump("Revisar");
+      }
     }
   }
 

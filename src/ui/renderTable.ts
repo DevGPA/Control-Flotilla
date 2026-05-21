@@ -277,10 +277,17 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   dt.textContent = u.fecha || "—";
   kmCell.appendChild(dt);
   if (u.nextSvc && u.nextSvc !== "—" && parseSvcDate) {
-    const sd = parseSvcDate(u.nextSvc);
-    if (sd) {
-      const alertEl = svcAlertEl(sd, today0, d30);
-      if (alertEl) kmCell.appendChild(alertEl);
+    // Guard: km autoritativo. Si km tiene buffer, no mostrar pill fecha
+    // (la fecha-estimación puede estar stale). Bug #78.
+    const kmA = parseFloat(String(u.km ?? ""));
+    const kmN = parseFloat(String(u.kmNextSvc ?? ""));
+    const kmHasBuffer = kmA > 0 && kmN > 0 && kmN - kmA > 0;
+    if (!kmHasBuffer) {
+      const sd = parseSvcDate(u.nextSvc);
+      if (sd) {
+        const alertEl = svcAlertEl(sd, today0, d30);
+        if (alertEl) kmCell.appendChild(alertEl);
+      }
     }
   }
   tr.appendChild(kmCell);

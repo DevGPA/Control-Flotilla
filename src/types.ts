@@ -65,6 +65,7 @@ export type Unit = {
   // Tratamos como array genérico aquí; cada renderer tipa a lo que espera.
   photos?: unknown[];
   km?: number | string;
+  kmNextSvc?: number | string;
 };
 
 /** Marks for completed findings per unit, keyed by finding text. */

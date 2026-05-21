@@ -154,6 +154,46 @@ describe("analyzeRow", () => {
     expect(r.F.some((f) => f.cat === "Mantenimiento")).toBe(false);
   });
 
+  it("km autoritativo: buffer km > 0 ignora fecha vencida (bug #78)", () => {
+    const r = analyzeRow({
+      Kilometraje: 30125,
+      "Kilometraje del siguiente servicio": 30500,
+      "Fecha estimada del siguiente servicio": "04/05/2026", // pasada
+    });
+    // diff km = 375 → "próximo" (Revisar), NUNCA VENCIDO por fecha stale.
+    expect(r.max).toBe("Revisar");
+    expect(r.F.some((f) => f.text.includes("VENCIDO"))).toBe(false);
+    expect(r.F.some((f) => f.text.includes("próximo") && f.text.includes("km"))).toBe(true);
+  });
+
+  it("km vencido (diff <= 0) → Urgente aunque fecha sea futura", () => {
+    const r = analyzeRow({
+      Kilometraje: 31000,
+      "Kilometraje del siguiente servicio": 30500,
+      "Fecha estimada del siguiente servicio": "01/12/2099",
+    });
+    expect(r.max).toBe("Urgente");
+    expect(r.F.some((f) => f.text.includes("500km excedidos"))).toBe(true);
+  });
+
+  it("km con buffer amplio (>1000) y fecha vencida: no dispara finding", () => {
+    // km dice OK (5000km buffer) → fecha-fallback NO debe activarse.
+    const r = analyzeRow({
+      Kilometraje: 25000,
+      "Kilometraje del siguiente servicio": 30000,
+      "Fecha estimada del siguiente servicio": "01/01/2026",
+    });
+    expect(r.F.some((f) => f.cat === "Mantenimiento")).toBe(false);
+  });
+
+  it("sin km data, fecha vencida → Urgente (fallback funciona)", () => {
+    const r = analyzeRow({
+      "Fecha estimada del siguiente servicio": "01/01/2026",
+    });
+    expect(r.max).toBe("Urgente");
+    expect(r.F.some((f) => f.text.includes("días atrás"))).toBe(true);
+  });
+
   it("BIN_LABELS: usa label friendly, no key crudo", () => {
     const r = analyzeRow({ "Espejo retrovisor en buenas condiciones": "No" });
     expect(r.F.some((f) => f.text === "Espejo retrovisor dañado")).toBe(true);

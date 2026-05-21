@@ -2360,10 +2360,19 @@ function buildKPIs(){
     // Donut binario: operativa real = no está en taller.
     if(enTallerNow) tallerDonut++; else operativaDonut++;
     if(x.obs) withObs++;
-    const sd=parseSvcDate(x.nextSvc);
-    if(sd){
-      if(sd<today0) nSvcVencido++;
-      else if(sd<=d30) nSvcProximo++;
+    // Hero #kv_svc: km autoritativo, fecha fallback. Consistente con analyzer.
+    const kmAx=parseFloat(String(x.km||""));
+    const kmNx=parseFloat(String(x.kmNextSvc||""));
+    if(kmAx>0 && kmNx>0){
+      const kmDiff=kmNx-kmAx;
+      if(kmDiff<=0) nSvcVencido++;
+      else if(kmDiff<=1000) nSvcProximo++;
+    } else {
+      const sd=parseSvcDate(x.nextSvc);
+      if(sd){
+        if(sd<today0) nSvcVencido++;
+        else if(sd<=d30) nSvcProximo++;
+      }
     }
   }
   const nSvcAlert=nSvcVencido+nSvcProximo;
@@ -2838,13 +2847,20 @@ function renderTable(){
     divKM.appendChild(km);
     divKM.appendChild(dt);
     if(u.nextSvc && u.nextSvc !== "—"){
-      const sd = parseSvcDate(u.nextSvc);
-      if(sd){
-        const svcEl=document.createElement("div");
-        svcEl.style.cssText="font-size:8px;margin-top:2px;font-weight:700";
-        if(sd<today0){svcEl.style.color="var(--R)";svcEl.innerHTML='<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-2px"></i> Svc vencido';}
-        else if(sd<=d30c){svcEl.style.color="var(--A)";svcEl.innerHTML='<i data-lucide="clock" style="width:10px;height:10px;vertical-align:-2px"></i> Svc próximo';}
-        if(svcEl.textContent)divKM.appendChild(svcEl);
+      // Guard: km autoritativo. Si km tiene buffer, la fecha-estimación no manda
+      // (puede estar stale). Evita falsos "Svc vencido" como bug #78.
+      const kmA = parseFloat(String(u.km||""));
+      const kmN = parseFloat(String(u.kmNextSvc||""));
+      const kmHasBuffer = kmA > 0 && kmN > 0 && (kmN - kmA) > 0;
+      if(!kmHasBuffer){
+        const sd = parseSvcDate(u.nextSvc);
+        if(sd){
+          const svcEl=document.createElement("div");
+          svcEl.style.cssText="font-size:8px;margin-top:2px;font-weight:700";
+          if(sd<today0){svcEl.style.color="var(--R)";svcEl.innerHTML='<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-2px"></i> Svc vencido';}
+          else if(sd<=d30c){svcEl.style.color="var(--A)";svcEl.innerHTML='<i data-lucide="clock" style="width:10px;height:10px;vertical-align:-2px"></i> Svc próximo';}
+          if(svcEl.textContent)divKM.appendChild(svcEl);
+        }
       }
     }
     appendSecureCell(tr, divKM);
