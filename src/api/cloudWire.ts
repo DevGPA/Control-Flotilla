@@ -134,12 +134,25 @@ window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {
   return { units, taller, notas, checklists, periodos, semanales };
 };
 
-// Cachea sesión al boot — no bloquea, solo refresca window.__cloudSession.
+// Auth gating al boot: si NO hay sesión, modal aparece inmediatamente y
+// bloquea hasta autenticar. Después de login exitoso, app continúa normal.
+// Si SÍ hay sesión activa (refresh, multi-tab), pasa silencioso.
 void (async () => {
   if (await isLoggedIn()) {
     window.__cloudSession = await getSession();
     console.info("[cloud] Sesión activa:", window.__cloudSession?.email);
-  } else {
+    return;
+  }
+  // Esperar un tick para que el DOM esté listo antes de inyectar el modal.
+  if (document.readyState === "loading") {
+    await new Promise<void>((r) => document.addEventListener("DOMContentLoaded", () => r()));
+  }
+  try {
+    await showAuthModal({ title: "Control Flotilla" });
+    window.__cloudSession = await getSession();
+    console.info("[cloud] Login exitoso:", window.__cloudSession?.email);
+  } catch (err) {
+    console.error("[cloud] Auth gating falló:", err);
     window.__cloudSession = null;
   }
 })();
