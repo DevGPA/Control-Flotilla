@@ -26,6 +26,7 @@ interface ChecklistResultados {
   nextSvc?: string;
   kmNextSvc?: number | string;
   validationErrors?: string[];
+  photos?: unknown[];
 }
 
 declare global {
@@ -73,7 +74,7 @@ function mergeUnitWithChecklist(
     F: findings,
     T: r.tires ?? {},
     minT: r.minT ?? null,
-    photos: [],
+    photos: Array.isArray(r.photos) ? r.photos : [],
     hasRefaccion: true,
   };
 }

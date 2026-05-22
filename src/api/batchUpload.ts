@@ -33,6 +33,7 @@ interface LegacyUnit {
   F?: unknown[];
   T?: Record<string, number>;
   minT?: number | null;
+  photos?: unknown[]; // [{fname, col, group}, ...] del legacy
 }
 
 export interface BatchResult {
@@ -228,6 +229,7 @@ export async function uploadUnitsToCloud(
             km: u.km ?? "",
             nextSvc: u.nextSvc ?? "",
             kmNextSvc: u.kmNextSvc ?? "",
+            photos: u.photos ?? [],
           }),
         );
         await upsertChecklist({

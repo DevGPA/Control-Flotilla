@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-iEgK0NmMjKDP/w4d4hKmcd6tB49OEOLIJSuUmMZ26LQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-nVk/PUq/IPnAjewZqy8BzZ9JQR6FX+QgMZjt88i55OQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1987,6 +1987,13 @@ async function doZip(file, context = "auto"){
       window.notify(`ZIP procesado: ${cnt} fotos encontradas. Carga ahora el Excel para el análisis.`,"ok",5000);
     }
 
+    // Cloud sync fotos a S3 — multi-user puede verlas sin re-subir ZIP.
+    // Fire-and-forget; no bloquea el flujo legacy. Solo para mensual (zipImgs).
+    if (typeof window.__cloudSyncPhotos === "function" && cnt > 0 && hasZip) {
+      window.__cloudSyncPhotos(imgs).catch(err =>
+        console.error("[doZip cloud sync photos]", err));
+    }
+
   }catch(err){
     console.error("[doZip]", err);
     window.notify(`Error procesando ZIP: ${err.message||err}`,"error",7000);
@@ -2309,7 +2316,8 @@ function imgUrl(fname){
   return null;
 }
 
-// Lazy loader observer
+// Lazy loader observer. Fallback async a S3 cuando local no tiene la foto
+// (caso multi-user: User B abre app pero no subio el ZIP).
 const lazyObserver = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
     if (entry.isIntersecting) {
@@ -2321,6 +2329,16 @@ const lazyObserver = new IntersectionObserver((entries) => {
           img.src = url;
           img.removeAttribute('data-src');
           img.style.opacity = '1';
+        } else if (typeof window.__cloudGetPhotoUrl === "function") {
+          // Local no tiene. Pedir URL firmada de S3.
+          window.__cloudGetPhotoUrl(fname).then(cloudUrl => {
+            if (cloudUrl) {
+              urlCache.set(fname.toLowerCase(), cloudUrl);
+              img.src = cloudUrl;
+              img.removeAttribute('data-src');
+              img.style.opacity = '1';
+            }
+          }).catch(err => console.warn("[lazyObserver] cloud fetch failed:", fname, err));
         }
       }
       lazyObserver.unobserve(img);

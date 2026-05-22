@@ -31,6 +31,8 @@ import {
   listSemanales,
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
+import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
+import { indexCloudPhotos, getCloudPhotoUrl } from "./photoFetch";
 import type { LoadedZip } from "../io/zipLoader";
 
 declare global {
@@ -53,6 +55,10 @@ declare global {
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
     /** Hidrata window.units desde cloud + trigger re-render UI legacy. */
     __cloudHydrate?: () => Promise<{ units: number; source: "cloud" | "empty" } | null>;
+    /** Sube fotos a S3 (Record<filename, Uint8Array>). */
+    __cloudSyncPhotos?: (images: Record<string, Uint8Array>) => Promise<PhotoUploadResult>;
+    /** Obtiene URL firmada de S3 para una foto (lazy, cacheada 50min). */
+    __cloudGetPhotoUrl?: (filename: string) => Promise<string | null>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
   }
@@ -167,6 +173,41 @@ export function setupCloud(): void {
     return hydrateFromCloud(session.tenantId);
   };
 
+  window.__cloudSyncPhotos = async (
+    images: Record<string, Uint8Array>,
+  ): Promise<PhotoUploadResult> => {
+    const session = await ensureSession();
+    const count = Object.keys(images).length;
+    if (count === 0) {
+      return { uploaded: 0, skipped: 0, errors: [], duration_ms: 0 };
+    }
+    window.notify?.(`Subiendo ${count} fotos a S3…`, "info", 3000);
+    const res = await uploadPhotosToS3(images, session.tenantId, {
+      onProgress: (done, total) => {
+        // Cada batch — log para feedback en debug. Toast solo en final.
+        if (done % 50 === 0 || done === total) {
+          console.info(`[cloudSyncPhotos] ${done}/${total}`);
+        }
+      },
+    });
+    const summary = `S3: ${res.uploaded}/${count} fotos · ${res.errors.length} errors`;
+    if (res.errors.length > 0) {
+      console.warn("[cloudSyncPhotos] errors:", res.errors);
+      window.notify?.(summary, "warn", 5000);
+    } else {
+      window.notify?.(summary, "ok", 3000);
+    }
+    // Refresca índice cloud para que __cloudGetPhotoUrl encuentre las nuevas.
+    void indexCloudPhotos(session.tenantId).catch(() => {});
+    return res;
+  };
+
+  window.__cloudGetPhotoUrl = async (filename: string): Promise<string | null> => {
+    const session = await getSession();
+    if (!session) return null;
+    return getCloudPhotoUrl(session.tenantId, filename);
+  };
+
   // Auth gating al boot: si NO hay sesión, modal aparece inmediatamente y
   // bloquea hasta autenticar. Después de login exitoso, app continúa normal.
   // Si SÍ hay sesión activa (refresh, multi-tab), pasa silencioso.
@@ -203,6 +244,10 @@ export function setupCloud(): void {
         console.error("[cloud] Hydrate falló:", err);
         window.notify?.("Cloud sync indisponible — usando datos locales", "warn", 4000);
       }
+      // Indexa fotos S3 — habilita __cloudGetPhotoUrl para multi-user.
+      void indexCloudPhotos(session.tenantId)
+        .then((count) => console.info(`[cloud] ${count} fotos indexadas de S3`))
+        .catch((err) => console.error("[cloud] photo index falló:", err));
     }
   })();
 }
