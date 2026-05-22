@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-pmKwBxtza8P/KNvicSpgZ8G865nrcyiVsts7NydNW9Q='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-LKzYA9ylKniyxZFxy20z6a8j+yR+unU+oU1p6Jo/uH4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3316,8 +3316,12 @@ function manualPhotoUrl(photoData, cacheKey){
 
 function renderPhotos(u,body){
   const manualPhotos=manualPhotosDB[u.uid]||[];
+  // Multi-user cloud: si photos[] tiene entries con URL cacheada en S3, mostrar gallery
+  // aunque no haya zipImgs locales (User B abre app sin haber subido ZIP).
+  const hasCloudPhotos = (u.photos && u.photos.length > 0 &&
+    window.__cloudPhotoUrlMap && window.__cloudPhotoUrlMap.size > 0);
 
-  if(!hasZip&&!manualPhotos.length){
+  if(!hasZip&&!manualPhotos.length&&!hasCloudPhotos){
     body.innerHTML=`<div style="text-align:center;padding:30px 16px">
       <div style="margin-bottom:10px;color:var(--s3)"><i data-lucide="camera-off" style="width:42px;height:42px;stroke-width:1.5"></i></div>
       <div style="font-size:13px;color:var(--s1);font-weight:600;margin-bottom:6px">Sin fotos disponibles</div>
