@@ -13,6 +13,7 @@
 
 import type { Schema } from "./amplifyClient";
 import { listUnits, listChecklists } from "./client";
+import { batchGetCloudPhotoUrls } from "./photoFetch";
 import type { Unit, Finding, RiskLevel, ChecklistDB } from "../types";
 
 interface ChecklistResultados {
@@ -35,6 +36,8 @@ declare global {
     buildAlertsSummary?: () => void;
     buildKPIs?: () => void;
     showDash?: () => void;
+    /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
+    __cloudPhotoUrlMap?: Map<string, string>;
   }
 }
 
@@ -118,6 +121,33 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   const db = window.checklistDB;
   for (const u of legacyUnits) {
     if (!db[u.uid]) db[u.uid] = {};
+  }
+
+  // Pre-fetch URLs firmadas de S3 para TODAS las fotos. Esto evita que el
+  // legacy imgUrl (sync) tenga que esperar — las URLs ya están en cache al
+  // momento de renderear. Habilita lightbox, gallery, thumbnails para multi-user.
+  const allPhotoFnames = new Set<string>();
+  for (const u of legacyUnits) {
+    for (const p of u.photos ?? []) {
+      const fn = (p as { fname?: string }).fname;
+      if (fn) allPhotoFnames.add(fn.toLowerCase());
+    }
+  }
+  if (allPhotoFnames.size > 0) {
+    try {
+      const urlMap = await batchGetCloudPhotoUrls(tenantId, [...allPhotoFnames]);
+      window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, string>();
+      let count = 0;
+      for (const [fname, url] of urlMap) {
+        if (url) {
+          window.__cloudPhotoUrlMap.set(fname, url);
+          count++;
+        }
+      }
+      console.info(`[cloudHydrate] ${count}/${allPhotoFnames.size} URLs de fotos pre-cacheadas`);
+    } catch (err) {
+      console.warn("[cloudHydrate] photo URLs prefetch falló:", err);
+    }
   }
 
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.
