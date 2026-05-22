@@ -36,6 +36,7 @@ declare global {
     buildAlertsSummary?: () => void;
     buildKPIs?: () => void;
     showDash?: () => void;
+    renderDet?: () => void;
     /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
     __cloudPhotoUrlMap?: Map<string, string>;
   }
@@ -156,6 +157,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (typeof window.renderTable === "function") window.renderTable();
   if (typeof window.buildAlertsSummary === "function") window.buildAlertsSummary();
   if (typeof window.buildAnalytics === "function") window.buildAnalytics();
+  // Re-render detail panel si está abierto — sin esto las fotos en panel
+  // mantienen src vacío de cuando el URL map todavía no se había poblado.
+  if (typeof window.renderDet === "function") window.renderDet();
 
   console.info(`[cloudHydrate] ${legacyUnits.length} units hidratados del cloud`);
   return { units: legacyUnits.length, source: "cloud" };
