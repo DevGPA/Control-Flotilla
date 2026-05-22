@@ -184,7 +184,6 @@ export function setupCloud(): void {
     window.notify?.(`Subiendo ${count} fotos a S3…`, "info", 3000);
     const res = await uploadPhotosToS3(images, session.tenantId, {
       onProgress: (done, total) => {
-        // Cada batch — log para feedback en debug. Toast solo en final.
         if (done % 50 === 0 || done === total) {
           console.info(`[cloudSyncPhotos] ${done}/${total}`);
         }
@@ -197,8 +196,15 @@ export function setupCloud(): void {
     } else {
       window.notify?.(summary, "ok", 3000);
     }
-    // Refresca índice cloud para que __cloudGetPhotoUrl encuentre las nuevas.
-    void indexCloudPhotos(session.tenantId).catch(() => {});
+    // Refresca índice cloud + URLs pre-fetched para que imgUrl encuentre las nuevas.
+    if (res.uploaded > 0) {
+      try {
+        await indexCloudPhotos(session.tenantId);
+        await hydrateFromCloud(session.tenantId);
+      } catch (err) {
+        console.warn("[cloudSyncPhotos] post-upload refresh falló:", err);
+      }
+    }
     return res;
   };
 
