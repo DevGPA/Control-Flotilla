@@ -12,6 +12,7 @@ import {
   upsertUnit,
   upsertChecklist,
   upsertSemanal,
+  upsertTaller,
   type UnitInput,
 } from "./client";
 
@@ -370,5 +371,84 @@ export async function uploadSemanalesToCloud(
   return result;
 }
 
+/** Shape mínima de entry de taller legacy. */
+interface LegacyTallerEntry {
+  id: string;
+  unitKey?: string;
+  eco?: string;
+  plate?: string;
+  brand?: string;
+  sucursal?: string;
+  area?: string;
+  estado?: string;
+  tipo?: string;
+  freporte?: string;
+  fentrada?: string;
+  fsalidaEst?: string;
+  fsalidaReal?: string;
+  km?: number;
+  gasto?: number;
+  gastoRef?: number;
+  gastoMO?: number;
+  tecnico?: string;
+  refacciones?: string;
+  comentario?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Sube entries de taller a DynamoDB. Composite key (tenantId, unitUid, fechaEntrada).
+ * Idempotente — re-subir mismo entry sobrescribe. Todo el legacy entry vive
+ * en datos (JSON) — campos del schema (motivo, estatus) son strict-typed para
+ * compatibility con queries.
+ */
+export async function uploadTallerToCloud(
+  entries: LegacyTallerEntry[],
+  tenantId: string,
+): Promise<BatchResult> {
+  const start = Date.now();
+  const result: BatchResult = {
+    units: 0,
+    checklist: 0,
+    semanal: 0,
+    skipped: 0,
+    errors: [],
+    duration_ms: 0,
+  };
+
+  for (const e of entries) {
+    const unitUid = e.plate || e.eco || e.unitKey || e.id;
+    const fechaEntrada = e.fentrada || e.freporte || e.updatedAt || new Date().toISOString();
+    if (!unitUid) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const estatus = e.fsalidaReal ? ("cerrado" as const) : ("abierto" as const);
+      const motivo = e.tipo || e.estado || "Sin motivo";
+      await upsertTaller({
+        tenantId,
+        unitUid: String(unitUid),
+        fechaEntrada,
+        fechaSalida: e.fsalidaReal || undefined,
+        folio: e.id,
+        motivo,
+        estatus,
+        datos: e,
+      });
+      // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
+      // pero el caller solo necesita totales agregados. Sumamos a semanal
+      // por convención hasta refactor del shape.
+      result.semanal++;
+    } catch (err) {
+      const placa = String(e.plate || e.eco || e.id);
+      result.errors.push({ placa, error: (err as Error).message });
+    }
+  }
+
+  result.duration_ms = Date.now() - start;
+  return result;
+}
+
 /** Type re-export para que cloudWire pueda tipar legacy units. */
-export type { LegacyUnit, LegacySemanalEntry };
+export type { LegacyUnit, LegacySemanalEntry, LegacyTallerEntry };

@@ -12,10 +12,11 @@
 // Triggers re-render de la UI legacy llamando window.renderTable / buildKPIs.
 
 import type { Schema } from "./amplifyClient";
-import { listUnits, listChecklists, listSemanales } from "./client";
+import { listUnits, listChecklists, listSemanales, listTaller } from "./client";
 import { batchGetCloudPhotoUrls, indexCloudPhotos } from "./photoFetch";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
+import type { TallerEntry, TallerEstado } from "../taller/types";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -52,6 +53,9 @@ declare global {
     weeklyPeriodos?: WeeklyPeriodo[];
     activeWeeklyPeriodoId?: string | null;
     updateSwNavBadge?: () => void;
+    tallerEntries?: TallerEntry[];
+    updateTallerBadge?: () => void;
+    renderTaller?: () => void;
     /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
     __cloudPhotoUrlMap?: Map<string, string>;
   }
@@ -119,15 +123,56 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   units: number;
   source: "cloud" | "empty";
 }> {
-  const [units, checklists, semanales] = await Promise.all([
+  const [units, checklists, semanales, tallerCloud] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
     listSemanales(tenantId),
+    listTaller(tenantId),
   ]);
 
-  if (units.length === 0 && semanales.length === 0) {
+  if (units.length === 0 && semanales.length === 0 && tallerCloud.length === 0) {
     console.info("[cloudHydrate] cloud vacío, nada que hidratar");
     return { units: 0, source: "empty" };
+  }
+
+  // ── Hydrate taller → window.tallerEntries ──────────────────
+  // Cada Taller row reconstruye TallerEntry legacy desde datos JSON.
+  if (tallerCloud.length > 0) {
+    const tallerEntries: TallerEntry[] = tallerCloud.map((t) => {
+      const dRaw = t.datos;
+      const datos =
+        typeof dRaw === "string"
+          ? (JSON.parse(dRaw) as Record<string, unknown>)
+          : ((dRaw ?? {}) as Record<string, unknown>);
+      const estado = String(datos.estado ?? (t.estatus === "cerrado" ? "Finalizado" : "En Revisión")) as TallerEstado;
+      return {
+        id: String(datos.id ?? t.folio ?? `${t.unitUid}_${t.fechaEntrada}`),
+        unitKey: String(datos.unitKey ?? t.unitUid),
+        eco: String(datos.eco ?? ""),
+        plate: String(datos.plate ?? t.unitUid),
+        brand: String(datos.brand ?? ""),
+        sucursal: String(datos.sucursal ?? ""),
+        area: String(datos.area ?? ""),
+        tipo: String(datos.tipo ?? t.motivo ?? ""),
+        estado,
+        freporte: String(datos.freporte ?? ""),
+        fentrada: String(datos.fentrada ?? t.fechaEntrada),
+        fsalidaEst: String(datos.fsalidaEst ?? ""),
+        fsalidaReal: String(datos.fsalidaReal ?? t.fechaSalida ?? ""),
+        km: Number(datos.km) || 0,
+        gasto: Number(datos.gasto) || 0,
+        gastoRef: Number(datos.gastoRef) || 0,
+        gastoMO: Number(datos.gastoMO) || 0,
+        tecnico: String(datos.tecnico ?? ""),
+        refacciones: String(datos.refacciones ?? ""),
+        comentario: String(datos.comentario ?? ""),
+        updatedAt: String(datos.updatedAt ?? ""),
+      };
+    });
+    window.tallerEntries = tallerEntries;
+    if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
+    if (typeof window.renderTaller === "function") window.renderTaller();
+    console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);
   }
 
   // ── Hydrate semanales → window.weeklyPeriodos ──────────────────

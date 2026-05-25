@@ -52,6 +52,10 @@ const schema = a.schema({
       folio: a.string(),
       motivo: a.string().required(),
       estatus: a.enum(["abierto", "cerrado"]),
+      // Datos legacy completos (id, unitKey, eco, plate, brand, area, tipo,
+      // freporte, fsalidaEst, fsalidaReal, km, gasto*, tecnico, refacciones,
+      // comentario, updatedAt). JSON arbitrary para no migrar schema en cada cambio.
+      datos: a.json(),
       version: a.integer().default(1),
     })
     .identifier(["tenantId", "unitUid", "fechaEntrada"])

@@ -79,18 +79,27 @@ export type TallerInput = {
   folio?: string;
   motivo: string;
   estatus: "abierto" | "cerrado";
+  datos?: unknown;
 };
 
 export async function upsertTaller(input: TallerInput): Promise<Schema["Taller"]["type"]> {
   const c = getClient();
-  const created = await c.models.Taller.create(input);
-  if (!created.errors) return created.data!;
-  if (isConditionalCheckFailed(created.errors)) {
-    const updated = await c.models.Taller.update(input);
-    throwOnErrors("upsertTaller(update)", updated.errors);
+  // AWSJSON datos field requiere STRING.
+  const inputStringified = {
+    ...input,
+    datos: typeof input.datos === "string" ? input.datos : JSON.stringify(input.datos ?? {}),
+  };
+  const payload = inputStringified as unknown as Parameters<typeof c.models.Taller.create>[0];
+  const created = await c.models.Taller.create(payload);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.Taller.update(payload);
+    if (updated.errors)
+      throw new Error(`upsertTaller(update) failed: ${JSON.stringify(updated.errors)}`);
     return updated.data!;
   }
-  throwOnErrors("upsertTaller(create)", created.errors);
+  if (created.errors)
+    throw new Error(`upsertTaller(create) failed: ${JSON.stringify(created.errors)}`);
   return created.data!;
 }
 

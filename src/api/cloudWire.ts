@@ -20,9 +20,11 @@ import {
   uploadZipToCloud,
   uploadUnitsToCloud,
   uploadSemanalesToCloud,
+  uploadTallerToCloud,
   type BatchResult,
   type LegacyUnit,
   type LegacySemanalEntry,
+  type LegacyTallerEntry,
 } from "./batchUpload";
 import {
   listUnits,
@@ -58,6 +60,8 @@ declare global {
       periodoId: string,
       entries: LegacySemanalEntry[],
     ) => Promise<BatchResult>;
+    /** Upload entries de taller a DynamoDB (Taller model). */
+    __cloudSyncTaller?: (entries: LegacyTallerEntry[]) => Promise<BatchResult>;
     /** Refetch todos los datos del tenant — overwrite state local. */
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
     /** Hidrata window.units desde cloud + trigger re-render UI legacy. */
@@ -173,6 +177,28 @@ export function setupCloud(): void {
       // Re-hidrata para reflejar el state autoritativo del cloud post-upload.
       void hydrateFromCloud(session.tenantId).catch((err) =>
         console.error("[cloudSyncSemanales] re-hydrate falló:", err),
+      );
+    }
+    return res;
+  };
+
+  window.__cloudSyncTaller = async (
+    entries: LegacyTallerEntry[],
+  ): Promise<BatchResult> => {
+    const session = await ensureSession();
+    if (entries.length === 0) {
+      return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
+    }
+    window.notify?.(`Subiendo ${entries.length} taller a DynamoDB…`, "info", 2500);
+    const res = await uploadTallerToCloud(entries, session.tenantId);
+    const summary = `Cloud taller: ${res.semanal} OK · ${res.errors.length} errors`;
+    if (res.errors.length > 0) {
+      console.warn("[cloudSyncTaller] errors:", res.errors);
+      window.notify?.(summary, "warn", 6000);
+    } else {
+      window.notify?.(summary, "ok", 4000);
+      void hydrateFromCloud(session.tenantId).catch((err) =>
+        console.error("[cloudSyncTaller] re-hydrate falló:", err),
       );
     }
     return res;

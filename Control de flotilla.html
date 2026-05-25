@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-JhyOJF/HqshiKwcxH79lbxCiD8z7moOoYs6SnAxPUIE='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-zDht5dMMfXKkAlRFR7Pg2kAsNnvovsufhLeb5eA1x5c='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -6174,6 +6174,11 @@ function finalizarUnidad(id){
     console.error("[finalizarUnidad] saveTallerDB:",err);
     if(typeof window.notify==="function") window.notify("No se guardó el cambio en disco — reintenta.","error",5000);
   });
+  // Cloud sync — fire-and-forget.
+  if(typeof window.__cloudSyncTaller === "function"){
+    window.__cloudSyncTaller([e]).catch(err =>
+      console.error("[finalizarUnidad cloud sync]", err));
+  }
   updateTallerBadge();
   renderTaller();
 }
@@ -6321,6 +6326,11 @@ async function saveTallerEntry(){
   }
 
   await saveTallerDB();
+  // Cloud sync — fire-and-forget. No bloquea UX. Multi-user verá en hydrate next.
+  if(typeof window.__cloudSyncTaller === "function"){
+    window.__cloudSyncTaller([entry]).catch(err =>
+      console.error("[saveTallerEntry cloud sync]", err));
+  }
   updateTallerBadge();
   // Nuevo ingreso o reingreso → volver a Operaciones Activas
   const wasReingresoOrNew = _tallerReingresoKey || !_tallerEditId;
