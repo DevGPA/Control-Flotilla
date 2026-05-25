@@ -365,6 +365,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Re-render detail panel si está abierto — sin esto las fotos en panel
   // mantienen src vacío de cuando el URL map todavía no se había poblado.
   if (typeof window.renderDet === "function") window.renderDet();
+  // Re-render taller — el primer renderTaller corrió antes de poblar window.units,
+  // por lo que el lookup de economicoId regresaba undefined. Ahora units está
+  // listo, segundo render usa el ID correcto.
+  if (typeof window.renderTaller === "function") window.renderTaller();
 
   console.info(`[cloudHydrate] ${legacyUnits.length} units hidratados del cloud`);
   return { units: legacyUnits.length, source: "cloud" };
