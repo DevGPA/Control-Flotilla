@@ -12,9 +12,10 @@
 // Triggers re-render de la UI legacy llamando window.renderTable / buildKPIs.
 
 import type { Schema } from "./amplifyClient";
-import { listUnits, listChecklists } from "./client";
+import { listUnits, listChecklists, listSemanales } from "./client";
 import { batchGetCloudPhotoUrls, indexCloudPhotos } from "./photoFetch";
-import type { Unit, Finding, RiskLevel, ChecklistDB } from "../types";
+import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
+import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -30,6 +31,17 @@ interface ChecklistResultados {
   photos?: unknown[];
 }
 
+const VALID_RISKS: ReadonlySet<RiskLevel> = new Set<RiskLevel>([
+  "Urgente",
+  "Revisar",
+  "Completar",
+  "OK",
+]);
+function asRisk(v: unknown): RiskLevel | undefined {
+  const s = String(v ?? "");
+  return VALID_RISKS.has(s as RiskLevel) ? (s as RiskLevel) : undefined;
+}
+
 declare global {
   interface Window {
     buildAnalytics?: () => void;
@@ -37,9 +49,19 @@ declare global {
     buildKPIs?: () => void;
     showDash?: () => void;
     renderDet?: () => void;
+    weeklyPeriodos?: WeeklyPeriodo[];
+    activeWeeklyPeriodoId?: string | null;
+    updateSwNavBadge?: () => void;
     /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
     __cloudPhotoUrlMap?: Map<string, string>;
   }
+}
+
+function periodoLabelFromId(id: string): string {
+  // "2026-W21" → "Semana 21, 2026"
+  const m = id.match(/^(\d{4})-W(\d{1,2})$/);
+  if (m) return `Semana ${parseInt(m[2]!, 10)}, ${m[1]}`;
+  return id;
 }
 
 function parseResultados(raw: unknown): ChecklistResultados {
@@ -94,14 +116,67 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   units: number;
   source: "cloud" | "empty";
 }> {
-  const [units, checklists] = await Promise.all([
+  const [units, checklists, semanales] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
+    listSemanales(tenantId),
   ]);
 
-  if (units.length === 0) {
+  if (units.length === 0 && semanales.length === 0) {
     console.info("[cloudHydrate] cloud vacío, nada que hidratar");
     return { units: 0, source: "empty" };
+  }
+
+  // ── Hydrate semanales → window.weeklyPeriodos ──────────────────
+  // Agrupa entries por periodoId. Cada Semanal row es una entry de una unidad
+  // en un período (semana ISO). Reconstruimos el shape legacy {id, label, entries}.
+  if (semanales.length > 0) {
+    const periodoMap = new Map<string, WeeklyEntry[]>();
+    for (const s of semanales) {
+      const d = (s.datos ?? {}) as Record<string, unknown>;
+      const datos = typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
+      const entry: WeeklyEntry = {
+        uid: s.unitUid,
+        eco: s.unitUid,
+        plate: s.unitUid,
+        brand: String(datos.brand ?? ""),
+        branch: s.sucursal,
+        km: (datos.km as number | string) ?? "",
+        fecha: String(datos.fecha ?? ""),
+        responsable: String(datos.responsable ?? ""),
+        aceite: String(datos.aceite ?? ""),
+        aceiteRisk: asRisk(datos.aceiteRisk),
+        radiador: String(datos.radiador ?? ""),
+        radiadorRisk: asRisk(datos.radiadorRisk),
+        carroceria: String(datos.carroceria ?? ""),
+        carroceriaRisk: asRisk(datos.carroceriaRisk),
+        llanta: String(datos.llanta ?? ""),
+        llantaRisk: asRisk(datos.llantaRisk),
+        risk: asRisk(datos.risk) ?? "OK",
+        photos: Array.isArray(datos.photos) ? (datos.photos as string[]) : [],
+      };
+      const arr = periodoMap.get(s.periodoId) ?? [];
+      arr.push(entry);
+      periodoMap.set(s.periodoId, arr);
+    }
+    const weeklyPeriodos: WeeklyPeriodo[] = [...periodoMap.entries()]
+      .map(([id, entries]) => ({
+        id,
+        label: periodoLabelFromId(id),
+        uploadedAt: new Date().toISOString(),
+        entries,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    window.weeklyPeriodos = weeklyPeriodos;
+    if (weeklyPeriodos.length > 0) {
+      window.activeWeeklyPeriodoId = weeklyPeriodos[weeklyPeriodos.length - 1]!.id;
+    }
+    if (typeof window.updateSwNavBadge === "function") window.updateSwNavBadge();
+    console.info(`[cloudHydrate] ${weeklyPeriodos.length} períodos semanales hidratados`);
+  }
+
+  if (units.length === 0) {
+    return { units: 0, source: "cloud" };
   }
 
   // Index checklists por placa para lookup O(1).

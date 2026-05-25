@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-LKzYA9ylKniyxZFxy20z6a8j+yR+unU+oU1p6Jo/uH4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-gXY+V2067504oizIXkRP9Ryv8BesM2/5vZynoY7NqLc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2130,6 +2130,17 @@ function loadWBSemanal(wb, fname){
       else weeklyPeriodos.push(periodoEntry);
       weeklyPeriodos.sort((a,b)=>a.id.localeCompare(b.id));
       activeWeeklyPeriodoId = periodoId;
+
+      // ── Cloud sync semanal — fire-and-forget. Sube entries a DynamoDB
+      // + weeklyZipImgs a S3. No bloquea el flujo legacy.
+      if(typeof window.__cloudSyncSemanales === "function" && entries.length){
+        window.__cloudSyncSemanales(periodoId, entries).catch(err =>
+          console.error("[cloud sync semanal]", err));
+      }
+      if(typeof window.__cloudSyncPhotos === "function" && weeklyZipImgs && Object.keys(weeklyZipImgs).length > 0){
+        window.__cloudSyncPhotos(weeklyZipImgs).catch(err =>
+          console.error("[cloud sync semanal photos]", err));
+      }
 
       // ── Persistir en IndexedDB (async, no bloqueante) ───
       // Fotos semanales se persisten en paralelo con los datos del período

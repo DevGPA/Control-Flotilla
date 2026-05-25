@@ -19,8 +19,10 @@ import { showAuthModal } from "../ui/authModal";
 import {
   uploadZipToCloud,
   uploadUnitsToCloud,
+  uploadSemanalesToCloud,
   type BatchResult,
   type LegacyUnit,
+  type LegacySemanalEntry,
 } from "./batchUpload";
 import {
   listUnits,
@@ -50,6 +52,11 @@ declare global {
       units: LegacyUnit[],
       fname: string,
       kind: "mensual" | "semanal",
+    ) => Promise<BatchResult>;
+    /** Upload entries de un período semanal a DynamoDB (Semanal model). */
+    __cloudSyncSemanales?: (
+      periodoId: string,
+      entries: LegacySemanalEntry[],
     ) => Promise<BatchResult>;
     /** Refetch todos los datos del tenant — overwrite state local. */
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
@@ -145,6 +152,27 @@ export function setupCloud(): void {
       // No bloquea — fire-and-forget. Si falla, el state local actual sigue válido.
       void hydrateFromCloud(session.tenantId).catch((err) =>
         console.error("[cloudSyncUnits] re-hydrate falló:", err),
+      );
+    }
+    return res;
+  };
+
+  window.__cloudSyncSemanales = async (
+    periodoId: string,
+    entries: LegacySemanalEntry[],
+  ): Promise<BatchResult> => {
+    const session = await ensureSession();
+    window.notify?.(`Subiendo ${entries.length} semanal a DynamoDB…`, "info", 2500);
+    const res = await uploadSemanalesToCloud(periodoId, entries, session.tenantId);
+    const summary = `Cloud: ${res.semanal} semanal · ${res.errors.length} errors`;
+    if (res.errors.length > 0) {
+      console.warn("[cloudSyncSemanales] errors:", res.errors);
+      window.notify?.(summary, "warn", 6000);
+    } else {
+      window.notify?.(summary, "ok", 4000);
+      // Re-hidrata para reflejar el state autoritativo del cloud post-upload.
+      void hydrateFromCloud(session.tenantId).catch((err) =>
+        console.error("[cloudSyncSemanales] re-hydrate falló:", err),
       );
     }
     return res;

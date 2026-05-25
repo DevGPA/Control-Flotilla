@@ -273,5 +273,91 @@ export async function uploadUnitsToCloud(
   return result;
 }
 
+/** Shape mínima de entry semanal legacy. */
+interface LegacySemanalEntry {
+  uid?: string;
+  eco?: string;
+  plate?: string;
+  brand?: string;
+  branch?: string;
+  area?: string;
+  km?: number | string;
+  fecha?: string;
+  responsable?: string;
+  aceite?: string;
+  aceiteRisk?: string;
+  radiador?: string;
+  radiadorRisk?: string;
+  carroceria?: string;
+  carroceriaRisk?: string;
+  llanta?: string;
+  llantaRisk?: string;
+  risk?: string;
+  photos?: string[];
+}
+
+/**
+ * Sube entries de un período semanal a DynamoDB (Semanal model).
+ * Composite identifier (tenantId, periodoId, unitUid) garantiza idempotencia:
+ * re-subir el mismo XLSX semanal no duplica, sobrescribe.
+ */
+export async function uploadSemanalesToCloud(
+  periodoId: string,
+  entries: LegacySemanalEntry[],
+  tenantId: string,
+): Promise<BatchResult> {
+  const start = Date.now();
+  const result: BatchResult = {
+    units: 0,
+    checklist: 0,
+    semanal: 0,
+    skipped: 0,
+    errors: [],
+    duration_ms: 0,
+  };
+
+  for (const e of entries) {
+    const placa = String(e.plate || e.eco || e.uid || "").trim();
+    if (!placa) {
+      result.skipped++;
+      continue;
+    }
+    try {
+      const datosClean = JSON.parse(
+        JSON.stringify({
+          fecha: e.fecha ?? "",
+          km: e.km ?? "",
+          brand: e.brand ?? "",
+          area: e.area ?? "",
+          responsable: e.responsable ?? "",
+          aceite: e.aceite ?? "",
+          aceiteRisk: e.aceiteRisk ?? "OK",
+          radiador: e.radiador ?? "",
+          radiadorRisk: e.radiadorRisk ?? "OK",
+          carroceria: e.carroceria ?? "",
+          carroceriaRisk: e.carroceriaRisk ?? "OK",
+          llanta: e.llanta ?? "",
+          llantaRisk: e.llantaRisk ?? "OK",
+          risk: e.risk ?? "OK",
+          photos: e.photos ?? [],
+        }),
+      );
+      await upsertSemanal({
+        tenantId,
+        periodoId,
+        sucursal: e.branch || "—",
+        unitUid: placa,
+        datos: datosClean,
+      });
+      result.semanal++;
+    } catch (err) {
+      result.errors.push({ placa, error: (err as Error).message });
+    }
+  }
+
+  result.duration_ms = Date.now() - start;
+  return result;
+}
+
 /** Type re-export para que cloudWire pueda tipar legacy units. */
-export type { LegacyUnit };
+export type { LegacyUnit, LegacySemanalEntry };
