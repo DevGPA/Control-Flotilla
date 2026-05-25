@@ -138,9 +138,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     for (const s of semanales) {
       const d = (s.datos ?? {}) as Record<string, unknown>;
       const datos = typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
+      // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
+      // placa si upload viejo no lo guardó.
+      const ecoId = String(datos.economicoId ?? "").trim() || s.unitUid;
       const entry: WeeklyEntry = {
         uid: s.unitUid,
-        eco: s.unitUid,
+        eco: ecoId,
         plate: s.unitUid,
         brand: String(datos.brand ?? ""),
         branch: s.sucursal,

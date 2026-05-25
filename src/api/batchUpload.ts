@@ -331,8 +331,11 @@ export async function uploadSemanalesToCloud(
       continue;
     }
     try {
+      // economicoId: ID interno GPA del Excel "# Economico - id". Skip si === placa.
+      const ecoIdForDatos = e.eco && e.eco !== placa ? e.eco : "";
       const datosClean = JSON.parse(
         JSON.stringify({
+          economicoId: ecoIdForDatos,
           fecha: e.fecha ?? "",
           km: e.km ?? "",
           brand: e.brand ?? "",
