@@ -175,9 +175,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     console.info(`[cloudHydrate] ${weeklyPeriodos.length} períodos semanales hidratados`);
   }
 
-  if (units.length === 0) {
-    return { units: 0, source: "cloud" };
-  }
+  // No early-exit aquí. Aunque units.length === 0, semanales puede tener
+  // fotos que necesitan pre-fetch. Continuamos con un legacyUnits vacío.
 
   // Index checklists por placa para lookup O(1).
   const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
@@ -199,14 +198,23 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     if (!db[u.uid]) db[u.uid] = {};
   }
 
-  // Pre-fetch URLs firmadas de S3 para TODAS las fotos. Esto evita que el
-  // legacy imgUrl (sync) tenga que esperar — las URLs ya están en cache al
-  // momento de renderear. Habilita lightbox, gallery, thumbnails para multi-user.
+  // Pre-fetch URLs firmadas de S3 para TODAS las fotos (mensual + semanal).
+  // Esto evita que imgUrl/weeklyImgUrl (sync) tengan que esperar — las URLs
+  // ya están en cache al momento de renderear. Habilita lightbox, gallery,
+  // thumbnails para multi-user en ambos modos.
   const allPhotoFnames = new Set<string>();
   for (const u of legacyUnits) {
     for (const p of u.photos ?? []) {
       const fn = (p as { fname?: string }).fname;
       if (fn) allPhotoFnames.add(fn.toLowerCase());
+    }
+  }
+  // Semanales: cada entry tiene array de filenames raw (string[]).
+  for (const periodo of window.weeklyPeriodos ?? []) {
+    for (const entry of periodo.entries ?? []) {
+      for (const fn of entry.photos ?? []) {
+        if (fn) allPhotoFnames.add(String(fn).toLowerCase());
+      }
     }
   }
   if (allPhotoFnames.size > 0) {
