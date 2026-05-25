@@ -14,6 +14,7 @@
 import type { Schema } from "./amplifyClient";
 import { listUnits, listChecklists, listSemanales, listTaller } from "./client";
 import { batchGetCloudPhotoUrls, indexCloudPhotos } from "./photoFetch";
+import { uploadTallerToCloud } from "./batchUpload";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
@@ -133,6 +134,71 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (units.length === 0 && semanales.length === 0 && tallerCloud.length === 0) {
     console.info("[cloudHydrate] cloud vacío, nada que hidratar");
     return { units: 0, source: "empty" };
+  }
+
+  // ── Auto-migración: tallerEntries locales (IndexedDB) NO en cloud → push ──
+  // Si el user creó registros antes de la wire cloud (Taller wire fue Fase 10),
+  // los entries viven solo en IndexedDB. Detectamos por id no presente en cloud
+  // y los subimos automáticamente. Idempotente: misma key compuesta sobrescribe.
+  const localTaller = window.tallerEntries ?? [];
+  if (localTaller.length > 0) {
+    const cloudIds = new Set<string>();
+    for (const t of tallerCloud) {
+      const dRaw = t.datos;
+      const datos =
+        typeof dRaw === "string"
+          ? (JSON.parse(dRaw) as Record<string, unknown>)
+          : ((dRaw ?? {}) as Record<string, unknown>);
+      const id = String(datos.id ?? t.folio ?? "");
+      if (id) cloudIds.add(id);
+    }
+    const orphans = localTaller.filter((e) => !cloudIds.has(e.id));
+    if (orphans.length > 0) {
+      console.info(`[cloudHydrate] migrando ${orphans.length} taller entries locales al cloud`);
+      try {
+        await uploadTallerToCloud(
+          orphans.map((e) => {
+            // Cast: legacy entries pueden tener campos extra (km, etc) no en TallerEntry type.
+            const raw = e as TallerEntry & Record<string, unknown>;
+            return {
+              id: raw.id,
+              unitKey: raw.unitKey,
+              eco: raw.eco,
+              plate: raw.plate,
+              brand: raw.brand,
+              sucursal: raw.sucursal,
+              area: raw.area,
+              estado: raw.estado,
+              tipo: raw.tipo,
+              freporte: raw.freporte,
+              fentrada: raw.fentrada,
+              fsalidaEst: raw.fsalidaEst,
+              fsalidaReal: raw.fsalidaReal,
+              km: typeof raw.km === "number" ? raw.km : 0,
+              gasto: raw.gasto,
+              gastoRef: raw.gastoRef,
+              gastoMO: raw.gastoMO,
+              tecnico: raw.tecnico,
+              refacciones: raw.refacciones,
+              comentario: raw.comentario,
+              updatedAt: raw.updatedAt,
+            };
+          }),
+          tenantId,
+        );
+        // Re-fetch tallerCloud para incluir los migrados.
+        const refreshed = await listTaller(tenantId);
+        tallerCloud.length = 0;
+        tallerCloud.push(...refreshed);
+        window.notify?.(
+          `☁ ${orphans.length} registros de taller migrados al servidor`,
+          "ok",
+          4000,
+        );
+      } catch (err) {
+        console.error("[cloudHydrate] migración taller falló:", err);
+      }
+    }
   }
 
   // ── Hydrate taller → window.tallerEntries ──────────────────
