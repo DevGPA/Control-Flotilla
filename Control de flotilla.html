@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-3ywm4xr51JLZ6VjVQ7vztxUhqOPllPvDXtqU0Bxn0h0='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-JhyOJF/HqshiKwcxH79lbxCiD8z7moOoYs6SnAxPUIE='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5190,11 +5190,14 @@ function renderTableSemanales(){
     })();
 
     const rowCls   = effectiveRisk==="Urgente"?"sw-urg":effectiveRisk==="Revisar"?"sw-rev":"";
-    const hasPhotos= weeklyHasZip && e.photos && e.photos.length>0;
+    // Multi-user cloud: si hay URL map cargado, las fotos están disponibles
+    // aunque no haya weeklyHasZip local. weeklyImgUrl resuelve del cloud.
+    const cloudPhotosAvailable = !!(window.__cloudPhotoUrlMap && window.__cloudPhotoUrlMap.size > 0);
+    const hasPhotos= (weeklyHasZip || cloudPhotosAvailable) && e.photos && e.photos.length>0;
     const camIcon  = hasPhotos
       ? `<span style="margin-left:5px;font-size:9px;color:var(--O);opacity:.8;display:inline-flex;align-items:center;gap:2px" title="${e.photos.length} foto${e.photos.length!==1?"s":""}"><i data-lucide="camera" style="width:10px;height:10px"></i>${e.photos.length}</span>`
-      : (!weeklyHasZip && e.photos && e.photos.length>0
-          ? `<span style="margin-left:5px;font-size:8px;color:var(--s3)" title="Carga el ZIP para ver fotos"><i data-lucide="camera" style="width:10px;height:10px;vertical-align:-1px"></i></span>`
+      : (e.photos && e.photos.length>0
+          ? `<span style="margin-left:5px;font-size:8px;color:var(--s3)" title="Fotos no disponibles"><i data-lucide="camera" style="width:10px;height:10px;vertical-align:-1px"></i></span>`
           : "");
     const clickHandler = hasPhotos ? `data-action="openSwPhotos" data-arg1="${escAttr(e.uid)}"` : "";
 
