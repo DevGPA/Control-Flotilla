@@ -83,9 +83,12 @@ function mergeUnitWithChecklist(
   const r = parseResultados(checklist?.resultados);
   const risk = (r.risk ?? r.max ?? "OK") as RiskLevel;
   const findings = (Array.isArray(r.findings) ? r.findings : []) as Finding[];
+  // economicoId es el ID interno GPA (numérico tipo "78"). Fallback a placa si
+  // el upload no lo guardó (rows viejas) — preserva render legacy `u.eco || u.plate`.
+  const ecoId = unit.economicoId || unit.placa;
   return {
     uid: unit.placa,
-    eco: unit.placa,
+    eco: ecoId,
     plate: unit.placa,
     brand: unit.marca ?? undefined,
     branch: unit.sucursal ?? undefined,

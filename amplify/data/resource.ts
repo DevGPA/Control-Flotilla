@@ -26,6 +26,7 @@ const schema = a.schema({
     .model({
       tenantId: a.string().required(),
       placa: a.string().required(),
+      economicoId: a.string(),
       marca: a.string(),
       modelo: a.string(),
       anio: a.integer(),

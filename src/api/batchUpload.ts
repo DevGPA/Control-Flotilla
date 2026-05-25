@@ -110,13 +110,17 @@ export async function uploadZipToCloud(
     try {
       if (kind === "mensual") {
         // 1. Unit (catálogo). Idempotente por (tenantId, placa).
+        const rawEcoId = pickStr(row, "# Economico - id");
+        const ecoIdRaw = rawEcoId && rawEcoId !== placa ? rawEcoId : undefined;
         const unit: UnitInput = {
           tenantId,
           placa,
-          marca: pickStr(row, "Marca") || undefined,
+          economicoId: ecoIdRaw,
+          marca: pickStr(row, "Marca", "# Economico - SUBMARCA") || undefined,
           modelo: pickStr(row, "Modelo") || undefined,
           anio: pickNum(row, "Año", "Anio"),
-          sucursal: pickStr(row, "Sucursal", "Sucursal / Area", "Area") || undefined,
+          sucursal:
+            pickStr(row, "Sucursal", "Sucursal / Area", "Area", "# Economico - SUCURSAL") || undefined,
           vin: pickStr(row, "VIN", "NIV") || undefined,
         };
         await upsertUnit(unit);
@@ -206,9 +210,13 @@ export async function uploadUnitsToCloud(
     }
     try {
       if (kind === "mensual") {
+        // u.eco viene del Excel "# Economico - id" (numérico interno tipo "78").
+        // Solo lo guardamos si difiere de placa (algunos Excel duplican valor).
+        const ecoId = u.eco && u.eco !== placa ? u.eco : undefined;
         await upsertUnit({
           tenantId,
           placa,
+          economicoId: ecoId,
           marca: u.brand || undefined,
           sucursal: u.branch || undefined,
         });

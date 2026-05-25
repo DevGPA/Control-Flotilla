@@ -39,6 +39,7 @@ function throwOnErrors(label: string, errors: readonly GraphQLError[] | undefine
 export type UnitInput = {
   tenantId: string;
   placa: string;
+  economicoId?: string;
   marca?: string;
   modelo?: string;
   anio?: number;
