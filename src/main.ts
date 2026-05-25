@@ -130,6 +130,7 @@ declare global {
     tlSortByUrgencia?: () => void;
     openTallerModal?: (id?: string) => void;
     finalizarUnidad?: (id: string) => void;
+    deleteTallerEntry?: (id: string) => void;
     openHistorialModal?: (unitKey: string) => void;
     renderTaller?: () => void;
     renderActivas?: () => void;
@@ -573,6 +574,7 @@ if (readFlag("USE_NEW_TALLER")) {
         sortDir: window.tlSortDir ?? -1,
         onOpen: (id) => window.openTallerModal?.(id),
         onFinalize: (id) => window.finalizarUnidad?.(id),
+        onDelete: (id) => window.deleteTallerEntry?.(id),
         onOpenHist: (key) => window.openHistorialModal?.(key),
         onSort: (col) => window.tlSort?.(col),
       });

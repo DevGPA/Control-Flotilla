@@ -32,6 +32,8 @@ export type RenderActivasDeps = {
   onOpen?: (id: string) => void;
   /** Callback al click en "✓ Salida". */
   onFinalize?: (id: string) => void;
+  /** Callback al click en "🗑 Borrar". */
+  onDelete?: (id: string) => void;
   /** Callback al click en badge de historial (>1 visita). */
   onOpenHist?: (unitKey: string) => void;
   /** Callback al click en un header sorteable. */
@@ -167,6 +169,7 @@ function buildRow(
   onOpen?: (id: string) => void,
   onFinalize?: (id: string) => void,
   onOpenHist?: (unitKey: string) => void,
+  onDelete?: (id: string) => void,
 ): HTMLElement {
   const e = item.latest;
   const dias = diasEnTaller(e, today);
@@ -176,9 +179,14 @@ function buildRow(
   if (onOpen) tr.addEventListener("click", () => onOpen(e.id));
 
   // No. Unidad + hist badge
+  // Lookup economicoId desde window.units por placa (cloud-hydrated MoreApp Excel).
+  // Fallback al campo `eco` del entry (lo que el user tipeó en el form).
   const tdEco = document.createElement("td");
   tdEco.style.cssText = "font-weight:700;color:var(--w1)";
-  tdEco.textContent = e.eco || "—";
+  const winUnits = (window as { units?: Array<{ plate?: string; eco?: string }> }).units ?? [];
+  const matchUnit = winUnits.find((u) => u.plate && e.plate && u.plate === e.plate);
+  const displayEco = matchUnit?.eco || e.eco || "—";
+  tdEco.textContent = displayEco;
   if (item.count > 1) {
     const badge = document.createElement("span");
     badge.className = "tl-hist-badge";
@@ -259,8 +267,9 @@ function buildRow(
   tdObs.textContent = e.comentario || e.refacciones || "";
   tr.appendChild(tdObs);
 
-  // Botón finalizar (stopPropagation para no abrir modal)
+  // Botón finalizar + delete (stopPropagation para no abrir modal)
   const tdBtn = document.createElement("td");
+  tdBtn.style.cssText = "display:flex;gap:4px;align-items:center";
   tdBtn.addEventListener("click", (ev) => ev.stopPropagation());
   if (onFinalize) {
     const btn = document.createElement("button");
@@ -269,6 +278,16 @@ function buildRow(
     btn.textContent = "✓ Salida";
     btn.addEventListener("click", () => onFinalize(e.id));
     tdBtn.appendChild(btn);
+  }
+  if (onDelete) {
+    const del = document.createElement("button");
+    del.className = "tl-del-btn";
+    del.title = "Borrar registro";
+    del.textContent = "🗑";
+    del.style.cssText =
+      "padding:3px 8px;border:1px solid var(--R);color:var(--R);background:transparent;border-radius:5px;font-size:11px;cursor:pointer";
+    del.addEventListener("click", () => onDelete(e.id));
+    tdBtn.appendChild(del);
   }
   tr.appendChild(tdBtn);
 
@@ -308,6 +327,7 @@ export function renderActivas(
     today = new Date(),
     onOpen,
     onFinalize,
+    onDelete,
     onOpenHist,
     onSort,
   } = deps;
@@ -331,7 +351,7 @@ export function renderActivas(
     tbody.appendChild(buildEmptyRow());
   } else {
     for (const item of sorted) {
-      tbody.appendChild(buildRow(item, today, onOpen, onFinalize, onOpenHist));
+      tbody.appendChild(buildRow(item, today, onOpen, onFinalize, onOpenHist, onDelete));
     }
   }
 

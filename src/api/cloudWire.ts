@@ -33,6 +33,7 @@ import {
   listChecklists,
   listPeriodos,
   listSemanales,
+  deleteTaller,
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
@@ -62,6 +63,8 @@ declare global {
     ) => Promise<BatchResult>;
     /** Upload entries de taller a DynamoDB (Taller model). */
     __cloudSyncTaller?: (entries: LegacyTallerEntry[]) => Promise<BatchResult>;
+    /** Borra un Taller record del cloud por su entry legacy. */
+    __cloudDeleteTaller?: (entry: LegacyTallerEntry) => Promise<void>;
     /** Refetch todos los datos del tenant — overwrite state local. */
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
     /** Hidrata window.units desde cloud + trigger re-render UI legacy. */
@@ -202,6 +205,20 @@ export function setupCloud(): void {
       );
     }
     return res;
+  };
+
+  window.__cloudDeleteTaller = async (entry: LegacyTallerEntry): Promise<void> => {
+    const session = await ensureSession();
+    const unitUid = entry.plate || entry.eco || entry.unitKey || entry.id;
+    const fechaEntrada = entry.fentrada || entry.freporte || entry.updatedAt;
+    if (!unitUid || !fechaEntrada) {
+      throw new Error("deleteTaller: faltan unitUid o fechaEntrada");
+    }
+    await deleteTaller({
+      tenantId: session.tenantId,
+      unitUid: String(unitUid),
+      fechaEntrada,
+    });
   };
 
   window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {

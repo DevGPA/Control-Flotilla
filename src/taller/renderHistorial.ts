@@ -259,10 +259,13 @@ function buildDataRow(
   if (onOpen) tr.addEventListener("click", () => onOpen(row.unitKey));
 
   // Unidad + EN TALLER tag
+  // Lookup economicoId desde window.units por placa (cloud-hydrated MoreApp Excel).
   const tdEco = document.createElement("td");
   tdEco.style.fontWeight = "700";
   tdEco.style.color = "var(--w1)";
-  tdEco.appendChild(document.createTextNode(lc.eco || "—"));
+  const winUnits = (window as { units?: Array<{ plate?: string; eco?: string }> }).units ?? [];
+  const matchUnit = winUnits.find((u) => u.plate && lc.plate && u.plate === lc.plate);
+  tdEco.appendChild(document.createTextNode(matchUnit?.eco || lc.eco || "—"));
   const isActive = !isClosed(row.latest);
   if (isActive) {
     const tag = document.createElement("span");

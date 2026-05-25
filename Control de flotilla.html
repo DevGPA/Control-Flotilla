@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-zDht5dMMfXKkAlRFR7Pg2kAsNnvovsufhLeb5eA1x5c='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-eydfI4wKpdbylwfPsXroIiydawTLDcqDvAuI+yNymCI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -6121,6 +6121,8 @@ function renderHistorialModal(){
         ${e.tipo?`<span class="tl-tipo ${tipoCls}">${escHtml(e.tipo)}</span>`:""}
         ${diasReales!=null?`<span style="font-size:9px;color:var(--s2);background:var(--bg3);padding:2px 6px;border-radius:4px">${diasReales}d en taller</span>`:""}
         <span style="font-size:10px;color:var(--s2);margin-left:auto">Actualizado: ${e.updatedAt?new Date(e.updatedAt).toLocaleDateString("es-MX"):""}</span>
+        <button data-action="openTallerModal" data-arg1="${escAttr(e.id)}" title="Editar este registro" style="padding:3px 8px;border:1px solid var(--ac);color:var(--ac);background:transparent;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">✎ Editar</button>
+        <button data-action="deleteTallerEntry" data-arg1="${escAttr(e.id)}" title="Borrar este registro" style="padding:3px 8px;border:1px solid var(--R);color:var(--R);background:transparent;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">🗑 Borrar</button>
       </div>
       <div class="hist-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="hist-grid-cell"><span>F. Reporte</span><b>${fmtDate(e.freporte)}</b></div>
@@ -6346,9 +6348,15 @@ async function deleteTallerEntry(id){
   if(!confirm(`¿Eliminar el registro de ${e.plate||e.eco}?`)) return;
   tallerEntries=tallerEntries.filter(x=>x.id!==id);
   await saveTallerDB();
+  // Cloud delete — fire-and-forget. No bloquea UX.
+  if(typeof window.__cloudDeleteTaller === "function"){
+    window.__cloudDeleteTaller(e).catch(err =>
+      console.error("[deleteTallerEntry cloud]", err));
+  }
   updateTallerBadge();
   renderTaller();
 }
+window.deleteTallerEntry = deleteTallerEntry;
 
 // ── Inicializar módulo taller al cargar página ────────────
 (async()=>{

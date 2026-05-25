@@ -112,6 +112,20 @@ export async function listTaller(tenantId: string): Promise<Schema["Taller"]["ty
   return data;
 }
 
+/**
+ * Borra un Taller record del cloud. Requiere los 3 fields del composite
+ * identifier (tenantId, unitUid, fechaEntrada). Si no match exacto, no borra.
+ */
+export async function deleteTaller(input: {
+  tenantId: string;
+  unitUid: string;
+  fechaEntrada: string;
+}): Promise<void> {
+  const c = getClient();
+  const { errors } = await c.models.Taller.delete(input);
+  throwOnErrors("deleteTaller", errors);
+}
+
 // ───────────────────────── Nota ─────────────────────────
 
 export type NotaInput = {
