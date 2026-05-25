@@ -13,7 +13,7 @@
 
 import type { Schema } from "./amplifyClient";
 import { listUnits, listChecklists } from "./client";
-import { batchGetCloudPhotoUrls } from "./photoFetch";
+import { batchGetCloudPhotoUrls, indexCloudPhotos } from "./photoFetch";
 import type { Unit, Finding, RiskLevel, ChecklistDB } from "../types";
 
 interface ChecklistResultados {
@@ -136,6 +136,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   }
   if (allPhotoFnames.size > 0) {
     try {
+      // CRÍTICO: indexar S3 ANTES de batchGetCloudPhotoUrls.
+      // batchGet usa hasCloudPhoto que consulta el index cache. Sin index
+      // cargado, todas las URLs retornan null → map vacío (race condition
+      // que dejaba multi-user sin fotos).
+      await indexCloudPhotos(tenantId);
       const urlMap = await batchGetCloudPhotoUrls(tenantId, [...allPhotoFnames]);
       window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, string>();
       let count = 0;

@@ -32,7 +32,7 @@ import {
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
-import { indexCloudPhotos, getCloudPhotoUrl } from "./photoFetch";
+import { getCloudPhotoUrl, indexCloudPhotos } from "./photoFetch";
 import type { LoadedZip } from "../io/zipLoader";
 
 declare global {
@@ -240,6 +240,8 @@ export function setupCloud(): void {
       }
     }
     // Hidrata desde cloud — multi-usuario ve mismos datos.
+    // hydrateFromCloud ya hace indexCloudPhotos internamente antes de
+    // batchGetCloudPhotoUrls para evitar race con URL map.
     if (session) {
       try {
         const result = await hydrateFromCloud(session.tenantId);
@@ -250,10 +252,6 @@ export function setupCloud(): void {
         console.error("[cloud] Hydrate falló:", err);
         window.notify?.("Cloud sync indisponible — usando datos locales", "warn", 4000);
       }
-      // Indexa fotos S3 — habilita __cloudGetPhotoUrl para multi-user.
-      void indexCloudPhotos(session.tenantId)
-        .then((count) => console.info(`[cloud] ${count} fotos indexadas de S3`))
-        .catch((err) => console.error("[cloud] photo index falló:", err));
     }
   })();
 }
