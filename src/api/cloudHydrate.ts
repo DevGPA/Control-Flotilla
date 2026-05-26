@@ -18,6 +18,7 @@ import { uploadTallerToCloud } from "./batchUpload";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
+import { migrateEstado } from "../taller/types";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -190,11 +191,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         const refreshed = await listTaller(tenantId);
         tallerCloud.length = 0;
         tallerCloud.push(...refreshed);
-        window.notify?.(
-          `☁ ${orphans.length} registros de taller migrados al servidor`,
-          "ok",
-          4000,
-        );
+        window.notify?.(`☁ ${orphans.length} registros de taller migrados al servidor`, "ok", 4000);
       } catch (err) {
         console.error("[cloudHydrate] migración taller falló:", err);
       }
@@ -210,7 +207,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         typeof dRaw === "string"
           ? (JSON.parse(dRaw) as Record<string, unknown>)
           : ((dRaw ?? {}) as Record<string, unknown>);
-      const estado = String(datos.estado ?? (t.estatus === "cerrado" ? "Finalizado" : "En Revisión")) as TallerEstado;
+      const estadoRaw = datos.estado ?? (t.estatus === "cerrado" ? "Finalizado" : "En Diagnóstico");
+      const estado: TallerEstado = migrateEstado(estadoRaw);
       return {
         id: String(datos.id ?? t.folio ?? `${t.unitUid}_${t.fechaEntrada}`),
         unitKey: String(datos.unitKey ?? t.unitUid),
@@ -248,7 +246,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     const periodoMap = new Map<string, WeeklyEntry[]>();
     for (const s of semanales) {
       const d = (s.datos ?? {}) as Record<string, unknown>;
-      const datos = typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
+      const datos =
+        typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
       // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
       // placa si upload viejo no lo guardó.
       const ecoId = String(datos.economicoId ?? "").trim() || s.unitUid;

@@ -18,7 +18,7 @@ function mk(overrides: Partial<TallerEntry> = {}): TallerEntry {
     sucursal: "GDL",
     area: "LOGISTICA",
     tipo: "Preventivo",
-    estado: "Reparando",
+    estado: "En Reparación",
     fentrada: "2026-04-15",
     updatedAt: "2026-04-15T10:00:00Z",
     ...overrides,
@@ -42,7 +42,7 @@ describe("latestActivasPerUnit", () => {
   it("agrupa por unitKey y retorna solo unidades con latest no-cerrada", () => {
     const entries = [
       mk({ id: "1", unitKey: "U1", updatedAt: "2026-04-10T00:00:00Z", estado: "Finalizado" }),
-      mk({ id: "2", unitKey: "U1", updatedAt: "2026-04-15T00:00:00Z", estado: "Reparando" }),
+      mk({ id: "2", unitKey: "U1", updatedAt: "2026-04-15T00:00:00Z", estado: "En Reparación" }),
       mk({ id: "3", unitKey: "U2", updatedAt: "2026-04-16T00:00:00Z", estado: "Finalizado" }),
     ];
     const out = latestActivasPerUnit(entries);
@@ -59,7 +59,7 @@ describe("latestActivasPerUnit", () => {
         unitKey: "U1",
         fentrada: "2026-04-15",
         updatedAt: "2026-04-16T00:00:00Z",
-        estado: "Reparando",
+        estado: "En Reparación",
       }),
       mk({
         id: "2",
@@ -240,7 +240,7 @@ describe("renderActivas", () => {
     const onOpenHist = vi.fn();
     const entries = [
       mk({ id: "1", unitKey: "U1", estado: "Finalizado", updatedAt: "2026-04-10T00:00:00Z" }),
-      mk({ id: "2", unitKey: "U1", estado: "Reparando", updatedAt: "2026-04-15T00:00:00Z" }),
+      mk({ id: "2", unitKey: "U1", estado: "En Reparación", updatedAt: "2026-04-15T00:00:00Z" }),
     ];
     renderActivas(tbody, null, null, { entries, today: TODAY, onOpen, onOpenHist });
     const badge = tbody.querySelector(".tl-hist-badge") as HTMLElement;

@@ -13,7 +13,7 @@ function mk(overrides: Partial<TallerEntry> = {}): TallerEntry {
     sucursal: "GDL",
     area: "MANTENIMIENTO",
     tipo: "Correctivo",
-    estado: "Reparando",
+    estado: "En Reparación",
     fentrada: "2026-04-15",
     updatedAt: "2026-04-15T10:00:00Z",
     ...overrides,
@@ -46,12 +46,12 @@ describe("computeActivasKpis", () => {
     expect(k.nActAll).toBe(1);
   });
 
-  it("nRev solo cuenta estado='En Revisión'", () => {
+  it("nRev cuenta todos los activos (no cerradas)", () => {
     const k = computeActivasKpis(
       [
-        mk({ id: "a1", unitKey: "U1", estado: "En Revisión" }),
-        mk({ id: "a2", unitKey: "U2", estado: "Reparando" }),
-        mk({ id: "a3", unitKey: "U3", estado: "En Revisión" }),
+        mk({ id: "a1", unitKey: "U1", estado: "En Diagnóstico" }),
+        mk({ id: "a2", unitKey: "U2", estado: "Finalizado" }),
+        mk({ id: "a3", unitKey: "U3", estado: "En Reparación" }),
       ],
       {},
       TODAY,
@@ -102,7 +102,7 @@ describe("computeActivasKpis", () => {
         mk({
           id: "a2",
           unitKey: "U2",
-          estado: "Listo",
+          estado: "Finalizado",
           fentrada: "2026-04-10",
           fsalidaReal: "2026-04-20",
         }), // 10
@@ -119,14 +119,14 @@ describe("computeActivasKpis", () => {
         mk({
           id: "a1",
           unitKey: "U1",
-          estado: "En Revisión",
+          estado: "En Diagnóstico",
           fentrada: "2026-04-10",
           fsalidaEst: "2026-04-14",
         }), // 4
         mk({
           id: "a2",
           unitKey: "U2",
-          estado: "En Revisión",
+          estado: "En Diagnóstico",
           fentrada: "2026-04-12",
           fsalidaEst: "2026-04-20",
         }), // 8
@@ -141,8 +141,8 @@ describe("computeActivasKpis", () => {
     const k = computeActivasKpis(
       [
         // TODAY = 2026-04-20T12:00Z → entradas a 00:00Z dan media día extra
-        mk({ id: "a1", unitKey: "U1", estado: "En Revisión", fentrada: "2026-04-10" }),
-        mk({ id: "a2", unitKey: "U2", estado: "En Revisión", fentrada: "2026-04-14" }),
+        mk({ id: "a1", unitKey: "U1", estado: "En Diagnóstico", fentrada: "2026-04-10" }),
+        mk({ id: "a2", unitKey: "U2", estado: "En Diagnóstico", fentrada: "2026-04-14" }),
       ],
       {},
       TODAY,
@@ -278,7 +278,7 @@ describe("renderActivasKpis", () => {
   it("donut tiene segmento rev cuando nRev>0", () => {
     const c = setup();
     renderActivasKpis(c, {
-      entries: [mk({ id: "a1", unitKey: "U1", estado: "En Revisión" })],
+      entries: [mk({ id: "a1", unitKey: "U1", estado: "En Diagnóstico" })],
       today: TODAY,
     });
     const seg = c.querySelector("#tl-dwrap .dsvg circle[data-k='rev']");
@@ -288,7 +288,7 @@ describe("renderActivasKpis", () => {
   it("donut omite segmento rev cuando nRev=0", () => {
     const c = setup();
     renderActivasKpis(c, {
-      entries: [mk({ id: "a1", unitKey: "U1", estado: "Reparando" })],
+      entries: [mk({ id: "a1", unitKey: "U1", estado: "Finalizado" })],
       today: TODAY,
     });
     const seg = c.querySelector("#tl-dwrap .dsvg circle[data-k='rev']");
@@ -299,7 +299,7 @@ describe("renderActivasKpis", () => {
     const c = setup();
     renderActivasKpis(c, {
       entries: [
-        mk({ id: "a1", unitKey: "U1", estado: "En Revisión" }),
+        mk({ id: "a1", unitKey: "U1", estado: "En Diagnóstico" }),
         mk({ id: "a2", unitKey: "U2", estado: undefined as unknown as TallerEntry["estado"] }),
       ],
       today: TODAY,
@@ -334,7 +334,7 @@ describe("renderActivasKpis", () => {
         mk({
           id: "a2",
           unitKey: "U2",
-          estado: "En Revisión",
+          estado: "En Diagnóstico",
           fentrada: "2026-04-10",
           fsalidaEst: "2026-04-20",
         }),

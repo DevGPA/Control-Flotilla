@@ -50,7 +50,11 @@ function daysBetween(a: string, b: string): number | null {
 }
 
 function norm(s?: string): string {
-  return (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return (s ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function matchesFilter(e: TallerEntry, f: TallerFilter): boolean {
@@ -59,7 +63,9 @@ function matchesFilter(e: TallerEntry, f: TallerFilter): boolean {
   if (f.tipo && f.tipo !== "all" && e.tipo !== f.tipo) return false;
   if (f.search) {
     const q = norm(f.search);
-    const hit = [e.eco, e.plate, e.tecnico, e.brand, e.comentario, e.refacciones].some((x) => norm(x).includes(q));
+    const hit = [e.eco, e.plate, e.tecnico, e.brand, e.comentario, e.refacciones].some((x) =>
+      norm(x).includes(q),
+    );
     if (!hit) return false;
   }
   return true;
@@ -87,7 +93,7 @@ export function computeActivasKpis(
 
   const nActAll = activosAll.length;
   const nFiltered = filtered.length;
-  const nRev = latestAll.filter((e) => e.estado === "En Revisión").length;
+  const nRev = latestAll.filter((e) => !isClosed(e)).length;
   const nSin = latestAll.filter((e) => !e.estado).length;
   const nCorr = filtered.filter((e) => e.tipo === "Correctivo").length;
   const nPrev = filtered.filter((e) => e.tipo === "Preventivo").length;
@@ -110,7 +116,7 @@ export function computeActivasKpis(
   const estArr: number[] = [];
   const revArr: number[] = [];
   for (const e of filtered) {
-    if (e.estado !== "En Revisión" || !e.fentrada) continue;
+    if (isClosed(e) || !e.fentrada) continue;
     if (e.fsalidaEst) {
       const d = daysBetween(e.fentrada, e.fsalidaEst);
       if (d != null && d >= 0) estArr.push(d);
@@ -344,14 +350,19 @@ function wireDonutHover(
   const pctOf = (n: number): number => (kpis.nActAll ? Math.round((n / kpis.nActAll) * 100) : 0);
   const map: Record<string, { pct: number; label: string; color: string; bg: string }> = {
     rev: { pct: pctOf(kpis.nRev), label: "EN REVISIÓN", color: "var(--A)", bg: "var(--Ad)" },
-    sin: { pct: pctOf(kpis.nSin), label: "SIN REG.",    color: "var(--s3)", bg: "var(--bg3)" },
+    sin: { pct: pctOf(kpis.nSin), label: "SIN REG.", color: "var(--s3)", bg: "var(--bg3)" },
   };
   const defPct = { txt: parts.pct.textContent ?? "", color: parts.pct.style.color };
-  const defTag = { txt: parts.tag.textContent ?? "", color: parts.tag.style.color, bg: parts.tag.style.background };
+  const defTag = {
+    txt: parts.tag.textContent ?? "",
+    color: parts.tag.style.color,
+    bg: parts.tag.style.background,
+  };
 
   const enter = (k: string) => {
     for (const el of parts.legendItems) if (el.dataset.k !== k) el.classList.add("dim");
-    for (const el of parts.segments) if ((el as unknown as SVGElement).getAttribute("data-k") !== k) el.classList.add("dim");
+    for (const el of parts.segments)
+      if ((el as unknown as SVGElement).getAttribute("data-k") !== k) el.classList.add("dim");
     const h = map[k];
     if (!h) return;
     parts.pct.textContent = h.pct + "%";
@@ -392,9 +403,10 @@ function buildAlertStrip(urgentEcos: string[]): HTMLElement | null {
   const head = document.createElement("span");
   head.style.cssText = "color:var(--A);display:inline-flex;align-items:center;gap:4px";
   head.appendChild(lucide("alert-triangle", 11));
-  const lead = urgentEcos.length > 1
-    ? ` ${urgentEcos.length} unidades llevan más de 7 días sin salir:`
-    : ` ${urgentEcos.length} unidad lleva más de 7 días sin salir:`;
+  const lead =
+    urgentEcos.length > 1
+      ? ` ${urgentEcos.length} unidades llevan más de 7 días sin salir:`
+      : ` ${urgentEcos.length} unidad lleva más de 7 días sin salir:`;
   head.appendChild(document.createTextNode(lead));
   strip.appendChild(head);
   strip.appendChild(document.createTextNode(" "));
@@ -415,7 +427,8 @@ export function renderActivasKpis(container: HTMLElement, deps: ActivasKpisDeps)
   container.replaceChildren();
 
   const wrap = document.createElement("div");
-  wrap.style.cssText = "padding:14px 16px 6px;background:var(--bg2);border-bottom:1px solid var(--ln)";
+  wrap.style.cssText =
+    "padding:14px 16px 6px;background:var(--bg2);border-bottom:1px solid var(--ln)";
 
   const row = document.createElement("div");
   row.className = "kpi-row";
@@ -423,65 +436,76 @@ export function renderActivasKpis(container: HTMLElement, deps: ActivasKpisDeps)
   const pct = (n: number): number => (kpis.nActAll ? Math.round((n / kpis.nActAll) * 100) : 0);
 
   // 1. En Revisión
-  row.appendChild(buildStatCard({
-    color: "var(--A)",
-    iconName: "search",
-    label: "En Revisión",
-    value: String(kpis.nRev),
-    sub: `${pct(kpis.nRev)}% de activos`,
-    pct: pct(kpis.nRev),
-  }));
+  row.appendChild(
+    buildStatCard({
+      color: "var(--A)",
+      iconName: "search",
+      label: "En Revisión",
+      value: String(kpis.nRev),
+      sub: `${pct(kpis.nRev)}% de activos`,
+      pct: pct(kpis.nRev),
+    }),
+  );
 
   // 2. Correctivo
-  row.appendChild(buildStatCard({
-    color: "var(--R)",
-    iconName: "wrench",
-    label: "Mtto Correctivo",
-    value: String(kpis.nCorr),
-    sub: `${pct(kpis.nCorr)}% de activos`,
-    pct: pct(kpis.nCorr),
-    onClick: () => onFilterTipo?.("Correctivo"),
-  }));
+  row.appendChild(
+    buildStatCard({
+      color: "var(--R)",
+      iconName: "wrench",
+      label: "Mtto Correctivo",
+      value: String(kpis.nCorr),
+      sub: `${pct(kpis.nCorr)}% de activos`,
+      pct: pct(kpis.nCorr),
+      onClick: () => onFilterTipo?.("Correctivo"),
+    }),
+  );
 
   // 3. Preventivo
-  row.appendChild(buildStatCard({
-    color: "var(--B)",
-    iconName: "shield-check",
-    label: "Mtto Preventivo",
-    value: String(kpis.nPrev),
-    sub: `${pct(kpis.nPrev)}% de activos`,
-    pct: pct(kpis.nPrev),
-    onClick: () => onFilterTipo?.("Preventivo"),
-  }));
+  row.appendChild(
+    buildStatCard({
+      color: "var(--B)",
+      iconName: "shield-check",
+      label: "Mtto Preventivo",
+      value: String(kpis.nPrev),
+      sub: `${pct(kpis.nPrev)}% de activos`,
+      pct: pct(kpis.nPrev),
+      onClick: () => onFilterTipo?.("Preventivo"),
+    }),
+  );
 
   // 4. Urgentes
   const urgActive = kpis.nUrg > 0;
-  row.appendChild(buildStatCard({
-    color: urgActive ? "var(--R)" : "var(--s3)",
-    iconName: "alert-triangle",
-    label: "Urgentes (+7 días)",
-    value: String(kpis.nUrg),
-    sub: urgActive ? `${pct(kpis.nUrg)}% de activos` : "Sin alertas activas",
-    pct: urgActive ? pct(kpis.nUrg) : 0,
-    extraStyle: urgActive ? "border:1px solid var(--Al)" : "",
-    onClick: urgActive ? () => onSortUrgencia?.() : undefined,
-    title: urgActive ? "Click para ordenar por días" : "Sin alertas activas",
-  }));
+  row.appendChild(
+    buildStatCard({
+      color: urgActive ? "var(--R)" : "var(--s3)",
+      iconName: "alert-triangle",
+      label: "Urgentes (+7 días)",
+      value: String(kpis.nUrg),
+      sub: urgActive ? `${pct(kpis.nUrg)}% de activos` : "Sin alertas activas",
+      pct: urgActive ? pct(kpis.nUrg) : 0,
+      extraStyle: urgActive ? "border:1px solid var(--Al)" : "",
+      onClick: urgActive ? () => onSortUrgencia?.() : undefined,
+      title: urgActive ? "Click para ordenar por días" : "Sin alertas activas",
+    }),
+  );
 
   // 5. Días Prom Estancia (3-tier)
   const prom = kpis.promDiasComp ?? kpis.promDiasEst ?? kpis.promDiasRev;
-  const promSub = kpis.promDiasComp != null
-    ? "Prom. real (finalizados)"
-    : kpis.promDiasEst != null
-    ? "Prom. estimado"
-    : "Días activos en taller";
-  row.appendChild(buildStatCard({
-    color: "var(--ac)",
-    iconName: "clock",
-    label: "Días Prom. Estancia",
-    value: prom != null ? `${prom}d` : "—",
-    sub: promSub,
-  }));
+  const promSub =
+    kpis.promDiasComp != null
+      ? "Prom. real (finalizados)"
+      : kpis.promDiasEst != null
+        ? "Prom. estimado"
+        : "Días activos en taller";
+  row.appendChild(
+    buildStatCard({
+      color: "var(--ac)",
+      iconName: "clock",
+      label: "Días Prom. Estancia",
+      value: prom != null ? `${prom}d` : "—",
+      sub: promSub,
+    }),
+  );
 
   // 6. Donut
   row.appendChild(buildDonutCard(kpis));

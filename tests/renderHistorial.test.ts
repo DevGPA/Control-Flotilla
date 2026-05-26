@@ -54,8 +54,8 @@ describe("buildHistorialRows", () => {
   it("agrupa por unitKey y cuenta solo cerradas", () => {
     const rows = buildHistorialRows([
       mk({ id: "a1", unitKey: "U1", estado: "Finalizado" }),
-      mk({ id: "a2", unitKey: "U1", estado: "Reparando" }),
-      mk({ id: "a3", unitKey: "U1", estado: "Listo" }),
+      mk({ id: "a2", unitKey: "U1", estado: "Finalizado" }),
+      mk({ id: "a3", unitKey: "U1", estado: "En Reparación" }),
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.closedCount).toBe(2);
@@ -64,7 +64,7 @@ describe("buildHistorialRows", () => {
 
   it("omite unidades sin ingresos cerrados", () => {
     const rows = buildHistorialRows([
-      mk({ id: "a1", unitKey: "U1", estado: "Reparando" }),
+      mk({ id: "a1", unitKey: "U1", estado: "En Reparación" }),
       mk({ id: "a2", unitKey: "U2", estado: "Finalizado" }),
     ]);
     expect(rows).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("buildHistorialRows", () => {
     const rows = buildHistorialRows([
       mk({ id: "a1", unitKey: "U1", estado: "Finalizado", gastoRef: 100, gastoMO: 200 }),
       mk({ id: "a2", unitKey: "U1", estado: "Finalizado", gastoRef: 50, gastoMO: 50 }),
-      mk({ id: "a3", unitKey: "U1", estado: "Reparando", gastoRef: 999, gastoMO: 999 }),
+      mk({ id: "a3", unitKey: "U1", estado: "En Reparación", gastoRef: 999, gastoMO: 999 }),
     ]);
     expect(rows[0]!.totalGasto).toBe(400);
     expect(rows[0]!.totalGastoRef).toBe(150);
@@ -298,7 +298,7 @@ describe("renderHistorial", () => {
     renderHistorial(tbody, thead, rcnt, {
       entries: [
         mk({ id: "a1", unitKey: "U1", estado: "Finalizado", updatedAt: "2026-04-10T10:00:00Z" }),
-        mk({ id: "a2", unitKey: "U1", estado: "Reparando", updatedAt: "2026-04-20T10:00:00Z" }),
+        mk({ id: "a2", unitKey: "U1", estado: "En Reparación", updatedAt: "2026-04-20T10:00:00Z" }),
       ],
     });
     const tr = tbody.querySelector("tr")!;

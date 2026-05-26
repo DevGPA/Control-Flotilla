@@ -3131,9 +3131,22 @@ select {
   background: var(--bg3);
   color: var(--s2);
 }
-.tl-pill.revision {
+.tl-pill.revision,
+.tl-pill.diag {
   background: var(--Ad);
   color: #92400e;
+}
+.tl-pill.repar {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.tl-pill.cotiz {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+.tl-pill.porrec {
+  background: #ffedd5;
+  color: #9a3412;
 }
 .tl-pill.listo {
   background: var(--Gd);

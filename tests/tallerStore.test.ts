@@ -23,32 +23,36 @@ function mk(overrides: Partial<TallerEntry> = {}): TallerEntry {
   return {
     id: "t1",
     eco: "A-117",
-    estado: "Reparando",
+    estado: "En Reparación",
     ...overrides,
   };
 }
 
 describe("isClosed", () => {
   it("Finalizado → true", () => expect(isClosed(mk({ estado: "Finalizado" }))).toBe(true));
-  it("Listo → true", () => expect(isClosed(mk({ estado: "Listo" }))).toBe(true));
-  it("Reparando → false", () => expect(isClosed(mk({ estado: "Reparando" }))).toBe(false));
-  it("En Revisión → false", () => expect(isClosed(mk({ estado: "En Revisión" }))).toBe(false));
+  it("Por recuperar → false (activo)", () =>
+    expect(isClosed(mk({ estado: "Por recuperar" }))).toBe(false));
+  it("En Reparación → false", () => expect(isClosed(mk({ estado: "En Reparación" }))).toBe(false));
+  it("En Diagnóstico → false", () =>
+    expect(isClosed(mk({ estado: "En Diagnóstico" }))).toBe(false));
+  it("Cotización → false", () => expect(isClosed(mk({ estado: "Cotización" }))).toBe(false));
 });
 
 describe("filterActivas / filterCerradas", () => {
   const entries: TallerEntry[] = [
-    mk({ id: "1", estado: "Reparando" }),
+    mk({ id: "1", estado: "En Reparación" }),
     mk({ id: "2", estado: "Finalizado" }),
-    mk({ id: "3", estado: "En Revisión" }),
-    mk({ id: "4", estado: "Listo" }),
+    mk({ id: "3", estado: "En Diagnóstico" }),
+    mk({ id: "4", estado: "Por recuperar" }),
+    mk({ id: "5", estado: "Cotización" }),
   ];
   it("filterActivas", () => {
     const r = filterActivas(entries).map((e) => e.id);
-    expect(r).toEqual(["1", "3"]);
+    expect(r).toEqual(["1", "3", "4", "5"]);
   });
   it("filterCerradas", () => {
     const r = filterCerradas(entries).map((e) => e.id);
-    expect(r).toEqual(["2", "4"]);
+    expect(r).toEqual(["2"]);
   });
 });
 
@@ -214,8 +218,8 @@ describe("computeTotals", () => {
   it("calcula métricas agregadas", () => {
     const today = new Date("2026-04-17");
     const e: TallerEntry[] = [
-      mk({ id: "1", estado: "Reparando", fentrada: "2026-04-10", gastoRef: 500, gastoMO: 100 }),
-      mk({ id: "2", estado: "Reparando", fentrada: "2026-04-15", gastoRef: 200 }),
+      mk({ id: "1", estado: "En Reparación", fentrada: "2026-04-10", gastoRef: 500, gastoMO: 100 }),
+      mk({ id: "2", estado: "En Reparación", fentrada: "2026-04-15", gastoRef: 200 }),
       mk({ id: "3", estado: "Finalizado", gastoRef: 1000, gastoMO: 200 }),
     ];
     const t = computeTotals(e, today);
@@ -228,18 +232,18 @@ describe("computeTotals", () => {
 });
 
 describe("canTransitionTo / nextStates", () => {
-  it("En Revisión → Reparando (OK)", () => {
-    expect(canTransitionTo("En Revisión", "Reparando")).toBe(true);
+  it("En Diagnóstico → En Reparación (OK)", () => {
+    expect(canTransitionTo("En Diagnóstico", "En Reparación")).toBe(true);
   });
   it("Finalizado → cualquier otro (NO)", () => {
-    expect(canTransitionTo("Finalizado", "Reparando")).toBe(false);
+    expect(canTransitionTo("Finalizado", "En Reparación")).toBe(false);
   });
-  it("Listo → Finalizado (OK), pero NO 'En Revisión'", () => {
-    expect(canTransitionTo("Listo", "Finalizado")).toBe(true);
-    expect(canTransitionTo("Listo", "En Revisión")).toBe(false);
+  it("Por recuperar → Finalizado (OK), pero NO regresar a En Diagnóstico", () => {
+    expect(canTransitionTo("Por recuperar", "Finalizado")).toBe(true);
+    expect(canTransitionTo("Por recuperar", "En Diagnóstico")).toBe(false);
   });
   it("nextStates devuelve array", () => {
-    expect(nextStates("En Revisión")).toContain("Reparando");
+    expect(nextStates("En Diagnóstico")).toContain("En Reparación");
     expect(nextStates("Finalizado")).toEqual([]);
   });
 });

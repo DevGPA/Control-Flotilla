@@ -53,8 +53,14 @@ function norm(s?: string): string {
 export function matchesSearch(entry: TallerEntry, query: string): boolean {
   if (!query) return true;
   const q = norm(query);
-  return [entry.eco, entry.plate, entry.tecnico, entry.comentario, entry.brand, entry.refacciones]
-    .some((f) => norm(f).includes(q));
+  return [
+    entry.eco,
+    entry.plate,
+    entry.tecnico,
+    entry.comentario,
+    entry.brand,
+    entry.refacciones,
+  ].some((f) => norm(f).includes(q));
 }
 
 /** Aplica filtros acumulativos (sucursal/area/tipo/search). */
@@ -117,7 +123,8 @@ export function sortEntries(
 ): TallerEntry[] {
   const sorted = [...entries];
   const cmp = (a: TallerEntry, b: TallerEntry): number => {
-    let va: string | number = "", vb: string | number = "";
+    let va: string | number = "",
+      vb: string | number = "";
     switch (key) {
       case "fentrada":
         va = a.fentrada || "";
@@ -189,11 +196,11 @@ export function computeTotals(entries: TallerEntry[], today: Date = new Date()):
 
 /** Transiciones de estado válidas. */
 const TRANSITIONS: Record<TallerEstado, TallerEstado[]> = {
-  "En Revisión": ["Reparando", "Esperando Refacciones", "Listo", "Finalizado"],
-  "Reparando": ["Esperando Refacciones", "Listo", "Finalizado"],
-  "Esperando Refacciones": ["Reparando", "Listo", "Finalizado"],
-  "Listo": ["Finalizado", "Reparando"],
-  "Finalizado": [],
+  "En Diagnóstico": ["En Reparación", "Cotización", "Por recuperar", "Finalizado"],
+  "En Reparación": ["Cotización", "Por recuperar", "Finalizado"],
+  Cotización: ["En Reparación", "Por recuperar", "Finalizado"],
+  "Por recuperar": ["Finalizado", "En Reparación"],
+  Finalizado: [],
 };
 
 export function canTransitionTo(from: TallerEstado, to: TallerEstado): boolean {

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Xoet4SP5JejIaUnCocYBYFeGnyDrgZvwFTgJqDVgjUY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-hCcv1jdaL8I3BSP7hCb4s1gfJ22qJFXkj1Utw3f74Qs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -700,13 +700,17 @@ g.inflateBytes=async function(src){
       <div class="tl-field">
         <label for="tf-estado">Estado</label>
         <select id="tf-estado">
-          <option value="En Revisión">En Revisión (Activo)</option>
+          <option value="En Diagnóstico">En Diagnóstico</option>
+          <option value="En Reparación">En Reparación</option>
+          <option value="Cotización">Cotización</option>
+          <option value="Por recuperar">Por recuperar</option>
           <option value="Finalizado">Finalizado</option>
         </select>
       </div>
       <div class="tl-field">
-        <label for="tf-tipo">Tipo de Mantenimiento</label>
-        <select id="tf-tipo">
+        <label for="tf-tipo">Tipo de Mantenimiento <span style="color:var(--R)">*</span></label>
+        <select id="tf-tipo" required>
+          <option value="">— Selecciona —</option>
           <option value="Correctivo">Mtto Correctivo</option>
           <option value="Preventivo">Mtto Preventivo</option>
         </select>
@@ -728,8 +732,8 @@ g.inflateBytes=async function(src){
         <input id="tf-fsalida-real" type="date"/>
       </div>
       <div class="tl-field">
-        <label for="tf-km">Kilometraje al Ingreso</label>
-        <input id="tf-km" type="number" min="0" step="1" placeholder="Ej: 85000"/>
+        <label for="tf-km">Kilometraje al Ingreso <span style="color:var(--R)">*</span></label>
+        <input id="tf-km" type="number" min="1" step="1" placeholder="Ej: 85000" required/>
       </div>
       <div class="tl-field">
         <label for="tf-gasto">Subtotal ($)</label>
@@ -2678,7 +2682,7 @@ function buildAlertsSummary(){
       detail:llantasCrit.slice(0,5).map(u=>`${escHtml(u.eco||u.plate)}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>5?` y ${llantasCrit.length-5} más`:"")});
 
   // 4. Taller: unidades >7 días
-  const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed=e=>e.estado==="Finalizado";
   const tallerActivas=tallerEntries.filter(e=>!isClosed(e)&&e.fentrada);
   const tallerLargo=tallerActivas.filter(e=>{
     const dias=Math.round((Date.now()-new Date(e.fentrada))/86400000);
@@ -3984,7 +3988,7 @@ function showResumenEjecutivo(){
   const d30=new Date(today);d30.setDate(d30.getDate()+30);
   const svcV=units.filter(x=>{const d=parseSvcDate(x.nextSvc);return d&&d<today;});
   const svcP=units.filter(x=>{const d=parseSvcDate(x.nextSvc);return d&&d>=today&&d<=d30;});
-  const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed=e=>e.estado==="Finalizado";
   const enTaller=tallerEntries.filter(e=>!isClosed(e));
   const tallerLargo=enTaller.filter(e=>e.fentrada&&Math.round((Date.now()-new Date(e.fentrada))/86400000)>7);
 
@@ -4848,9 +4852,25 @@ let _tallerEditId = null; // ID en edición (null = nuevo)
 let _tallerReingresoKey = null; // unitKey del origen al hacer reingresar
 
 // ── Persistencia IndexedDB ────────────────────────────────
+// Migración estado legacy → nuevo (5 estados con nombres actualizados).
+// Aplicar al cargar IndexedDB. Entries futuras ya usan los nuevos valores.
+const ESTADO_MIGRATION = {
+  "En Revisión": "En Diagnóstico",
+  "Reparando": "En Reparación",
+  "Esperando Refacciones": "Cotización",
+  "Listo": "Por recuperar",
+};
+function normalizeEstado(s){
+  return ESTADO_MIGRATION[s] || s || "En Diagnóstico";
+}
+
 async function loadTallerDB(){
   const rows = await dbGetAll("taller");
-  tallerEntries = rows.map(r => r.value);
+  tallerEntries = rows.map(r => {
+    const e = r.value;
+    if(e && e.estado) e.estado = normalizeEstado(e.estado);
+    return e;
+  });
   updateTallerBadge();
 }
 
@@ -4866,7 +4886,7 @@ async function saveTallerDB(){
 function buildTallerSet(){
   unitsEnTaller = new Set();
   tallerEntries
-    .filter(e => e.estado !== "Finalizado" && e.estado !== "Listo")
+    .filter(e => e.estado !== "Finalizado")
     .forEach(e => {
       if(e.eco)   unitsEnTaller.add(String(e.eco).toLowerCase().trim());
       if(e.plate) unitsEnTaller.add(String(e.plate).toLowerCase().trim());
@@ -4876,7 +4896,7 @@ function buildTallerSet(){
 function updateTallerBadge(){
   buildTallerSet();
   if(units.length) buildKPIs(); // Refrescar KPIs de inspecciones con nueva info de taller
-  const active = tallerEntries.filter(e=>e.estado==="En Revisión").length;
+  const active = tallerEntries.filter(e=>e.estado!=="Finalizado").length;
   const badge = document.getElementById("taller-badge");
   if(badge){ badge.style.display=active?"inline":"none"; badge.textContent=active; }
   const cnt = document.getElementById("tl-act-cnt");
@@ -5296,7 +5316,7 @@ function enviarATallerDesdeInspeccion(uid){
   fld("tf-km",     e.km||"");
   fld("tf-tecnico",e.responsable||"");
   fld("tf-tipo",   "Correctivo");
-  fld("tf-estado", "En Revisión");
+  fld("tf-estado", "En Diagnóstico");
   fld("tf-fentrada", new Date().toISOString().slice(0,10));
   fld("tf-comentario", nota);
   // Recalcular gasto (en caso de que ya hubiera valores residuales)
@@ -5369,7 +5389,7 @@ function renderActivas(){
   const filtArea = document.getElementById("tl-filt-area").value;
   const filtTipo = document.getElementById("tl-filt-tipo").value;
   const filtQ    = ((document.getElementById("tl-filt-q")||{}).value||"").trim().toLowerCase();
-  const isClosed = e => e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed = e => e.estado==="Finalizado";
 
   // Agrupar por unitKey: latest entry por unidad + conteo total
   const latestMap = new Map();
@@ -5410,7 +5430,7 @@ function renderActivas(){
   const latestArr = [...latestMap.values()];
   const nTot  = filtered.length; // total visibles (activos filtrados)
   const nActAll = latestArr.filter(e=>!isClosed(e)).length; // activos totales sin filtro
-  const nRev  = latestArr.filter(e=>e.estado==="En Revisión").length;
+  const nRev  = latestArr.filter(e=>e.estado!=="Finalizado").length;
   const nSin  = latestArr.filter(e=>!e.estado).length;
   const nCorr = filtered.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = filtered.filter(e=>e.tipo==="Preventivo").length;
@@ -5424,10 +5444,10 @@ function renderActivas(){
   const diasCompArr = tallerEntries.filter(e=>isClosed(e)&&e.fentrada&&e.fsalidaReal)
     .map(e=>Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/86400000)));
   const promDiasComp = diasCompArr.length?Math.round(diasCompArr.reduce((a,b)=>a+b,0)/diasCompArr.length):null;
-  const diasEstArr = filtered.filter(e=>e.estado==="En Revisión"&&e.fentrada&&e.fsalidaEst)
+  const diasEstArr = filtered.filter(e=>e.estado!=="Finalizado"&&e.fentrada&&e.fsalidaEst)
     .map(e=>Math.max(0,Math.round((new Date(e.fsalidaEst)-new Date(e.fentrada))/86400000)));
   const promDiasEst = diasEstArr.length?Math.round(diasEstArr.reduce((a,b)=>a+b,0)/diasEstArr.length):null;
-  const diasRevArr = filtered.filter(e=>e.estado==="En Revisión"&&e.fentrada)
+  const diasRevArr = filtered.filter(e=>e.estado!=="Finalizado"&&e.fentrada)
     .map(e=>Math.round((Date.now()-new Date(e.fentrada))/86400000)).filter(d=>d>=0);
   const promDiasRev = diasRevArr.length?Math.round(diasRevArr.reduce((a,b)=>a+b,0)/diasRevArr.length):null;
   const tlPct = n => nActAll ? Math.round((n/nActAll)*100) : 0;
@@ -5461,7 +5481,7 @@ function renderActivas(){
   <div class="kpi-row">
     <div class="kc">
       <div class="ktop" style="background:var(--A)"></div>
-      ${_klbl("search","En Revisión")}
+      ${_klbl("search","Activos")}
       <div class="kval" style="color:var(--A)">${nRev}</div>
       <div class="ksub">${tlPct(nRev)}% de activos</div>
       <div class="kprog" style="background:var(--A);width:${tlPct(nRev)}%"></div>
@@ -5504,7 +5524,7 @@ function renderActivas(){
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
         ${_klbl("pie-chart","Distribución")}
-        <div class="dleg" id="tl-dleg">${[["rev","var(--A)","En Revisión",nRev],["sin","var(--s3)","Sin Reg.",nSin]].map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("")}</div>
+        <div class="dleg" id="tl-dleg">${[["rev","var(--A)","Activos",nRev],["sin","var(--s3)","Sin Reg.",nSin]].map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("")}</div>
       </div>
     </div>
   </div>
@@ -5611,7 +5631,7 @@ ${tlAlert}`;
 
 // ── Vista: Historial / Expedientes ────────────────────────
 function renderHistorial(){
-  const isClosed = e => e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed = e => e.estado==="Finalizado";
   const filtSuc   = (document.getElementById("tl-hist-suc")||{value:"all"}).value||"all";
   const filtTipo  = (document.getElementById("tl-hist-tipo")||{value:"all"}).value||"all";
   const q         = ((document.getElementById("tl-hist-q")||{}).value||"").trim().toLowerCase();
@@ -5762,7 +5782,7 @@ function renderHistorial(){
     const totalVisits = entries.length;
     const dias = lc.fentrada&&lc.fsalidaReal
       ? Math.max(0,Math.round((new Date(lc.fsalidaReal)-new Date(lc.fentrada))/86400000)) : null;
-    const isActive = !(lc.estado==="Finalizado"||lc.estado==="Listo"||latest.estado==="Finalizado"||latest.estado==="Listo");
+    const isActive = !(lc.estado==="Finalizado"||latest.estado==="Finalizado");
     const activeTag = isActive
       ? `<span style="font-size:8px;font-weight:700;color:var(--A);background:var(--Ad);padding:1px 5px;border-radius:3px;margin-left:4px">EN TALLER</span>`
       : "";
@@ -5804,7 +5824,7 @@ function renderHistorial(){
 // ── Exportar Historial Taller a Excel ────────────────────
 function exportTallerActivasExcel(){
   if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
-  const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed=e=>e.estado==="Finalizado";
   const activas=tallerEntries.filter(e=>!isClosed(e));
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
 
@@ -5816,7 +5836,7 @@ function exportTallerActivasExcel(){
   }).forEach(e=>{
     const dias=e.fentrada?Math.max(0,Math.round((Date.now()-new Date(e.fentrada))/86400000)):"";
     const gTotal=(e.gastoRef||0)+(e.gastoMO||0);
-    rows.push([e.eco||"",e.plate||"",e.brand||"",e.sucursal||"",e.area||"",e.tipo||"",e.estado||"En Revisión",fmtDate(e.freporte),fmtDate(e.fentrada),fmtDate(e.fsalidaEst),dias,e.tecnico||"",e.gastoRef||0,e.gastoMO||0,gTotal,e.refacciones||"",e.comentario||""]);
+    rows.push([e.eco||"",e.plate||"",e.brand||"",e.sucursal||"",e.area||"",e.tipo||"",e.estado||"En Diagnóstico",fmtDate(e.freporte),fmtDate(e.fentrada),fmtDate(e.fsalidaEst),dias,e.tecnico||"",e.gastoRef||0,e.gastoMO||0,gTotal,e.refacciones||"",e.comentario||""]);
   });
 
   const wb=XLSX.utils.book_new();
@@ -5829,7 +5849,7 @@ function exportTallerActivasExcel(){
 
 function exportTallerHistorialExcel(){
   if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
-  const isClosed=e=>e.estado==="Finalizado"||e.estado==="Listo";
+  const isClosed=e=>e.estado==="Finalizado";
 
   // Agrupar por unitKey (igual que renderHistorial)
   const unitMap=new Map();
@@ -5907,15 +5927,18 @@ function doTallerExcel(file){
       };
 
       // Determinar estado y tipo desde columna Estado del Excel
-      // IMPORTANTE: estado canónico es "En Revisión" (con acento) — matchea types.ts + KPIs
+      // Estados canónicos: "En Diagnóstico" | "En Reparación" | "Cotización" | "Por recuperar" | "Finalizado"
       const mapEstado = raw => {
         const v = String(raw||"").trim();
         const vn = v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-        if(v === "OK" || vn === "ok") return {estado:"Listo", tipo:""};
-        if(vn === "en revision") return {estado:"En Revisión", tipo:""};
-        if(vn.includes("correctivo")) return {estado:"En Revisión", tipo:"Correctivo"};
-        if(vn.includes("preventivo")) return {estado:"En Revisión", tipo:"Preventivo"};
-        return {estado:"En Revisión", tipo:""};
+        if(v === "OK" || vn === "ok" || vn === "finalizado" || vn === "listo") return {estado:"Finalizado", tipo:""};
+        if(vn === "por recuperar") return {estado:"Por recuperar", tipo:""};
+        if(vn === "cotizacion") return {estado:"Cotización", tipo:""};
+        if(vn === "en reparacion" || vn === "reparando") return {estado:"En Reparación", tipo:""};
+        if(vn === "en diagnostico" || vn === "en revision") return {estado:"En Diagnóstico", tipo:""};
+        if(vn.includes("correctivo")) return {estado:"En Diagnóstico", tipo:"Correctivo"};
+        if(vn.includes("preventivo")) return {estado:"En Diagnóstico", tipo:"Preventivo"};
+        return {estado:"En Diagnóstico", tipo:""};
       };
 
       const imported = [];
@@ -5997,8 +6020,8 @@ function openTallerModal(id){
   document.getElementById("tf-brand").value        = e?.brand||"";
   document.getElementById("tf-branch").value       = e?.sucursal||"";
   document.getElementById("tf-area").value         = e?.area||"";
-  document.getElementById("tf-estado").value       = e?.estado||"En Revisión";
-  document.getElementById("tf-tipo").value         = e?.tipo||"Correctivo";
+  document.getElementById("tf-estado").value       = e?.estado||"En Diagnóstico";
+  document.getElementById("tf-tipo").value         = e?.tipo||"";
   document.getElementById("tf-freporte").value     = e?.freporte||"";
   document.getElementById("tf-fentrada").value     = e?.fentrada||"";
   document.getElementById("tf-fsalida-est").value  = e?.fsalidaEst||"";
@@ -6038,8 +6061,8 @@ function reingresoTaller(){
   document.getElementById("tf-brand").value         = src.brand||"";
   document.getElementById("tf-branch").value        = src.sucursal||"";
   document.getElementById("tf-area").value          = src.area||"";
-  document.getElementById("tf-estado").value        = "En Revisión";
-  document.getElementById("tf-tipo").value          = "Correctivo";
+  document.getElementById("tf-estado").value        = "En Diagnóstico";
+  document.getElementById("tf-tipo").value          = "";
   clearTallerEntryFields();
   document.getElementById("btn-reingreso").style.display = "none";
   openModal("taller-modal");
@@ -6114,13 +6137,21 @@ function renderHistorialModal(){
   </div>`;
 
   const itemsHtml = entries.length ? entries.map((e,i)=>{
-    const isCl = e.estado==="Finalizado"||e.estado==="Listo";
-    const pillCls = !e.estado?"sinreg":e.estado==="En Revisión"?"revision":"finalizado";
-    const pillLbl = !e.estado?"Sin registro":e.estado==="En Revisión"?"En Revisión":"Finalizado";
+    const isCl = e.estado==="Finalizado";
+    const PILL_MAP = {
+      "En Diagnóstico":{cls:"diag",lbl:"En Diagnóstico"},
+      "En Reparación":{cls:"repar",lbl:"En Reparación"},
+      "Cotización":{cls:"cotiz",lbl:"Cotización"},
+      "Por recuperar":{cls:"porrec",lbl:"Por recuperar"},
+      "Finalizado":{cls:"finalizado",lbl:"Finalizado"},
+    };
+    const pillInfo = e.estado ? (PILL_MAP[e.estado] || {cls:"diag",lbl:e.estado}) : {cls:"sinreg",lbl:"Sin registro"};
+    const pillCls = pillInfo.cls;
+    const pillLbl = pillInfo.lbl;
     const tipoCls = e.tipo==="Correctivo"?"correctivo":e.tipo==="Preventivo"?"preventivo":"";
     // "ACTUAL" se calcula contra la lista completa, no la filtrada
     const isLatest = e === allEntries[0];
-    const rowBg = e.estado==="En Revisión"?"background:var(--Ad)":isCl?"background:var(--Gd)":"";
+    const rowBg = e.estado!=="Finalizado"?"background:var(--Ad)":isCl?"background:var(--Gd)":"";
     const diasReales = e.fentrada&&e.fsalidaReal ? Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/(86400*1000))) : null;
     const idxInAll = allEntries.indexOf(e);
     const numLabel = allEntries.length - idxInAll;
@@ -6211,8 +6242,8 @@ function reingresoDesdeHistorial(unitKey){
   document.getElementById("tf-brand").value         = src.brand||"";
   document.getElementById("tf-branch").value        = src.sucursal||"";
   document.getElementById("tf-area").value          = src.area||"";
-  document.getElementById("tf-estado").value        = "En Revisión";
-  document.getElementById("tf-tipo").value          = "Correctivo";
+  document.getElementById("tf-estado").value        = "En Diagnóstico";
+  document.getElementById("tf-tipo").value          = "";
   clearTallerEntryFields();
   document.getElementById("btn-reingreso").style.display = "none";
   buildTallerSucOptions();
@@ -6303,6 +6334,11 @@ async function saveTallerEntry(){
   const eco  = document.getElementById("tf-eco").value.trim();
   const plate= document.getElementById("tf-plate").value.trim();
   if(!eco && !plate){ window.notify("Ingresa al menos el No. de Unidad o las Placas.","warn",4000); return; }
+  // Required: tipo + km. Sin estos, no se guarda.
+  const tipoVal = document.getElementById("tf-tipo").value;
+  const kmVal   = document.getElementById("tf-km").value;
+  if(!tipoVal){ window.notify("Tipo de mantenimiento es obligatorio.","warn",4000); document.getElementById("tf-tipo").focus(); return; }
+  if(!kmVal || parseInt(kmVal) <= 0){ window.notify("Kilometraje al ingreso es obligatorio.","warn",4000); document.getElementById("tf-km").focus(); return; }
 
   const newEntryId = _tallerEditId || "tl_"+Date.now();
   const srcEntry = _tallerEditId ? tallerEntries.find(x=>x.id===_tallerEditId) : null;
@@ -6330,6 +6366,11 @@ async function saveTallerEntry(){
     comentario:  document.getElementById("tf-comentario").value.trim(),
     updatedAt:   new Date().toISOString(),
   };
+
+  // Auto-set fsalidaReal cuando estado=Finalizado y campo está vacío.
+  if(entry.estado === "Finalizado" && !entry.fsalidaReal){
+    entry.fsalidaReal = new Date().toISOString().slice(0,10);
+  }
 
   if(_tallerEditId){
     const idx=tallerEntries.findIndex(e=>e.id===_tallerEditId);

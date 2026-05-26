@@ -1,19 +1,36 @@
 // Tipos del módulo Taller — entries de unidades en taller, estados, costos.
 
 export type TallerEstado =
-  | "En Revisión"
-  | "Reparando"
-  | "Esperando Refacciones"
-  | "Listo"
+  | "En Diagnóstico"
+  | "En Reparación"
+  | "Cotización"
+  | "Por recuperar"
   | "Finalizado";
 
 export const ESTADOS_ACTIVOS: TallerEstado[] = [
-  "En Revisión",
-  "Reparando",
-  "Esperando Refacciones",
+  "En Diagnóstico",
+  "En Reparación",
+  "Cotización",
+  "Por recuperar",
 ];
 
-export const ESTADOS_CERRADOS: TallerEstado[] = ["Finalizado", "Listo"];
+export const ESTADOS_CERRADOS: TallerEstado[] = ["Finalizado"];
+
+/** Mapeo de estados legacy → nuevos. Aplicar al cargar entries viejas. */
+export const ESTADO_MIGRATION: Record<string, TallerEstado> = {
+  "En Revisión": "En Diagnóstico",
+  Reparando: "En Reparación",
+  "Esperando Refacciones": "Cotización",
+  Listo: "Por recuperar",
+};
+
+/** Normaliza estado al schema actual. Pasa-through si ya es nuevo. */
+export function migrateEstado(s: unknown): TallerEstado {
+  const str = String(s ?? "");
+  if (ESTADOS_ACTIVOS.includes(str as TallerEstado)) return str as TallerEstado;
+  if (ESTADOS_CERRADOS.includes(str as TallerEstado)) return str as TallerEstado;
+  return ESTADO_MIGRATION[str] ?? "En Diagnóstico";
+}
 
 export type TallerEntry = {
   id: string;
