@@ -23,13 +23,30 @@ const URL_TTL_MS = 50 * 60 * 1000; // refrescar antes de los 60min default
  */
 export async function indexCloudPhotos(tenantId: string): Promise<number> {
   const prefix = `photos/${tenantId}/`;
-  const result = await list({ path: prefix });
   const filenames = new Set<string>();
-  for (const item of result.items) {
-    const fname = item.path.slice(prefix.length).toLowerCase();
-    if (fname) filenames.add(fname);
-  }
+  // Pagination: Amplify Storage list devuelve 1000 max default. Si S3 tiene
+  // más, debemos iterar con nextToken hasta agotar.
+  let nextToken: string | undefined;
+  let pages = 0;
+  do {
+    const result = await list({
+      path: prefix,
+      options: { pageSize: 1000, ...(nextToken ? { nextToken } : {}) },
+    });
+    for (const item of result.items) {
+      const fname = item.path.slice(prefix.length).toLowerCase();
+      if (fname) filenames.add(fname);
+    }
+    nextToken = result.nextToken;
+    pages++;
+    // Safety cap: 50 pages × 1000 = 50K fotos. Más allá hay problema mayor.
+    if (pages > 50) {
+      console.warn("[indexCloudPhotos] pagination cap hit (50 pages)");
+      break;
+    }
+  } while (nextToken);
   indexCache.set(tenantId, filenames);
+  console.info(`[indexCloudPhotos] ${filenames.size} fotos indexadas en ${pages} pages`);
   return filenames.size;
 }
 
