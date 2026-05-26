@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 
 test.describe("theme — toggle claro/oscuro persistente", () => {
   test("toggle alterna data-theme y persiste en localStorage", async ({ page }) => {

@@ -1,8 +1,8 @@
-import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+﻿import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FIXTURE_MENSUAL = path.resolve(__dirname, "../fixtures/mensual.xlsx");
@@ -108,7 +108,7 @@ test.describe("Workflow — lógica real usuario", () => {
     await page.fill("#tf-brand", "Nissan NP 300 Chasis");
     await page.fill("#tf-branch", "Test Branch");
     await page.selectOption("#tf-area", "MANTENIMIENTO");
-    await page.selectOption("#tf-estado", "En Revisión");
+    await page.selectOption("#tf-estado", "En Diagnóstico");
     await page.selectOption("#tf-tipo", "Correctivo");
     const today = new Date().toISOString().slice(0, 10);
     await page.fill("#tf-freporte", today);
@@ -127,10 +127,10 @@ test.describe("Workflow — lógica real usuario", () => {
     r.findings.push(`[WF1] Modal cerró post-save: ${modalStillOpen === 0 ? "✓" : "✗"}`);
 
     // Verificar fila apareció (reales, excluyendo placeholder)
-    const rowsAfter = await page
-      .locator("#tl-tbody tr:not(:has(.tl-empty))")
-      .count();
-    r.findings.push(`[WF1] Taller post-registro: ${rowsAfter} ingresos reales (+${rowsAfter - rowsBefore})`);
+    const rowsAfter = await page.locator("#tl-tbody tr:not(:has(.tl-empty))").count();
+    r.findings.push(
+      `[WF1] Taller post-registro: ${rowsAfter} ingresos reales (+${rowsAfter - rowsBefore})`,
+    );
 
     // Verificar nuestro eco está en tabla
     const tbody = await page.locator("#tl-tbody").textContent();
@@ -295,7 +295,9 @@ test.describe("Workflow — lógica real usuario", () => {
     await page.waitForTimeout(400);
     const urgCount = await page.locator("#tbody").locator("> *").count();
     const urgBadge = (await page.locator("#fc0").textContent())?.replace(/[^\d]/g, "") || "0";
-    r.findings.push(`[WF4] Filtro Urgente: tabla=${urgCount}, badge chip="${urgBadge}", donut=${urgenteFromDonut?.u}`);
+    r.findings.push(
+      `[WF4] Filtro Urgente: tabla=${urgCount}, badge chip="${urgBadge}", donut=${urgenteFromDonut?.u}`,
+    );
 
     const coherent = urgCount === Number(urgBadge) && String(urgCount) === urgenteFromDonut?.u;
     r.findings.push(`[WF4] Coherencia Tabla==Badge==Donut: ${coherent ? "✓" : "✗"}`);
@@ -336,10 +338,7 @@ test.describe("Workflow — lógica real usuario", () => {
     r.findings.push(`[WF5] Primeras 5 fechas pre-sort: ${datesBefore.join(", ")}`);
 
     // Click header F. Entrada para sort
-    const headerFEntrada = page
-      .locator("#tl-thead th")
-      .filter({ hasText: "F. Entrada" })
-      .first();
+    const headerFEntrada = page.locator("#tl-thead th").filter({ hasText: "F. Entrada" }).first();
     if (await headerFEntrada.isVisible().catch(() => false)) {
       await headerFEntrada.click();
       await page.waitForTimeout(400);
@@ -404,19 +403,25 @@ test.describe("Workflow — lógica real usuario", () => {
     await page.goto(APP_PATH);
     await page.waitForLoadState("networkidle");
 
-    const before = await page.evaluate(() => document.documentElement.getAttribute("data-theme") || "light");
+    const before = await page.evaluate(
+      () => document.documentElement.getAttribute("data-theme") || "light",
+    );
     r.findings.push(`[WF7] Theme inicial: ${before}`);
 
     await page.click("#btn-theme");
     await page.waitForTimeout(400);
-    const afterToggle = await page.evaluate(() => document.documentElement.getAttribute("data-theme") || "light");
+    const afterToggle = await page.evaluate(
+      () => document.documentElement.getAttribute("data-theme") || "light",
+    );
     const stored = await page.evaluate(() => localStorage.getItem("gpa-theme"));
     r.findings.push(`[WF7] Post-toggle: theme=${afterToggle}, localStorage=${stored}`);
 
     // Reload
     await page.reload();
     await page.waitForLoadState("networkidle");
-    const afterReload = await page.evaluate(() => document.documentElement.getAttribute("data-theme") || "light");
+    const afterReload = await page.evaluate(
+      () => document.documentElement.getAttribute("data-theme") || "light",
+    );
     r.findings.push(`[WF7] Post-reload: ${afterReload} (esperado ${afterToggle})`);
 
     console.log(r.findings.join("\n"));

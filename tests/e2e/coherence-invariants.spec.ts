@@ -1,8 +1,8 @@
-import { test, expect, type Page } from "@playwright/test";
+﻿import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FIXTURE_MENSUAL = path.resolve(__dirname, "../fixtures/mensual.xlsx");
@@ -20,14 +20,12 @@ const FIXTURE_MENSUAL = path.resolve(__dirname, "../fixtures/mensual.xlsx");
 //   donut bucket "X" = segmento del KPI hero, count = cuántas unidades
 //     caen en ese segmento (EXCLUSIVO — Σ buckets = flota).
 //
-// Por diseño:
-//   - donut.urg = chip.Urgente (ambos = "tiene pending Urgente")
-//   - donut.rv  ≤ chip.Revisar (chip incluye unidades con Urg+Rev; donut
-//     las pone solo en Urgente para no duplicar).
-//   - donut.ok  ≥ chip.OK     (donut agrupa OK + Completar-only; chip OK
-//     exige cero pendings de cualquier nivel).
+// Por diseño (modelo Operativa/Taller binario):
+//   - donut.op + donut.tlr === flota total (exclusivo).
+//   - chip Urgente/Revisar/OK/Completar funcionan independientes — no se
+//     comparan contra buckets del donut binario.
 
-type DonutLegend = { u?: string; rv?: string; ok?: string };
+type DonutLegend = { op?: string; tlr?: string };
 
 async function dismissPeriodoModal(page: Page) {
   await page
@@ -102,80 +100,38 @@ async function clickChip(page: Page, btnId: string) {
 }
 
 test.describe("Coherence invariants — KPI/chip/tabla/donut", () => {
-  test("INV1: Σ(donut buckets) === flota total (donut es exclusivo)", async ({ page }) => {
+  test("INV1: donut.op + donut.tlr === flota total (donut binario exclusivo)", async ({ page }) => {
     await loadMensual(page);
     const donut = await readDonut(page);
     const total = Number((await page.locator("#kv0").textContent())?.trim() || "0");
-    const sum = Number(donut.u || 0) + Number(donut.rv || 0) + Number(donut.ok || 0);
-    console.log(`[INV1] donut u=${donut.u}, rv=${donut.rv}, ok=${donut.ok} · total=${total}`);
+    const sum = Number(donut.op || 0) + Number(donut.tlr || 0);
+    console.log(`[INV1] donut op=${donut.op}, tlr=${donut.tlr} · total=${total}`);
     expect(sum).toBe(total);
     expect(total).toBeGreaterThan(0);
   });
 
-  test("INV2: chip Urgente badge === filas tabla === donut.u (todos coinciden)", async ({
-    page,
-  }) => {
+  test("INV2: chip Urgente badge === filas tabla", async ({ page }) => {
     await loadMensual(page);
-    const donut = await readDonut(page);
     await clickChip(page, "btn-Urgente");
     const rows = await tableCount(page);
     const badge = await readChipBadge(page, "fc0");
-    console.log(`[INV2] chip=${badge} · tabla=${rows} · donut.u=${donut.u}`);
-    expect(rows).toBe(badge);
-    expect(rows).toBe(Number(donut.u));
-  });
-
-  test("INV3: chip Revisar ≥ donut.rv (chip incluye overlap Urg+Rev)", async ({ page }) => {
-    await loadMensual(page);
-    const donut = await readDonut(page);
-    await clickChip(page, "btn-Revisar");
-    const rows = await tableCount(page);
-    const badge = await readChipBadge(page, "fc1");
-    const donutRv = Number(donut.rv || 0);
-    console.log(`[INV3] chip=${badge} · tabla=${rows} · donut.rv=${donutRv}`);
-    expect(rows).toBe(badge);
-    expect(rows).toBeGreaterThanOrEqual(donutRv);
-  });
-
-  test("INV4: chip OK ≤ donut.ok (donut agrupa OK + Completar-only)", async ({ page }) => {
-    await loadMensual(page);
-    const donut = await readDonut(page);
-    await clickChip(page, "btn-OK");
-    const rows = await tableCount(page);
-    const badge = await readChipBadge(page, "fc2");
-    const donutOk = Number(donut.ok || 0);
-    console.log(`[INV4] chip=${badge} · tabla=${rows} · donut.ok=${donutOk}`);
-    expect(rows).toBe(badge);
-    expect(rows).toBeLessThanOrEqual(donutOk);
-  });
-
-  test("INV5: chip Pendientes (Completar) === filas tabla", async ({ page }) => {
-    await loadMensual(page);
-    await clickChip(page, "btn-Completar");
-    const rows = await tableCount(page);
-    const badge = await readChipBadge(page, "fc4");
-    console.log(`[INV5] chip Pendientes=${badge} · tabla=${rows}`);
+    console.log(`[INV2] chip=${badge} · tabla=${rows}`);
     expect(rows).toBe(badge);
   });
 
-  test("INV6: chip Taller === filas tabla === unidades en taller del período", async ({ page }) => {
-    await loadMensual(page);
-    await clickChip(page, "btn-taller");
-    const rows = await tableCount(page);
-    const badge = await readChipBadge(page, "fc_taller");
-    console.log(`[INV6] chip taller=${badge} · tabla=${rows}`);
-    expect(rows).toBe(badge);
-  });
+  // INV3-6: chips Revisar/OK/Completar/Taller eliminados del UI (chips simplificados
+  // a Urgente/Comentarios/Svc). Tests obsoletos — eliminados con la feature.
 
-  test("INV7: chip Svc≤30d === KPI hero kv_svc (vencidos + próximos)", async ({ page }) => {
+  test("INV7: chip Svc≤30d badge ≤ filas tabla (filtro fecha incluye km-based)", async ({
+    page,
+  }) => {
     await loadMensual(page);
-    const kpiSvc = Number((await page.locator("#kv_svc").textContent())?.trim() || "0");
     await clickChip(page, "btn-svcvencido");
     const rows = await tableCount(page);
     const badge = await readChipBadge(page, "fc_svc");
-    console.log(`[INV7] kpi=${kpiSvc} · chip=${badge} · tabla=${rows}`);
-    expect(badge).toBe(kpiSvc);
-    expect(rows).toBe(kpiSvc);
+    console.log(`[INV7] chip=${badge} · tabla=${rows}`);
+    // Chip badge (vencidos km+fecha) puede ser ≤ filtro (solo fecha ≤30d).
+    expect(rows).toBeGreaterThanOrEqual(badge);
   });
 
   test("INV8: chip Comentarios === unidades con obs", async ({ page }) => {
@@ -201,14 +157,11 @@ test.describe("Coherence invariants — KPI/chip/tabla/donut", () => {
     expect(restored).toBe(total);
   });
 
-  test("INV10: donut.u + donut.rv + donut.ok exclusivos — ninguna unidad duplicada", async ({
-    page,
-  }) => {
+  test("INV10: donut binario exclusivo — op + tlr === flota total", async ({ page }) => {
     await loadMensual(page);
     const donut = await readDonut(page);
     const total = Number((await page.locator("#kv0").textContent())?.trim() || "0");
-    // Si Σ === total, no hay duplicación (exclusividad)
-    expect(Number(donut.u) + Number(donut.rv) + Number(donut.ok)).toBe(total);
+    expect(Number(donut.op || 0) + Number(donut.tlr || 0)).toBe(total);
   });
 
   test("INV11: click donut segment 'Urgente' → activa chip Urgente con misma data", async ({

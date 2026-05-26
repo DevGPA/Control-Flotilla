@@ -1,8 +1,8 @@
-import { test, expect, type Page } from "@playwright/test";
+﻿import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FIXTURE_MENSUAL = path.resolve(__dirname, "../fixtures/mensual.xlsx");
@@ -81,12 +81,13 @@ test.describe("filtros — chips de riesgo y búsqueda", () => {
     expect(restored).toBe(totalAll);
   });
 
-  test("counts (fc_all/fc0/fc1/fc2) presentes y numéricos", async ({ page }) => {
+  test("counts (fc_all/fc0/fc3/fc_svc) presentes y numéricos", async ({ page }) => {
     await loadMensual(page);
 
-    for (const id of ["fc_all", "fc0", "fc1", "fc2"]) {
+    // Chips activos: Todos (fc_all), Urgente (fc0), Comentarios (fc3), Svc ≤30d (fc_svc).
+    // fc1/fc2/fc4 eliminados con simplificación del UI.
+    for (const id of ["fc_all", "fc0", "fc3", "fc_svc"]) {
       const txt = (await page.locator(`#${id}`).textContent()) || "";
-      // Formato: "(123)" o vacío si 0
       if (txt) expect(txt).toMatch(/\(\d+\)/);
     }
   });

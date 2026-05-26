@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 
 test.describe("smoke — bootstrap básico", () => {
   test("carga la app sin errores de consola críticos", async ({ page }) => {
@@ -53,7 +53,9 @@ test.describe("smoke — bootstrap básico", () => {
   test("title y meta CSP presentes", async ({ page }) => {
     await page.goto(APP_PATH);
     await expect(page).toHaveTitle(/GPA Fleet Command/);
-    const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
+    const csp = await page
+      .locator('meta[http-equiv="Content-Security-Policy"]')
+      .getAttribute("content");
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("connect-src 'self'");
   });

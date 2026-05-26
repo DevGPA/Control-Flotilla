@@ -1,8 +1,8 @@
-import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+﻿import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP_PATH = "/Control%20de%20flotilla.html";
+const APP_PATH = "/Control%20de%20flotilla.html?e2e=1";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FIXTURE_MENSUAL = path.resolve(__dirname, "../fixtures/mensual.xlsx");
@@ -186,11 +186,11 @@ test.describe("Exploratory — funcionalidad end-to-end", () => {
     const urgCount = await page.locator("#tbody").locator("> *").count();
     r.notes.push(`  Chip Urgente → ${urgCount} unidades`);
 
-    // Chip OK
-    await page.click("#btn-OK");
+    // Chip Comentarios (reemplaza OK eliminado)
+    await page.click("#btn-obs");
     await page.waitForTimeout(300);
-    const okCount = await page.locator("#tbody").locator("> *").count();
-    r.notes.push(`  Chip OK → ${okCount} unidades`);
+    const obsCount = await page.locator("#tbody").locator("> *").count();
+    r.notes.push(`  Chip Comentarios → ${obsCount} unidades`);
 
     // Volver a todos
     await page.click("#btn-all");

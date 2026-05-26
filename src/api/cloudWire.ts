@@ -89,6 +89,10 @@ export interface CloudSnapshot {
 
 /** Asegura sesión activa. Si no hay, muestra modal hasta success. */
 async function ensureSession(): Promise<AuthSession> {
+  // E2E bypass: tests Playwright corren offline-only sin Cognito.
+  if (typeof window !== "undefined" && window.location.search.includes("e2e=1")) {
+    throw new Error("[cloud] E2E bypass — cloud sync deshabilitado");
+  }
   let session = await getSession();
   if (!session) {
     await showAuthModal({ title: "Sincronización Cloud" });
@@ -185,9 +189,7 @@ export function setupCloud(): void {
     return res;
   };
 
-  window.__cloudSyncTaller = async (
-    entries: LegacyTallerEntry[],
-  ): Promise<BatchResult> => {
+  window.__cloudSyncTaller = async (entries: LegacyTallerEntry[]): Promise<BatchResult> => {
     const session = await ensureSession();
     if (entries.length === 0) {
       return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
@@ -290,8 +292,17 @@ export function setupCloud(): void {
   // Si SÍ hay sesión activa (refresh, multi-tab), pasa silencioso.
   // Tras login → hidrata state desde cloud (FASE 6) para que multi-usuario vea
   // mismos datos sin re-subir ZIP.
+  // E2E bypass: ?e2e=1 en URL salta el modal de auth (tests Playwright).
+  // App corre offline-only sin sesión — útil para smoke/UI tests sin Cognito.
+  const E2E_BYPASS = typeof window !== "undefined" && window.location.search.includes("e2e=1");
+
   void (async () => {
     let session: AuthSession | null = null;
+    if (E2E_BYPASS) {
+      console.info("[cloud] E2E bypass — auth skipped");
+      window.__cloudSession = null;
+      return;
+    }
     if (await isLoggedIn()) {
       session = await getSession();
       window.__cloudSession = session;
