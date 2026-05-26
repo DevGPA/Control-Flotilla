@@ -47,14 +47,33 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       .sort((a, b) => (b.LastModified?.getTime() ?? 0) - (a.LastModified?.getTime() ?? 0));
     if (items.length === 0) return res(200, { captures: 0, latest: null });
 
-    const latestKey = items[0]!.Key!;
-    const obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: latestKey }));
-    const content = await streamToString(obj.Body);
+    const readKey = async (k: string) => {
+      const o = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: k }));
+      return JSON.parse(await streamToString(o.Body));
+    };
+
+    // ?key=<fullKey> → captura específica. ?all=1 → todas (cap 10). default → última.
+    const wantKey = event.queryStringParameters?.key;
+    const wantAll = event.queryStringParameters?.all === "1";
+    const keys = items.slice(0, 20).map((o) => o.Key!);
+
+    if (wantKey) {
+      return res(200, { captures: items.length, keys, payload: await readKey(wantKey) });
+    }
+    if (wantAll) {
+      const top = items.slice(0, 10).map((o) => o.Key!);
+      const payloads = await Promise.all(top.map((k) => readKey(k)));
+      return res(200, {
+        captures: items.length,
+        keys,
+        all: top.map((k, i) => ({ key: k, payload: payloads[i] })),
+      });
+    }
     return res(200, {
       captures: items.length,
-      latestKey,
-      keys: items.slice(0, 20).map((o) => o.Key),
-      payload: JSON.parse(content),
+      latestKey: items[0]!.Key!,
+      keys,
+      payload: await readKey(items[0]!.Key!),
     });
   }
 
