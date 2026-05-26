@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-qY4jiXZkRywBjp5nfdnwLEDvCyedtUBd+rFuFD0xiGk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Xoet4SP5JejIaUnCocYBYFeGnyDrgZvwFTgJqDVgjUY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3391,7 +3391,10 @@ function renderPhotos(u,body){
         <div class="pglbl">${escHtml(shortLbl(p.col))}</div>
       </div>`;
     }).join("");
-    if(thumbs)html+=`<div><div class="pgcat-title">${escHtml(grp)}</div><div class="pgrid">${thumbs}</div></div>`;
+    // grp contiene HTML del icono lucide + label. Es hardcoded en PHOTO_GROUPS (no
+     // user input) → safe usar innerHTML/string directo. escHtml escapaba el <i>
+     // mostrando '<I DATA-LUCIDE=...' como texto.
+    if(thumbs)html+=`<div><div class="pgcat-title">${grp}</div><div class="pgrid">${thumbs}</div></div>`;
   }
 
   // Manual photos section
@@ -3928,7 +3931,9 @@ async function exportPDF(){
 
     for(const [grp,items] of Object.entries(grouped)){
       chk(14);
-      txt(grp,M,y,7,C.s2,undefined,true); y+=4;
+      // Strip lucide HTML tags para PDF (solo texto plano del label).
+      const grpTxt = String(grp).replace(/<[^>]+>/g,"").trim();
+      txt(grpTxt,M,y,7,C.s2,undefined,true); y+=4;
       for(const p of items){
         if(col===0) chk(imgH+14);
         const x=M+col*(imgW+2);
