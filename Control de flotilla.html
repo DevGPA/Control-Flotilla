@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-/I4gORy6BYMqBsgNEAFa8USb4zRaaYsGYiSgfxmdal8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-haSwwPSGAyXc7Zxkic23FFdSPKsUxi6z4WSQxMROXY8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -178,6 +178,9 @@ g.inflateBytes=async function(src){
       <div class="hsub">Control Vehicular · MoreApp</div>
     </div>
   </div>
+  <button id="nav-toggle" class="nav-toggle" onclick="toggleNav()" aria-label="Menú de navegación" aria-expanded="false" title="Menú">
+    <i data-lucide="menu" style="width:20px;height:20px"></i>
+  </button>
   <div id="mainnav">
     <button class="mnav on" id="mn-insp" onclick="showView('inspecciones')">Inspecciones</button>
     <button class="mnav" id="mn-taller" onclick="showView('taller')">
@@ -207,16 +210,15 @@ g.inflateBytes=async function(src){
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       <span class="ubtn-txt">Limpiar</span>
     </button>
-    <label class="ubtn ubtn-x ubtn-collapse" title="Solo cargar Excel (sin fotos)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span id="xlbl" class="ubtn-txt">Excel</span>
-      <input type="file" id="xinput" accept=".xlsx,.xls" style="display:none"/>
-    </label>
-    <label class="ubtn ubtn-z ubtn-collapse" title="ZIP completo de MoreApp (incluye fotos)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-      <span id="zlbl" class="ubtn-txt">Cargar ZIP con fotos</span>
-      <input type="file" id="zinput" accept=".zip" style="display:none"/>
-    </label>
+    <!-- Carga manual legacy OCULTA: el mensual entra automático desde MoreApp.
+         Se conservan los inputs + spans (#xlbl/#zlbl) porque restoreState/loadWB y
+         los tests e2e (setInputFiles) los referencian por id. -->
+    <span id="upload-legacy" style="display:none">
+      <input type="file" id="xinput" accept=".xlsx,.xls" />
+      <span id="xlbl"></span>
+      <input type="file" id="zinput" accept=".zip" />
+      <span id="zlbl"></span>
+    </span>
 
     <button class="ubtn ubtn-fleet ubtn-collapse" id="btn-fleet-pdf" onclick="exportFleetPDF()" style="display:none" title="Exportar reporte ejecutivo de toda la flotilla">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -229,6 +231,11 @@ g.inflateBytes=async function(src){
       <i data-lucide="moon" id="theme-icon" style="width:13px;height:13px"></i>
     </button>
     <button class="ubtn" id="btn-health" style="display:none;gap:4px;align-items:center;font-weight:600;margin-left:6px;border-color:currentColor" onclick="showHealthReport()"></button>
+    <span id="user-email" style="display:none;font-size:10px;color:var(--s2);margin-left:8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Sesión activa"></span>
+    <button class="ubtn" id="btn-logout" onclick="doLogout()" title="Cerrar sesión" style="display:none;gap:4px;align-items:center" aria-label="Cerrar sesión">
+      <i data-lucide="log-out" style="width:13px;height:13px"></i>
+      <span class="ubtn-txt">Salir</span>
+    </button>
   </div>
 </div>
 
@@ -299,9 +306,9 @@ g.inflateBytes=async function(src){
 
 <!-- ALERTS SUMMARY -->
 <div id="alerts-panel" style="display:none;margin:0 12px 6px;padding:10px 14px 10px 16px;background:var(--Ad);border:1px solid var(--Al);border-left:3px solid var(--A);border-radius:8px;font-size:12px;line-height:1.55">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-    <span style="font-weight:700;color:var(--A);font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota</span>
-    <button onclick="document.getElementById('alerts-panel').style.display='none'" aria-label="Cerrar alertas" style="background:none;border:none;cursor:pointer;color:var(--A);font-size:14px;padding:0 2px;line-height:1" title="Cerrar">✕</button>
+  <div id="alerts-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;cursor:pointer;user-select:none" title="Mostrar/ocultar alertas">
+    <span style="font-weight:700;color:var(--A);font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota<span id="alerts-count" style="display:none;font-weight:600;letter-spacing:0;text-transform:none"></span></span>
+    <span id="alerts-chevron" style="display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--A)"></i></span>
   </div>
   <div id="alerts-list"></div>
 </div>
@@ -388,25 +395,12 @@ g.inflateBytes=async function(src){
   <!-- DROP ZONE -->
   <div id="dz">
     <div class="dcard" id="dcard">
-      <span class="dico"><i data-lucide="package" style="width:36px;height:36px;stroke-width:1.5"></i></span>
-      <div class="dttl">Carga el ZIP de MoreApp</div>
+      <span class="dico"><i data-lucide="cloud" style="width:36px;height:36px;stroke-width:1.5"></i></span>
+      <div class="dttl">Datos sincronizados desde MoreApp</div>
       <div class="dsub">
-        Descarga el reporte completo desde MoreApp como <code>.zip</code><br/>
-        Incluye el Excel + todas las fotos de las inspecciones.<br/>
-        Todo se procesa en tu navegador, sin servidores externos.
+        Las inspecciones se cargan automáticamente desde MoreApp.<br/>
+        Si no ves datos, recarga la página o verifica tu sesión.
       </div>
-      <label class="dbig">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-        Subir ZIP completo
-        <span class="dbig-sub">Excel + fotos incluidos</span>
-        <input type="file" accept=".zip" style="display:none" onchange="doZip(this.files[0],'mensual')"/>
-      </label>
-      <div class="dsep">o si solo tienes el Excel</div>
-      <label class="dxl">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Cargar solo Excel (sin fotos)
-        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="doExcel(this.files[0])"/>
-      </label>
     </div>
   </div>
 
@@ -540,11 +534,8 @@ g.inflateBytes=async function(src){
     <span id="tl-rcnt" style="font-size:10px;color:var(--s2)"></span>
     <button onclick="exportTallerActivasExcel()"
       style="padding:4px 10px;border:1px solid var(--G);border-radius:6px;font-size:10px;color:var(--G);background:var(--bg);cursor:pointer;font-weight:600;margin-left:auto" title="Exportar unidades activas a Excel">↓ Exportar Excel</button>
-    <label class="ubtn ubtn-x" title="Importar archivo Excel" style="cursor:pointer">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Importar Excel
-      <input type="file" id="tl-xinput" accept=".xlsx,.xls" style="display:none" onchange="doTallerExcel(this.files[0]);this.value=''"/>
-    </label>
+    <!-- Importar Excel de taller OCULTO (UI removida). Input conservado: WF3 e2e lo usa. -->
+    <input type="file" id="tl-xinput" accept=".xlsx,.xls" style="display:none" onchange="doTallerExcel(this.files[0]);this.value=''"/>
     <button class="tl-add" onclick="openTallerModal()" style="margin-left:0">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Nuevo Ingreso
@@ -602,12 +593,9 @@ g.inflateBytes=async function(src){
   <div id="sw-periodo-bar">
     <span class="sw-periodo-label">Semana:</span>
     <div id="sw-periodo-chips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-    <label class="ubtn ubtn-x" title="Cargar ZIP o Excel semanal" style="cursor:pointer;margin-left:auto;font-size:11px">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Cargar Reporte Semanal
-      <input type="file" id="sw-xinput" accept=".zip,.xlsx,.xls" style="display:none"
-        onchange="doArchivoSemanal(this.files[0]);this.value=''"/>
-    </label>
+    <!-- Carga manual semanal OCULTA (UI removida). Input conservado por si se reactiva. -->
+    <input type="file" id="sw-xinput" accept=".zip,.xlsx,.xls" style="display:none"
+      onchange="doArchivoSemanal(this.files[0]);this.value=''"/>
   </div>
   <!-- KPI semanales -->
   <div id="sw-kpis"></div>
@@ -1705,16 +1693,46 @@ document.addEventListener("click", (e) => {
 // Event wiring — addEventListener consistente (audit #27).
 // Antes: mezcla de .onchange/.ondrag/etc. sobrescribía cualquier handler previo.
 // addEventListener compone múltiples listeners si hiciera falta y explicita intent.
+// Inputs legacy ocultos (carga manual deshabilitada — datos vienen de MoreApp).
+// Se conserva el wiring porque los tests e2e disparan #xinput vía setInputFiles.
 document.getElementById("xinput").addEventListener("change", e => doExcel(e.target.files[0]));
 document.getElementById("zinput").addEventListener("change", e => doZip(e.target.files[0], "mensual"));
-const dcard=document.getElementById("dcard");
-dcard.addEventListener("dragover", e => { e.preventDefault(); dcard.classList.add("ov"); });
-dcard.addEventListener("dragleave", () => dcard.classList.remove("ov"));
-dcard.addEventListener("drop", e => {
-  e.preventDefault(); dcard.classList.remove("ov");
-  const f=e.dataTransfer.files[0]; if(!f) return;
-  f.name.toLowerCase().endsWith(".zip") ? doZip(f,"mensual") : doExcel(f);
+
+// ── Navegación móvil (hamburguesa) ──────────────────────────
+function toggleNav(){
+  const nav=document.getElementById("mainnav"), btn=document.getElementById("nav-toggle");
+  if(!nav) return;
+  const open=nav.classList.toggle("open");
+  if(btn) btn.setAttribute("aria-expanded", open?"true":"false");
+}
+function closeNav(){
+  const nav=document.getElementById("mainnav"), btn=document.getElementById("nav-toggle");
+  if(nav) nav.classList.remove("open");
+  if(btn) btn.setAttribute("aria-expanded","false");
+}
+// Cerrar al tocar fuera del menú/hamburguesa.
+document.addEventListener("click",(e)=>{
+  const nav=document.getElementById("mainnav");
+  if(!nav || !nav.classList.contains("open")) return;
+  const btn=document.getElementById("nav-toggle");
+  if(nav.contains(e.target) || (btn && btn.contains(e.target))) return;
+  closeNav();
 });
+
+// ── Sesión / Cerrar sesión ──────────────────────────────────
+async function doLogout(){
+  if(!confirm("¿Cerrar sesión?")) return;
+  try{ await window.__cloudLogout?.(); }catch(e){ console.error("logout:", e); }
+  location.reload();
+}
+// Lo invoca cloudWire al cambiar la sesión (login / sesión activa / logout).
+window.__onCloudSession = function(){
+  const email = window.__cloudSession && window.__cloudSession.email;
+  const el = document.getElementById("user-email");
+  const lo = document.getElementById("btn-logout");
+  if(el){ el.textContent = email || ""; el.style.display = email ? "inline-block" : "none"; }
+  if(lo) lo.style.display = email ? "inline-flex" : "none";
+};
 
 function showLoader(t="Procesando…"){
   document.getElementById("dz").style.display="none";
@@ -2721,6 +2739,32 @@ function buildAlertsSummary(){
     row.appendChild(box);
     list.appendChild(row);
   }
+  // Resumen para el estado plegado + restaura preferencia del usuario.
+  const cnt=document.getElementById("alerts-count");
+  if(cnt)cnt.textContent=` · ${alerts.length} alerta${alerts.length!==1?"s":""}`;
+  const header=document.getElementById("alerts-header");
+  if(header&&!header.dataset.wired){
+    header.dataset.wired="1";
+    header.addEventListener("click",()=>{
+      const visible=document.getElementById("alerts-list").style.display!=="none";
+      setAlertsCollapsed(visible); // si está visible, lo plegamos (y viceversa)
+    });
+  }
+  let collapsed=false;
+  try{collapsed=localStorage.getItem("cf_alerts_collapsed")==="1";}catch(e){}
+  setAlertsCollapsed(collapsed);
+}
+
+// Pliega/expande el panel de alertas y recuerda la preferencia en localStorage.
+function setAlertsCollapsed(collapsed){
+  const list=document.getElementById("alerts-list");
+  const chev=document.getElementById("alerts-chevron");
+  const cnt=document.getElementById("alerts-count");
+  if(!list)return;
+  list.style.display=collapsed?"none":"block";
+  if(cnt)cnt.style.display=collapsed?"inline":"none";
+  if(chev)chev.style.transform=collapsed?"rotate(0deg)":"rotate(180deg)";
+  try{localStorage.setItem("cf_alerts_collapsed",collapsed?"1":"0");}catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5009,6 +5053,8 @@ function showView(view){
   if(isAnalytics){
     buildAnalytics();
   }
+
+  closeNav(); // cierra el menú hamburguesa móvil tras elegir vista (no-op en escritorio)
 }
 
 // ── Opciones de sucursal en filtro y datalist ─────────────

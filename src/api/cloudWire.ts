@@ -75,6 +75,8 @@ declare global {
     __cloudGetPhotoUrl?: (filename: string) => Promise<string | null>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
+    /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
+    __onCloudSession?: () => void;
   }
 }
 
@@ -125,6 +127,7 @@ export function setupCloud(): void {
   window.__cloudLogout = async (): Promise<void> => {
     await logout();
     window.__cloudSession = null;
+    window.__onCloudSession?.();
     window.notify?.("Sesión cerrada", "ok");
   };
 
@@ -306,6 +309,7 @@ export function setupCloud(): void {
     if (await isLoggedIn()) {
       session = await getSession();
       window.__cloudSession = session;
+      window.__onCloudSession?.();
       console.info("[cloud] Sesión activa:", session?.email);
     } else {
       if (document.readyState === "loading") {
@@ -315,6 +319,7 @@ export function setupCloud(): void {
         await showAuthModal({ title: "Control Flotilla" });
         session = await getSession();
         window.__cloudSession = session;
+        window.__onCloudSession?.();
         console.info("[cloud] Login exitoso:", session?.email);
       } catch (err) {
         console.error("[cloud] Auth gating falló:", err);

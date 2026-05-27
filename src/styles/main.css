@@ -3037,6 +3037,23 @@ select {
   background: var(--bg2);
   color: var(--w2);
 }
+/* Botón hamburguesa: oculto en escritorio, visible solo en móvil (media ≤768px). */
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: none;
+  color: var(--s1);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.nav-toggle:hover {
+  background: var(--bg3);
+  color: var(--w2);
+}
 
 /* ════ TALLER MODULE ═════════════════════════════════════════ */
 #taller-view {
@@ -3760,6 +3777,7 @@ select {
     min-height: 52px;
     gap: 4px;
     padding-bottom: 6px;
+    position: relative; /* ancla del dropdown #mainnav (hamburguesa) */
   }
   .hbrand {
     min-width: 0;
@@ -3790,22 +3808,39 @@ select {
   .hacts::-webkit-scrollbar {
     height: 3px;
   }
+  /* Navegación móvil = menú hamburguesa. El toggle abre #mainnav como dropdown. */
+  .nav-toggle {
+    display: inline-flex;
+  }
   #mainnav {
-    width: 100%;
-    padding: 0 10px 6px;
-    display: flex;
+    /* Cerrado por defecto. !important gana al display:flex inline que pone el JS al cargar datos. */
+    display: none !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
     gap: 4px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    border-top: 1px solid var(--ln);
+    width: auto;
+    padding: 6px;
+    background: var(--bg);
+    border: 1px solid var(--ln);
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 8px 24px #0003;
+    z-index: 40;
+    overflow: visible;
+  }
+  #mainnav.open {
+    display: flex !important;
   }
   /* Tap targets ≥44px por Apple HIG / Google Material (accesibilidad móvil) */
   #mainnav .mnav {
-    flex-shrink: 0;
-    font-size: 11px;
+    width: 100%;
+    justify-content: flex-start;
+    font-size: 13px;
     padding: 12px 14px;
     min-height: 44px;
-    display: inline-flex;
+    display: flex;
     align-items: center;
   }
   .ubtn {
