@@ -17,5 +17,9 @@ export const moreappWebhook = defineFunction({
   timeoutSeconds: 30,
   environment: {
     WEBHOOK_TOKEN: "gpa-moreapp-268066bd8f7868cc06d2edd6bfefe5b1",
+    // Tenant Cognito al que se asignan los datos de MoreApp (customerId 14922).
+    MOREAPP_TENANT_ID: "gpa",
+    // Secret de firma del webhook MoreApp. Vacío = validación HMAC omitida (solo token).
+    MOREAPP_SIGNING_SECRET: "",
   },
 });
