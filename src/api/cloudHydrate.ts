@@ -61,25 +61,14 @@ declare global {
     /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
     __cloudPhotoUrlMap?: Map<string, string>;
     // periodos / activePeriodoId / renderPeriodoBar / switchPeriodo: declarados en main.ts.
+    // Vista de rango de fechas: todas las inspecciones (1 fila por checklist).
+    __inspections?: Unit[];
+    __inspMinDate?: string;
+    __inspMaxDate?: string;
+    applyDateRange?: (fromISO: string, toISO: string) => void;
+    initRangoBar?: () => void;
   }
 }
-
-/** Nombres de mes ES, indexados 1-12 (igualan el label legacy MES_NAMES). */
-const MES_ES = [
-  "",
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
 
 /** Deriva "YYYY-MM" de una fecha de checklist (ISO YYYY-MM-DD o legacy DD/MM/YYYY). */
 function monthOf(fecha: string | null | undefined): string | null {
@@ -323,52 +312,51 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // No early-exit aquí. Aunque units.length === 0, semanales puede tener
   // fotos que necesitan pre-fetch. Continuamos con un legacyUnits vacío.
 
-  // ── Agrupar checklists por mes (YYYY-MM) → snapshots de período ──
-  // Reusa el sistema de períodos mensuales del legacy: cada período guarda un
-  // snapshot de units. Aquí los reconstruimos desde los Checklists del cloud
-  // (que llevan fecha real, ej. backfill MoreApp), para navegar por mes.
-  const byMonth = new Map<string, Map<string, Schema["Checklist"]["type"]>>();
-  for (const c of checklists) {
-    const ym = monthOf(c.fecha);
-    if (!ym) continue;
-    let unitMap = byMonth.get(ym);
-    if (!unitMap) {
-      unitMap = new Map();
-      byMonth.set(ym, unitMap);
-    }
-    const existing = unitMap.get(c.unitUid);
-    if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
-      unitMap.set(c.unitUid, c);
-    }
-  }
-
+  // ── Inspecciones por fecha → vista de rango (Desde/Hasta) ──
+  // Cada checklist es una FILA de inspección con uid sintético único
+  // (`placa__fecha`) para que la misma unidad pueda aparecer varias veces sin
+  // colisionar en selección/detalle. Preserva eco/plate/fecha reales.
   const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
-  const periodos = [...byMonth.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([ym, unitMap]) => {
-      const [anioStr, mesStr] = ym.split("-");
-      const snapUnits: Unit[] = [];
-      for (const [unitUid, chk] of unitMap) {
-        const u =
-          unitByPlaca.get(unitUid) ?? ({ tenantId, placa: unitUid } as Schema["Unit"]["type"]);
-        snapUnits.push(mergeUnitWithChecklist(u, chk));
-      }
-      return {
-        id: ym,
-        label: `${MES_ES[parseInt(mesStr!, 10)] ?? mesStr} ${anioStr}`,
-        mes: parseInt(mesStr!, 10),
-        anio: parseInt(anioStr!, 10),
-        units: snapUnits,
-      };
-    });
+  const inspections: Unit[] = [];
+  for (const c of checklists) {
+    const fecha = String(c.fecha ?? "");
+    if (!monthOf(fecha)) continue; // requiere fecha parseable
+    const u =
+      unitByPlaca.get(c.unitUid) ?? ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
+    const row = mergeUnitWithChecklist(u, c);
+    row.uid = `${row.plate ?? c.unitUid}__${fecha}`; // único por inspección
+    inspections.push(row);
+  }
+  // Desc por fecha (más reciente primero).
+  inspections.sort((a, b) => String(b.fecha ?? "").localeCompare(String(a.fecha ?? "")));
 
   let legacyUnits: Unit[];
-  if (periodos.length > 0) {
-    const active = periodos[periodos.length - 1]!;
-    legacyUnits = active.units;
-    window.periodos = periodos;
-    window.activePeriodoId = active.id;
+  if (inspections.length > 0) {
+    window.__inspections = inspections;
+    const fechas = inspections
+      .map((i) => String(i.fecha ?? "").slice(0, 10))
+      .filter(Boolean)
+      .sort();
+    window.__inspMinDate = fechas[0];
+    window.__inspMaxDate = fechas[fechas.length - 1];
+    // Default: inspecciones del mes más reciente (evita arrancar con cientos).
+    const maxMonth = monthOf(window.__inspMaxDate) ?? "";
+    legacyUnits = inspections.filter((i) => monthOf(i.fecha) === maxMonth);
     window.units = legacyUnits;
+    // Filtro por rango — lo llama el control Desde/Hasta del HTML.
+    window.applyDateRange = (fromISO: string, toISO: string) => {
+      const from = fromISO || "0000-01-01";
+      const to = toISO || "9999-12-31";
+      const sel = (window.__inspections ?? []).filter((i) => {
+        const f = String(i.fecha ?? "").slice(0, 10);
+        return f >= from && f <= to;
+      });
+      window.units = sel;
+      if (typeof window.buildKPIs === "function") window.buildKPIs();
+      if (typeof window.renderTable === "function") window.renderTable();
+      if (typeof window.buildAlertsSummary === "function") window.buildAlertsSummary();
+      if (typeof window.buildAnalytics === "function") window.buildAnalytics();
+    };
   } else {
     // Fallback: sin checklists con fecha parseable → latest-per-unit plano.
     const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
@@ -384,8 +372,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
 
   if (!window.checklistDB) window.checklistDB = {} as ChecklistDB;
   const db = window.checklistDB;
-  // Init checklistDB para los uids de TODOS los meses (no solo el activo).
-  const allSnapUnits = periodos.length > 0 ? periodos.flatMap((p) => p.units) : legacyUnits;
+  // Init checklistDB para los uids de TODAS las inspecciones.
+  const allSnapUnits = window.__inspections ?? legacyUnits;
   for (const u of allSnapUnits) {
     if (!db[u.uid]) db[u.uid] = {};
   }
@@ -433,7 +421,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   }
 
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.
-  if (typeof window.renderPeriodoBar === "function") window.renderPeriodoBar();
+  if (typeof window.initRangoBar === "function") window.initRangoBar();
   if (typeof window.showDash === "function") window.showDash();
   if (typeof window.buildKPIs === "function") window.buildKPIs();
   if (typeof window.renderTable === "function") window.renderTable();

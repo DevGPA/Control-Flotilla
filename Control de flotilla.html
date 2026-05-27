@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-hCcv1jdaL8I3BSP7hCb4s1gfJ22qJFXkj1Utw3f74Qs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2m0mx+2Nej4gI574PdNOmXxGL4sqaWGoaPJuOevkGGg='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -232,11 +232,16 @@ g.inflateBytes=async function(src){
   </div>
 </div>
 
-<!-- BARRA DE PERÍODOS -->
+<!-- BARRA DE RANGO DE FECHAS (reemplaza chips de período) -->
 <div id="periodo-bar">
-  <span class="periodo-label">Período:</span>
-  <div id="periodo-chips"></div>
-  <button id="btn-tendencias" onclick="showTendencias()" style="margin-left:auto;padding:3px 10px;border:1px solid var(--ac);border-radius:6px;font-size:10px;color:var(--ac);background:var(--bg);cursor:pointer;font-weight:600;display:none" title="Comparar tendencias entre períodos"><i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i> Tendencias</button>
+  <span class="periodo-label">Rango:</span>
+  <input type="date" id="rango-desde" aria-label="Desde" style="padding:3px 6px;border:1px solid var(--ln);border-radius:5px;font-size:11px;background:var(--bg);color:var(--w1)"/>
+  <span style="color:var(--s2);font-size:11px">→</span>
+  <input type="date" id="rango-hasta" aria-label="Hasta" style="padding:3px 6px;border:1px solid var(--ln);border-radius:5px;font-size:11px;background:var(--bg);color:var(--w1)"/>
+  <button id="btn-rango" onclick="aplicarRango()" style="padding:3px 12px;border:1px solid var(--ac);border-radius:6px;font-size:10px;color:#fff;background:var(--ac);cursor:pointer;font-weight:600">Aplicar</button>
+  <span id="rango-count" style="font-size:10px;color:var(--s2);margin-left:4px"></span>
+  <div id="periodo-chips" style="display:none"></div>
+  <button id="btn-tendencias" onclick="showTendencias()" style="display:none" title="Comparar tendencias entre períodos"><i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i> Tendencias</button>
 </div>
 
 <!-- TENDENCIAS MODAL -->
@@ -4801,6 +4806,34 @@ function showPeriodoModal(fname){
 function closePeriodoModal(){
   closeModal("periodo-modal");
   _pendingPeriodoFname = null;
+}
+
+// ── Rango de fechas (vista de inspecciones del cloud) ───────
+// initRangoBar lo llama cloudHydrate tras poblar window.__inspections.
+function initRangoBar(){
+  const d = document.getElementById("rango-desde");
+  const h = document.getElementById("rango-hasta");
+  if(!d || !h) return;
+  const max = window.__inspMaxDate;
+  const min = window.__inspMinDate;
+  if(max){
+    // Default = mes más reciente (coincide con lo que cloudHydrate dejó en units).
+    d.value = max.slice(0,7) + "-01";
+    h.value = max;
+  } else if(min){
+    d.value = min; h.value = min;
+  }
+  updateRangoCount();
+}
+function aplicarRango(){
+  const d = document.getElementById("rango-desde").value;
+  const h = document.getElementById("rango-hasta").value;
+  if(typeof window.applyDateRange === "function") window.applyDateRange(d, h);
+  updateRangoCount();
+}
+function updateRangoCount(){
+  const el = document.getElementById("rango-count");
+  if(el) el.textContent = Array.isArray(units) ? `${units.length} inspecciones` : "";
 }
 
 async function confirmPeriodo(){
