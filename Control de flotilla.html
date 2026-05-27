@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2m0mx+2Nej4gI574PdNOmXxGL4sqaWGoaPJuOevkGGg='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-m+OXxlVfDvB+TxxJ6SgsVL/3Ikc9ctzmvcIeX+91hhk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4811,6 +4811,8 @@ function closePeriodoModal(){
 // ── Rango de fechas (vista de inspecciones del cloud) ───────
 // initRangoBar lo llama cloudHydrate tras poblar window.__inspections.
 function initRangoBar(){
+  const bar = document.getElementById("periodo-bar");
+  if(bar){ bar.classList.add("visible"); bar.style.display = "flex"; }
   const d = document.getElementById("rango-desde");
   const h = document.getElementById("rango-hasta");
   if(!d || !h) return;
@@ -4988,7 +4990,9 @@ function showView(view){
     const tb=document.getElementById("tb");   if(tb)  tb.style.display  = hasData ? "flex" : "none";
     const tw=document.getElementById("tw");   if(tw)  tw.style.display  = hasData ? "block": "none";
     const pb=document.getElementById("periodo-bar");
-    if(pb) pb.style.display = (hasData && periodos.length > 0) ? "" : "none";
+    // La barra ahora es el control de rango de fechas — mostrar cuando hay data
+    // (ya no depende de periodos, que el cloud no puebla).
+    if(pb) pb.style.display = hasData ? "flex" : "none";
     // Ocultar loader y drop zone si hay datos
     if(hasData){
       const ldr=document.getElementById("ldr"); if(ldr) ldr.style.display="none";
