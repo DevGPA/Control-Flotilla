@@ -220,6 +220,71 @@ async function downloadPhotos(
   return photos;
 }
 
+/** Trae una página (50) de submissions del mensual en un rango de fechas. */
+async function fetchMensualPage(
+  page: number,
+  fromMs: number,
+  toMs: number,
+): Promise<{ totalSize: number; elements: Array<Record<string, unknown>> }> {
+  const r = await fetch(
+    `${MOREAPP_API_BASE}/customers/14922/forms/${MENSUAL_FORM_ID}/submissions/filter/${page}`,
+    {
+      method: "POST",
+      headers: { "X-Api-Key": API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: [{ path: "info.date", type: "date", value: { start: fromMs, end: toMs } }],
+      }),
+    },
+  );
+  if (!r.ok) throw new Error(`filter page ${page} HTTP ${r.status}`);
+  return (await r.json()) as { totalSize: number; elements: Array<Record<string, unknown>> };
+}
+
+/**
+ * Backfill por lotes: procesa `count` submissions desde el índice global `cursor`
+ * (ene-2026 → hoy). Cada element de la API equivale al envelope del webhook
+ * (element.data = answers, element.info = info), así que reusa processMensual.
+ * Devuelve cursor de avance; el caller llama en loop hasta done.
+ */
+async function runBackfill(
+  cursor: number,
+  count: number,
+): Promise<{
+  cursor: number;
+  processed: number;
+  results: { placa?: string; error?: string }[];
+  totalSize: number;
+  nextCursor: number;
+  done: boolean;
+}> {
+  if (!API_KEY) throw new Error("sin MOREAPP_API_KEY");
+  const fromMs = Date.parse("2026-01-01T00:00:00Z");
+  const toMs = Date.now();
+  const page = Math.floor(cursor / 50);
+  const within = cursor % 50;
+  const data = await fetchMensualPage(page, fromMs, toMs);
+  const elements = data.elements ?? [];
+  const slice = elements.slice(within, within + count);
+  const results: { placa?: string; error?: string }[] = [];
+  for (const el of slice) {
+    try {
+      const { placa } = await processMensual(el, "14922");
+      results.push({ placa });
+    } catch (e) {
+      results.push({ error: (e as Error).message });
+    }
+  }
+  const nextCursor = cursor + slice.length;
+  return {
+    cursor,
+    processed: slice.length,
+    results,
+    totalSize: data.totalSize ?? 0,
+    nextCursor,
+    done: slice.length === 0 || nextCursor >= (data.totalSize ?? 0),
+  };
+}
+
 /** Procesa un envío del form mensual → upsert Unit + Checklist. */
 async function processMensual(
   envelope: Record<string, unknown>,
@@ -310,6 +375,18 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const method = event.requestContext?.http?.method ?? "POST";
   const token = event.queryStringParameters?.t ?? "";
   if (!TOKEN || token !== TOKEN) return res(401, { error: "unauthorized" });
+
+  if (method === "GET" && event.queryStringParameters?.backfill === "1") {
+    // Backfill por lotes del mensual (ene-2026 → hoy). ?cursor=K&count=C
+    const cursor = parseInt(event.queryStringParameters?.cursor ?? "0", 10) || 0;
+    const count = parseInt(event.queryStringParameters?.count ?? "3", 10) || 3;
+    try {
+      const out = await runBackfill(cursor, count);
+      return res(200, out);
+    } catch (e) {
+      return res(200, { ok: false, error: (e as Error).message });
+    }
+  }
 
   if (method === "GET") {
     const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: PREFIX }));

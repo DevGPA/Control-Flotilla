@@ -14,7 +14,8 @@ import { defineFunction, secret } from "@aws-amplify/backend";
 export const moreappWebhook = defineFunction({
   name: "moreapp-webhook",
   entry: "./handler.ts",
-  timeoutSeconds: 30,
+  // 300s para soportar lotes de backfill (descarga de fotos de varios envíos).
+  timeoutSeconds: 300,
   environment: {
     WEBHOOK_TOKEN: "gpa-moreapp-268066bd8f7868cc06d2edd6bfefe5b1",
     // Tenant Cognito al que se asignan los datos de MoreApp (customerId 14922).
