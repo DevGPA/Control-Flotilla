@@ -115,8 +115,8 @@ const schema = a
       ]),
   })
   // Acceso IAM para el Lambda moreapp-webhook (FASE 2): ingiere envíos de MoreApp
-  // y escribe Unit/Checklist. El grant resource es a nivel schema (la API no lo
-  // soporta por-modelo); el código del Lambda solo escribe Unit+Checklist.
+  // y escribe Unit/Checklist (mensual) + Unit/Semanal (semanal). El grant resource
+  // es a nivel schema (la API no lo soporta por-modelo).
   .authorization((allow) => [allow.resource(moreappWebhook).to(["query", "mutate"])]);
 
 export type Schema = ClientSchema<typeof schema>;

@@ -181,6 +181,7 @@ async function downloadPhotos(
   answers: Record<string, unknown>,
   placa: string,
   tenantId: string,
+  group = "Inspección Mensual",
 ): Promise<PhotoRec[]> {
   if (!API_KEY) {
     console.warn("[moreapp-webhook] sin MOREAPP_API_KEY — fotos omitidas");
@@ -215,7 +216,7 @@ async function downloadPhotos(
             ContentType: ct,
           }),
         );
-        return { group: "Inspección Mensual", col: dn, fname };
+        return { group, col: dn, fname };
       } catch (e) {
         console.warn(`[moreapp-webhook] foto ${dn} error:`, (e as Error).message);
         return null;
@@ -227,14 +228,148 @@ async function downloadPhotos(
   return photos;
 }
 
-/** Trae una página (50) de submissions del mensual en un rango de fechas. */
-async function fetchMensualPage(
+// ─── Riesgo semanal — réplica de la lógica del front (normFluid/Tire/estatus) ───
+// Mantener en sync con Control de flotilla.html (normFluidRisk/normTireRisk/calcEstatusSemanal).
+function norm(s: unknown): string {
+  return String(s ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+function normFluidRisk(val: unknown): string {
+  const v = norm(val);
+  if (!v) return "OK";
+  const URG = [
+    "vacio",
+    "sin aceite",
+    "sin refrigerante",
+    "sin agua",
+    "sin fluido",
+    "fuga",
+    "peligro",
+    "agotado",
+    "quemado",
+    "no tiene aceite",
+    "no tiene fluido",
+    "perdida de aceite",
+    "sin oil",
+  ];
+  if (URG.some((kw) => v.includes(kw))) return "Urgente";
+  const OK = [
+    "ok",
+    "correcto",
+    "correcta",
+    "normal",
+    "bien",
+    "bueno",
+    "buena",
+    "optimo",
+    "optima",
+    "nivel optimo",
+    "nivel optima",
+    "maximo",
+    "al tope",
+    "lleno",
+    "llena",
+    "completo",
+    "completa",
+    "suficiente",
+    "adecuado",
+    "adecuada",
+    "a nivel",
+    "al nivel",
+    "en nivel",
+    "dentro de",
+    "no presenta",
+    "sin fuga",
+    "sin novedad",
+    "funciona",
+    "operativo",
+    "operativa",
+    "limpio",
+    "limpia",
+    "verde",
+    "no hay fuga",
+    "estable",
+    "perfecto",
+    "perfecta",
+  ];
+  if (OK.some((kw) => v === kw || v.includes(kw))) return "OK";
+  if (v === "si") return "OK";
+  return "Revisar";
+}
+function normTireRisk(val: unknown): string {
+  const v = norm(val);
+  if (!v) return "OK";
+  if (
+    v === "no" ||
+    v.startsWith("no ") ||
+    v.includes("sin refacc") ||
+    v.includes("sin llanta") ||
+    v.includes("falta") ||
+    v.includes("ponchad") ||
+    v.includes("danad") ||
+    v.includes("no funcional") ||
+    v.includes("mala") ||
+    v.includes("no hay")
+  )
+    return "Revisar";
+  const OK = [
+    "si",
+    "funcional",
+    "ok",
+    "bueno",
+    "buena",
+    "tiene",
+    "correcto",
+    "correcta",
+    "completa",
+    "completo",
+    "bien",
+    "operativa",
+    "operativo",
+    "disponible",
+    "infla",
+    "buen estado",
+    "lista",
+  ];
+  if (OK.some((kw) => v === kw || v.includes(kw))) return "OK";
+  return "Revisar";
+}
+// "carroceriaSinGolpesORaspaduras": Si = sin golpes = OK; No = tiene golpes = Revisar.
+function bodyRiskFromSiNo(val: unknown): string {
+  const v = norm(val);
+  if (!v || v === "si" || v.startsWith("si ")) return "OK";
+  return "Revisar";
+}
+function calcEstatusSemanal(aceiteRisk: string, radiadorRisk: string): string {
+  if (aceiteRisk === "Urgente" || radiadorRisk === "Urgente") return "Urgente";
+  if (aceiteRisk === "Revisar" || radiadorRisk === "Revisar") return "Revisar";
+  return "OK";
+}
+/** "2025-08-11 07:25" → "2025-W33" (semana ISO, igual que getISOWeek del front). */
+function isoWeekId(dateStr: string): string {
+  const d = new Date(String(dateStr).replace(" ", "T"));
+  if (isNaN(d.getTime())) return "sin-fecha";
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const wk =
+    1 +
+    Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return `${d.getFullYear()}-W${String(wk).padStart(2, "0")}`;
+}
+
+/** Trae una página (50) de submissions de un form en un rango de fechas (info.date). */
+async function fetchFormPage(
+  formId: string,
   page: number,
   fromMs: number,
   toMs: number,
 ): Promise<{ totalSize: number; elements: Array<Record<string, unknown>> }> {
   const r = await fetch(
-    `${MOREAPP_API_BASE}/customers/14922/forms/${MENSUAL_FORM_ID}/submissions/filter/${page}`,
+    `${MOREAPP_API_BASE}/customers/14922/forms/${formId}/submissions/filter/${page}`,
     {
       method: "POST",
       headers: { "X-Api-Key": API_KEY, "Content-Type": "application/json" },
@@ -245,6 +380,11 @@ async function fetchMensualPage(
   );
   if (!r.ok) throw new Error(`filter page ${page} HTTP ${r.status}`);
   return (await r.json()) as { totalSize: number; elements: Array<Record<string, unknown>> };
+}
+
+/** Página del form mensual (compat: delega en fetchFormPage). */
+function fetchMensualPage(page: number, fromMs: number, toMs: number) {
+  return fetchFormPage(MENSUAL_FORM_ID, page, fromMs, toMs);
 }
 
 /**
@@ -376,6 +516,144 @@ async function processMensual(
     }
   }
   return { placa };
+}
+
+/** Procesa un envío del form SEMANAL → upsert Unit + Semanal (por semana ISO). */
+async function processSemanal(
+  envelope: Record<string, unknown>,
+  customerId: string,
+): Promise<{ placa: string }> {
+  const answers = (envelope.data ?? {}) as Record<string, unknown>;
+  const eco = (answers.economico ?? {}) as Record<string, unknown>;
+  const placa = pickStr(eco.PLACAS);
+  if (!placa) throw new Error("Sin placa (economico.PLACAS) — semanal");
+
+  const ecoId = pickStr(eco.id);
+  const sucursal = pickStr(eco.SUCURSAL);
+  const fechaRaw = pickStr(answers.dateAndTime);
+  const periodoId = isoWeekId(fechaRaw);
+  const client = await getDataClient();
+
+  // 1. Unit (idempotente) — consistencia con el catálogo.
+  const unitInput = {
+    tenantId: TENANT_ID,
+    placa,
+    economicoId: ecoId && ecoId !== placa ? ecoId : undefined,
+    marca: pickStr(eco.SUBMARCA) || undefined,
+    sucursal: sucursal || undefined,
+  };
+  const uCreated = await client.models.Unit.create(unitInput);
+  if (uCreated.errors) {
+    if (isConditionalCheckFailed(uCreated.errors)) {
+      const uUpd = await client.models.Unit.update(unitInput);
+      if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
+    } else {
+      throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
+    }
+  }
+
+  // 2. Riesgos por categoría (réplica del front).
+  const responsableRaw = answers.nombreDelChoferQueRegistraDatos;
+  const responsable =
+    responsableRaw && typeof responsableRaw === "object"
+      ? pickStr((responsableRaw as Record<string, unknown>).RESPONSABLE)
+      : pickStr(responsableRaw);
+  const aceite = pickStr(answers.nivelDeAceiteDeMotorMax);
+  const radiador = pickStr(answers.nivelDeLiquidoDeRadiadorMax);
+  const carroceria = pickStr(answers.carroceriaSinGolpesORaspaduras);
+  const llanta = pickStr(answers.llantaDeRefaccionFuncional);
+  const aceiteRisk = normFluidRisk(aceite);
+  const radiadorRisk = normFluidRisk(radiador);
+  const carroceriaRisk = bodyRiskFromSiNo(carroceria);
+  const llantaRisk = normTireRisk(llanta);
+  const risk = calcEstatusSemanal(aceiteRisk, radiadorRisk);
+
+  // 3. Fotos (gridfs → S3) → array de filenames (shape que espera el front).
+  const photoRecs = await downloadPhotos(
+    customerId,
+    answers,
+    placa,
+    TENANT_ID,
+    "Inspección Semanal",
+  );
+  const photos = photoRecs.map((p) => p.fname);
+
+  const datos = {
+    economicoId: ecoId,
+    brand: pickStr(eco.SUBMARCA),
+    km: pickStr(answers.kilometraje),
+    fecha: fechaRaw,
+    responsable,
+    aceite,
+    aceiteRisk,
+    radiador,
+    radiadorRisk,
+    carroceria,
+    carroceriaRisk,
+    llanta,
+    llantaRisk,
+    risk,
+    photos,
+  };
+
+  // 4. Semanal (idempotente por tenantId+periodoId+unitUid).
+  const semInput = {
+    tenantId: TENANT_ID,
+    periodoId,
+    sucursal,
+    unitUid: placa,
+    datos: JSON.stringify(datos),
+  };
+  const sCreated = await client.models.Semanal.create(semInput);
+  if (sCreated.errors) {
+    if (isConditionalCheckFailed(sCreated.errors)) {
+      const sUpd = await client.models.Semanal.update(semInput);
+      if (sUpd.errors) throw new Error(`Semanal.update: ${JSON.stringify(sUpd.errors)}`);
+    } else {
+      throw new Error(`Semanal.create: ${JSON.stringify(sCreated.errors)}`);
+    }
+  }
+  return { placa };
+}
+
+/** Backfill por lotes del form SEMANAL (ene-2026 → hoy). Reusa processSemanal. */
+async function runBackfillSemanal(
+  cursor: number,
+  count: number,
+): Promise<{
+  cursor: number;
+  processed: number;
+  results: { placa?: string; error?: string }[];
+  totalSize: number;
+  nextCursor: number;
+  done: boolean;
+}> {
+  if (!API_KEY) throw new Error("sin MOREAPP_API_KEY");
+  const fromMs = Date.parse("2026-01-01T00:00:00Z");
+  const toMs = Date.now();
+  const page = Math.floor(cursor / 50);
+  const within = cursor % 50;
+  const data = await fetchFormPage(SEMANAL_FORM_ID, page, fromMs, toMs);
+  const elements = data.elements ?? [];
+  const slice = elements.slice(within, within + count);
+  const results: { placa?: string; error?: string }[] = [];
+  for (const el of slice) {
+    try {
+      const { placa } = await processSemanal(el, "14922");
+      results.push({ placa });
+    } catch (e) {
+      results.push({ error: (e as Error).message });
+    }
+  }
+  const nextCursor = cursor + slice.length;
+  return {
+    cursor,
+    processed: slice.length,
+    results,
+    totalSize: data.totalSize ?? 0,
+    nextCursor,
+    done: slice.length === 0 || nextCursor >= (data.totalSize ?? 0),
+  };
 }
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
@@ -510,12 +788,16 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 
   if (method === "GET" && event.queryStringParameters?.backfill === "1") {
-    // Backfill por lotes del mensual (ene-2026 → hoy). ?cursor=K&count=C
+    // Backfill por lotes (ene-2026 → hoy). ?form=mensual|semanal&cursor=K&count=C
     const cursor = parseInt(event.queryStringParameters?.cursor ?? "0", 10) || 0;
     const count = parseInt(event.queryStringParameters?.count ?? "3", 10) || 3;
+    const form = event.queryStringParameters?.form ?? "mensual";
     try {
-      const out = await runBackfill(cursor, count);
-      return res(200, out);
+      const out =
+        form === "semanal"
+          ? await runBackfillSemanal(cursor, count)
+          : await runBackfill(cursor, count);
+      return res(200, { form, ...out });
     } catch (e) {
       return res(200, { ok: false, error: (e as Error).message });
     }
@@ -589,18 +871,22 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const info = (envelope.info ?? {}) as Record<string, unknown>;
   const formId = pickStr(info.formId);
 
-  if (formId !== MENSUAL_FORM_ID) {
-    console.info(`[moreapp-webhook] ignorado formId=${formId} (no mensual)`);
-    return res(200, { ok: true, ignored: formId });
-  }
-
   const customerId = pickStr(body.customerId) || "14922";
   try {
-    const { placa } = await processMensual(envelope, customerId);
-    console.info(`[moreapp-webhook] mensual ingerido placa=${placa}`);
-    return res(200, { ok: true, ingested: placa });
+    if (formId === MENSUAL_FORM_ID) {
+      const { placa } = await processMensual(envelope, customerId);
+      console.info(`[moreapp-webhook] mensual ingerido placa=${placa}`);
+      return res(200, { ok: true, ingested: placa, tipo: "mensual" });
+    }
+    if (formId === SEMANAL_FORM_ID) {
+      const { placa } = await processSemanal(envelope, customerId);
+      console.info(`[moreapp-webhook] semanal ingerido placa=${placa}`);
+      return res(200, { ok: true, ingested: placa, tipo: "semanal" });
+    }
+    console.info(`[moreapp-webhook] ignorado formId=${formId}`);
+    return res(200, { ok: true, ignored: formId });
   } catch (e) {
-    console.error("[moreapp-webhook] error ingiriendo mensual:", (e as Error).message);
+    console.error("[moreapp-webhook] error ingiriendo:", (e as Error).message);
     // 200 para que MoreApp no reintente en loop por un error de mapeo nuestro.
     return res(200, { ok: false, error: (e as Error).message });
   }
