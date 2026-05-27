@@ -382,6 +382,71 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const token = event.queryStringParameters?.t ?? "";
   if (!TOKEN || token !== TOKEN) return res(401, { error: "unauthorized" });
 
+  if (method === "GET" && event.queryStringParameters?.diag === "1") {
+    // Diagnóstico read-only: cuenta submissions del mensual en MoreApp por rango,
+    // SIN escribir. Compara la verdad de MoreApp contra los Checklist que existirían.
+    if (!API_KEY) return res(200, { error: "sin MOREAPP_API_KEY" });
+    const from = event.queryStringParameters?.from ?? "2026-01-01";
+    const to = event.queryStringParameters?.to ?? new Date().toISOString().slice(0, 10);
+    const fromMs = Date.parse(`${from}T00:00:00Z`);
+    const toMs = Date.parse(`${to}T23:59:59Z`);
+    const rows: { placa: string; fecha: string }[] = [];
+    let sinPlaca = 0;
+    let total = 0;
+    let page = 0;
+    while (page < 100) {
+      const data = await fetchMensualPage(page, fromMs, toMs);
+      const els = data.elements ?? [];
+      if (!els.length) break;
+      for (const el of els) {
+        total++;
+        const answers = (el.data ?? {}) as Record<string, unknown>;
+        const eco = (answers.economico ?? {}) as Record<string, unknown>;
+        const placa = pickStr(eco.PLACAS).trim();
+        const fechaRaw = pickStr(answers.dateAndTime);
+        const fecha = fechaRaw.split(/[ T]/)[0] || "(sin fecha)";
+        if (!placa) sinPlaca++;
+        rows.push({ placa: placa || "(sin placa)", fecha });
+      }
+      if ((page + 1) * 50 >= (data.totalSize ?? 0)) break;
+      page++;
+    }
+    const placas = new Set<string>();
+    const placaFecha = new Set<string>();
+    const pfCount = new Map<string, number>();
+    const porMesTotal = new Map<string, number>();
+    const porMesPF = new Map<string, Set<string>>();
+    for (const r of rows) {
+      placas.add(r.placa);
+      const pf = `${r.placa}__${r.fecha}`;
+      placaFecha.add(pf);
+      pfCount.set(pf, (pfCount.get(pf) ?? 0) + 1);
+      const mes = r.fecha.slice(0, 7);
+      porMesTotal.set(mes, (porMesTotal.get(mes) ?? 0) + 1);
+      if (!porMesPF.has(mes)) porMesPF.set(mes, new Set());
+      porMesPF.get(mes)!.add(pf);
+    }
+    const colisiones = [...pfCount.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([pf, n]) => ({ pf, n }));
+    const porMes = [...porMesTotal.keys()].sort().map((mes) => ({
+      mes,
+      total: porMesTotal.get(mes) ?? 0,
+      distinctPlacaFecha: porMesPF.get(mes)?.size ?? 0,
+    }));
+    return res(200, {
+      from,
+      to,
+      total,
+      sinPlaca,
+      distinctPlaca: placas.size,
+      distinctPlacaFecha: placaFecha.size,
+      colisiones,
+      porMes,
+      items: rows.slice(0, 400),
+    });
+  }
+
   if (method === "GET" && event.queryStringParameters?.backfill === "1") {
     // Backfill por lotes del mensual (ene-2026 → hoy). ?cursor=K&count=C
     const cursor = parseInt(event.queryStringParameters?.cursor ?? "0", 10) || 0;
