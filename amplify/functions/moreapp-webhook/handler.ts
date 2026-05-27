@@ -434,6 +434,32 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       total: porMesTotal.get(mes) ?? 0,
       distinctPlacaFecha: porMesPF.get(mes)?.size ?? 0,
     }));
+
+    // Compara contra DynamoDB: cuántos Checklist existen en el rango y cuáles faltan.
+    const client = await getDataClient();
+    const enDynamoPF = new Set<string>();
+    let nextToken: string | null | undefined = undefined;
+    let dynamoPages = 0;
+    do {
+      const list: { data?: { unitUid?: string; fecha?: string }[]; nextToken?: string | null } =
+        await client.models.Checklist.list({
+          filter: { fecha: { between: [from, to] } },
+          limit: 1000,
+          nextToken: nextToken ?? undefined,
+        });
+      for (const c of list.data ?? []) {
+        enDynamoPF.add(`${(c.unitUid ?? "").trim()}__${c.fecha ?? ""}`);
+      }
+      nextToken = list.nextToken;
+      dynamoPages++;
+    } while (nextToken && dynamoPages < 50);
+    const faltantes = [...placaFecha]
+      .filter((pf) => !enDynamoPF.has(pf))
+      .map((pf) => {
+        const [placa, fecha] = pf.split("__");
+        return { placa, fecha };
+      });
+
     return res(200, {
       from,
       to,
@@ -441,6 +467,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       sinPlaca,
       distinctPlaca: placas.size,
       distinctPlacaFecha: placaFecha.size,
+      enDynamo: enDynamoPF.size,
+      faltan: faltantes.length,
+      faltantes,
       colisiones,
       porMes,
       items: rows.slice(0, 400),
