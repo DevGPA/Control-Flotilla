@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-m+OXxlVfDvB+TxxJ6SgsVL/3Ikc9ctzmvcIeX+91hhk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-/I4gORy6BYMqBsgNEAFa8USb4zRaaYsGYiSgfxmdal8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2386,71 +2386,57 @@ const lazyObserver = new IntersectionObserver((entries) => {
 // KPI + DONUT
 // ════════════════════════════════════════════════════════════
 function buildKPIs(){
-  const t=units.length;
-  // Single pass — all counters accumulated in one loop
   const today0=new Date();today0.setHours(0,0,0,0);
   const d30=new Date(today0);d30.setDate(d30.getDate()+30);
-  // Modelo C-mod: counter por unidad-con-pending de cada nivel (overlap permitido).
-  // OK = sin pending. Atender un Urg quita unidad de bucket Urg sin "moverla" a otro.
-  // Vars *Donut son EXCLUSIVAS (suman a t) — el donut necesita partir el círculo.
-  let u=0,rv=0,cpl=0,comp=0,ok=0,ct=0,enTaller=0,nSvcVencido=0,nSvcProximo=0,withObs=0;
-  // Donut binario: operativa = NO en taller. Findings pendientes NO sacan a la
-  // unidad de operativa — la unidad sigue circulando hasta que la suben a taller.
-  let operativaDonut=0,tallerDonut=0;
-  for(let i=0;i<t;i++){
-    const x=units[i];
-    const dm=checklistDB[x.uid]||{};
-    const pend=x.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
-    const hasU=pend.some(f=>f.lv==="Urgente");
-    const hasR=pend.some(f=>f.lv==="Revisar");
-    const hasC=pend.some(f=>f.lv==="Completar");
-    if(!pend.length) ok++;
-    else {
-      if(hasU) u++;
-      if(hasR) rv++;
-      if(hasC) cpl++;
-    }
-    if(hasC) comp++;
-    if(x.minT!==null&&x.minT<=TCRIT) ct++;
+
+  // ── Hero cards + dona: FLOTA = unidades distintas (catálogo) con su última
+  // inspección. Estado actual, INDEPENDIENTE del rango de fechas. ──
+  const fleet = (Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || [];
+  let ct=0,enTaller=0,nSvcVencido=0,nSvcProximo=0,operativaDonut=0,tallerDonut=0;
+  for(const x of fleet){
+    if(x.minT!==null && x.minT<=TCRIT) ct++;
     const enTallerNow=isUnitEnTaller(x);
-    if(enTallerNow) enTaller++;
-    // Donut binario: operativa real = no está en taller.
-    if(enTallerNow) tallerDonut++; else operativaDonut++;
-    if(x.obs) withObs++;
-    // Hero #kv_svc: km autoritativo, fecha fallback. Consistente con analyzer.
-    const kmAx=parseFloat(String(x.km||""));
-    const kmNx=parseFloat(String(x.kmNextSvc||""));
+    if(enTallerNow){ enTaller++; tallerDonut++; } else operativaDonut++;
+    const kmAx=parseFloat(String(x.km||"")), kmNx=parseFloat(String(x.kmNextSvc||""));
     if(kmAx>0 && kmNx>0){
       const kmDiff=kmNx-kmAx;
-      if(kmDiff<=0) nSvcVencido++;
-      else if(kmDiff<=1000) nSvcProximo++;
+      if(kmDiff<=0) nSvcVencido++; else if(kmDiff<=1000) nSvcProximo++;
     } else {
       const sd=parseSvcDate(x.nextSvc);
-      if(sd){
-        if(sd<today0) nSvcVencido++;
-        else if(sd<=d30) nSvcProximo++;
-      }
+      if(sd){ if(sd<today0) nSvcVencido++; else if(sd<=d30) nSvcProximo++; }
     }
   }
+  const fleetN=fleet.length;
   const nSvcAlert=nSvcVencido+nSvcProximo;
-  const pct=n=>t?((n/t)*100).toFixed(0)+"%":"—";
-  // Hero cards
-  document.getElementById("kv0").textContent=t;
-  document.getElementById("ks0").textContent=`${t} inspecciones activas`;
+  const pctF=n=>fleetN?((n/fleetN)*100).toFixed(0)+"%":"—";
+  document.getElementById("kv0").textContent=fleetN;
+  document.getElementById("ks0").textContent=`${fleetN} unidades en flota`;
   document.getElementById("kv4").textContent=ct;
   const kvt=document.getElementById("kv_taller");if(kvt)kvt.textContent=enTaller;
-  const kst=document.getElementById("ks_taller");if(kst)kst.textContent=enTaller?pct(enTaller)+" de la flota":"Sin unidades activas";
+  const kst=document.getElementById("ks_taller");if(kst)kst.textContent=enTaller?pctF(enTaller)+" de la flota":"Sin unidades activas";
   const kvsvc=document.getElementById("kv_svc");if(kvsvc)kvsvc.textContent=nSvcAlert||"0";
   const kssvc=document.getElementById("ks_svc");if(kssvc){
     const venTxt=nSvcVencido?`${nSvcVencido} vencido${nSvcVencido!==1?"s":""}`:"";
     const proxTxt=nSvcProximo?`${nSvcProximo} próximo${nSvcProximo!==1?"s":""}`:"";
     kssvc.textContent=venTxt&&proxTxt?`${venTxt} · ${proxTxt}`:venTxt||proxTxt||"Al corriente";
   }
-  // Chip count badges — solo chips visibles (Todos / Urgente / Comentarios / Svc ≤30d).
+
+  // ── Chips de filtro: sobre las INSPECCIONES del rango (units), que es lo que
+  // muestra la tabla. ──
+  const t=units.length;
+  let u=0,withObs=0,nSvcRange=0;
+  for(const x of units){
+    const dm=checklistDB[x.uid]||{};
+    const pend=x.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
+    if(pend.some(f=>f.lv==="Urgente")) u++;
+    if(x.obs) withObs++;
+    const sd=parseSvcDate(x.nextSvc);
+    if(sd && sd<=d30) nSvcRange++;
+  }
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
   const fc0=document.getElementById("fc0");if(fc0)fc0.textContent=u?`(${u})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
-  const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcAlert?`(${nSvcAlert})`:"";
+  const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcRange?`(${nSvcRange})`:"";
   // Action buttons
   const btnFleet=document.getElementById("btn-fleet-pdf");
   if(btnFleet) btnFleet.style.display=t?"flex":"none";

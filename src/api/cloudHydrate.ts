@@ -67,6 +67,8 @@ declare global {
     __inspMaxDate?: string;
     applyDateRange?: (fromISO: string, toISO: string) => void;
     initRangoBar?: () => void;
+    // Flota: unidades distintas (catálogo) con última inspección — para KPIs hero + dona.
+    __fleetUnits?: Unit[];
   }
 }
 
@@ -329,6 +331,15 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   }
   // Desc por fecha (más reciente primero).
   inspections.sort((a, b) => String(b.fecha ?? "").localeCompare(String(a.fecha ?? "")));
+
+  // Flota = unidades distintas del catálogo con su ÚLTIMO checklist (estado actual,
+  // independiente del rango). Alimenta los KPIs hero + dona Operativa/Taller.
+  const latestByUnit = new Map<string, Schema["Checklist"]["type"]>();
+  for (const c of checklists) {
+    const e = latestByUnit.get(c.unitUid);
+    if (!e || (c.fecha ?? "") > (e.fecha ?? "")) latestByUnit.set(c.unitUid, c);
+  }
+  window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
 
   let legacyUnits: Unit[];
   if (inspections.length > 0) {
