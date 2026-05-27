@@ -185,37 +185,43 @@ async function downloadPhotos(
     console.warn("[moreapp-webhook] sin MOREAPP_API_KEY — fotos omitidas");
     return [];
   }
-  const photos: PhotoRec[] = [];
-  for (const [dn, val] of Object.entries(answers)) {
-    if (typeof val !== "string" || !val.startsWith("gridfs://")) continue;
-    const uuid = val.split("/").pop();
-    if (!uuid) continue;
-    try {
-      const r = await fetch(
-        `${MOREAPP_API_BASE}/customers/${customerId}/registrationFile/${uuid}/download`,
-        { headers: { "X-Api-Key": API_KEY } },
-      );
-      if (!r.ok) {
-        console.warn(`[moreapp-webhook] foto ${dn} download HTTP ${r.status}`);
-        continue;
+  const refs = Object.entries(answers)
+    .filter(([, v]) => typeof v === "string" && (v as string).startsWith("gridfs://"))
+    .map(([dn, v]) => ({ dn, uuid: (v as string).split("/").pop() ?? "" }))
+    .filter((t) => t.uuid);
+
+  // Descarga + sube todas las fotos del envío en paralelo (acelera el backfill).
+  const settled = await Promise.all(
+    refs.map(async ({ dn, uuid }): Promise<PhotoRec | null> => {
+      try {
+        const r = await fetch(
+          `${MOREAPP_API_BASE}/customers/${customerId}/registrationFile/${uuid}/download`,
+          { headers: { "X-Api-Key": API_KEY } },
+        );
+        if (!r.ok) {
+          console.warn(`[moreapp-webhook] foto ${dn} download HTTP ${r.status}`);
+          return null;
+        }
+        const ct = r.headers.get("content-type") || "image/jpeg";
+        const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+        const buf = Buffer.from(await r.arrayBuffer());
+        const fname = `moreapp_${placa}_${dn}.${ext}`.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: BUCKET,
+            Key: `photos/${tenantId}/${fname}`,
+            Body: buf,
+            ContentType: ct,
+          }),
+        );
+        return { group: "Inspección Mensual", col: dn, fname };
+      } catch (e) {
+        console.warn(`[moreapp-webhook] foto ${dn} error:`, (e as Error).message);
+        return null;
       }
-      const ct = r.headers.get("content-type") || "image/jpeg";
-      const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
-      const buf = Buffer.from(await r.arrayBuffer());
-      const fname = `moreapp_${placa}_${dn}.${ext}`.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: BUCKET,
-          Key: `photos/${tenantId}/${fname}`,
-          Body: buf,
-          ContentType: ct,
-        }),
-      );
-      photos.push({ group: "Inspección Mensual", col: dn, fname });
-    } catch (e) {
-      console.warn(`[moreapp-webhook] foto ${dn} error:`, (e as Error).message);
-    }
-  }
+    }),
+  );
+  const photos = settled.filter((p): p is PhotoRec => p !== null);
   console.info(`[moreapp-webhook] ${photos.length} fotos subidas para ${placa}`);
   return photos;
 }
