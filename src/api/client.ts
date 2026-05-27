@@ -34,6 +34,32 @@ function throwOnErrors(label: string, errors: readonly GraphQLError[] | undefine
   }
 }
 
+/**
+ * Pagina un `.list()` de Amplify siguiendo `nextToken` hasta agotar.
+ * Sin esto, DynamoDB devuelve solo ~100 ítems por página y el resto se pierde
+ * silenciosamente (causa del bug 34-envíos-vs-14-visibles en mayo 2026).
+ */
+async function listAll<T>(
+  fn: (token: string | null) => Promise<{
+    data: T[];
+    nextToken?: string | null;
+    errors?: unknown;
+  }>,
+  label: string,
+): Promise<T[]> {
+  const out: T[] = [];
+  let token: string | null = null;
+  let pages = 0;
+  do {
+    const { data, nextToken, errors } = await fn(token);
+    throwOnErrors(label, errors as readonly GraphQLError[] | undefined);
+    if (data) out.push(...data);
+    token = nextToken ?? null;
+    pages++;
+  } while (token && pages < 100);
+  return out;
+}
+
 // ───────────────────────── Unit ─────────────────────────
 
 export type UnitInput = {
@@ -62,11 +88,15 @@ export async function upsertUnit(input: UnitInput): Promise<Schema["Unit"]["type
 
 export async function listUnits(tenantId: string): Promise<Schema["Unit"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Unit.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listUnits", errors);
-  return data;
+  return listAll<Schema["Unit"]["type"]>(
+    (token) =>
+      c.models.Unit.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listUnits",
+  );
 }
 
 // ───────────────────────── Taller ─────────────────────────
@@ -105,11 +135,15 @@ export async function upsertTaller(input: TallerInput): Promise<Schema["Taller"]
 
 export async function listTaller(tenantId: string): Promise<Schema["Taller"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Taller.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listTaller", errors);
-  return data;
+  return listAll<Schema["Taller"]["type"]>(
+    (token) =>
+      c.models.Taller.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listTaller",
+  );
 }
 
 /**
@@ -151,11 +185,15 @@ export async function upsertNota(input: NotaInput): Promise<Schema["Nota"]["type
 
 export async function listNotas(tenantId: string): Promise<Schema["Nota"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Nota.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listNotas", errors);
-  return data;
+  return listAll<Schema["Nota"]["type"]>(
+    (token) =>
+      c.models.Nota.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listNotas",
+  );
 }
 
 // ───────────────────────── Checklist ─────────────────────────
@@ -169,9 +207,7 @@ export type ChecklistInput = {
   responsable?: string;
 };
 
-export async function upsertChecklist(
-  input: ChecklistInput,
-): Promise<Schema["Checklist"]["type"]> {
+export async function upsertChecklist(input: ChecklistInput): Promise<Schema["Checklist"]["type"]> {
   const c = getClient();
   // AWSJSON scalar requiere STRING, no objeto. JSON.stringify explicito.
   const inputStringified = {
@@ -207,15 +243,17 @@ export async function upsertChecklist(
   );
 }
 
-export async function listChecklists(
-  tenantId: string,
-): Promise<Schema["Checklist"]["type"][]> {
+export async function listChecklists(tenantId: string): Promise<Schema["Checklist"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Checklist.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listChecklists", errors);
-  return data;
+  return listAll<Schema["Checklist"]["type"]>(
+    (token) =>
+      c.models.Checklist.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listChecklists",
+  );
 }
 
 // ───────────────────────── Periodo ─────────────────────────
@@ -243,11 +281,15 @@ export async function upsertPeriodo(input: PeriodoInput): Promise<Schema["Period
 
 export async function listPeriodos(tenantId: string): Promise<Schema["Periodo"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Periodo.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listPeriodos", errors);
-  return data;
+  return listAll<Schema["Periodo"]["type"]>(
+    (token) =>
+      c.models.Periodo.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listPeriodos",
+  );
 }
 
 // ───────────────────────── Semanal ─────────────────────────
@@ -281,9 +323,13 @@ export async function upsertSemanal(input: SemanalInput): Promise<Schema["Semana
 
 export async function listSemanales(tenantId: string): Promise<Schema["Semanal"]["type"][]> {
   const c = getClient();
-  const { data, errors } = await c.models.Semanal.list({
-    filter: { tenantId: { eq: tenantId } },
-  });
-  throwOnErrors("listSemanales", errors);
-  return data;
+  return listAll<Schema["Semanal"]["type"]>(
+    (token) =>
+      c.models.Semanal.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listSemanales",
+  );
 }
