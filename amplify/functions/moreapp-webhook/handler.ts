@@ -26,6 +26,7 @@ const TENANT_ID = process.env.MOREAPP_TENANT_ID ?? "";
 const SIGNING_SECRET = process.env.MOREAPP_SIGNING_SECRET ?? "";
 const PREFIX = "moreapp-capture/";
 const MENSUAL_FORM_ID = "687aa9b5a443e15d45370dfc";
+const SEMANAL_FORM_ID = "687aa9caa4ea6a369e62fe05";
 
 // API MoreApp para descargar fotos. La key se inyecta como secret (env MOREAPP_API_KEY).
 // Si está vacía, las fotos se saltan (la data igual se ingiere).
@@ -381,6 +382,38 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const method = event.requestContext?.http?.method ?? "POST";
   const token = event.queryStringParameters?.t ?? "";
   if (!TOKEN || token !== TOKEN) return res(401, { error: "unauthorized" });
+
+  if (method === "GET" && event.queryStringParameters?.sample === "1") {
+    // Read-only: trae N envíos crudos de un form (default semanal) para inspeccionar
+    // su estructura de campos (dataNames) y construir el mapeo. No escribe nada.
+    if (!API_KEY) return res(200, { error: "sin MOREAPP_API_KEY" });
+    const form = event.queryStringParameters?.form ?? SEMANAL_FORM_ID;
+    const n = Math.min(parseInt(event.queryStringParameters?.n ?? "1", 10) || 1, 5);
+    const r = await fetch(
+      `${MOREAPP_API_BASE}/customers/14922/forms/${form}/submissions/filter/0`,
+      {
+        method: "POST",
+        headers: { "X-Api-Key": API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: [] }),
+      },
+    );
+    if (!r.ok) return res(200, { error: `HTTP ${r.status}`, form });
+    const data = (await r.json()) as {
+      totalSize?: number;
+      elements?: Array<Record<string, unknown>>;
+    };
+    const els = (data.elements ?? []).slice(0, n);
+    return res(200, {
+      form,
+      totalSize: data.totalSize ?? 0,
+      samples: els.map((el) => ({
+        id: el.id,
+        info: el.info,
+        dataKeys: Object.keys((el.data ?? {}) as Record<string, unknown>),
+        data: el.data,
+      })),
+    });
+  }
 
   if (method === "GET" && event.queryStringParameters?.diag === "1") {
     // Diagnóstico read-only: cuenta submissions del mensual en MoreApp por rango,
