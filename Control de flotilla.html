@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-haSwwPSGAyXc7Zxkic23FFdSPKsUxi6z4WSQxMROXY8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ropVF1Z2SDUn3YLPwCaSh80qJxnDEUUHxZCqgEsYTqI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -305,7 +305,7 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- ALERTS SUMMARY -->
-<div id="alerts-panel" style="display:none;margin:0 12px 6px;padding:10px 14px 10px 16px;background:var(--Ad);border:1px solid var(--Al);border-left:3px solid var(--A);border-radius:8px;font-size:12px;line-height:1.55">
+<div id="alerts-panel" style="display:none;margin:0 12px 6px;padding:10px 14px;background:var(--bg2);border:1px solid var(--ln);border-radius:8px;font-size:12px;line-height:1.55">
   <div id="alerts-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;cursor:pointer;user-select:none" title="Mostrar/ocultar alertas">
     <span style="font-weight:700;color:var(--A);font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota<span id="alerts-count" style="display:none;font-weight:600;letter-spacing:0;text-transform:none"></span></span>
     <span id="alerts-chevron" style="display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--A)"></i></span>
@@ -2669,26 +2669,26 @@ function buildAlertsSummary(){
   const svcVencido=units.filter(u=>{const d=parseSvcDate(u.nextSvc);return d&&d<today;});
   const svcProximo=units.filter(u=>{const d=parseSvcDate(u.nextSvc);return d&&d>=today&&d<=d30;});
   if(svcVencido.length)
-    alerts.push({icon:`<i data-lucide="alert-circle" style="width:13px;height:13px;color:var(--R);vertical-align:-2px"></i>`,color:"var(--R)",text:`<b>${svcVencido.length}</b> unidad${svcVencido.length!==1?"es":""} con servicio <b>vencido</b>`,
-      detail:svcVencido.slice(0,5).map(u=>`${escHtml(u.eco||u.plate)} (${escHtml(u.nextSvc)})`).join(", ")+(svcVencido.length>5?` y ${svcVencido.length-5} más`:""),
+    alerts.push({sev:"r",icon:"alert-circle",count:svcVencido.length,short:"Servicio vencido",
+      detail:svcVencido.slice(0,8).map(u=>`${u.eco||u.plate} (${u.nextSvc})`).join(", ")+(svcVencido.length>8?` y ${svcVencido.length-8} más`:""),
       action:"svcvencido"});
   if(svcProximo.length)
-    alerts.push({icon:`<i data-lucide="clock" style="width:13px;height:13px;color:var(--A);vertical-align:-2px"></i>`,color:"var(--A)",text:`<b>${svcProximo.length}</b> unidad${svcProximo.length!==1?"es":""} con servicio en los <b>próximos 30 días</b>`,
-      detail:svcProximo.slice(0,5).map(u=>`${escHtml(u.eco||u.plate)} (${escHtml(u.nextSvc)})`).join(", ")+(svcProximo.length>5?` y ${svcProximo.length-5} más`:""),
+    alerts.push({sev:"a",icon:"clock",count:svcProximo.length,short:"Próx. 30 días",
+      detail:svcProximo.slice(0,8).map(u=>`${u.eco||u.plate} (${u.nextSvc})`).join(", ")+(svcProximo.length>8?` y ${svcProximo.length-8} más`:""),
       action:"svcvencido"});
 
   // 2. Unidades urgentes (= chip Urgente: u.risk==="Urgente")
   const urgentes=units.filter(u=>u.risk==="Urgente");
   if(urgentes.length)
-    alerts.push({icon:`<i data-lucide="siren" style="width:13px;height:13px;color:var(--R);vertical-align:-2px"></i>`,color:"var(--R)",text:`<b>${urgentes.length}</b> unidad${urgentes.length!==1?"es":""} con estado <b>Urgente</b>`,
-      detail:urgentes.slice(0,5).map(u=>{const n=u.F.filter(f=>f.lv==="Urgente").length;return `${escHtml(u.eco||u.plate)} (${n} hallazgo${n!==1?"s":""})`;}).join(", ")+(urgentes.length>5?` y ${urgentes.length-5} más`:""),
+    alerts.push({sev:"r",icon:"siren",count:urgentes.length,short:"Urgente",
+      detail:urgentes.slice(0,8).map(u=>{const n=u.F.filter(f=>f.lv==="Urgente").length;return `${u.eco||u.plate} (${n} hallazgo${n!==1?"s":""})`;}).join(", ")+(urgentes.length>8?` y ${urgentes.length-8} más`:""),
       action:"Urgente"});
 
   // 3. Llantas críticas
   const llantasCrit=units.filter(u=>u.minT!==null&&u.minT<=TCRIT);
   if(llantasCrit.length)
-    alerts.push({icon:`<i data-lucide="disc-3" style="width:13px;height:13px;color:var(--O);vertical-align:-2px"></i>`,color:"var(--O)",text:`<b>${llantasCrit.length}</b> unidad${llantasCrit.length!==1?"es":""} con llantas <b>≤ ${TCRIT}mm</b> (crítico)`,
-      detail:llantasCrit.slice(0,5).map(u=>`${escHtml(u.eco||u.plate)}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>5?` y ${llantasCrit.length-5} más`:"")});
+    alerts.push({sev:"o",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
+      detail:llantasCrit.slice(0,8).map(u=>`${u.eco||u.plate}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>8?` y ${llantasCrit.length-8} más`:"")});
 
   // 4. Taller: unidades >7 días
   const isClosed=e=>e.estado==="Finalizado";
@@ -2698,47 +2698,40 @@ function buildAlertsSummary(){
     return dias>7;
   });
   if(tallerLargo.length)
-    alerts.push({icon:`<i data-lucide="wrench" style="width:13px;height:13px;color:var(--B);vertical-align:-2px"></i>`,color:"var(--B)",text:`<b>${tallerLargo.length}</b> unidad${tallerLargo.length!==1?"es":""} llevan <b>más de 7 días</b> en taller`,
-      detail:tallerLargo.sort((a,b)=>new Date(a.fentrada)-new Date(b.fentrada)).slice(0,5).map(e=>{
+    alerts.push({sev:"ac",icon:"wrench",count:tallerLargo.length,short:"+7 días taller",
+      detail:tallerLargo.sort((a,b)=>new Date(a.fentrada)-new Date(b.fentrada)).slice(0,8).map(e=>{
         const dias=Math.round((Date.now()-new Date(e.fentrada))/86400000);
-        return`${escHtml(e.eco||e.plate)}: ${dias}d`;
-      }).join(", ")+(tallerLargo.length>5?` y ${tallerLargo.length-5} más`:""),
+        return`${e.eco||e.plate}: ${dias}d`;
+      }).join(", ")+(tallerLargo.length>8?` y ${tallerLargo.length-8} más`:""),
       action:"taller"});
 
   // 5. Unidades con hallazgos "Completar" pendientes
   const completar=units.filter(u=>u.F.some(f=>f.lv==="Completar"));
   if(completar.length)
-    alerts.push({icon:`<i data-lucide="clipboard-list" style="width:13px;height:13px;color:var(--ac);vertical-align:-2px"></i>`,color:"var(--ac)",text:`<b>${completar.length}</b> unidad${completar.length!==1?"es":""} con hallazgos <b>pendientes de completar</b>`,
+    alerts.push({sev:"n",icon:"clipboard-list",count:completar.length,short:"Pendientes",
       action:"Completar"});
 
-  // Render
+  // Render — chips por severidad. XSS-safe: textContent para conteo/etiqueta,
+  // detail (lista de unidades) va como title (texto plano, sin parseo HTML).
   if(!alerts.length){panel.style.display="none";return;}
   panel.style.display="block";
-  // XSS-safe: sin inline onclick. icon/text/detail son author-controlled
-  // (escHtml aplicado arriba a datos de usuario); action adjunto via listener.
   list.replaceChildren();
   for(const a of alerts){
-    const row=document.createElement("div");
-    row.style.cssText="display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;"+(a.action?"cursor:pointer":"");
-    if(a.action){const act=a.action;row.addEventListener("click",()=>setF(act));}
-    const ico=document.createElement("span");
-    ico.style.flexShrink="0";
-    ico.innerHTML=a.icon;
-    row.appendChild(ico);
-    const box=document.createElement("div");
-    const txt=document.createElement("span");
-    txt.style.color=a.color;
-    txt.innerHTML=a.text;
-    box.appendChild(txt);
-    if(a.detail){
-      const det=document.createElement("span");
-      det.style.cssText="color:var(--s2);margin-left:4px;font-size:11px";
-      det.innerHTML=" — "+a.detail;
-      box.appendChild(det);
-    }
-    row.appendChild(box);
-    list.appendChild(row);
+    const chip=document.createElement(a.action?"button":"span");
+    chip.className="alert-chip sev-"+a.sev+(a.action?"":" no-action");
+    if(a.action){const act=a.action;chip.type="button";chip.addEventListener("click",()=>setF(act));}
+    if(a.detail)chip.title=a.detail;
+    const ico=document.createElement("span");ico.className="ac-ico";
+    const i=document.createElement("i");
+    i.setAttribute("data-lucide",a.icon);
+    i.style.width="13px";i.style.height="13px";
+    ico.appendChild(i);
+    const n=document.createElement("span");n.className="ac-n";n.textContent=a.count;
+    const lbl=document.createElement("span");lbl.textContent=a.short;
+    chip.append(ico,n,lbl);
+    list.appendChild(chip);
   }
+  if(window.lucide&&window.lucide.createIcons)window.lucide.createIcons();
   // Resumen para el estado plegado + restaura preferencia del usuario.
   const cnt=document.getElementById("alerts-count");
   if(cnt)cnt.textContent=` · ${alerts.length} alerta${alerts.length!==1?"s":""}`;
@@ -2761,7 +2754,7 @@ function setAlertsCollapsed(collapsed){
   const chev=document.getElementById("alerts-chevron");
   const cnt=document.getElementById("alerts-count");
   if(!list)return;
-  list.style.display=collapsed?"none":"block";
+  list.style.display=collapsed?"none":"flex";
   if(cnt)cnt.style.display=collapsed?"inline":"none";
   if(chev)chev.style.transform=collapsed?"rotate(0deg)":"rotate(180deg)";
   try{localStorage.setItem("cf_alerts_collapsed",collapsed?"1":"0");}catch(e){}

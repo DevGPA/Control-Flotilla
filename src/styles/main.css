@@ -3054,6 +3054,84 @@ select {
   background: var(--bg3);
   color: var(--w2);
 }
+/* El ícono no intercepta el clic — siempre llega al botón (fix tap en móvil). */
+.nav-toggle i,
+.nav-toggle svg {
+  pointer-events: none;
+}
+
+/* ════ ALERTAS DE FLOTA — chips por severidad ════════════════ */
+#alerts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  background: var(--bg3);
+  color: var(--s1);
+  cursor: pointer;
+  transition:
+    filter 0.12s,
+    transform 0.12s;
+}
+.alert-chip:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+.alert-chip.no-action {
+  cursor: default;
+}
+.alert-chip.no-action:hover {
+  filter: none;
+  transform: none;
+}
+.alert-chip .ac-ico {
+  display: inline-flex;
+}
+.alert-chip .ac-ico i,
+.alert-chip .ac-ico svg {
+  pointer-events: none;
+}
+.alert-chip .ac-n {
+  font-size: 12px;
+  font-weight: 800;
+}
+.alert-chip.sev-r {
+  background: var(--Rl);
+  border-color: var(--R);
+  color: var(--R);
+}
+.alert-chip.sev-a {
+  background: var(--Al);
+  border-color: var(--A);
+  color: var(--A);
+}
+.alert-chip.sev-o {
+  background: var(--Ol);
+  border-color: var(--O);
+  color: var(--O);
+}
+.alert-chip.sev-ac {
+  background: var(--acd);
+  border-color: var(--ac);
+  color: var(--ac);
+}
+.alert-chip.sev-n {
+  background: var(--bg3);
+  border-color: var(--ln);
+  color: var(--s1);
+}
 
 /* ════ TALLER MODULE ═════════════════════════════════════════ */
 #taller-view {
