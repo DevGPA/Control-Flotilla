@@ -60,7 +60,36 @@ declare global {
     renderTaller?: () => void;
     /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
     __cloudPhotoUrlMap?: Map<string, string>;
+    // periodos / activePeriodoId / renderPeriodoBar / switchPeriodo: declarados en main.ts.
   }
+}
+
+/** Nombres de mes ES, indexados 1-12 (igualan el label legacy MES_NAMES). */
+const MES_ES = [
+  "",
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+/** Deriva "YYYY-MM" de una fecha de checklist (ISO YYYY-MM-DD o legacy DD/MM/YYYY). */
+function monthOf(fecha: string | null | undefined): string | null {
+  const s = String(fecha ?? "").trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]!.padStart(2, "0")}`;
+  return null;
 }
 
 function periodoLabelFromId(id: string): string {
@@ -294,23 +323,70 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // No early-exit aquí. Aunque units.length === 0, semanales puede tener
   // fotos que necesitan pre-fetch. Continuamos con un legacyUnits vacío.
 
-  // Index checklists por placa para lookup O(1).
-  const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
+  // ── Agrupar checklists por mes (YYYY-MM) → snapshots de período ──
+  // Reusa el sistema de períodos mensuales del legacy: cada período guarda un
+  // snapshot de units. Aquí los reconstruimos desde los Checklists del cloud
+  // (que llevan fecha real, ej. backfill MoreApp), para navegar por mes.
+  const byMonth = new Map<string, Map<string, Schema["Checklist"]["type"]>>();
   for (const c of checklists) {
-    const existing = checklistByUnit.get(c.unitUid);
-    // Si hay múltiples checklists por unidad (varios meses), tomar el más reciente.
+    const ym = monthOf(c.fecha);
+    if (!ym) continue;
+    let unitMap = byMonth.get(ym);
+    if (!unitMap) {
+      unitMap = new Map();
+      byMonth.set(ym, unitMap);
+    }
+    const existing = unitMap.get(c.unitUid);
     if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
-      checklistByUnit.set(c.unitUid, c);
+      unitMap.set(c.unitUid, c);
     }
   }
 
-  const legacyUnits = units.map((u) => mergeUnitWithChecklist(u, checklistByUnit.get(u.placa)));
+  const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
+  const periodos = [...byMonth.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([ym, unitMap]) => {
+      const [anioStr, mesStr] = ym.split("-");
+      const snapUnits: Unit[] = [];
+      for (const [unitUid, chk] of unitMap) {
+        const u =
+          unitByPlaca.get(unitUid) ?? ({ tenantId, placa: unitUid } as Schema["Unit"]["type"]);
+        snapUnits.push(mergeUnitWithChecklist(u, chk));
+      }
+      return {
+        id: ym,
+        label: `${MES_ES[parseInt(mesStr!, 10)] ?? mesStr} ${anioStr}`,
+        mes: parseInt(mesStr!, 10),
+        anio: parseInt(anioStr!, 10),
+        units: snapUnits,
+      };
+    });
 
-  // Inyectar al state legacy.
-  window.units = legacyUnits;
+  let legacyUnits: Unit[];
+  if (periodos.length > 0) {
+    const active = periodos[periodos.length - 1]!;
+    legacyUnits = active.units;
+    window.periodos = periodos;
+    window.activePeriodoId = active.id;
+    window.units = legacyUnits;
+  } else {
+    // Fallback: sin checklists con fecha parseable → latest-per-unit plano.
+    const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
+    for (const c of checklists) {
+      const existing = checklistByUnit.get(c.unitUid);
+      if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
+        checklistByUnit.set(c.unitUid, c);
+      }
+    }
+    legacyUnits = units.map((u) => mergeUnitWithChecklist(u, checklistByUnit.get(u.placa)));
+    window.units = legacyUnits;
+  }
+
   if (!window.checklistDB) window.checklistDB = {} as ChecklistDB;
   const db = window.checklistDB;
-  for (const u of legacyUnits) {
+  // Init checklistDB para los uids de TODOS los meses (no solo el activo).
+  const allSnapUnits = periodos.length > 0 ? periodos.flatMap((p) => p.units) : legacyUnits;
+  for (const u of allSnapUnits) {
     if (!db[u.uid]) db[u.uid] = {};
   }
 
@@ -319,7 +395,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // ya están en cache al momento de renderear. Habilita lightbox, gallery,
   // thumbnails para multi-user en ambos modos.
   const allPhotoFnames = new Set<string>();
-  for (const u of legacyUnits) {
+  // Todos los meses (no solo el activo) → al cambiar de período las fotos ya están.
+  for (const u of allSnapUnits) {
     for (const p of u.photos ?? []) {
       const fn = (p as { fname?: string }).fname;
       if (fn) allPhotoFnames.add(fn.toLowerCase());
@@ -356,6 +433,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   }
 
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.
+  if (typeof window.renderPeriodoBar === "function") window.renderPeriodoBar();
   if (typeof window.showDash === "function") window.showDash();
   if (typeof window.buildKPIs === "function") window.buildKPIs();
   if (typeof window.renderTable === "function") window.renderTable();
