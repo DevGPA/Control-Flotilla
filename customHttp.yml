@@ -22,6 +22,21 @@ customHeaders:
       # acá causa drift entre header (stale) y meta (fresh) cuando se editan
       # inline scripts. X-Frame-Options DENY arriba cubre frame-ancestors.
 
+  # index.html SIEMPRE fresco — evita que apunte a assets con hash viejos
+  # (página sin CSS intermitente tras deploys). Revalida con ETag (304 barato).
+  - pattern: '/'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate'
+  - pattern: '/index.html'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate'
+  - pattern: '**/*.html'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, must-revalidate'
+
   # Service worker NO cache (PWA fresh updates)
   - pattern: '**/sw.js'
     headers:
