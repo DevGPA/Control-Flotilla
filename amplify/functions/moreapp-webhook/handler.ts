@@ -27,6 +27,11 @@ const SIGNING_SECRET = process.env.MOREAPP_SIGNING_SECRET ?? "";
 const PREFIX = "moreapp-capture/";
 const MENSUAL_FORM_ID = "687aa9b5a443e15d45370dfc";
 
+// API MoreApp para descargar fotos. La key se inyecta como secret (env MOREAPP_API_KEY).
+// Si está vacía, las fotos se saltan (la data igual se ingiere).
+const MOREAPP_API_BASE = "https://api.moreapp.com/api/v1.0";
+const API_KEY = process.env.MOREAPP_API_KEY ?? "";
+
 // ── Amplify data client (lazy, IAM auth) ──────────────────────
 let configured = false;
 let dataClient: ReturnType<typeof generateClient<Schema>> | null = null;
@@ -163,8 +168,63 @@ function isConditionalCheckFailed(
   );
 }
 
+type PhotoRec = { group: string; col: string; fname: string };
+
+/**
+ * Descarga las fotos (`gridfs://registrationFiles/<uuid>`) de las respuestas vía
+ * la API de MoreApp y las sube a S3 `photos/{tenantId}/`. Devuelve los registros
+ * {group, col, fname} para el render legacy. Si no hay API key, salta (devuelve []).
+ */
+async function downloadPhotos(
+  customerId: string,
+  answers: Record<string, unknown>,
+  placa: string,
+  tenantId: string,
+): Promise<PhotoRec[]> {
+  if (!API_KEY) {
+    console.warn("[moreapp-webhook] sin MOREAPP_API_KEY — fotos omitidas");
+    return [];
+  }
+  const photos: PhotoRec[] = [];
+  for (const [dn, val] of Object.entries(answers)) {
+    if (typeof val !== "string" || !val.startsWith("gridfs://")) continue;
+    const uuid = val.split("/").pop();
+    if (!uuid) continue;
+    try {
+      const r = await fetch(
+        `${MOREAPP_API_BASE}/customers/${customerId}/registrationFile/${uuid}/download`,
+        { headers: { "X-Api-Key": API_KEY } },
+      );
+      if (!r.ok) {
+        console.warn(`[moreapp-webhook] foto ${dn} download HTTP ${r.status}`);
+        continue;
+      }
+      const ct = r.headers.get("content-type") || "image/jpeg";
+      const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+      const buf = Buffer.from(await r.arrayBuffer());
+      const fname = `moreapp_${placa}_${dn}.${ext}`.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: BUCKET,
+          Key: `photos/${tenantId}/${fname}`,
+          Body: buf,
+          ContentType: ct,
+        }),
+      );
+      photos.push({ group: "Inspección Mensual", col: dn, fname });
+    } catch (e) {
+      console.warn(`[moreapp-webhook] foto ${dn} error:`, (e as Error).message);
+    }
+  }
+  console.info(`[moreapp-webhook] ${photos.length} fotos subidas para ${placa}`);
+  return photos;
+}
+
 /** Procesa un envío del form mensual → upsert Unit + Checklist. */
-async function processMensual(envelope: Record<string, unknown>): Promise<{ placa: string }> {
+async function processMensual(
+  envelope: Record<string, unknown>,
+  customerId: string,
+): Promise<{ placa: string }> {
   const answers = (envelope.data ?? {}) as Record<string, unknown>;
   const eco = (answers.economico ?? {}) as Record<string, unknown>;
   const placa = pickStr(eco.PLACAS);
@@ -209,6 +269,9 @@ async function processMensual(envelope: Record<string, unknown>): Promise<{ plac
     .filter(Boolean)
     .join("\n\n");
 
+  // Descarga fotos (gridfs://) → S3 + registros para el render. Salta si no hay API key.
+  const photos = await downloadPhotos(customerId, answers, placa, TENANT_ID);
+
   const resultados = JSON.stringify({
     findings: analyzed.F,
     tires: analyzed.T,
@@ -220,7 +283,7 @@ async function processMensual(envelope: Record<string, unknown>): Promise<{ plac
     km: pickStr(answers.kilometraje),
     nextSvc: pickStr(answers.fechaEstimadaDelSiguienteServicio),
     kmNextSvc: pickStr(answers.kilometrajeDelSiguienteServicio),
-    photos: [],
+    photos,
   });
 
   const clInput = {
@@ -321,8 +384,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     return res(200, { ok: true, ignored: formId });
   }
 
+  const customerId = pickStr(body.customerId) || "14922";
   try {
-    const { placa } = await processMensual(envelope);
+    const { placa } = await processMensual(envelope, customerId);
     console.info(`[moreapp-webhook] mensual ingerido placa=${placa}`);
     return res(200, { ok: true, ingested: placa });
   } catch (e) {
