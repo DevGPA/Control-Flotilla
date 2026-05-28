@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Bgez3zuWZd6waZEUbadO0dSauBk7I9sx5/74yGF947o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2nEf2keY2wtnEAeMbt93hZvOJNDRKAVo4Fj2WWYdSsc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -265,7 +265,7 @@ g.inflateBytes=async function(src){
 <!-- HERO METRICS -->
 <div id="kpi">
   <div class="hero-row">
-    <div class="hero-card">
+    <div class="hero-card" onclick="openFleetModal()" style="cursor:pointer" role="button" tabindex="0" title="Ver todas las unidades de la flota">
       <div class="hero-icon" style="background:var(--B)"><i data-lucide="truck" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" id="kv0">—</div>
@@ -5163,6 +5163,71 @@ window.aplicarRangoSemanal = function(){
   renderSemanales();
 };
 
+// ── Modal Flota completa (clic en hero card FLOTA) ────────────────────
+window.openFleetModal = function(){
+  const all = window.__fleetUnits || [];
+  const sel = document.getElementById("fleet-mod-suc");
+  if(sel){
+    const sucs = [...new Set(all.map(u => u.branch).filter(Boolean))].sort();
+    sel.innerHTML = `<option value="all">Todas las sucursales (${all.length})</option>`
+      + sucs.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
+  }
+  const srch = document.getElementById("fleet-mod-srch");
+  if(srch) srch.value = "";
+  const m = document.getElementById("fleet-modal");
+  if(m) m.style.display = "flex";
+  renderFleetModalRows();
+};
+window.closeFleetModal = function(){
+  const m = document.getElementById("fleet-modal");
+  if(m) m.style.display = "none";
+};
+window.renderFleetModalRows = function(){
+  const all = window.__fleetUnits || [];
+  const q = (document.getElementById("fleet-mod-srch")?.value || "").trim().toLowerCase();
+  const suc = document.getElementById("fleet-mod-suc")?.value || "all";
+  const rows = all.filter(u => {
+    if(suc !== "all" && u.branch !== suc) return false;
+    if(!q) return true;
+    return [u.plate,u.eco,u.brand,u.branch].some(v => String(v||"").toLowerCase().includes(q));
+  });
+  const sub = document.getElementById("fleet-mod-sub");
+  if(sub) sub.textContent = rows.length === all.length
+    ? `${all.length} unidad${all.length!==1?"es":""}`
+    : `${rows.length} de ${all.length}`;
+  const tbody = document.getElementById("fleet-mod-tbody");
+  if(!tbody) return;
+  tbody.innerHTML = rows
+    .slice()
+    .sort((a,b) => String(a.eco||a.plate||"").localeCompare(String(b.eco||b.plate||""), "es", {numeric:true}))
+    .map((u, i) => `<tr>
+      <td>${i+1}</td>
+      <td style="font-family:var(--fm);font-weight:600">${escHtml(u.eco||"—")}</td>
+      <td style="font-family:var(--fm);color:var(--ac)">${escHtml(u.plate||"—")}</td>
+      <td>${escHtml(u.brand||"—")}</td>
+      <td>${escHtml(u.branch||"—")}</td>
+    </tr>`).join("");
+};
+// Cerrar con ESC
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape"){
+    const m = document.getElementById("fleet-modal");
+    if(m && m.style.display !== "none") window.closeFleetModal();
+  }
+});
+
+// Etiqueta del rango activo para subtítulos ("N semanas · DD/MM → DD/MM").
+function swRangoLabel(){
+  if(!swRangeFrom || !swRangeTo){
+    return weeklyPeriodos.length
+      ? `${weeklyPeriodos.length} semana${weeklyPeriodos.length!==1?"s":""}`
+      : "Sin períodos";
+  }
+  const fmt = s => { const [y,m,d] = String(s).split("-"); return `${d}/${m}`; };
+  const n = weeklyPeriodos.filter(p => periodInRange(p.id, swRangeFrom, swRangeTo)).length;
+  return `${n} semana${n!==1?"s":""} · ${fmt(swRangeFrom)} → ${fmt(swRangeTo)}`;
+}
+
 // Devuelve TODAS las entries dentro del rango (estilo mensual). Cada entry
 // queda taggeada con _periodo (label) y _swKey (uid+periodoId) para evitar
 // colisiones cuando una unidad aparece en varias semanas.
@@ -5242,7 +5307,7 @@ function buildKPIsSemanales(){
       <div class="ktop" style="background:var(--B)"></div>
       <div class="klbl">Total Revisadas</div>
       <div class="kval" style="color:var(--w1)">${t}</div>
-      <div class="ksub">${escHtml(ap.label)}</div>
+      <div class="ksub">${escHtml(swRangoLabel())}</div>
     </div>
     <div class="kc btn" onclick="swSetF('Urgente')">
       <div class="ktop" style="background:var(--R)"></div>
@@ -6704,6 +6769,33 @@ window.deleteTallerEntry = deleteTallerEntry;
   } catch(e) { console.error("[bridge] Fatal error during setup:", e); }
 })();
 </script>
+<!-- Modal de Flota completa (abierto desde la hero card FLOTA) -->
+<div id="fleet-modal" onclick="if(event.target.id==='fleet-modal')closeFleetModal()">
+  <div>
+    <div class="fleet-mod-hdr">
+      <div>
+        <div class="fleet-mod-ttl">Flota completa</div>
+        <div class="fleet-mod-sub" id="fleet-mod-sub"></div>
+      </div>
+      <button class="dcls" onclick="closeFleetModal()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="fleet-mod-bar">
+      <input id="fleet-mod-srch" type="text" placeholder="Buscar placa, ECO, marca, sucursal..." oninput="renderFleetModalRows()" aria-label="Buscar unidad"/>
+      <select id="fleet-mod-suc" onchange="renderFleetModalRows()" aria-label="Filtrar por sucursal">
+        <option value="all">Todas las sucursales</option>
+      </select>
+    </div>
+    <div class="fleet-mod-body">
+      <table class="fleet-mod-table">
+        <thead><tr>
+          <th>#</th><th>ECO</th><th>Placa</th><th>Marca / Modelo</th><th>Sucursal</th>
+        </tr></thead>
+        <tbody id="fleet-mod-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Módulos TS nuevos (Vite dev server resuelve en /src/). Feature flag:
      localStorage.setItem('USE_NEW_RENDER','1') para probar renderTable nuevo.
      Bajo file:// este script 404 silenciosamente y el legado sigue trabajando. -->
