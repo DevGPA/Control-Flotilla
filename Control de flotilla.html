@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-S98/XpTiSi49O77yW9NPAAJ983OY6w5e47cvSSTHKPM='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-mhd6Zg1Uxk0mliqcz5qK0J6oTGquzT+VQ1RG95eRclQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -593,6 +593,12 @@ g.inflateBytes=async function(src){
   <!-- Selector de períodos semanales -->
   <div id="sw-periodo-bar">
     <span class="sw-periodo-label">Semana:</span>
+    <div id="sw-rango-controls">
+      <label>Desde <input type="date" id="sw-rango-desde" onchange="aplicarRangoSemanal()"/></label>
+      <label>Hasta <input type="date" id="sw-rango-hasta" onchange="aplicarRangoSemanal()"/></label>
+      <button id="sw-btn-rango" onclick="aplicarRangoSemanal()">Aplicar</button>
+      <span id="sw-rango-count" class="sw-rango-count"></span>
+    </div>
     <div id="sw-periodo-chips" style="display:flex;gap:4px;flex-wrap:wrap"></div>
     <!-- Carga manual semanal OCULTA (UI removida). Input conservado por si se reactiva. -->
     <input type="file" id="sw-xinput" accept=".zip,.xlsx,.xls" style="display:none"
@@ -5054,6 +5060,7 @@ function showView(view){
     renderTaller();
   }
   if(isSem){
+    initRangoSemanal();
     renderSemanales();
   }
   if(isAnalytics){
@@ -5107,6 +5114,61 @@ function renderTaller(){
 // ════════════════════════════════════════════════════════════
 // MÓDULO SEMANALES — Render principal
 // ════════════════════════════════════════════════════════════
+// ── Rango de fechas para Semanales (filtra qué chips se muestran) ────────
+let swRangeFrom = null, swRangeTo = null;
+let swRangoInited = false;
+
+// Inverso de getISOWeek: (año, semana ISO) → fecha del LUNES de esa semana ISO.
+function isoWeekStart(year, week){
+  const jan4 = new Date(year, 0, 4);
+  const dayOfJan4 = (jan4.getDay() + 6) % 7; // 0=Lun..6=Dom
+  const week1Mon = new Date(year, 0, 4 - dayOfJan4);
+  const d = new Date(week1Mon);
+  d.setDate(d.getDate() + (week - 1) * 7);
+  return d;
+}
+
+// "2026-W04" intersecta con [fromStr, toStr] (YYYY-MM-DD).
+function periodInRange(periodId, fromStr, toStr){
+  const m = String(periodId).match(/^(\d{4})-W(\d{2})$/);
+  if(!m) return true; // no parseable → no filtra
+  const mon = isoWeekStart(+m[1], +m[2]);
+  const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+  const from = new Date(fromStr + "T00:00:00");
+  const to   = new Date(toStr   + "T23:59:59");
+  return mon <= to && sun >= from;
+}
+
+function initRangoSemanal(){
+  if(swRangoInited) return;
+  swRangoInited = true;
+  const d = document.getElementById("sw-rango-desde");
+  const h = document.getElementById("sw-rango-hasta");
+  if(!d || !h) return;
+  // Default: últimos 30 días.
+  const today = new Date();
+  const from  = new Date(today); from.setDate(from.getDate() - 30);
+  if(!d.value) d.value = from.toISOString().slice(0,10);
+  if(!h.value) h.value = today.toISOString().slice(0,10);
+  swRangeFrom = d.value || null;
+  swRangeTo   = h.value || null;
+}
+
+window.aplicarRangoSemanal = function(){
+  const d = document.getElementById("sw-rango-desde");
+  const h = document.getElementById("sw-rango-hasta");
+  swRangeFrom = (d && d.value) ? d.value : null;
+  swRangeTo   = (h && h.value) ? h.value : null;
+  // Si la semana activa cae fuera del rango, mover a la más reciente in-range.
+  if(swRangeFrom && swRangeTo){
+    const inRange = weeklyPeriodos.filter(p => periodInRange(p.id, swRangeFrom, swRangeTo));
+    if(inRange.length && !inRange.some(p => p.id === activeWeeklyPeriodoId)){
+      activeWeeklyPeriodoId = inRange[inRange.length - 1].id;
+    }
+  }
+  renderSemanales();
+};
+
 function renderSemanales(){
   renderWeeklyPeriodoBar();
   buildKPIsSemanales();
@@ -5115,9 +5177,22 @@ function renderSemanales(){
 
 function renderWeeklyPeriodoBar(){
   const chips = document.getElementById("sw-periodo-chips");
+  const cnt   = document.getElementById("sw-rango-count");
   if(!chips) return;
-  if(!weeklyPeriodos.length){chips.innerHTML="<span style='font-size:10px;color:var(--s3)'>Sin períodos cargados</span>";return;}
-  chips.innerHTML = weeklyPeriodos.map(p=>{
+  if(!weeklyPeriodos.length){
+    chips.innerHTML="<span style='font-size:10px;color:var(--s3)'>Sin períodos cargados</span>";
+    if(cnt) cnt.textContent="";
+    return;
+  }
+  const filtered = (swRangeFrom && swRangeTo)
+    ? weeklyPeriodos.filter(p => periodInRange(p.id, swRangeFrom, swRangeTo))
+    : weeklyPeriodos;
+  if(cnt) cnt.textContent = `${filtered.length} / ${weeklyPeriodos.length} semanas`;
+  if(!filtered.length){
+    chips.innerHTML = "<span style='font-size:10px;color:var(--s3)'>Ninguna semana en el rango</span>";
+    return;
+  }
+  chips.innerHTML = filtered.map(p=>{
     const active = p.id===activeWeeklyPeriodoId;
     const nUrg = p.entries.filter(e=>effRisk(e)==="Urgente").length;
     const urgTag = nUrg ? `<span style="background:var(--R);color:#fff;border-radius:6px;padding:0 4px;font-size:8px;margin-left:3px;display:inline-flex;align-items:center;gap:2px">${nUrg}<i data-lucide="zap" style="width:8px;height:8px"></i></span>` : "";
