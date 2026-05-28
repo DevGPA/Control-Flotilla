@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2nEf2keY2wtnEAeMbt93hZvOJNDRKAVo4Fj2WWYdSsc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-/NfGxzLA6NjtVlZ69DN71uqhxi4o2tn+hCpUtIbq63E='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2962,19 +2962,26 @@ function renderTable(){
 // ════════════════════════════════════════════════════════════
 function selUnit(uid){
   selId=selId===uid?null:uid;
+  const det=document.getElementById("det");
   if(selId){
     curTab="c";
-    document.getElementById("det").classList.add("open");
+    if(det) det.classList.remove("det-overlay"); // por si quedó del drawer semanal
+    if(det) det.classList.add("open");
     initFloatPanel();
     renderDet();
-  } else {
-    document.getElementById("det").classList.remove("open");
+  } else if(det){
+    det.classList.remove("open");
+    det.classList.remove("det-overlay");
   }
   renderTable();
 }
 function closeDet(){
   selId=null;
-  document.getElementById("det").classList.remove("open");
+  const det=document.getElementById("det");
+  if(det){
+    det.classList.remove("open");
+    det.classList.remove("det-overlay");
+  }
   renderTable();
 }
 function toggleDetCompact(){
@@ -5566,6 +5573,25 @@ function selSwUnit(swKey){
     ? `<button class="sw-btn-taller" data-action="enviarATallerDesdeInspeccion" data-arg1="${escAttr(e.uid)}" style="margin-top:12px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Enviar a Taller</button>`
     : "";
 
+  // Grid de miniaturas: clic en thumb abre el lightbox en esa posición.
+  const swKeyForThumbs = e._swKey || e.uid;
+  const photosBlock = (e.photos && e.photos.length)
+    ? `<div style="margin-top:14px">
+         <div style="font-size:10px;font-weight:700;color:var(--s2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+           <i data-lucide="camera" style="width:11px;height:11px"></i> Fotos (${e.photos.length})
+         </div>
+         <div class="sw-det-photos">${
+           e.photos.map((fname, i) => {
+             const url = weeklyImgUrl(fname);
+             const cell = url
+               ? `<img loading="lazy" src="${escAttr(url)}" alt="${escAttr(fname)}" />`
+               : `<div class="sw-det-thumb-placeholder">no disponible</div>`;
+             return `<div class="sw-det-thumb" data-action="openSwPhotoAt" data-arg1="${escAttr(swKeyForThumbs)}" data-arg2="${i}">${cell}</div>`;
+           }).join("")
+         }</div>
+       </div>`
+    : "";
+
   if(dbody) dbody.innerHTML = `
     <div style="padding:14px">
       ${photoBtn}
@@ -5587,13 +5613,33 @@ function selSwUnit(swKey){
           <div>${catPill(e.llantaRisk,"Funcional","Completar refacción","No funcional", e.llanta)}</div>
         </div>
       </div>
+      ${photosBlock}
       ${tallerBtn}
     </div>
   `;
+  det.classList.add("det-overlay");
   det.classList.add("open");
   if(window.lucide && window.lucide.createIcons) window.lucide.createIcons();
 }
 window.selSwUnit = selSwUnit;
+
+// Abre el lightbox en una foto específica (clic en miniatura del drawer).
+window.openSwPhotoAt = function(swKey, idxStr){
+  const idx = parseInt(idxStr, 10) || 0;
+  const all = getSwEntriesInRange();
+  const entry = all.find(e=>e._swKey===swKey) || all.find(e=>e.uid===swKey);
+  if(!entry || !entry.photos || !entry.photos.length) return;
+  lbImgs = entry.photos
+    .map(fname=>({ fname, label:`${entry.eco||entry.plate} · ${entry.fecha}`, url: weeklyImgUrl(fname) }))
+    .filter(item=>item.url);
+  if(!lbImgs.length){
+    window.notify("Las fotos aún no están disponibles en esta sesión. Recarga la página (Ctrl+Shift+R).","warn",6000);
+    return;
+  }
+  const targetFname = entry.photos[idx];
+  const realIdx = targetFname ? lbImgs.findIndex(it => it.fname === targetFname) : 0;
+  lbOpen(realIdx >= 0 ? realIdx : 0);
+};
 
 // ════════════════════════════════════════════════════════════
 // Enviar unidad urgente al módulo Taller desde Semanales
