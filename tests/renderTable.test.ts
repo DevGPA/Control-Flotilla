@@ -217,15 +217,13 @@ describe("renderTable", () => {
     expect(c.querySelector('[data-lucide="camera"]')).not.toBeNull();
   });
 
-  it("isUnitEnTaller true → badge TALLER + outline", () => {
+  it("isUnitEnTaller true → badge TALLER (outline removido por UX, badge basta)", () => {
     const c = setupContainer();
     renderTable(c, {
       units: [makeUnit({ uid: "u1" })],
       isUnitEnTaller: (u) => u.uid === "u1",
     });
     expect(c.querySelector(".taller-badge-row")).not.toBeNull();
-    const row = c.querySelector(".tr") as HTMLElement;
-    expect(row.style.outline).toContain("var(--B)");
   });
 
   it("obsArr.length > 1 → muestra count badge", () => {
