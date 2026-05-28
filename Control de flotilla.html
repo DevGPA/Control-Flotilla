@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ropVF1Z2SDUn3YLPwCaSh80qJxnDEUUHxZCqgEsYTqI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-S98/XpTiSi49O77yW9NPAAJ983OY6w5e47cvSSTHKPM='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -379,13 +379,14 @@ g.inflateBytes=async function(src){
   <div class="chip-row">
     <button class="chip chip-on" id="btn-all" onclick="setF('all')">Todos <span class="chip-n" id="fc_all"></span></button>
     <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
+    <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:var(--ac)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
   <div class="sw">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input id="srch" placeholder="Placa, marca, inspector…" oninput="debouncedSetSrch(this.value)" aria-label="Buscar por placa, marca o inspector"/>
+    <input id="srch" placeholder="ECO, placa, marca, inspector…" oninput="debouncedSetSrch(this.value)" aria-label="Buscar por ECO, placa, marca o inspector"/>
   </div>
   <span class="rcnt" id="rcnt"></span>
 </div>
@@ -414,13 +415,13 @@ g.inflateBytes=async function(src){
   <div id="tw" style="display:none">
     <div class="thd" id="thd">
       <div class="th th-nosort">#</div>
-      <div class="th" onclick="sortBy('plate')" id="th-plate"># Económico</div>
-      <div class="th" onclick="sortBy('brand')" id="th-brand">Unidad / Inspector</div>
-      <div class="th" onclick="sortBy('risk')" id="th-risk">Estado</div>
-      <div class="th" onclick="sortBy('findings')" id="th-findings">Hallazgos</div>
-      <div class="th" onclick="sortBy('obs')" id="th-obs"><i data-lucide="message-square" style="width:11px;height:11px;vertical-align:-2px"></i> Comentarios del responsable</div>
-      <div class="th" onclick="sortBy('tires')" id="th-tires">Llantas</div>
-      <div class="th" onclick="sortBy('km')" id="th-km">KM / Fecha</div>
+      <div class="th" onclick="sortBy('plate')" id="th-plate"># Económico <span class="th-sort" id="sort-plate">↕</span></div>
+      <div class="th" onclick="sortBy('brand')" id="th-brand">Unidad / Inspector <span class="th-sort" id="sort-brand">↕</span></div>
+      <div class="th" onclick="sortBy('risk')" id="th-risk">Estado <span class="th-sort" id="sort-risk">↕</span></div>
+      <div class="th" onclick="sortBy('findings')" id="th-findings">Hallazgos <span class="th-sort" id="sort-findings">↕</span></div>
+      <div class="th" onclick="sortBy('obs')" id="th-obs"><i data-lucide="message-square" style="width:11px;height:11px;vertical-align:-2px"></i> Comentarios del responsable <span class="th-sort" id="sort-obs">↕</span></div>
+      <div class="th" onclick="sortBy('tires')" id="th-tires">Llantas <span class="th-sort" id="sort-tires">↕</span></div>
+      <div class="th" onclick="sortBy('km')" id="th-km">KM / Fecha <span class="th-sort" id="sort-km">↕</span></div>
     </div>
     <div id="tbody"></div>
   </div>
@@ -1636,6 +1637,7 @@ const filt=()=>sortedUnits(units.filter(u=>{
   if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);return ds&&ds<=d30b;}
   if(curF==="obs"&&!u.obs)return false;
   if(curF==="Urgente"&&!_hasPending(u,"Urgente"))return false;
+  if(curF==="Revisar"&&!_hasPending(u,"Revisar"))return false;
   if(curB!=="all"&&u.branch!==curB)return false;
   if(curS){const q=curS.toLowerCase();
     return[u.plate,u.brand,u.insp,u.eco,u.branch,u.area,u.obs].some(v=>String(v||"").toLowerCase().includes(q))}
@@ -2442,17 +2444,19 @@ function buildKPIs(){
   // ── Chips de filtro: sobre las INSPECCIONES del rango (units), que es lo que
   // muestra la tabla. ──
   const t=units.length;
-  let u=0,withObs=0,nSvcRange=0;
+  let u=0,r=0,withObs=0,nSvcRange=0;
   for(const x of units){
     const dm=checklistDB[x.uid]||{};
     const pend=x.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
     if(pend.some(f=>f.lv==="Urgente")) u++;
+    if(pend.some(f=>f.lv==="Revisar")) r++;
     if(x.obs) withObs++;
     const sd=parseSvcDate(x.nextSvc);
     if(sd && sd<=d30) nSvcRange++;
   }
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
   const fc0=document.getElementById("fc0");if(fc0)fc0.textContent=u?`(${u})`:"";
+  const fcRev=document.getElementById("fc_rev");if(fcRev)fcRev.textContent=r?`(${r})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
   const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcRange?`(${nSvcRange})`:"";
   // Action buttons
@@ -3516,6 +3520,15 @@ function sortBy(col){
     const id=el.id?.replace("th-","");
     if(id===col) el.classList.add(sortDir===1?"asc":"desc");
   });
+  // Indicadores ↕/↑/↓ en cada columna ordenable.
+  const COLS=["plate","brand","risk","findings","obs","tires","km"];
+  for(const k of COLS){
+    const th=document.getElementById("th-"+k);
+    const sp=document.getElementById("sort-"+k);
+    if(!sp) continue;
+    if(k===col){ sp.textContent = sortDir===1?"↑":"↓"; th?.classList.add("th-active"); }
+    else { sp.textContent="↕"; th?.classList.remove("th-active"); }
+  }
   renderTable();
 }
 function sortedUnits(rows){

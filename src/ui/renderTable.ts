@@ -174,7 +174,7 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   const tr = document.createElement("div");
   tr.className = `tr ${riskClass}${selectedUid === u.uid ? " sel" : ""}`;
   tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
-  if (enTaller) tr.style.outline = "1.5px solid var(--B)";
+  // outline azul removido — el badge .taller-badge-row ya señala "en taller".
   if (onSelect) tr.addEventListener("click", () => onSelect(u.uid));
 
   // ── 1. Índice

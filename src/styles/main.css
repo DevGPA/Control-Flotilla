@@ -1077,17 +1077,24 @@ select {
 .th {
   position: relative;
 }
-.th.asc::after {
-  content: "↑";
-  color: var(--ac);
-  font-size: 9px;
-  margin-left: 2px;
-}
+/* Indicadores de orden ahora vienen del <span class="th-sort"> renderizado por JS.
+   Las reglas viejas .th.asc/.desc::after quedan vacías para no duplicar flecha. */
+.th.asc::after,
 .th.desc::after {
-  content: "↓";
-  color: var(--ac);
+  content: "";
+}
+.th-sort {
   font-size: 9px;
-  margin-left: 2px;
+  color: var(--s4);
+  margin-left: 3px;
+  font-family: var(--fm, monospace);
+  user-select: none;
+}
+.th.th-active {
+  color: var(--w1);
+}
+.th.th-active .th-sort {
+  color: var(--ac);
 }
 .th-nosort {
   cursor: default;
