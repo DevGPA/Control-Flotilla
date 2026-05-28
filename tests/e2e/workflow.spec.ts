@@ -184,8 +184,8 @@ test.describe("Workflow — lógica real usuario", () => {
     r.findings.push(`[WF2] Hallazgos pendientes pre-check: ${pendBefore}`);
     expect(pendBefore).toBeGreaterThan(0);
 
-    // Click primer hallazgo → marca done
-    await page.locator("#det .ck-item.ck-actionable").first().click();
+    // Click checkbox del primer hallazgo → marca done (el body abre fotos ahora).
+    await page.locator("#det .ck-item.ck-actionable .ck-checkbox").first().click();
     await page.waitForTimeout(800); // IDB persist
 
     const pendAfter = await page.locator("#det .ck-item.ck-actionable").count();

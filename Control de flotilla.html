@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-X+24XgrVe10YbyCIGqK0Bmof+pwAtG/zph/K57UrK2c='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ErSPyMV/6QMvz2t4venli61LFE3ohCnlIubDWRdhJ6M='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3201,13 +3201,15 @@ function renderChecklist(u,body){
       const isNew=prevFMap&&!prevF;
       const changed=prevFMap&&prevF&&prevF.lv!==f.lv;
       const changeStyle=(isNew||changed)?` style="box-shadow:inset 0 0 0 1.5px var(--O)"`:"";
+      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}" data-stop-propagation="1"`;
+      const bodyAttr=`data-action="openMnPhotoForFinding" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"`;
       if(done){
-        html+=`<div class="ck-item ck-done" data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"${changeStyle}><span class="ck-icon" style="color:var(--G)">✓</span><span>${escHtml(f.text)}</span></div>`;
+        html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
       } else {
         const cls=f.lv==="Urgente"?"ck-fail-u":f.lv==="Completar"?"ck-fail-c":"ck-fail-r";
         const icon=f.lv==="Urgente"?'<i data-lucide="x" style="width:11px;height:11px;vertical-align:-2px"></i>':f.lv==="Completar"?'<i data-lucide="plus" style="width:11px;height:11px;vertical-align:-2px"></i>':'<i data-lucide="alert-triangle" style="width:11px;height:11px;vertical-align:-2px"></i>';
         const col=f.lv==="Urgente"?"var(--R)":f.lv==="Completar"?"var(--B)":"var(--A)";
-        html+=`<div class="ck-item ${cls} ck-actionable" data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"${changeStyle}><span class="ck-icon" style="color:${col}">${icon}</span><span>${escHtml(f.text)}</span></div>`;
+        html+=`<div class="ck-item ${cls} ck-actionable"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:${col}">${icon}</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox" ${cbAttr} aria-label="Marcar como completado"></button></div>`;
       }
     }
     html+=`</div></div>`;
@@ -5639,6 +5641,35 @@ window.openSwPhotoAt = function(swKey, idxStr){
   const targetFname = entry.photos[idx];
   const realIdx = targetFname ? lbImgs.findIndex(it => it.fname === targetFname) : 0;
   lbOpen(realIdx >= 0 ? realIdx : 0);
+};
+
+// Tokeniza un string: minúsculas, sin diacríticos, sin stop-words triviales.
+function _ckTokens(s){
+  const STOP = new Set(["foto","fotos","de","del","la","el","y","a","con","los","las","o","u","un","una","en","al","sin","x","z"]);
+  return String(s||"")
+    .normalize("NFD").replace(/[̀-ͯ]/g,"")
+    .toLowerCase().replace(/[^a-z0-9 ]+/g," ")
+    .split(/\s+/).filter(w => w && w.length > 1 && !STOP.has(w));
+}
+
+// Clic en el cuerpo de un ck-item del drawer mensual → abre lightbox en la
+// foto cuyo `col` comparte más tokens con el texto del finding (o foto 0).
+window.openMnPhotoForFinding = function(uid, findingText){
+  const u = (window.units||[]).find(x=>x.uid===uid);
+  if(!u || !u.photos || !u.photos.length){
+    window.notify?.("Esta unidad no tiene fotos disponibles","warn",4000);
+    return;
+  }
+  lbImgs = u.photos.map(p => ({ fname: p.fname, label: p.col }));
+  const findTok = new Set(_ckTokens(findingText));
+  let bestIdx = 0, bestScore = 0;
+  u.photos.forEach((p, i) => {
+    const colTok = _ckTokens(p.col);
+    let score = 0;
+    for(const t of colTok) if(findTok.has(t)) score++;
+    if(score > bestScore){ bestScore = score; bestIdx = i; }
+  });
+  lbOpen(bestScore >= 2 ? bestIdx : 0);
 };
 
 // CRÍTICO: mover #det fuera de #main al boot. #main pasa a display:none cuando
