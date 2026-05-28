@@ -787,6 +787,65 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     });
   }
 
+  if (method === "GET" && event.queryStringParameters?.units === "1") {
+    // Read-only: lista Units del tenant y reporta total, distintos por placa y dups.
+    const client = await getDataClient();
+    const placas = new Set<string>();
+    const rows: { placa: string; sucursal?: string; marca?: string; economicoId?: string }[] = [];
+    let nextToken: string | null | undefined = undefined;
+    let pages = 0;
+    do {
+      const list: {
+        data?: {
+          placa?: string;
+          sucursal?: string | null;
+          marca?: string | null;
+          economicoId?: string | null;
+          tenantId?: string;
+        }[];
+        nextToken?: string | null;
+      } = await client.models.Unit.list({
+        filter: { tenantId: { eq: TENANT_ID } },
+        limit: 1000,
+        nextToken: nextToken ?? undefined,
+      });
+      for (const u of list.data ?? []) {
+        const p = (u.placa ?? "").trim();
+        placas.add(p);
+        rows.push({
+          placa: p,
+          sucursal: u.sucursal ?? "",
+          marca: u.marca ?? "",
+          economicoId: u.economicoId ?? "",
+        });
+      }
+      nextToken = list.nextToken;
+      pages++;
+    } while (nextToken && pages < 50);
+    const totalRows = rows.length;
+    const distinctPlacas = placas.size;
+    const dupsByPlaca = totalRows - distinctPlacas;
+    // Verificación adicional: economicoId que se repite entre placas distintas
+    // (caso real de duplicación lógica — misma unidad cargada con 2 placas).
+    const ecoCount: Record<string, string[]> = {};
+    for (const r of rows) {
+      const k = (r.economicoId || "").trim();
+      if (!k) continue;
+      (ecoCount[k] ??= []).push(r.placa);
+    }
+    const ecoDups = Object.entries(ecoCount)
+      .filter(([, ps]) => ps.length > 1)
+      .map(([eco, ps]) => ({ economicoId: eco, placas: ps }));
+    return res(200, {
+      tenantId: TENANT_ID,
+      totalRows,
+      distinctPlacas,
+      dupsByPlaca,
+      ecoDups,
+      sample: rows.slice(0, 50),
+    });
+  }
+
   if (method === "GET" && event.queryStringParameters?.backfill === "1") {
     // Backfill por lotes (ene-2026 → hoy). ?form=mensual|semanal&cursor=K&count=C
     const cursor = parseInt(event.queryStringParameters?.cursor ?? "0", 10) || 0;
