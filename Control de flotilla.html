@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ALhN5irMVQUN7iVPRjeVwme8x7nijZ7pbN5ETtOtG24='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-u9yG9W04lB/KhDaxQK2spSvQutlKqmtDEAllD1nTxr4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5646,13 +5646,20 @@ window.openSwPhotoAt = function(swKey, idxStr){
   lbOpen(realIdx >= 0 ? realIdx : 0);
 };
 
-// Tokeniza un string: minúsculas, sin diacríticos, sin stop-words triviales.
+// Tokeniza un string. Inserta espacios en boundaries camelCase ANTES de
+// bajar a lowercase, para que `fotoNivelTACODeLlantaCopilotoTrasera` se
+// tokenice como [nivel, taco, llanta, copiloto, trasera] y no como UN
+// solo token gigante.
 function _ckTokens(s){
   const STOP = new Set(["foto","fotos","de","del","la","el","y","a","con","los","las","o","u","un","una","en","al","sin","x","z"]);
   return String(s||"")
     .normalize("NFD").replace(/[̀-ͯ]/g,"")
-    .toLowerCase().replace(/[^a-z0-9 ]+/g," ")
-    .split(/\s+/).filter(w => w && w.length > 1 && !STOP.has(w));
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")        // camel→Cap: fotoNivel → foto Nivel
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")      // run mayúsculas: TACODe → TACO De
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(w => w && w.length > 1 && !STOP.has(w));
 }
 
 // Clic en el cuerpo de un ck-item del drawer mensual → abre lightbox en la
