@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-/NfGxzLA6NjtVlZ69DN71uqhxi4o2tn+hCpUtIbq63E='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-X+24XgrVe10YbyCIGqK0Bmof+pwAtG/zph/K57UrK2c='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5640,6 +5640,26 @@ window.openSwPhotoAt = function(swKey, idxStr){
   const realIdx = targetFname ? lbImgs.findIndex(it => it.fname === targetFname) : 0;
   lbOpen(realIdx >= 0 ? realIdx : 0);
 };
+
+// CRÍTICO: mover #det fuera de #main al boot. #main pasa a display:none cuando
+// se navega a Taller/Semanales/Análisis; un padre display:none oculta TODOS los
+// hijos sin importar su position:fixed. Sin este move, el drawer se renderiza
+// pero solo es visible en la vista Inspecciones.
+(function moveDetOutOfMain(){
+  function move(){
+    const det = document.getElementById("det");
+    if(!det) return;
+    const target = document.getElementById("app") || document.body;
+    if(det.parentElement && det.parentElement !== target){
+      target.appendChild(det);
+    }
+  }
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", move, { once: true });
+  } else {
+    move();
+  }
+})();
 
 // ════════════════════════════════════════════════════════════
 // Enviar unidad urgente al módulo Taller desde Semanales
