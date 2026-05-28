@@ -1077,29 +1077,6 @@ select {
 .th {
   position: relative;
 }
-/* ════ DRAWER OVERLAY (usado por el detalle semanal) ════════
-   Permite que #det flote sobre cualquier vista (no queda atrapado en #main).
-   Se agrega con classList.add("det-overlay") solo en selSwUnit; selUnit y
-   closeDet la quitan para que el mensual conserve su side-panel original. */
-#det.open.det-overlay {
-  position: fixed;
-  top: 56px;
-  right: 0;
-  bottom: 0;
-  width: min(460px, 100%);
-  z-index: 150;
-  background: var(--bg);
-  border-left: 1px solid var(--ln);
-  box-shadow: -8px 0 24px #0002;
-}
-@media (max-width: 768px) {
-  #det.open.det-overlay {
-    width: 100%;
-    top: 0;
-    box-shadow: none;
-  }
-}
-
 /* Grid de miniaturas de fotos dentro del drawer semanal */
 .sw-det-photos {
   display: grid;

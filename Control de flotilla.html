@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ErSPyMV/6QMvz2t4venli61LFE3ohCnlIubDWRdhJ6M='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ALhN5irMVQUN7iVPRjeVwme8x7nijZ7pbN5ETtOtG24='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5225,28 +5225,29 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// Etiqueta del rango activo para subtítulos ("N semanas · DD/MM → DD/MM").
+// Etiqueta del rango activo para subtítulos ("DD/MM" o "DD/MM → DD/MM").
 function swRangoLabel(){
   if(!swRangeFrom || !swRangeTo){
-    return weeklyPeriodos.length
-      ? `${weeklyPeriodos.length} semana${weeklyPeriodos.length!==1?"s":""}`
-      : "Sin períodos";
+    return weeklyPeriodos.length ? "Todo el histórico" : "Sin períodos";
   }
-  const fmt = s => { const [y,m,d] = String(s).split("-"); return `${d}/${m}`; };
-  const n = weeklyPeriodos.filter(p => periodInRange(p.id, swRangeFrom, swRangeTo)).length;
-  return `${n} semana${n!==1?"s":""} · ${fmt(swRangeFrom)} → ${fmt(swRangeTo)}`;
+  const fmt = s => { const parts = String(s).split("-"); return `${parts[2]}/${parts[1]}`; };
+  return swRangeFrom === swRangeTo
+    ? fmt(swRangeFrom)
+    : `${fmt(swRangeFrom)} → ${fmt(swRangeTo)}`;
 }
 
-// Devuelve TODAS las entries dentro del rango (estilo mensual). Cada entry
-// queda taggeada con _periodo (label) y _swKey (uid+periodoId) para evitar
-// colisiones cuando una unidad aparece en varias semanas.
+// Devuelve TODAS las entries cuya FECHA cae en [from, to]. Filtrado a nivel
+// entry (no período): "28/05 → 28/05" devuelve solo inspecciones del 28/05,
+// no toda la Semana 22. Cada entry queda taggeada con _periodo / _periodoId /
+// _swKey para evitar colisiones cuando una unidad aparece en varias semanas.
 function getSwEntriesInRange(){
-  const inRange = (swRangeFrom && swRangeTo)
-    ? weeklyPeriodos.filter(p => periodInRange(p.id, swRangeFrom, swRangeTo))
-    : weeklyPeriodos;
   const out = [];
-  for(const p of inRange){
+  for(const p of weeklyPeriodos){
     for(const e of p.entries){
+      if(swRangeFrom && swRangeTo){
+        const f = String(e.fecha||"").slice(0,10);  // "2026-05-28 07:25" → "2026-05-28"
+        if(!f || f < swRangeFrom || f > swRangeTo) continue;
+      }
       out.push({ ...e, _periodo: p.label, _periodoId: p.id, _swKey: `${e.uid}::${p.id}` });
     }
   }
@@ -5619,7 +5620,9 @@ function selSwUnit(swKey){
       ${tallerBtn}
     </div>
   `;
-  det.classList.add("det-overlay");
+  // Mismo float panel del mensual: drag por .dtop + resize handles + defaultPos
+  // top-right. Idempotente — initFloatPanel chequea dataset.fpInit.
+  if(window.initFloatPanel) window.initFloatPanel();
   det.classList.add("open");
   if(window.lucide && window.lucide.createIcons) window.lucide.createIcons();
 }
