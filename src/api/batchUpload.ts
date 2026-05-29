@@ -8,13 +8,7 @@
 
 import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
-import {
-  upsertUnit,
-  upsertChecklist,
-  upsertSemanal,
-  upsertTaller,
-  type UnitInput,
-} from "./client";
+import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
 interface LegacyUnit {
@@ -74,10 +68,7 @@ function pickNum(row: RowLite, ...keys: string[]): number | undefined {
  * Si zip.report.kind === "mensual" → crea Unit + Checklist.
  * Si zip.report.kind === "semanal" → crea Semanal (sin Unit nuevo, asume existe).
  */
-export async function uploadZipToCloud(
-  zip: LoadedZip,
-  tenantId: string,
-): Promise<BatchResult> {
+export async function uploadZipToCloud(zip: LoadedZip, tenantId: string): Promise<BatchResult> {
   const start = Date.now();
   const result: BatchResult = {
     units: 0,
@@ -110,18 +101,20 @@ export async function uploadZipToCloud(
 
     try {
       if (kind === "mensual") {
-        // 1. Unit (catálogo). Idempotente por (tenantId, placa).
-        const rawEcoId = pickStr(row, "# Economico - id");
-        const ecoIdRaw = rawEcoId && rawEcoId !== placa ? rawEcoId : undefined;
+        // 1. Unit (catálogo). Idempotente por (tenantId, economicoId).
+        const realPlaca =
+          pickStr(row, "# Economico - PLACAS", "No. de unidad / ECO", "Número de unidad") || placa;
+        const economicoId = pickStr(row, "# Economico - id") || realPlaca; // LLAVE
         const unit: UnitInput = {
           tenantId,
-          placa,
-          economicoId: ecoIdRaw,
+          economicoId,
+          placa: realPlaca,
           marca: pickStr(row, "Marca", "# Economico - SUBMARCA") || undefined,
           modelo: pickStr(row, "Modelo") || undefined,
           anio: pickNum(row, "Año", "Anio"),
           sucursal:
-            pickStr(row, "Sucursal", "Sucursal / Area", "Area", "# Economico - SUCURSAL") || undefined,
+            pickStr(row, "Sucursal", "Sucursal / Area", "Area", "# Economico - SUCURSAL") ||
+            undefined,
           vin: pickStr(row, "VIN", "NIV") || undefined,
         };
         await upsertUnit(unit);
@@ -142,7 +135,7 @@ export async function uploadZipToCloud(
         );
         await upsertChecklist({
           tenantId,
-          unitUid: placa,
+          unitUid: economicoId,
           fecha,
           tipoInspeccion: "mensual",
           resultados: resultadosClean,
@@ -153,16 +146,18 @@ export async function uploadZipToCloud(
         // Semanal: 1 por (periodoId, unitUid). periodoId se infiere del filename
         // del ZIP — convención: "ROF-Semanal-2026-W21.zip" → "2026-W21".
         const periodoId =
-          zip.filename
-            .replace(/\.zip$/i, "")
-            .replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || zip.filename;
+          zip.filename.replace(/\.zip$/i, "").replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") ||
+          zip.filename;
         const sucursal = pickStr(row, "Sucursal", "Area") || "—";
-        const datosClean = JSON.parse(JSON.stringify(row));
+        const realPlaca =
+          pickStr(row, "# Economico - PLACAS", "No. de unidad / ECO", "Número de unidad") || placa;
+        const economicoId = pickStr(row, "# Economico - id") || realPlaca; // LLAVE
+        const datosClean = JSON.parse(JSON.stringify({ ...row, plate: realPlaca, economicoId }));
         await upsertSemanal({
           tenantId,
           periodoId,
           sucursal,
-          unitUid: placa,
+          unitUid: economicoId,
           datos: datosClean,
         });
         result.semanal++;
@@ -204,20 +199,19 @@ export async function uploadUnitsToCloud(
   };
 
   for (const u of units) {
-    const placa = String(u.plate || u.eco || u.uid || "").trim();
-    if (!placa) {
+    // Identidad = económico (u.eco / u.uid ya es económico tras el re-key).
+    const economicoId = String(u.eco || u.uid || u.plate || "").trim();
+    const realPlaca = String(u.plate || u.eco || u.uid || "").trim();
+    if (!economicoId) {
       result.skipped++;
       continue;
     }
     try {
       if (kind === "mensual") {
-        // u.eco viene del Excel "# Economico - id" (numérico interno tipo "78").
-        // Solo lo guardamos si difiere de placa (algunos Excel duplican valor).
-        const ecoId = u.eco && u.eco !== placa ? u.eco : undefined;
         await upsertUnit({
           tenantId,
-          placa,
-          economicoId: ecoId,
+          economicoId,
+          placa: realPlaca,
           marca: u.brand || undefined,
           sucursal: u.branch || undefined,
         });
@@ -243,7 +237,7 @@ export async function uploadUnitsToCloud(
         );
         await upsertChecklist({
           tenantId,
-          unitUid: placa,
+          unitUid: economicoId,
           fecha,
           tipoInspeccion: "mensual",
           resultados: resultadosClean,
@@ -253,11 +247,11 @@ export async function uploadUnitsToCloud(
       } else {
         // semanal: derivar periodoId del filename.
         const periodoId =
-          fname
-            .replace(/\.(zip|xlsx?)$/i, "")
-            .replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || fname;
+          fname.replace(/\.(zip|xlsx?)$/i, "").replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || fname;
         const datosClean = JSON.parse(
           JSON.stringify({
+            economicoId,
+            plate: realPlaca,
             findings: u.F ?? [],
             risk: u.risk ?? "OK",
             obs: u.obs ?? "",
@@ -268,13 +262,13 @@ export async function uploadUnitsToCloud(
           tenantId,
           periodoId,
           sucursal: u.branch || "—",
-          unitUid: placa,
+          unitUid: economicoId,
           datos: datosClean,
         });
         result.semanal++;
       }
     } catch (e) {
-      result.errors.push({ placa, error: (e as Error).message });
+      result.errors.push({ placa: economicoId, error: (e as Error).message });
     }
   }
 
@@ -417,7 +411,8 @@ export async function uploadTallerToCloud(
   };
 
   for (const e of entries) {
-    const unitUid = e.plate || e.eco || e.unitKey || e.id;
+    // Identidad = económico (eco). Fallback a unitKey/plate/id para entries viejos.
+    const unitUid = e.eco || e.unitKey || e.plate || e.id;
     const fechaEntrada = e.fentrada || e.freporte || e.updatedAt || new Date().toISOString();
     if (!unitUid) {
       result.skipped++;

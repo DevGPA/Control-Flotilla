@@ -214,7 +214,8 @@ export function setupCloud(): void {
 
   window.__cloudDeleteTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const unitUid = entry.plate || entry.eco || entry.unitKey || entry.id;
+    // unitUid = económico (consistente con upsertTaller tras el re-key).
+    const unitUid = entry.eco || entry.unitKey || entry.plate || entry.id;
     const fechaEntrada = entry.fentrada || entry.freporte || entry.updatedAt;
     if (!unitUid || !fechaEntrada) {
       throw new Error("deleteTaller: faltan unitUid o fechaEntrada");

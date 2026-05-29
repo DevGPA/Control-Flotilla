@@ -109,11 +109,11 @@ function mergeUnitWithChecklist(
   const r = parseResultados(checklist?.resultados);
   const risk = (r.risk ?? r.max ?? "OK") as RiskLevel;
   const findings = (Array.isArray(r.findings) ? r.findings : []) as Finding[];
-  // economicoId es el ID interno GPA (numérico tipo "78"). Fallback a placa si
-  // el upload no lo guardó (rows viejas) — preserva render legacy `u.eco || u.plate`.
+  // economicoId es la LLAVE de identidad (numérico tipo "78"). Fallback a placa
+  // si el upload no lo guardó (rows viejas).
   const ecoId = unit.economicoId || unit.placa;
   return {
-    uid: unit.placa,
+    uid: ecoId, // identidad = económico (estable aunque cambie placa)
     eco: ecoId,
     plate: unit.placa,
     brand: unit.marca ?? undefined,
@@ -268,13 +268,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       const d = (s.datos ?? {}) as Record<string, unknown>;
       const datos =
         typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
-      // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
-      // placa si upload viejo no lo guardó.
+      // s.unitUid ahora ES el económico (la llave). plate real viene de datos.plate
+      // (el webhook lo guarda); fallback a unitUid para rows viejas.
       const ecoId = String(datos.economicoId ?? "").trim() || s.unitUid;
       const entry: WeeklyEntry = {
         uid: s.unitUid,
         eco: ecoId,
-        plate: s.unitUid,
+        plate: String(datos.plate ?? "") || s.unitUid,
         brand: String(datos.brand ?? ""),
         branch: s.sucursal,
         km: (datos.km as number | string) ?? "",
@@ -318,15 +318,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Cada checklist es una FILA de inspección con uid sintético único
   // (`placa__fecha`) para que la misma unidad pueda aparecer varias veces sin
   // colisionar en selección/detalle. Preserva eco/plate/fecha reales.
-  const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
+  // Catálogo indexado por económico (= unitUid de los checklist). Fallback a placa
+  // para rows viejas sin economicoId.
+  const unitByEco = new Map(units.map((u) => [u.economicoId || u.placa, u] as const));
   const inspections: Unit[] = [];
   for (const c of checklists) {
     const fecha = String(c.fecha ?? "");
     if (!monthOf(fecha)) continue; // requiere fecha parseable
     const u =
-      unitByPlaca.get(c.unitUid) ?? ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
+      unitByEco.get(c.unitUid) ??
+      ({ tenantId, economicoId: c.unitUid, placa: c.unitUid } as Schema["Unit"]["type"]);
     const row = mergeUnitWithChecklist(u, c);
-    row.uid = `${row.plate ?? c.unitUid}__${fecha}`; // único por inspección
+    row.uid = `${row.eco ?? c.unitUid}__${fecha}`; // único por inspección (económico+fecha)
     inspections.push(row);
   }
   // Desc por fecha (más reciente primero).
@@ -339,7 +342,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     const e = latestByUnit.get(c.unitUid);
     if (!e || (c.fecha ?? "") > (e.fecha ?? "")) latestByUnit.set(c.unitUid, c);
   }
-  window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
+  window.__fleetUnits = units.map((u) =>
+    mergeUnitWithChecklist(u, latestByUnit.get(u.economicoId || u.placa)),
+  );
+  // Re-key one-time de datos locales (marcas ✓ / notas) placa→económico.
+  (window as unknown as { __migrateLocalKeys?: () => void }).__migrateLocalKeys?.();
 
   let legacyUnits: Unit[];
   if (inspections.length > 0) {
@@ -377,7 +384,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         checklistByUnit.set(c.unitUid, c);
       }
     }
-    legacyUnits = units.map((u) => mergeUnitWithChecklist(u, checklistByUnit.get(u.placa)));
+    legacyUnits = units.map((u) =>
+      mergeUnitWithChecklist(u, checklistByUnit.get(u.economicoId || u.placa)),
+    );
     window.units = legacyUnits;
   }
 

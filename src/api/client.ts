@@ -5,7 +5,7 @@
 // ZIP no crea duplicados, sobrescribe.
 //
 // Composite identifiers (por modelo) están definidos en amplify/data/resource.ts:
-// - Unit:       (tenantId, placa)
+// - Unit:       (tenantId, economicoId)  [placa es dato mutable]
 // - Taller:     (tenantId, unitUid, fechaEntrada)
 // - Nota:       (tenantId, unitUid, timestamp)
 // - Checklist:  (tenantId, unitUid, fecha)
@@ -64,8 +64,8 @@ async function listAll<T>(
 
 export type UnitInput = {
   tenantId: string;
-  placa: string;
-  economicoId?: string;
+  economicoId: string; // LLAVE de identidad (antes era placa)
+  placa: string; // dato/display
   marca?: string;
   modelo?: string;
   anio?: number;
