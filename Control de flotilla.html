@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-fUu0vlyH9Zs40DdzrPVI14/N4BDvNbj5ZTWC1YvRuXQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-wqE285Tn06I23Qn+XpRBLmB3HiIOl/Gj1/YxWS4kqDs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5202,6 +5202,11 @@ const _FLEET_MODAL_META = {
   svc:       { ttl:"Servicio vencido o próximo",     col:"Servicio" },
   taller:    { ttl:"Unidades en taller",             col:"Estado" },
 };
+// Fuente del catálogo: flota cloud si está, si no las units cargadas (offline/xlsx).
+// Mismo fallback que buildKPIs/tlAcSearch — sin esto el modal sale vacío sin cloud.
+function _fleetSource(){
+  return (window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []);
+}
 function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
@@ -5235,7 +5240,7 @@ window.openFleetModal = function(kind){
   const colHdr = document.getElementById("fleet-mod-coldet");
   if(colHdr) colHdr.textContent = meta.col;
   // Poblar sucursales solo de las unidades del kind activo.
-  const inKind = (window.__fleetUnits || []).filter(_fleetKindFilter);
+  const inKind = _fleetSource().filter(_fleetKindFilter);
   const sel = document.getElementById("fleet-mod-suc");
   if(sel){
     const sucs = [...new Set(inKind.map(u => u.branch).filter(Boolean))].sort();
@@ -5253,7 +5258,7 @@ window.closeFleetModal = function(){
   if(m) m.style.display = "none";
 };
 window.renderFleetModalRows = function(){
-  const base = (window.__fleetUnits || []).filter(_fleetKindFilter);
+  const base = _fleetSource().filter(_fleetKindFilter);
   const q = (document.getElementById("fleet-mod-srch")?.value || "").trim().toLowerCase();
   const suc = document.getElementById("fleet-mod-suc")?.value || "all";
   const rows = base.filter(u => {
