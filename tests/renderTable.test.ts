@@ -301,5 +301,5 @@ describe("renderTable", () => {
     const units = Array.from({ length: 300 }, (_, i) => makeUnit({ uid: `u${i}` }));
     renderTable(c, { units, virtualize: false });
     expect(c.querySelectorAll(".tr")).toHaveLength(300);
-  });
+  }, 20000); // 300 filas clásicas tarda ~8s bajo carga del suite — sube el límite (era 5s)
 });
