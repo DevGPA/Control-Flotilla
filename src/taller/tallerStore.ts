@@ -53,14 +53,11 @@ function norm(s?: string): string {
 export function matchesSearch(entry: TallerEntry, query: string): boolean {
   if (!query) return true;
   const q = norm(query);
-  return [
-    entry.eco,
-    entry.plate,
-    entry.tecnico,
-    entry.comentario,
-    entry.brand,
-    entry.refacciones,
-  ].some((f) => norm(f).includes(q));
+  // Query solo dígitos → económico EXACTO (evita que "10" matchee "100"/placas).
+  if (/^\d+$/.test(q)) return norm(entry.eco) === q;
+  return [entry.plate, entry.tecnico, entry.comentario, entry.brand, entry.refacciones].some((f) =>
+    norm(f).includes(q),
+  );
 }
 
 /** Aplica filtros acumulativos (sucursal/area/tipo/search). */

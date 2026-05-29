@@ -138,12 +138,10 @@ export function applyWeeklyFilters(entries: WeeklyEntry[], f: WeeklyFilter = {})
   }
   if (f.search) {
     const q = norm(f.search);
-    out = out.filter(
-      (e) =>
-        norm(e.eco ?? "").includes(q) ||
-        norm(e.plate ?? "").includes(q) ||
-        norm(e.branch ?? "").includes(q),
-    );
+    // Query solo dígitos → económico EXACTO (evita falsos positivos por substring).
+    out = /^\d+$/.test(q)
+      ? out.filter((e) => norm(e.eco ?? "") === q)
+      : out.filter((e) => norm(e.plate ?? "").includes(q) || norm(e.branch ?? "").includes(q));
   }
   return out;
 }

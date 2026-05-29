@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-d8vWj0WIEYOwCng3x2kqwKjTuZ9zLGt8KT2v37MZwuY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-nzIuwOM2Oki3jxLQEBO0N6Dyk1WZBUjqkyu7t8pf3Bs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1632,6 +1632,15 @@ const isUnitEnTaller = u =>
   unitsEnTaller.has(String(u.eco||"").toLowerCase().trim()) ||
   unitsEnTaller.has(String(u.plate||"").toLowerCase().trim());
 
+// Buscador: query SOLO dígitos → económico EXACTO (evita que "10" matchee "100",
+// placas, etc.). Query con texto → substring en los campos de texto.
+function _qMatch(q, ecoVal, textFields){
+  q = String(q||"").trim().toLowerCase();
+  if(!q) return true;
+  if(/^\d+$/.test(q)) return String(ecoVal||"").trim().toLowerCase() === q;
+  return (textFields||[]).some(f => String(f||"").toLowerCase().includes(q));
+}
+
 // Modelo C-mod: filtros por nivel matchean unidades con AL MENOS un pending
 // del nivel (descontando atendidos via checklistDB). Overlap permitido entre
 // chips Urgente/Revisar/Completar. Chip "OK" = unidades sin pending.
@@ -1646,8 +1655,7 @@ const filt=()=>sortedUnits(units.filter(u=>{
   if(curF==="Urgente"&&!_hasPending(u,"Urgente"))return false;
   if(curF==="Revisar"&&!_hasPending(u,"Revisar"))return false;
   if(curB!=="all"&&u.branch!==curB)return false;
-  if(curS){const q=curS.toLowerCase();
-    return[u.plate,u.brand,u.insp,u.eco,u.branch,u.area,u.obs].some(v=>String(v||"").toLowerCase().includes(q))}
+  if(curS) return _qMatch(curS, u.eco, [u.plate,u.brand,u.insp,u.branch,u.area,u.obs]);
   return true;
 }));
 window.filt=filt;
@@ -5402,10 +5410,7 @@ function renderTableSemanales(){
     // Filtro por sucursal
     if(filtSuc!=="all" && e.branch!==filtSuc) return false;
     // Búsqueda de texto
-    if(swCurS){
-      const q=swCurS.toLowerCase();
-      return [e.eco,e.plate,e.brand,e.branch,e.responsable].some(v=>String(v||"").toLowerCase().includes(q));
-    }
+    if(swCurS) return _qMatch(swCurS, e.eco, [e.plate,e.brand,e.branch,e.responsable]);
     return true;
   });
 
@@ -5679,7 +5684,9 @@ window.openMnPhotoForFinding = function(uid, findingText){
     for(const t of colTok) if(findTok.has(t)) score++;
     if(score > bestScore){ bestScore = score; bestIdx = i; }
   });
-  lbOpen(bestScore >= 2 ? bestIdx : 0);
+  const matched = bestScore >= 2;
+  lbOpen(matched ? bestIdx : 0);
+  if(!matched) window.notify?.("No se identificó foto específica de este hallazgo — mostrando las disponibles","info",3500);
 };
 
 // CRÍTICO: mover #det fuera de #main al boot. #main pasa a display:none cuando
@@ -5825,10 +5832,7 @@ function renderActivas(){
       if(filtSuc!=="all"&&e.sucursal!==filtSuc) return false;
       if(filtArea!=="all"&&e.area!==filtArea) return false;
       if(filtTipo!=="all"&&e.tipo!==filtTipo) return false;
-      if(filtQ){
-        const ec=(e.eco||"").toLowerCase(),pl=(e.plate||"").toLowerCase(),tec=(e.tecnico||"").toLowerCase(),br=(e.brand||"").toLowerCase();
-        if(!ec.includes(filtQ)&&!pl.includes(filtQ)&&!tec.includes(filtQ)&&!br.includes(filtQ)) return false;
-      }
+      if(filtQ && !_qMatch(filtQ, e.eco, [e.plate,e.tecnico,e.brand])) return false;
       return true;
     })
     .sort((a,b)=>{
@@ -6093,10 +6097,7 @@ function renderHistorial(){
     .filter(u=>{
       const lc=u.latestClosed;
       if(filtSuc!=="all"&&lc.sucursal!==filtSuc) return false;
-      if(q){
-        const eco=(lc.eco||"").toLowerCase(), plate=(lc.plate||"").toLowerCase(), brand=(lc.brand||"").toLowerCase();
-        if(!eco.includes(q)&&!plate.includes(q)&&!brand.includes(q)) return false;
-      }
+      if(q && !_qMatch(q, lc.eco, [lc.plate,lc.brand])) return false;
       return true;
     })
     .sort((a,b)=>{
@@ -6694,19 +6695,20 @@ function tlAcSearch(val){
   const q = val.trim().toLowerCase();
   if(!q){ drop.style.display="none"; return; }
 
-  // 1. Buscar en flota principal (units array del Excel cargado)
-  const fromFlota = units.filter(u=>
-    (u.eco||"").toLowerCase().includes(q)||(u.plate||"").toLowerCase().includes(q)
-  ).map(u=>({eco:u.eco||"", plate:u.plate||"", brand:u.brand||"", sucursal:u.branch||"", area:u.area||"", src:"Flota"}));
+  // 1. Buscar en el CATÁLOGO COMPLETO de flota (__fleetUnits = todas las unidades,
+  //    independiente del rango de fechas; `units` solo trae las inspecciones del rango).
+  const catalogo = (window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : units;
+  const fromFlota = catalogo.filter(u=>_qMatch(q, u.eco, [u.plate]))
+    .map(u=>({eco:u.eco||"", plate:u.plate||"", brand:u.brand||"", sucursal:u.branch||"", area:u.area||"", src:"Flota"}));
 
   // 2. Buscar en historial de taller (unidades que ya pasaron por taller)
   const knownEcos = new Set(fromFlota.map(u=>u.eco.toLowerCase()));
   const seenTaller = new Set();
   const fromTaller = [];
   tallerEntries.forEach(e=>{
-    const ecoL=(e.eco||"").toLowerCase(), plateL=(e.plate||"").toLowerCase();
+    const ecoL=(e.eco||"").toLowerCase();
     const k = e.eco||e.plate;
-    if((ecoL.includes(q)||plateL.includes(q)) && !knownEcos.has(ecoL) && !seenTaller.has(k)){
+    if(_qMatch(q, e.eco, [e.plate]) && !knownEcos.has(ecoL) && !seenTaller.has(k)){
       seenTaller.add(k);
       fromTaller.push({eco:e.eco||"", plate:e.plate||"", brand:e.brand||"", sucursal:e.sucursal||"", area:e.area||"", src:"Historial"});
     }

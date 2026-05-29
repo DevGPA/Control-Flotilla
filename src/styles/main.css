@@ -2675,19 +2675,7 @@ select {
   filter: brightness(1.05);
   box-shadow: 0 0 0 2px var(--G) !important;
 }
-.ck-actionable::after {
-  content: "☐";
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  font-size: 11px;
-  color: var(--s3);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.ck-actionable:hover::after {
-  opacity: 1;
-}
+/* (checkbox fantasma ::after removido — el <button class="ck-checkbox"> real es el único) */
 .ck-done {
   background: rgba(45, 212, 160, 0.1);
   color: var(--s2);
