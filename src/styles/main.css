@@ -1985,6 +1985,59 @@ select {
   border-radius: var(--r3);
   object-fit: contain;
   box-shadow: 0 0 80px rgba(0, 0, 0, 0.9);
+  /* Zoom + arrastre. transform-origin centro; image-rendering auto = nítido
+     re-muestreado desde la resolución nativa (fotos originales de MoreApp). */
+  transform-origin: center center;
+  transition: transform 0.12s ease;
+  touch-action: none; /* permite gestionar pinch/drag por JS sin scroll del navegador */
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+#lbimg.lb-dragging {
+  transition: none; /* arrastre 1:1, sin lag */
+  cursor: grabbing;
+}
+/* Controles de zoom */
+#lb-zoom {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  background: rgba(20, 26, 36, 0.9);
+  border: 1px solid var(--ln);
+  border-radius: 10px;
+  padding: 6px 8px;
+  z-index: 1001;
+}
+#lb-zoom button {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--ln);
+  border-radius: 7px;
+  background: var(--bg2);
+  color: var(--w1);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#lb-zoom button:hover {
+  background: var(--bg3);
+  border-color: var(--ac);
+}
+#lb-zoom .lbz-lvl {
+  min-width: 46px;
+  color: var(--s1);
+  font-weight: 600;
+  cursor: default;
+  background: none;
+  border: none;
 }
 #lblabel {
   margin-top: 14px;

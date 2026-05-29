@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-UEbMnk0FsSuTEE2SVy1NUmJzolA7KRp/H54f8XWic6w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ABMgaWp3BTN/QGBx5mxmuQd8UffnwISvRMM2Sa7CCYE='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -455,6 +455,12 @@ g.inflateBytes=async function(src){
     <button class="lnbtn" onclick="lbNav(1)">Siguiente →</button>
   </div>
   <div id="lbctr"></div>
+  <div id="lb-zoom">
+    <button type="button" onclick="lbZoomBtn(-1)" title="Alejar" aria-label="Alejar">−</button>
+    <button type="button" class="lbz-lvl" id="lbz-lvl" onclick="lbZoomReset()" title="Restablecer">100%</button>
+    <button type="button" onclick="lbZoomBtn(1)" title="Acercar" aria-label="Acercar">+</button>
+    <button type="button" onclick="lbZoomReset()" title="Ajustar a pantalla" aria-label="Ajustar">⤢</button>
+  </div>
 </div>
 
 
@@ -3514,16 +3520,80 @@ function lbUpdate(){
   document.getElementById("lbimg").src=item.url || "";
   document.getElementById("lblabel").textContent=item.label;
   document.getElementById("lbctr").textContent=`${lbIdx+1} de ${lbImgs.length}`;
+  lbZoomReset(); // cada foto arranca a 100% (ajustada)
 }
 function lbNav(d){lbIdx=(lbIdx+d+lbImgs.length)%lbImgs.length;lbUpdate()}
-function lbClose(){document.getElementById("lb").classList.remove("open")}
-function lbBg(e){if(e.target===document.getElementById("lb"))lbClose()}
+function lbClose(){document.getElementById("lb").classList.remove("open");lbZoomReset()}
+function lbBg(e){if(_lbDragged){_lbDragged=false;return}if(e.target===document.getElementById("lb"))lbClose()}
 document.addEventListener("keydown",e=>{
   if(!document.getElementById("lb").classList.contains("open"))return;
   if(e.key==="ArrowRight"||e.key==="ArrowDown")lbNav(1);
   else if(e.key==="ArrowLeft"||e.key==="ArrowUp")lbNav(-1);
   else if(e.key==="Escape")lbClose();
+  else if(e.key==="+"||e.key==="=")lbZoomBtn(1);
+  else if(e.key==="-"||e.key==="_")lbZoomBtn(-1);
+  else if(e.key==="0")lbZoomReset();
 });
+
+// ── Zoom + arrastre del visor de fotos ──
+// Escala con CSS transform sobre la <img> full-res (originales de MoreApp en S3):
+// el navegador re-muestrea desde la resolución nativa → más detalle real, sin perder
+// calidad hasta el límite de la foto. No usa thumbnails ni background-image.
+const LBZ_MIN=1, LBZ_MAX=6, LBZ_STEP=1.25;
+let _lbScale=1,_lbTx=0,_lbTy=0,_lbDragged=false;
+const _lbPtrs=new Map(); // pointerId → {x,y} para pinch/drag
+let _lbPinchBase=0, _lbPinchScale0=1;
+function _lbImg(){return document.getElementById("lbimg")}
+function _lbClamp(s){return Math.min(LBZ_MAX,Math.max(LBZ_MIN,s))}
+function _lbApply(){
+  const img=_lbImg();if(!img)return;
+  if(_lbScale<=1){_lbTx=0;_lbTy=0}
+  img.style.transform=`translate(${_lbTx}px,${_lbTy}px) scale(${_lbScale})`;
+  img.style.cursor=_lbScale>1?"grab":"default";
+  const lvl=document.getElementById("lbz-lvl");
+  if(lvl)lvl.textContent=Math.round(_lbScale*100)+"%";
+}
+function lbZoomReset(){_lbScale=1;_lbTx=0;_lbTy=0;_lbApply()}
+// Zoom centrado en (cx,cy) viewport — mantiene el punto bajo el cursor estable.
+function _lbZoomAt(target,cx,cy){
+  const img=_lbImg();if(!img)return;
+  const rect=img.getBoundingClientRect();
+  const prev=_lbScale;_lbScale=_lbClamp(target);
+  if(_lbScale===prev)return;
+  const rx=(cx-rect.left)/rect.width-0.5, ry=(cy-rect.top)/rect.height-0.5;
+  const baseW=rect.width/prev, baseH=rect.height/prev;
+  _lbTx-=baseW*(_lbScale-prev)*rx;
+  _lbTy-=baseH*(_lbScale-prev)*ry;
+  _lbApply();
+}
+function lbZoomBtn(dir){
+  const img=_lbImg();if(!img)return;
+  const r=img.getBoundingClientRect();
+  _lbZoomAt(dir>0?_lbScale*LBZ_STEP:_lbScale/LBZ_STEP, r.left+r.width/2, r.top+r.height/2);
+}
+function _lbWire(){
+  const img=_lbImg();if(!img||img._lbWired)return;img._lbWired=true;
+  img.addEventListener("wheel",e=>{e.preventDefault();_lbZoomAt(e.deltaY<0?_lbScale*LBZ_STEP:_lbScale/LBZ_STEP,e.clientX,e.clientY)},{passive:false});
+  img.addEventListener("dblclick",e=>{e.preventDefault();if(_lbScale>1)lbZoomReset();else _lbZoomAt(2.5,e.clientX,e.clientY)});
+  img.addEventListener("pointerdown",e=>{img.setPointerCapture(e.pointerId);_lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});_lbDragged=false;if(_lbPtrs.size===2){const p=[..._lbPtrs.values()];_lbPinchBase=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1;_lbPinchScale0=_lbScale}});
+  img.addEventListener("pointermove",e=>{
+    const prev=_lbPtrs.get(e.pointerId);if(!prev)return;
+    _lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(_lbPtrs.size===2){ // pinch
+      const p=[..._lbPtrs.values()];
+      const dist=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1;
+      _lbZoomAt(_lbPinchScale0*(dist/_lbPinchBase),(p[0].x+p[1].x)/2,(p[0].y+p[1].y)/2);
+      _lbDragged=true;
+    } else if(_lbScale>1){ // arrastre
+      _lbTx+=e.clientX-prev.x;_lbTy+=e.clientY-prev.y;_lbDragged=true;
+      img.classList.add("lb-dragging");_lbApply();
+    }
+  });
+  const up=e=>{_lbPtrs.delete(e.pointerId);img.classList.remove("lb-dragging");if(_lbPtrs.size<2)_lbPinchBase=0};
+  img.addEventListener("pointerup",up);img.addEventListener("pointercancel",up);
+}
+document.addEventListener("DOMContentLoaded",_lbWire);
+_lbWire();
 
 // ════════════════════════════════════════════════════════════
 // FILTERS
