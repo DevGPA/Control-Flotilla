@@ -141,7 +141,12 @@ export function applyWeeklyFilters(entries: WeeklyEntry[], f: WeeklyFilter = {})
     // Query solo dígitos → económico EXACTO (evita falsos positivos por substring).
     out = /^\d+$/.test(q)
       ? out.filter((e) => norm(e.eco ?? "") === q)
-      : out.filter((e) => norm(e.plate ?? "").includes(q) || norm(e.branch ?? "").includes(q));
+      : out.filter(
+          (e) =>
+            norm(e.eco ?? "").includes(q) ||
+            norm(e.plate ?? "").includes(q) ||
+            norm(e.branch ?? "").includes(q),
+        );
   }
   return out;
 }
