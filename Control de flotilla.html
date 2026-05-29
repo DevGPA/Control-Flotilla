@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-u9yG9W04lB/KhDaxQK2spSvQutlKqmtDEAllD1nTxr4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-d8vWj0WIEYOwCng3x2kqwKjTuZ9zLGt8KT2v37MZwuY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -6126,8 +6126,11 @@ function renderHistorial(){
     const rankHtml = top5.map(u=>{
       const lc=u.latestClosed;
       const pct = Math.round((u.totalGasto/maxGasto)*100);
+      // Económico real desde el catálogo por placa (e.eco de taller puede ser la placa).
+      const _uRank = window.units?.find(x=>x.plate&&lc.plate&&x.plate===lc.plate);
+      const _ecoRank = _uRank?.eco || lc.eco || "—";
       return `<div class="hist-rank-item">
-        <span class="hist-rank-eco">${escHtml(lc.eco||"—")}</span>
+        <span class="hist-rank-eco">${escHtml(_ecoRank)}</span>
         <span class="hist-rank-amt">${fmtMXN(u.totalGasto)}</span>
         <div class="hist-rank-track">
           <div class="hist-rank-bar" style="width:${pct}%"></div>
@@ -6520,9 +6523,11 @@ function renderHistorialModal(){
     ? allEntries
     : allEntries.filter(e=>e.tipo===_histFilterTipo);
 
-  // Header: identidad de la unidad
+  // Header: identidad de la unidad. Económico real desde catálogo por placa.
+  const _uExp = window.units?.find(x=>x.plate&&first.plate&&x.plate===first.plate);
+  const _ecoExp = _uExp?.eco || first.eco || "—";
   document.getElementById("hist-ttl").innerHTML =
-    `<div style="font-size:14px;font-weight:700;color:var(--w1)">Expediente — Unidad <span style="color:var(--ac)">${escHtml(first.eco||"—")}</span> &nbsp;·&nbsp; ${escHtml(first.plate||"—")}</div>
+    `<div style="font-size:14px;font-weight:700;color:var(--w1)">Expediente — Unidad <span style="color:var(--ac)">${escHtml(_ecoExp)}</span> &nbsp;·&nbsp; ${escHtml(first.plate||"—")}</div>
      <div style="font-size:10px;color:var(--s2);margin-top:2px">${escHtml(first.brand||"")}${first.sucursal?" &nbsp;|&nbsp; "+escHtml(first.sucursal):""}${first.area?" &nbsp;|&nbsp; "+escHtml(first.area):""}</div>`;
 
   // Resumen ejecutivo (sobre el conjunto completo, no filtrado)
