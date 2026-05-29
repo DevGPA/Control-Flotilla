@@ -15,6 +15,22 @@ describe("analyzeRow", () => {
     expect(r.minT).toBe(5);
   });
 
+  it("normaliza TACO en cm (0<v<1) a mm (×10): 0.4 → 4mm, ya NO crítico", () => {
+    const r = analyzeRow({ "Nivel TACO de llanta piloto delantera": 0.4 });
+    expect(r.minT).toBe(4); // antes 0.4 → falso crítico; ahora 4mm
+    // 4mm está entre TCRIT(3.99) y TWARN(6.99) → "Revisar", NO "Urgente".
+    expect(r.F.some((f) => f.cat === "Llantas" && f.lv === "Urgente")).toBe(false);
+    expect(r.F.some((f) => f.cat === "Llantas" && f.lv === "Revisar")).toBe(true);
+  });
+
+  it("0.7 → 7mm (sano); 0 (lisa) sigue crítico; 3 (mm real) sigue crítico", () => {
+    expect(analyzeRow({ "Nivel TACO de llanta piloto delantera": 0.7 }).minT).toBe(7);
+    const lisa = analyzeRow({ "Nivel TACO de llanta piloto delantera": 0 });
+    expect(lisa.minT).toBe(0);
+    expect(lisa.max).toBe("Urgente");
+    expect(analyzeRow({ "Nivel TACO de llanta piloto delantera": 3 }).max).toBe("Urgente");
+  });
+
   it("no marca nada cuando todas las llantas están por encima de TWARN", () => {
     const r = analyzeRow({
       "Nivel TACO de llanta piloto delantera": 8,

@@ -59,8 +59,11 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     if (n === "Refacción" && !tieneRefaccion) continue;
     if (n === "Piloto Trasera Int." && !tieneIntPiloto) continue;
     if (n === "Copiloto Trasera Int." && !tieneIntCopiloto) continue;
-    const v = parseFloat(String(row[c] ?? ""));
-    if (!isNaN(v)) {
+    const raw = parseFloat(String(row[c] ?? ""));
+    if (!isNaN(raw)) {
+      // TACO de llanta: valores 0<v<1 vienen capturados en cm (0.4 cm = 4 mm) →
+      // ×10. El 0 (llanta lisa) y los ≥1 quedan igual. Evita falsos críticos.
+      const v = raw > 0 && raw < 1 ? Math.round(raw * 100) / 10 : raw;
       T[n] = v;
       if (v <= TCRIT) {
         F.push({ cat: "Llantas", text: `${n}: ${v}mm — desgaste crítico`, lv: "Urgente" });
