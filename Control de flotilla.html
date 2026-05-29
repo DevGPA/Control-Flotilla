@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-7zD5Gis63YUKBi0aTboNG69ru4epqus81VmIaxFCvqo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-q0P2sNofk8AoTYYQEg2gWCaI81jQ6dbhLrAVDTOEk94='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1647,15 +1647,17 @@ function _qMatch(q, ecoVal, textFields){
 const _hasPending=(u,lv)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv===lv&&!(dm[f.text]&&dm[f.text].done))};
 const _hasAnyPending=(u)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>!(dm[f.text]&&dm[f.text].done))};
 const filt=()=>sortedUnits(units.filter(u=>{
-  // "taller" lo dispara el donut binario (segmento En taller). Chip removido pero
-  // filtro sobrevive para integrarse con donut click.
-  if(curF==="taller")     return isUnitEnTaller(u);
-  if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);return ds&&ds<=d30b;}
+  // Filtro de nivel (curF) como GATE (no early-return que se salte la búsqueda).
+  // "taller" lo dispara el donut binario; "svcvencido" = servicio ≤30 días.
+  if(curF==="taller" && !isUnitEnTaller(u)) return false;
+  if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);if(!(ds&&ds<=d30b))return false;}
   if(curF==="obs"&&!u.obs)return false;
   if(curF==="Urgente"&&!_hasPending(u,"Urgente"))return false;
   if(curF==="Revisar"&&!_hasPending(u,"Revisar"))return false;
   if(curB!=="all"&&u.branch!==curB)return false;
-  if(curS) return _qMatch(curS, u.eco, [u.plate,u.brand,u.insp,u.branch,u.area,u.obs]);
+  // Búsqueda: AND con TODOS los filtros anteriores (antes los early-return de
+  // taller/svcvencido la ignoraban).
+  if(curS && !_qMatch(curS, u.eco, [u.plate,u.brand,u.insp,u.branch,u.area,u.obs])) return false;
   return true;
 }));
 window.filt=filt;
@@ -3251,6 +3253,9 @@ function recalcAllRisks(){
 }
 
 async function toggleCheckItem(uid,itemText){
+  // Validar que el uid exista en units — evita entradas huérfanas en checklistDB.
+  const u=units.find(x=>x.uid===uid);
+  if(!u){ console.warn("[toggleCheckItem] uid no existe en units:",uid); return; }
   if(!checklistDB[uid]) checklistDB[uid]={};
   const cur=checklistDB[uid][itemText];
   if(cur&&cur.done){
@@ -3260,8 +3265,7 @@ async function toggleCheckItem(uid,itemText){
     checklistDB[uid][itemText]={done:true,ts:new Date().toISOString()};
   }
   await dbPut("checklist",uid,checklistDB[uid]||{});
-  const u=units.find(x=>x.uid===uid);
-  if(u) recalcRisk(u);
+  recalcRisk(u);
   buildKPIs(); renderTable(); renderDet();
 }
 
@@ -5410,7 +5414,7 @@ function renderTableSemanales(){
     // Filtro por sucursal
     if(filtSuc!=="all" && e.branch!==filtSuc) return false;
     // Búsqueda de texto
-    if(swCurS) return _qMatch(swCurS, e.eco, [e.plate,e.brand,e.branch,e.responsable]);
+    if(swCurS && !_qMatch(swCurS, e.eco, [e.plate,e.brand,e.branch,e.responsable])) return false;
     return true;
   });
 
@@ -5541,6 +5545,7 @@ function selSwUnit(swKey){
   if(!e) return;
   const det = document.getElementById("det");
   if(!det) return;
+  selId = null; // resetea selección mensual — el drawer ahora muestra una unidad semanal
   // Estado efectivo (vitales solamente, igual que la tabla).
   const eff = (e.aceiteRisk==="Urgente"||e.radiadorRisk==="Urgente") ? "Urgente"
             : (e.aceiteRisk==="Revisar"||e.radiadorRisk==="Revisar") ? "Revisar" : "OK";
@@ -6735,7 +6740,9 @@ function tlAcSearch(val){
 }
 
 function tlAcSelect(idx){
-  const r = _tlAcResults[idx];
+  const i = Number(idx);
+  if(!Array.isArray(_tlAcResults) || !Number.isInteger(i) || i<0 || i>=_tlAcResults.length) return;
+  const r = _tlAcResults[i];
   if(!r) return;
   document.getElementById("tf-eco").value    = r.eco;
   document.getElementById("tf-plate").value  = r.plate;

@@ -76,11 +76,18 @@ export type UnitInput = {
 export async function upsertUnit(input: UnitInput): Promise<Schema["Unit"]["type"]> {
   const c = getClient();
   const created = await c.models.Unit.create(input);
-  if (!created.errors) return created.data!;
+  if (!created.errors) {
+    if (!created.data)
+      throw new Error(
+        `upsertUnit(create) sin errores pero sin data (¿auth filtering?): ${JSON.stringify(created)}`,
+      );
+    return created.data;
+  }
   if (isConditionalCheckFailed(created.errors)) {
     const updated = await c.models.Unit.update(input);
     throwOnErrors("upsertUnit(update)", updated.errors);
-    return updated.data!;
+    if (!updated.data) throw new Error(`upsertUnit(update) sin data: ${JSON.stringify(updated)}`);
+    return updated.data;
   }
   throwOnErrors("upsertUnit(create)", created.errors);
   return created.data!;
@@ -126,11 +133,15 @@ export async function upsertTaller(input: TallerInput): Promise<Schema["Taller"]
     const updated = await c.models.Taller.update(payload);
     if (updated.errors)
       throw new Error(`upsertTaller(update) failed: ${JSON.stringify(updated.errors)}`);
-    return updated.data!;
+    if (!updated.data)
+      throw new Error(
+        `upsertTaller(update) sin data (¿auth filtering?): ${JSON.stringify(updated)}`,
+      );
+    return updated.data;
   }
   if (created.errors)
     throw new Error(`upsertTaller(create) failed: ${JSON.stringify(created.errors)}`);
-  return created.data!;
+  throw new Error(`upsertTaller(create) sin errores pero sin data: ${JSON.stringify(created)}`);
 }
 
 export async function listTaller(tenantId: string): Promise<Schema["Taller"]["type"][]> {

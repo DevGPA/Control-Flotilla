@@ -102,6 +102,21 @@ function parseResultados(raw: unknown): ChecklistResultados {
   return raw as ChecklistResultados;
 }
 
+// Parseo defensivo de campos AWSJSON (datos de Taller/Semanal). Si el string está
+// corrupto (ej. rollback parcial dejó JSON incompleto), devuelve {} en vez de
+// tirar toda la hidratación con un throw.
+function safeParseObj(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object") return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function mergeUnitWithChecklist(
   unit: Schema["Unit"]["type"],
   checklist: Schema["Checklist"]["type"] | undefined,
@@ -165,11 +180,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (localTaller.length > 0) {
     const cloudIds = new Set<string>();
     for (const t of tallerCloud) {
-      const dRaw = t.datos;
-      const datos =
-        typeof dRaw === "string"
-          ? (JSON.parse(dRaw) as Record<string, unknown>)
-          : ((dRaw ?? {}) as Record<string, unknown>);
+      const datos = safeParseObj(t.datos);
       const id = String(datos.id ?? t.folio ?? "");
       if (id) cloudIds.add(id);
     }
@@ -222,11 +233,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Cada Taller row reconstruye TallerEntry legacy desde datos JSON.
   if (tallerCloud.length > 0) {
     const tallerEntries: TallerEntry[] = tallerCloud.map((t) => {
-      const dRaw = t.datos;
-      const datos =
-        typeof dRaw === "string"
-          ? (JSON.parse(dRaw) as Record<string, unknown>)
-          : ((dRaw ?? {}) as Record<string, unknown>);
+      const datos = safeParseObj(t.datos);
       const estadoRaw = datos.estado ?? (t.estatus === "cerrado" ? "Finalizado" : "En Diagnóstico");
       const estado: TallerEstado = migrateEstado(estadoRaw);
       return {
@@ -265,9 +272,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (semanales.length > 0) {
     const periodoMap = new Map<string, WeeklyEntry[]>();
     for (const s of semanales) {
-      const d = (s.datos ?? {}) as Record<string, unknown>;
-      const datos =
-        typeof s.datos === "string" ? (JSON.parse(s.datos) as Record<string, unknown>) : d;
+      const datos = safeParseObj(s.datos);
       // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
       // placa si upload viejo no lo guardó.
       const ecoId = String(datos.economicoId ?? "").trim() || s.unitUid;

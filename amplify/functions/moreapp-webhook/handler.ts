@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
@@ -196,6 +197,25 @@ async function downloadPhotos(
   const settled = await Promise.all(
     refs.map(async ({ dn, uuid }): Promise<PhotoRec | null> => {
       try {
+        // Nombre estable y ÚNICO por fuente: incluye 8 chars del uuid del gridfs
+        // para que dos dataNames que normalizan igual no colisionen en S3.
+        const safeDn = dn.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+        const uuid8 = uuid
+          .replace(/[^a-z0-9]/gi, "")
+          .slice(0, 8)
+          .toLowerCase();
+        const baseName = `moreapp_${placa}_${uuid8}_${safeDn}`
+          .toLowerCase()
+          .replace(/[^a-z0-9._-]/g, "_");
+        const key = `photos/${tenantId}/${baseName}`;
+        // Idempotencia: si la foto ya está en S3 (retry de MoreApp o re-backfill),
+        // no la re-descargamos. El ext queda implícito en baseName si ya existe.
+        try {
+          const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: `${key}.jpg` }));
+          if (head) return { group, col: dn, fname: `${baseName}.jpg` };
+        } catch {
+          /* no existe → descargar */
+        }
         const r = await fetch(
           `${MOREAPP_API_BASE}/customers/${customerId}/registrationFile/${uuid}/download`,
           { headers: { "X-Api-Key": API_KEY } },
@@ -207,7 +227,7 @@ async function downloadPhotos(
         const ct = r.headers.get("content-type") || "image/jpeg";
         const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
         const buf = Buffer.from(await r.arrayBuffer());
-        const fname = `moreapp_${placa}_${dn}.${ext}`.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+        const fname = `${baseName}.${ext}`;
         await s3.send(
           new PutObjectCommand({
             Bucket: BUCKET,
