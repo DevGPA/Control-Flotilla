@@ -9,13 +9,12 @@ import { moreappWebhook } from "../functions/moreapp-webhook/resource";
  * Group 'admin' tiene acceso cross-tenant.
  *
  * Composite identifiers (natural keys) garantizan dedup nativa de DynamoDB:
- * - Unit: (tenantId, economicoId) — 1 unidad por número económico. La placa es
- *   dato mutable (cambios de placa NO duplican la unidad).
- * - Taller: (tenantId, unitUid, fechaEntrada) — unitUid = economicoId.
- * - Nota: (tenantId, unitUid, timestamp) — unitUid = economicoId.
- * - Checklist: (tenantId, unitUid, fecha) — unitUid = economicoId. 1 inspección/día/unidad.
+ * - Unit: (tenantId, placa) — 1 unidad por placa por tenant.
+ * - Taller: (tenantId, unitUid, fechaEntrada) — 1 ingreso por unidad/fecha.
+ * - Nota: (tenantId, unitUid, timestamp) — 1 nota por timestamp exacto.
+ * - Checklist: (tenantId, unitUid, fecha) — 1 inspección por día por unidad.
  * - Periodo: (tenantId, tipo, fechaInicio) — 1 período por (tipo, inicio).
- * - Semanal: (tenantId, periodoId, unitUid) — unitUid = economicoId.
+ * - Semanal: (tenantId, periodoId, unitUid) — 1 reporte semanal por (período, unidad).
  *
  * El cliente upsert pattern (create → catch conflict → update) usa estos
  * identifiers para idempotencia: re-subir un ZIP no crea duplicados.
@@ -28,11 +27,8 @@ const schema = a
     Unit: a
       .model({
         tenantId: a.string().required(),
-        // economicoId = número económico GPA (ej. "21", "85"). Es la LLAVE de identidad:
-        // estable aunque cambien placa/sucursal. Antes la llave era `placa` → cambios de
-        // placa duplicaban la unidad.
-        economicoId: a.string().required(),
-        placa: a.string().required(), // dato/display, ya no es llave (puede cambiar)
+        placa: a.string().required(),
+        economicoId: a.string(),
         marca: a.string(),
         modelo: a.string(),
         anio: a.integer(),
@@ -40,7 +36,7 @@ const schema = a
         vin: a.string(),
         version: a.integer().default(1),
       })
-      .identifier(["tenantId", "economicoId"])
+      .identifier(["tenantId", "placa"])
       .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")])
       .secondaryIndexes((index) => [
         index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),

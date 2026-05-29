@@ -101,14 +101,13 @@ export async function uploadZipToCloud(zip: LoadedZip, tenantId: string): Promis
 
     try {
       if (kind === "mensual") {
-        // 1. Unit (catálogo). Idempotente por (tenantId, economicoId).
-        const realPlaca =
-          pickStr(row, "# Economico - PLACAS", "No. de unidad / ECO", "Número de unidad") || placa;
-        const economicoId = pickStr(row, "# Economico - id") || realPlaca; // LLAVE
+        // 1. Unit (catálogo). Idempotente por (tenantId, placa).
+        const rawEcoId = pickStr(row, "# Economico - id");
+        const ecoIdRaw = rawEcoId && rawEcoId !== placa ? rawEcoId : undefined;
         const unit: UnitInput = {
           tenantId,
-          economicoId,
-          placa: realPlaca,
+          placa,
+          economicoId: ecoIdRaw,
           marca: pickStr(row, "Marca", "# Economico - SUBMARCA") || undefined,
           modelo: pickStr(row, "Modelo") || undefined,
           anio: pickNum(row, "Año", "Anio"),
@@ -135,7 +134,7 @@ export async function uploadZipToCloud(zip: LoadedZip, tenantId: string): Promis
         );
         await upsertChecklist({
           tenantId,
-          unitUid: economicoId,
+          unitUid: placa,
           fecha,
           tipoInspeccion: "mensual",
           resultados: resultadosClean,
@@ -149,15 +148,12 @@ export async function uploadZipToCloud(zip: LoadedZip, tenantId: string): Promis
           zip.filename.replace(/\.zip$/i, "").replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") ||
           zip.filename;
         const sucursal = pickStr(row, "Sucursal", "Area") || "—";
-        const realPlaca =
-          pickStr(row, "# Economico - PLACAS", "No. de unidad / ECO", "Número de unidad") || placa;
-        const economicoId = pickStr(row, "# Economico - id") || realPlaca; // LLAVE
-        const datosClean = JSON.parse(JSON.stringify({ ...row, plate: realPlaca, economicoId }));
+        const datosClean = JSON.parse(JSON.stringify(row));
         await upsertSemanal({
           tenantId,
           periodoId,
           sucursal,
-          unitUid: economicoId,
+          unitUid: placa,
           datos: datosClean,
         });
         result.semanal++;
@@ -199,19 +195,20 @@ export async function uploadUnitsToCloud(
   };
 
   for (const u of units) {
-    // Identidad = económico (u.eco / u.uid ya es económico tras el re-key).
-    const economicoId = String(u.eco || u.uid || u.plate || "").trim();
-    const realPlaca = String(u.plate || u.eco || u.uid || "").trim();
-    if (!economicoId) {
+    const placa = String(u.plate || u.eco || u.uid || "").trim();
+    if (!placa) {
       result.skipped++;
       continue;
     }
     try {
       if (kind === "mensual") {
+        // u.eco viene del Excel "# Economico - id" (numérico interno tipo "78").
+        // Solo lo guardamos si difiere de placa (algunos Excel duplican valor).
+        const ecoId = u.eco && u.eco !== placa ? u.eco : undefined;
         await upsertUnit({
           tenantId,
-          economicoId,
-          placa: realPlaca,
+          placa,
+          economicoId: ecoId,
           marca: u.brand || undefined,
           sucursal: u.branch || undefined,
         });
@@ -237,7 +234,7 @@ export async function uploadUnitsToCloud(
         );
         await upsertChecklist({
           tenantId,
-          unitUid: economicoId,
+          unitUid: placa,
           fecha,
           tipoInspeccion: "mensual",
           resultados: resultadosClean,
@@ -250,8 +247,6 @@ export async function uploadUnitsToCloud(
           fname.replace(/\.(zip|xlsx?)$/i, "").replace(/^.*?(\d{4}-W\d{1,2}).*$/i, "$1") || fname;
         const datosClean = JSON.parse(
           JSON.stringify({
-            economicoId,
-            plate: realPlaca,
             findings: u.F ?? [],
             risk: u.risk ?? "OK",
             obs: u.obs ?? "",
@@ -262,13 +257,13 @@ export async function uploadUnitsToCloud(
           tenantId,
           periodoId,
           sucursal: u.branch || "—",
-          unitUid: economicoId,
+          unitUid: placa,
           datos: datosClean,
         });
         result.semanal++;
       }
     } catch (e) {
-      result.errors.push({ placa: economicoId, error: (e as Error).message });
+      result.errors.push({ placa, error: (e as Error).message });
     }
   }
 
@@ -411,8 +406,7 @@ export async function uploadTallerToCloud(
   };
 
   for (const e of entries) {
-    // Identidad = económico (eco). Fallback a unitKey/plate/id para entries viejos.
-    const unitUid = e.eco || e.unitKey || e.plate || e.id;
+    const unitUid = e.plate || e.eco || e.unitKey || e.id;
     const fechaEntrada = e.fentrada || e.freporte || e.updatedAt || new Date().toISOString();
     if (!unitUid) {
       result.skipped++;

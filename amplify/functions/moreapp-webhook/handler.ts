@@ -442,19 +442,14 @@ async function processMensual(
   const placa = pickStr(eco.PLACAS);
   if (!placa) throw new Error("Sin placa (economico.PLACAS) — no se puede identificar la unidad");
 
-  // economicoId = LLAVE de identidad. Fallback a placa solo si MoreApp no manda id
-  // (no debería pasar — auditoría: 100% poblado). Sin él no hay llave.
   const ecoId = pickStr(eco.id);
-  const economicoId = ecoId || placa;
-  if (!ecoId)
-    console.warn(`[moreapp-webhook] mensual sin economico.id, uso placa=${placa} como llave`);
   const client = await getDataClient();
 
-  // 1. Unit (idempotente por tenantId+economicoId)
+  // 1. Unit (idempotente por tenantId+placa)
   const unitInput = {
     tenantId: TENANT_ID,
-    economicoId,
     placa,
+    economicoId: ecoId && ecoId !== placa ? ecoId : undefined,
     marca: pickStr(eco.SUBMARCA) || undefined,
     sucursal: pickStr(eco.SUCURSAL) || undefined,
   };
@@ -463,12 +458,9 @@ async function processMensual(
     if (isConditionalCheckFailed(uCreated.errors)) {
       const uUpd = await client.models.Unit.update(unitInput);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
-      if (!uUpd.data) throw new Error(`Unit.update sin data: ${JSON.stringify(uUpd)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
     }
-  } else if (!uCreated.data) {
-    throw new Error(`Unit.create sin errores pero sin data: ${JSON.stringify(uCreated)}`);
   }
 
   // 2. Checklist (1 por unidad por fecha). Reusa analyzeRow (canon).
@@ -490,8 +482,7 @@ async function processMensual(
     .join("\n\n");
 
   // Descarga fotos (gridfs://) → S3 + registros para el render. Salta si no hay API key.
-  // Nombre por economicoId (estable aunque cambie placa).
-  const photos = await downloadPhotos(customerId, answers, economicoId, TENANT_ID);
+  const photos = await downloadPhotos(customerId, answers, placa, TENANT_ID);
 
   const resultados = JSON.stringify({
     findings: analyzed.F,
@@ -509,7 +500,7 @@ async function processMensual(
 
   const clInput = {
     tenantId: TENANT_ID,
-    unitUid: economicoId,
+    unitUid: placa,
     fecha,
     tipoInspeccion: "mensual",
     resultados,
@@ -538,19 +529,16 @@ async function processSemanal(
   if (!placa) throw new Error("Sin placa (economico.PLACAS) — semanal");
 
   const ecoId = pickStr(eco.id);
-  const economicoId = ecoId || placa; // LLAVE de identidad (fallback a placa si falta)
-  if (!ecoId)
-    console.warn(`[moreapp-webhook] semanal sin economico.id, uso placa=${placa} como llave`);
   const sucursal = pickStr(eco.SUCURSAL);
   const fechaRaw = pickStr(answers.dateAndTime);
   const periodoId = isoWeekId(fechaRaw);
   const client = await getDataClient();
 
-  // 1. Unit (idempotente por tenantId+economicoId) — consistencia con el catálogo.
+  // 1. Unit (idempotente) — consistencia con el catálogo.
   const unitInput = {
     tenantId: TENANT_ID,
-    economicoId,
     placa,
+    economicoId: ecoId && ecoId !== placa ? ecoId : undefined,
     marca: pickStr(eco.SUBMARCA) || undefined,
     sucursal: sucursal || undefined,
   };
@@ -559,12 +547,9 @@ async function processSemanal(
     if (isConditionalCheckFailed(uCreated.errors)) {
       const uUpd = await client.models.Unit.update(unitInput);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
-      if (!uUpd.data) throw new Error(`Unit.update sin data: ${JSON.stringify(uUpd)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
     }
-  } else if (!uCreated.data) {
-    throw new Error(`Unit.create sin errores pero sin data: ${JSON.stringify(uCreated)}`);
   }
 
   // 2. Riesgos por categoría (réplica del front).
@@ -587,15 +572,14 @@ async function processSemanal(
   const photoRecs = await downloadPhotos(
     customerId,
     answers,
-    economicoId,
+    placa,
     TENANT_ID,
     "Inspección Semanal",
   );
   const photos = photoRecs.map((p) => p.fname);
 
   const datos = {
-    economicoId,
-    plate: placa,
+    economicoId: ecoId,
     brand: pickStr(eco.SUBMARCA),
     km: pickStr(answers.kilometraje),
     fecha: fechaRaw,
@@ -612,12 +596,12 @@ async function processSemanal(
     photos,
   };
 
-  // 4. Semanal (idempotente por tenantId+periodoId+unitUid=economicoId).
+  // 4. Semanal (idempotente por tenantId+periodoId+unitUid).
   const semInput = {
     tenantId: TENANT_ID,
     periodoId,
     sucursal,
-    unitUid: economicoId,
+    unitUid: placa,
     datos: JSON.stringify(datos),
   };
   const sCreated = await client.models.Semanal.create(semInput);
@@ -860,184 +844,6 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       ecoDups,
       sample: rows.slice(0, 50),
     });
-  }
-
-  if (method === "GET" && event.queryStringParameters?.export === "1") {
-    // Respaldo read-only: dump JSON de todos los modelos (antes del re-key).
-    const client = await getDataClient();
-    const dump = async (model: {
-      list: (a: { limit: number; nextToken?: string }) => Promise<{
-        data?: unknown[];
-        nextToken?: string | null;
-      }>;
-    }) => {
-      const out: unknown[] = [];
-      let token: string | undefined;
-      let pages = 0;
-      do {
-        const r = await model.list({ limit: 1000, nextToken: token });
-        for (const x of r.data ?? []) out.push(x);
-        token = r.nextToken ?? undefined;
-        pages++;
-      } while (token && pages < 50);
-      return out;
-    };
-    type D = Parameters<typeof dump>[0];
-    const m = client.models as unknown as {
-      Unit: D;
-      Checklist: D;
-      Semanal: D;
-      Taller: D;
-      Nota: D;
-    };
-    return res(200, {
-      tenantId: TENANT_ID,
-      Unit: await dump(m.Unit),
-      Checklist: await dump(m.Checklist),
-      Semanal: await dump(m.Semanal),
-      Taller: await dump(m.Taller),
-      Nota: await dump(m.Nota),
-    });
-  }
-
-  if (method === "GET" && event.queryStringParameters?.migrate === "taller") {
-    // Re-llavea Taller: unitUid placa → economicoId (preserva el registro manual).
-    const client = await getDataClient();
-    const c = client.models as unknown as {
-      Unit: {
-        list: (a: { limit: number; nextToken?: string }) => Promise<{
-          data?: { economicoId?: string | null; placa?: string | null }[];
-          nextToken?: string | null;
-        }>;
-      };
-      Taller: {
-        list: (a: { limit: number; nextToken?: string }) => Promise<{
-          data?: Record<string, unknown>[];
-          nextToken?: string | null;
-        }>;
-        create: (i: Record<string, unknown>) => Promise<{ errors?: unknown }>;
-        delete: (i: Record<string, unknown>) => Promise<{ errors?: unknown }>;
-      };
-    };
-    // Mapa placa → economicoId del catálogo Unit (ya re-llaveado).
-    const placaToEco = new Map<string, string>();
-    const validEco = new Set<string>();
-    let t1: string | undefined;
-    let p1 = 0;
-    do {
-      const r = await c.Unit.list({ limit: 1000, nextToken: t1 });
-      for (const u of r.data ?? []) {
-        if (u.economicoId) validEco.add(String(u.economicoId));
-        if (u.placa && u.economicoId) placaToEco.set(String(u.placa), String(u.economicoId));
-      }
-      t1 = r.nextToken ?? undefined;
-      p1++;
-    } while (t1 && p1 < 50);
-
-    const moved: string[] = [];
-    const skipped: string[] = [];
-    let t2: string | undefined;
-    let p2 = 0;
-    do {
-      const r = await c.Taller.list({ limit: 1000, nextToken: t2 });
-      for (const row of r.data ?? []) {
-        const unitUid = String(row.unitUid ?? "");
-        if (validEco.has(unitUid)) {
-          skipped.push(unitUid);
-          continue;
-        } // ya está por económico
-        const datos = (() => {
-          try {
-            return typeof row.datos === "string" ? JSON.parse(row.datos) : (row.datos ?? {});
-          } catch {
-            return {};
-          }
-        })() as Record<string, unknown>;
-        const eco = String(datos.eco ?? "") || placaToEco.get(unitUid) || "";
-        if (!eco) {
-          skipped.push(`sin-eco:${unitUid}`);
-          continue;
-        }
-        const fechaEntrada = String(row.fechaEntrada ?? "");
-        const created = await c.Taller.create({
-          tenantId: TENANT_ID,
-          unitUid: eco,
-          fechaEntrada,
-          fechaSalida: row.fechaSalida,
-          folio: row.folio,
-          motivo: row.motivo,
-          estatus: row.estatus,
-          datos: typeof row.datos === "string" ? row.datos : JSON.stringify(row.datos ?? {}),
-        });
-        if (created.errors) {
-          skipped.push(`err:${unitUid}`);
-          continue;
-        }
-        await c.Taller.delete({ tenantId: TENANT_ID, unitUid, fechaEntrada });
-        moved.push(`${unitUid}→${eco}`);
-      }
-      t2 = r.nextToken ?? undefined;
-      p2++;
-    } while (t2 && p2 < 50);
-    return res(200, { migrated: moved.length, moved, skipped });
-  }
-
-  if (method === "GET" && event.queryStringParameters?.cleanup === "1") {
-    // Borra Checklist/Semanal huérfanos: unitUid que NO es un economicoId válido
-    // (= filas viejas llaveadas por placa, ya reemplazadas por el re-backfill).
-    const client = await getDataClient();
-    type LM = {
-      list: (a: { limit: number; nextToken?: string }) => Promise<{
-        data?: Record<string, unknown>[];
-        nextToken?: string | null;
-      }>;
-      delete: (i: Record<string, unknown>) => Promise<{ errors?: unknown }>;
-    };
-    const c = client.models as unknown as { Unit: LM; Checklist: LM; Semanal: LM };
-    const validEco = new Set<string>();
-    let tu: string | undefined;
-    let pu = 0;
-    do {
-      const r = await c.Unit.list({ limit: 1000, nextToken: tu });
-      for (const u of r.data ?? []) if (u.economicoId) validEco.add(String(u.economicoId));
-      tu = r.nextToken ?? undefined;
-      pu++;
-    } while (tu && pu < 50);
-
-    const deleted = { Checklist: 0, Semanal: 0 };
-    // Checklist: PK (tenantId, unitUid, fecha)
-    let tc: string | undefined;
-    let pc = 0;
-    do {
-      const r = await c.Checklist.list({ limit: 1000, nextToken: tc });
-      for (const row of r.data ?? []) {
-        const unitUid = String(row.unitUid ?? "");
-        if (validEco.has(unitUid)) continue;
-        await c.Checklist.delete({ tenantId: TENANT_ID, unitUid, fecha: String(row.fecha ?? "") });
-        deleted.Checklist++;
-      }
-      tc = r.nextToken ?? undefined;
-      pc++;
-    } while (tc && pc < 50);
-    // Semanal: PK (tenantId, periodoId, unitUid)
-    let ts: string | undefined;
-    let ps = 0;
-    do {
-      const r = await c.Semanal.list({ limit: 1000, nextToken: ts });
-      for (const row of r.data ?? []) {
-        const unitUid = String(row.unitUid ?? "");
-        if (validEco.has(unitUid)) continue;
-        await c.Semanal.delete({
-          tenantId: TENANT_ID,
-          periodoId: String(row.periodoId ?? ""),
-          unitUid,
-        });
-        deleted.Semanal++;
-      }
-      ts = r.nextToken ?? undefined;
-      ps++;
-    } while (ts && ps < 50);
-    return res(200, { validEcos: validEco.size, deleted });
   }
 
   if (method === "GET" && event.queryStringParameters?.backfill === "1") {

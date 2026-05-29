@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Dw11wjLQ2vNnYVeH5QAq40cO1PwsNQuQg/9aImJqEUc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-u9yG9W04lB/KhDaxQK2spSvQutlKqmtDEAllD1nTxr4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2136,7 +2136,7 @@ function loadWBSemanal(wb, fname){
           }catch{fechaStr=String(fechaRaw).substring(0,10);}
         }
 
-        const uid = eco||plate||"SIN_ID"; // identidad = económico (consistente con cloud)
+        const uid = plate||eco||"SIN_ID";
         // ri+1 porque fila 0 es header en el sheet (rows[] ya excluye header)
         const rowPhotos = hlMapSW[ri+1]||[];
         entries.push({
@@ -2246,7 +2246,7 @@ async function loadWB(wb,fname){
     const rowIdx=ri+1; // 0-indexed rows, row 0 is header so data starts at rowIdx=1
     const eco=String(row["# Economico - id"]||"").trim();
     const plate=String(row["# Economico - PLACAS"]||"").trim();
-    const uid=eco||plate||"SIN_ID"; // identidad = económico (consistente con cloud)
+    const uid=plate||eco||"SIN_ID";
     const r = analyzeRow(row);
     if(r.validationErrors && r.validationErrors.length){
       r.validationErrors.forEach(msg => logHealth(`Unidad en fila ${ri+2}: ${msg}`, "warn"));
@@ -3226,39 +3226,6 @@ async function loadAllChecklist(){
     all.forEach(({key,value})=>{checklistDB[key]=value;});
   }catch(e){console.warn("loadAllChecklist:",e)}
 }
-
-// Migración one-time: las marcas ✓ (checklistDB) y notas (notesDB) locales estaban
-// llaveadas por PLACA; tras el re-key la identidad es el ECONÓMICO. Re-mapea las
-// llaves viejas (placa) → económico usando el catálogo de flota (placa→eco).
-// Idempotente + guard en localStorage. Si la flota aún no hidrata, reintenta.
-window.__migrateLocalKeys = async function(){
-  try{
-    if(localStorage.getItem("cf_rekey_eco_done")==="1") return;
-    const cat = window.__fleetUnits || window.units || [];
-    if(!cat.length){ setTimeout(()=>window.__migrateLocalKeys&&window.__migrateLocalKeys(), 1500); return; }
-    const placaToEco = new Map();
-    for(const u of cat){
-      const eco=String(u.eco||"").trim(), pl=String(u.plate||"").trim();
-      if(eco && pl && eco!==pl) placaToEco.set(pl, eco);
-    }
-    let moved=0;
-    // checklistDB: { uid: {item:{done}} }
-    for(const [pl, eco] of placaToEco){
-      if(checklistDB[pl] && !checklistDB[eco]){
-        checklistDB[eco]=checklistDB[pl];
-        try{ await dbPut("checklist", eco, checklistDB[eco]); }catch(e){}
-        moved++;
-      }
-      if(notesDB[pl] && !notesDB[eco]){
-        notesDB[eco]=notesDB[pl];
-        try{ await dbPut("notes", eco, notesDB[eco]); }catch(e){}
-        moved++;
-      }
-    }
-    localStorage.setItem("cf_rekey_eco_done","1");
-    if(moved){ console.info(`[rekey] migradas ${moved} llaves locales placa→económico`); recalcAllRisks&&recalcAllRisks(); renderTable&&renderTable(); }
-  }catch(e){ console.warn("[rekey] migración local falló:", e); }
-};
 
 // Recalculate a unit's effective risk based on unattended findings
 function recalcRisk(u){
