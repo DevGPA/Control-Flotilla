@@ -414,23 +414,30 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       }
     }
   }
-  if (allPhotoFnames.size > 0) {
+  // GUARD DE COSTO (auto-refresh): solo firmamos URLs de fotos NUEVAS — las que
+  // aún no están en __cloudPhotoUrlMap. En el boot inicial el map está vacío →
+  // firma todas; en cada re-hidratación (visibilitychange/poll) normalmente no
+  // hay fotos nuevas → se salta indexCloudPhotos + batchGet (caro: list S3 +
+  // firmar URLs). Hace el auto-refresh barato.
+  window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, string>();
+  const existingMap = window.__cloudPhotoUrlMap;
+  const newFnames = [...allPhotoFnames].filter((f) => !existingMap.has(f));
+  if (newFnames.length > 0) {
     try {
       // CRÍTICO: indexar S3 ANTES de batchGetCloudPhotoUrls.
       // batchGet usa hasCloudPhoto que consulta el index cache. Sin index
       // cargado, todas las URLs retornan null → map vacío (race condition
       // que dejaba multi-user sin fotos).
       await indexCloudPhotos(tenantId);
-      const urlMap = await batchGetCloudPhotoUrls(tenantId, [...allPhotoFnames]);
-      window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, string>();
+      const urlMap = await batchGetCloudPhotoUrls(tenantId, newFnames);
       let count = 0;
       for (const [fname, url] of urlMap) {
         if (url) {
-          window.__cloudPhotoUrlMap.set(fname, url);
+          existingMap.set(fname, url);
           count++;
         }
       }
-      console.info(`[cloudHydrate] ${count}/${allPhotoFnames.size} URLs de fotos pre-cacheadas`);
+      console.info(`[cloudHydrate] ${count}/${newFnames.length} URLs de fotos nuevas firmadas`);
     } catch (err) {
       console.warn("[cloudHydrate] photo URLs prefetch falló:", err);
     }

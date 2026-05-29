@@ -339,6 +339,60 @@ export function setupCloud(): void {
         console.error("[cloud] Hydrate falló:", err);
         window.notify?.("Cloud sync indisponible — usando datos locales", "warn", 4000);
       }
+      // Auto-refresh sin F5: re-hidrata al volver a la pestaña + poll ligero en
+      // background (solo cuando la pestaña está visible). Barato porque
+      // hydrateFromCloud ahora solo firma fotos NUEVAS. Throttle 60s evita
+      // que focus+poll disparen doble.
+      setupAutoRefresh(session.tenantId);
     }
   })();
+}
+
+let autoRefreshWired = false;
+function setupAutoRefresh(tenantId: string): void {
+  if (autoRefreshWired) return;
+  autoRefreshWired = true;
+  const MIN_GAP_MS = 60_000; // máx 1 refresh por minuto
+  const POLL_MS = 4 * 60_000; // sondeo ligero cada 4 min (solo si visible)
+  let last = Date.now();
+  let running = false;
+
+  // No refrescar (re-render) mientras el usuario interactúa: drawer/modal abierto
+  // o escribiendo en un campo — evita perder scroll/selección/typing.
+  const uiBusy = (): boolean => {
+    const det = document.getElementById("det");
+    if (det && det.classList.contains("open")) return true;
+    if (document.querySelector("#taller-modal.open, #hist-modal.open, #periodo-modal.open"))
+      return true;
+    const fleet = document.getElementById("fleet-modal");
+    if (fleet && fleet.style.display === "flex") return true;
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return true;
+    return false;
+  };
+
+  const refresh = async (reason: string): Promise<void> => {
+    if (running) return;
+    if (!window.__cloudSession) return; // solo con sesión
+    if (Date.now() - last < MIN_GAP_MS) return;
+    if (uiBusy()) return; // pospone si el usuario está trabajando
+    last = Date.now();
+    running = true;
+    try {
+      await hydrateFromCloud(tenantId);
+      console.info(`[autoRefresh] datos actualizados (${reason})`);
+    } catch (err) {
+      console.warn(`[autoRefresh] falló (${reason}):`, err);
+    } finally {
+      running = false;
+    }
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void refresh("focus");
+  });
+  window.addEventListener("focus", () => void refresh("focus"));
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") void refresh("poll");
+  }, POLL_MS);
 }
