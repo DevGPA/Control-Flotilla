@@ -463,9 +463,12 @@ async function processMensual(
     if (isConditionalCheckFailed(uCreated.errors)) {
       const uUpd = await client.models.Unit.update(unitInput);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
+      if (!uUpd.data) throw new Error(`Unit.update sin data: ${JSON.stringify(uUpd)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
     }
+  } else if (!uCreated.data) {
+    throw new Error(`Unit.create sin errores pero sin data: ${JSON.stringify(uCreated)}`);
   }
 
   // 2. Checklist (1 por unidad por fecha). Reusa analyzeRow (canon).
@@ -556,9 +559,12 @@ async function processSemanal(
     if (isConditionalCheckFailed(uCreated.errors)) {
       const uUpd = await client.models.Unit.update(unitInput);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
+      if (!uUpd.data) throw new Error(`Unit.update sin data: ${JSON.stringify(uUpd)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
     }
+  } else if (!uCreated.data) {
+    throw new Error(`Unit.create sin errores pero sin data: ${JSON.stringify(uCreated)}`);
   }
 
   // 2. Riesgos por categoría (réplica del front).
