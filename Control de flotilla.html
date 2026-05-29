@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-q0P2sNofk8AoTYYQEg2gWCaI81jQ6dbhLrAVDTOEk94='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-fUu0vlyH9Zs40DdzrPVI14/N4BDvNbj5ZTWC1YvRuXQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -273,7 +273,7 @@ g.inflateBytes=async function(src){
         <div class="hero-sub" id="ks0"></div>
       </div>
     </div>
-    <div class="hero-card">
+    <div class="hero-card" onclick="openFleetModal('tiresCrit')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con llantas críticas">
       <div class="hero-icon" style="background:var(--O)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" style="color:var(--O)" id="kv4">—</div>
@@ -281,7 +281,7 @@ g.inflateBytes=async function(src){
         <div class="hero-sub">≤ 3mm de taco</div>
       </div>
     </div>
-    <div class="hero-card">
+    <div class="hero-card" onclick="openFleetModal('svc')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con servicio vencido o próximo">
       <div class="hero-icon" style="background:var(--R)"><i data-lucide="calendar-clock" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" style="color:var(--R)" id="kv_svc">—</div>
@@ -289,7 +289,7 @@ g.inflateBytes=async function(src){
         <div class="hero-sub" id="ks_svc"></div>
       </div>
     </div>
-    <div class="hero-card">
+    <div class="hero-card" onclick="openFleetModal('taller')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades en taller">
       <div class="hero-icon" style="background:var(--B)"><i data-lucide="wrench" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" style="color:var(--B)" id="kv_taller">—</div>
@@ -2422,10 +2422,25 @@ const lazyObserver = new IntersectionObserver((entries) => {
 // ════════════════════════════════════════════════════════════
 // KPI + DONUT
 // ════════════════════════════════════════════════════════════
-function buildKPIs(){
+// Estado de servicio de una unidad: "vencido" | "proximo" | "ok".
+// Prioriza kilometraje (km vs kmNextSvc); si no hay, usa fecha nextSvc.
+// Compartido por buildKPIs y el modal de KPIs (mismo conteo, sin drift).
+function svcStatus(u){
   const today0=new Date();today0.setHours(0,0,0,0);
   const d30=new Date(today0);d30.setDate(d30.getDate()+30);
+  const kmAx=parseFloat(String(u.km||"")), kmNx=parseFloat(String(u.kmNextSvc||""));
+  if(kmAx>0 && kmNx>0){
+    const kmDiff=kmNx-kmAx;
+    if(kmDiff<=0) return "vencido";
+    if(kmDiff<=1000) return "proximo";
+    return "ok";
+  }
+  const sd=parseSvcDate(u.nextSvc);
+  if(sd){ if(sd<today0) return "vencido"; if(sd<=d30) return "proximo"; }
+  return "ok";
+}
 
+function buildKPIs(){
   // ── Hero cards + dona: FLOTA = unidades distintas (catálogo) con su última
   // inspección. Estado actual, INDEPENDIENTE del rango de fechas. ──
   const fleet = (Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || [];
@@ -2434,14 +2449,8 @@ function buildKPIs(){
     if(x.minT!==null && x.minT<=TCRIT) ct++;
     const enTallerNow=isUnitEnTaller(x);
     if(enTallerNow){ enTaller++; tallerDonut++; } else operativaDonut++;
-    const kmAx=parseFloat(String(x.km||"")), kmNx=parseFloat(String(x.kmNextSvc||""));
-    if(kmAx>0 && kmNx>0){
-      const kmDiff=kmNx-kmAx;
-      if(kmDiff<=0) nSvcVencido++; else if(kmDiff<=1000) nSvcProximo++;
-    } else {
-      const sd=parseSvcDate(x.nextSvc);
-      if(sd){ if(sd<today0) nSvcVencido++; else if(sd<=d30) nSvcProximo++; }
-    }
+    const ss=svcStatus(x);
+    if(ss==="vencido") nSvcVencido++; else if(ss==="proximo") nSvcProximo++;
   }
   const fleetN=fleet.length;
   const nSvcAlert=nSvcVencido+nSvcProximo;
@@ -2461,6 +2470,7 @@ function buildKPIs(){
   // ── Chips de filtro: sobre las INSPECCIONES del rango (units), que es lo que
   // muestra la tabla. ──
   const t=units.length;
+  const d30=new Date();d30.setHours(0,0,0,0);d30.setDate(d30.getDate()+30);
   let u=0,r=0,withObs=0,nSvcRange=0;
   for(const x of units){
     const dm=checklistDB[x.uid]||{};
@@ -5184,13 +5194,52 @@ window.aplicarRangoSemanal = function(){
   renderSemanales();
 };
 
-// ── Modal Flota completa (clic en hero card FLOTA) ────────────────────
-window.openFleetModal = function(){
-  const all = window.__fleetUnits || [];
+// ── Modal Flota (clic en hero cards). kind: all | tiresCrit | svc | taller ──
+let _fleetModalKind = "all";
+const _FLEET_MODAL_META = {
+  all:       { ttl:"Flota completa",                 col:"" },
+  tiresCrit: { ttl:`Llantas críticas (≤${TCRIT}mm)`, col:"Llanta mín" },
+  svc:       { ttl:"Servicio vencido o próximo",     col:"Servicio" },
+  taller:    { ttl:"Unidades en taller",             col:"Estado" },
+};
+function _fleetKindFilter(u){
+  if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
+  if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
+  if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
+  return true;
+}
+// Celda de detalle (6ª columna) según el kind.
+function _fleetDetailCell(u){
+  if(_fleetModalKind==="tiresCrit"){
+    return u.minT!==null ? `<span style="color:var(--R);font-weight:600">${u.minT}mm</span>` : "—";
+  }
+  if(_fleetModalKind==="svc"){
+    const ss=svcStatus(u);
+    const col=ss==="vencido"?"var(--R)":"var(--A)";
+    const lbl=ss==="vencido"?"Vencido":"Próximo";
+    const ref=pickStrFleet(u.nextSvc)||pickStrFleet(u.kmNextSvc);
+    return `<span style="color:${col};font-weight:600">${lbl}</span>${ref?` <span style="color:var(--s2);font-size:10px">${escHtml(ref)}</span>`:""}`;
+  }
+  if(_fleetModalKind==="taller"){
+    return `<span style="color:var(--B);font-weight:600">En taller</span>`;
+  }
+  return "";
+}
+function pickStrFleet(v){ return (v===null||v===undefined)?"":String(v).trim(); }
+
+window.openFleetModal = function(kind){
+  _fleetModalKind = _FLEET_MODAL_META[kind] ? kind : "all";
+  const meta = _FLEET_MODAL_META[_fleetModalKind];
+  const ttl = document.getElementById("fleet-mod-ttl");
+  if(ttl) ttl.textContent = meta.ttl;
+  const colHdr = document.getElementById("fleet-mod-coldet");
+  if(colHdr) colHdr.textContent = meta.col;
+  // Poblar sucursales solo de las unidades del kind activo.
+  const inKind = (window.__fleetUnits || []).filter(_fleetKindFilter);
   const sel = document.getElementById("fleet-mod-suc");
   if(sel){
-    const sucs = [...new Set(all.map(u => u.branch).filter(Boolean))].sort();
-    sel.innerHTML = `<option value="all">Todas las sucursales (${all.length})</option>`
+    const sucs = [...new Set(inKind.map(u => u.branch).filter(Boolean))].sort();
+    sel.innerHTML = `<option value="all">Todas las sucursales (${inKind.length})</option>`
       + sucs.map(s => `<option value="${escAttr(s)}">${escHtml(s)}</option>`).join("");
   }
   const srch = document.getElementById("fleet-mod-srch");
@@ -5204,18 +5253,19 @@ window.closeFleetModal = function(){
   if(m) m.style.display = "none";
 };
 window.renderFleetModalRows = function(){
-  const all = window.__fleetUnits || [];
+  const base = (window.__fleetUnits || []).filter(_fleetKindFilter);
   const q = (document.getElementById("fleet-mod-srch")?.value || "").trim().toLowerCase();
   const suc = document.getElementById("fleet-mod-suc")?.value || "all";
-  const rows = all.filter(u => {
+  const rows = base.filter(u => {
     if(suc !== "all" && u.branch !== suc) return false;
     if(!q) return true;
-    return [u.plate,u.eco,u.brand,u.branch].some(v => String(v||"").toLowerCase().includes(q));
+    return _qMatch(q, u.eco, [u.plate,u.brand,u.branch]);
   });
   const sub = document.getElementById("fleet-mod-sub");
-  if(sub) sub.textContent = rows.length === all.length
-    ? `${all.length} unidad${all.length!==1?"es":""}`
-    : `${rows.length} de ${all.length}`;
+  if(sub) sub.textContent = rows.length === base.length
+    ? `${base.length} unidad${base.length!==1?"es":""}`
+    : `${rows.length} de ${base.length}`;
+  const showDet = _fleetModalKind !== "all";
   const tbody = document.getElementById("fleet-mod-tbody");
   if(!tbody) return;
   tbody.innerHTML = rows
@@ -5227,6 +5277,7 @@ window.renderFleetModalRows = function(){
       <td style="font-family:var(--fm);color:var(--ac)">${escHtml(u.plate||"—")}</td>
       <td>${escHtml(u.brand||"—")}</td>
       <td>${escHtml(u.branch||"—")}</td>
+      <td>${showDet?_fleetDetailCell(u):""}</td>
     </tr>`).join("");
 };
 // Cerrar con ESC
@@ -6895,7 +6946,7 @@ window.deleteTallerEntry = deleteTallerEntry;
   <div>
     <div class="fleet-mod-hdr">
       <div>
-        <div class="fleet-mod-ttl">Flota completa</div>
+        <div class="fleet-mod-ttl" id="fleet-mod-ttl">Flota completa</div>
         <div class="fleet-mod-sub" id="fleet-mod-sub"></div>
       </div>
       <button class="dcls" onclick="closeFleetModal()" aria-label="Cerrar">✕</button>
@@ -6909,7 +6960,7 @@ window.deleteTallerEntry = deleteTallerEntry;
     <div class="fleet-mod-body">
       <table class="fleet-mod-table">
         <thead><tr>
-          <th>#</th><th>ECO</th><th>Placa</th><th>Marca / Modelo</th><th>Sucursal</th>
+          <th>#</th><th>ECO</th><th>Placa</th><th>Marca / Modelo</th><th>Sucursal</th><th id="fleet-mod-coldet"></th>
         </tr></thead>
         <tbody id="fleet-mod-tbody"></tbody>
       </table>
