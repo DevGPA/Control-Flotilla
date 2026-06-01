@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ABMgaWp3BTN/QGBx5mxmuQd8UffnwISvRMM2Sa7CCYE='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-yHDB10kwxBWwz8cEIkQz5kJWvQCeQLcva60fUO2fMZM='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -278,7 +278,7 @@ g.inflateBytes=async function(src){
       <div class="hero-body">
         <div class="hero-val" style="color:var(--O)" id="kv4">—</div>
         <div class="hero-lbl">Llantas Críticas</div>
-        <div class="hero-sub">≤ 3mm de taco</div>
+        <div class="hero-sub">≤ 3mm de taco · en rango</div>
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('svc')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con servicio vencido o próximo">
@@ -2452,11 +2452,16 @@ function buildKPIs(){
   // ── Hero cards + dona: FLOTA = unidades distintas (catálogo) con su última
   // inspección. Estado actual, INDEPENDIENTE del rango de fechas. ──
   const fleet = (Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || [];
-  let ct=0,enTaller=0,nSvcVencido=0,nSvcProximo=0,operativaDonut=0,tallerDonut=0;
+  // FLOTA + EN TALLER + dona = estado operativo de la flota COMPLETA (no depende del rango).
+  let enTaller=0,operativaDonut=0,tallerDonut=0;
   for(const x of fleet){
-    if(x.minT!==null && x.minT<=TCRIT) ct++;
     const enTallerNow=isUnitEnTaller(x);
     if(enTallerNow){ enTaller++; tallerDonut++; } else operativaDonut++;
+  }
+  // LLANTAS CRÍTICAS + SERVICIO = sobre las inspecciones del RANGO (units), igual que la tabla.
+  let ct=0,nSvcVencido=0,nSvcProximo=0;
+  for(const x of units){
+    if(x.minT!==null && x.minT<=TCRIT) ct++;
     const ss=svcStatus(x);
     if(ss==="vencido") nSvcVencido++; else if(ss==="proximo") nSvcProximo++;
   }
@@ -2472,7 +2477,8 @@ function buildKPIs(){
   const kssvc=document.getElementById("ks_svc");if(kssvc){
     const venTxt=nSvcVencido?`${nSvcVencido} vencido${nSvcVencido!==1?"s":""}`:"";
     const proxTxt=nSvcProximo?`${nSvcProximo} próximo${nSvcProximo!==1?"s":""}`:"";
-    kssvc.textContent=venTxt&&proxTxt?`${venTxt} · ${proxTxt}`:venTxt||proxTxt||"Al corriente";
+    const base=venTxt&&proxTxt?`${venTxt} · ${proxTxt}`:venTxt||proxTxt||"Al corriente";
+    kssvc.textContent=`${base} · en rango`;
   }
 
   // ── Chips de filtro: sobre las INSPECCIONES del rango (units), que es lo que
@@ -5277,6 +5283,10 @@ const _FLEET_MODAL_META = {
 // Fuente del catálogo: flota cloud si está, si no las units cargadas (offline/xlsx).
 // Mismo fallback que buildKPIs/tlAcSearch — sin esto el modal sale vacío sin cloud.
 function _fleetSource(){
+  // tiresCrit/svc = inspecciones del RANGO (units), igual que el KPI y la tabla → el
+  // conteo del modal cuadra con el número de la card.
+  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return units || [];
+  // all/taller = flota completa (catálogo); fallback a units sin cloud.
   return (window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []);
 }
 function _fleetKindFilter(u){
