@@ -1994,6 +1994,13 @@ select {
   user-select: none;
   -webkit-user-drag: none;
 }
+/* Firmas: PNG con fondo transparente y trazo oscuro → sobre el visor oscuro casi no
+   se ven. Fondo blanco + padding → trazo negro nítido. Solo aplica a firmas (las fotos
+   son opacas, no se ven afectadas). */
+#lbimg.lb-sig {
+  background: #fff;
+  padding: 18px;
+}
 #lbimg.lb-dragging {
   transition: none; /* arrastre 1:1, sin lag */
   cursor: grabbing;

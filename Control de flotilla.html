@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-f9dZ6131HKsR1UZj62r1nWu/oumNbHTOWj3DRbtxe/c='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-uF1ZGWJdZQrXUWelR98+Ffk938zwM5sZ4sowqaKCt7k='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3523,7 +3523,12 @@ function lbUpdate(){
   // Resolve URL if lazy
   if(!item.url && item.fname) item.url = imgUrl(item.fname);
   
-  document.getElementById("lbimg").src=item.url || "";
+  const _img=document.getElementById("lbimg");
+  _img.src=item.url || "";
+  // Firmas (fondo transparente, trazo oscuro) → fondo blanco para que se vean. Las
+  // fotos normales son opacas, la clase no las afecta.
+  const _isSig=/firma|signature/i.test(String(item.label||""))||/firma|signature/i.test(String(item.fname||""));
+  _img.classList.toggle("lb-sig", _isSig);
   document.getElementById("lblabel").textContent=item.label;
   document.getElementById("lbctr").textContent=`${lbIdx+1} de ${lbImgs.length}`;
   lbZoomReset(); // cada foto arranca a 100% (ajustada)
