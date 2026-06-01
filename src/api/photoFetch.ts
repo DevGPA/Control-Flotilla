@@ -13,7 +13,11 @@ import { list, getUrl } from "aws-amplify/storage";
 const urlCache = new Map<string, { url: string; expires: number }>();
 const indexCache = new Map<string, Set<string>>(); // tenantId → set of available filenames
 
-const URL_TTL_MS = 50 * 60 * 1000; // refrescar antes de los 60min default
+// Fallback si getUrl no devolviera expiresAt (no debería pasar). El vencimiento real
+// del presign lo da result.expiresAt — Amplify default ≈15min, acotado además por la
+// credencial Cognito. ANTES se asumía 50min fijo → el cache servía URLs ya muertas.
+const URL_TTL_MS = 15 * 60 * 1000;
+const SKEW_MS = 60 * 1000; // margen para no servir una URL a punto de vencer
 
 /**
  * Lista todas las fotos disponibles en S3 para un tenant.
@@ -64,35 +68,74 @@ export function hasCloudPhoto(tenantId: string, filename: string): boolean {
 export async function getCloudPhotoUrl(
   tenantId: string,
   filename: string,
+  opts?: { force?: boolean },
 ): Promise<string | null> {
   const key = filename.toLowerCase();
   const cached = urlCache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.url;
+  if (!opts?.force && cached && cached.expires > Date.now()) return cached.url;
 
   if (!hasCloudPhoto(tenantId, key)) return null;
 
   try {
     const result = await getUrl({ path: `photos/${tenantId}/${key}` });
     const url = result.url.toString();
-    urlCache.set(key, { url, expires: Date.now() + URL_TTL_MS });
+    // Vencimiento REAL del presign (no un fijo adivinado). Restamos skew para no
+    // entregar una URL que muere en segundos.
+    const realExpiry =
+      result.expiresAt instanceof Date ? result.expiresAt.getTime() : Date.now() + URL_TTL_MS;
+    urlCache.set(key, { url, expires: realExpiry - SKEW_MS });
     return url;
   } catch {
     return null;
   }
 }
 
+/** Entrada de URL firmada con su vencimiento real (para cachear con TTL honesto). */
+export interface PhotoUrlEntry {
+  url: string;
+  expires: number;
+}
+
+/** Lee la entrada {url, expires} cacheada tras firmar (null si no se firmó). */
+function entryFor(key: string): PhotoUrlEntry | null {
+  const c = urlCache.get(key);
+  return c ? { url: c.url, expires: c.expires } : null;
+}
+
 /**
- * Pre-firma URLs para una lista de filenames. Útil para batch render de
- * un panel de fotos. Devuelve map filename → url (null si no encontrado).
+ * Pre-firma URLs para una lista de filenames. Útil para batch render de un panel de
+ * fotos. Devuelve map filename → {url, expires} (null si no encontrado).
  */
 export async function batchGetCloudPhotoUrls(
   tenantId: string,
   filenames: string[],
-): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>();
+): Promise<Map<string, PhotoUrlEntry | null>> {
+  const out = new Map<string, PhotoUrlEntry | null>();
   await Promise.all(
     filenames.map(async (f) => {
-      out.set(f.toLowerCase(), await getCloudPhotoUrl(tenantId, f));
+      const key = f.toLowerCase();
+      const url = await getCloudPhotoUrl(tenantId, f);
+      out.set(key, url ? entryFor(key) : null);
+    }),
+  );
+  return out;
+}
+
+/**
+ * Re-firma URLs frescas para una lista de fnames SIN re-listar S3 (reusa el índice
+ * cacheado de indexCloudPhotos). Firmar es local/barato; el list es lo caro. Usado por
+ * el auto-refresh para renovar URLs próximas a vencer sin costo de red extra.
+ */
+export async function refreshPhotoUrls(
+  tenantId: string,
+  filenames: string[],
+): Promise<Map<string, PhotoUrlEntry | null>> {
+  const out = new Map<string, PhotoUrlEntry | null>();
+  await Promise.all(
+    filenames.map(async (f) => {
+      const key = f.toLowerCase();
+      const url = await getCloudPhotoUrl(tenantId, f, { force: true });
+      out.set(key, url ? entryFor(key) : null);
     }),
   );
   return out;

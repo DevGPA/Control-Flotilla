@@ -71,8 +71,9 @@ declare global {
     __cloudHydrate?: () => Promise<{ units: number; source: "cloud" | "empty" } | null>;
     /** Sube fotos a S3 (Record<filename, Uint8Array>). */
     __cloudSyncPhotos?: (images: Record<string, Uint8Array>) => Promise<PhotoUploadResult>;
-    /** Obtiene URL firmada de S3 para una foto (lazy, cacheada 50min). */
-    __cloudGetPhotoUrl?: (filename: string) => Promise<string | null>;
+    /** Obtiene URL firmada de S3 para una foto (lazy, cacheada hasta su expiresAt real).
+     *  opts.force re-firma fresca (usado por el onerror del <img> para auto-sanar 403). */
+    __cloudGetPhotoUrl?: (filename: string, opts?: { force?: boolean }) => Promise<string | null>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
@@ -284,10 +285,13 @@ export function setupCloud(): void {
     return res;
   };
 
-  window.__cloudGetPhotoUrl = async (filename: string): Promise<string | null> => {
+  window.__cloudGetPhotoUrl = async (
+    filename: string,
+    opts?: { force?: boolean },
+  ): Promise<string | null> => {
     const session = await getSession();
     if (!session) return null;
-    return getCloudPhotoUrl(session.tenantId, filename);
+    return getCloudPhotoUrl(session.tenantId, filename, opts);
   };
 
   // Auth gating al boot: si NO hay sesión, modal aparece inmediatamente y

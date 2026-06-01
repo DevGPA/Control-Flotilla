@@ -13,7 +13,12 @@
 
 import type { Schema } from "./amplifyClient";
 import { listUnits, listChecklists, listSemanales, listTaller } from "./client";
-import { batchGetCloudPhotoUrls, indexCloudPhotos } from "./photoFetch";
+import {
+  batchGetCloudPhotoUrls,
+  indexCloudPhotos,
+  refreshPhotoUrls,
+  type PhotoUrlEntry,
+} from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
@@ -58,8 +63,9 @@ declare global {
     tallerEntries?: TallerEntry[];
     updateTallerBadge?: () => void;
     renderTaller?: () => void;
-    /** Mapa filename → S3 presigned URL pre-fetched al hydrate. Lo lee legacy imgUrl. */
-    __cloudPhotoUrlMap?: Map<string, string>;
+    /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
+     *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
+    __cloudPhotoUrlMap?: Map<string, PhotoUrlEntry>;
     // periodos / activePeriodoId / renderPeriodoBar / switchPeriodo: declarados en main.ts.
     // Vista de rango de fechas: todas las inspecciones (1 fila por checklist).
     __inspections?: Unit[];
@@ -414,30 +420,53 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       }
     }
   }
-  // GUARD DE COSTO (auto-refresh): solo firmamos URLs de fotos NUEVAS — las que
-  // aún no están en __cloudPhotoUrlMap. En el boot inicial el map está vacío →
-  // firma todas; en cada re-hidratación (visibilitychange/poll) normalmente no
-  // hay fotos nuevas → se salta indexCloudPhotos + batchGet (caro: list S3 +
-  // firmar URLs). Hace el auto-refresh barato.
-  window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, string>();
+  // FIRMA DE URLS DE FOTOS. Dos costos distintos:
+  //  - indexCloudPhotos = list S3 → CARO (red). Solo si hay fotos NUEVAS.
+  //  - firmar (getUrl) = LOCAL/barato. Lo usamos para re-firmar las que ya vencen.
+  // Las URLs firmadas de S3 expiran ≈15min (acotadas por la credencial Cognito); si no
+  // se re-firman, "de la nada" todas las fotos dan 403 → "No disponible" hasta un hard
+  // refresh. El auto-refresh (poll 4min) re-firma las próximas a vencer SIN re-listar.
+  window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, PhotoUrlEntry>();
   const existingMap = window.__cloudPhotoUrlMap;
-  const newFnames = [...allPhotoFnames].filter((f) => !existingMap.has(f));
-  if (newFnames.length > 0) {
+  const allFnamesArr = [...allPhotoFnames];
+  const newFnames = allFnamesArr.filter((f) => !existingMap.has(f));
+  const RESIGN_WINDOW_MS = 5 * 60 * 1000; // re-firmar las que vencen dentro de 5min
+  const soon = Date.now() + RESIGN_WINDOW_MS;
+  const staleFnames = allFnamesArr.filter((f) => {
+    const e = existingMap.get(f);
+    return e !== undefined && e.expires <= soon;
+  });
+  if (newFnames.length > 0 || staleFnames.length > 0) {
     try {
-      // CRÍTICO: indexar S3 ANTES de batchGetCloudPhotoUrls.
-      // batchGet usa hasCloudPhoto que consulta el index cache. Sin index
-      // cargado, todas las URLs retornan null → map vacío (race condition
-      // que dejaba multi-user sin fotos).
-      await indexCloudPhotos(tenantId);
-      const urlMap = await batchGetCloudPhotoUrls(tenantId, newFnames);
-      let count = 0;
-      for (const [fname, url] of urlMap) {
-        if (url) {
-          existingMap.set(fname, url);
-          count++;
+      if (newFnames.length > 0) {
+        // CRÍTICO: indexar S3 ANTES de batchGetCloudPhotoUrls. batchGet usa
+        // hasCloudPhoto (index cache). Sin index → todas null (race multi-user).
+        await indexCloudPhotos(tenantId);
+        const urlMap = await batchGetCloudPhotoUrls(tenantId, newFnames);
+        let count = 0;
+        for (const [fname, entry] of urlMap) {
+          if (entry) {
+            existingMap.set(fname, entry);
+            count++;
+          }
         }
+        console.info(`[cloudHydrate] ${count}/${newFnames.length} URLs de fotos nuevas firmadas`);
       }
-      console.info(`[cloudHydrate] ${count}/${newFnames.length} URLs de fotos nuevas firmadas`);
+      if (staleFnames.length > 0) {
+        // Reusa el índice ya cacheado (no re-lista). Firmado local → barato.
+        const fresh = await refreshPhotoUrls(tenantId, staleFnames);
+        let resigned = 0;
+        for (const [fname, entry] of fresh) {
+          if (entry) {
+            existingMap.set(fname, entry);
+            resigned++;
+          }
+        }
+        if (resigned)
+          console.info(
+            `[cloudHydrate] ${resigned}/${staleFnames.length} URLs re-firmadas (por vencer)`,
+          );
+      }
     } catch (err) {
       console.warn("[cloudHydrate] photo URLs prefetch falló:", err);
     }
