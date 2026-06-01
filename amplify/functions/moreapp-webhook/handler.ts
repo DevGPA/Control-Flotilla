@@ -515,6 +515,9 @@ async function processMensual(
     km: pickStr(answers.kilometraje),
     nextSvc: pickStr(answers.fechaEstimadaDelSiguienteServicio),
     kmNextSvc: pickStr(answers.kilometrajeDelSiguienteServicio),
+    // Folio de registro de la submission de MoreApp (envelope.id). Va dentro del JSON
+    // resultados (no es campo del schema → sin migración). El front lo muestra en el detalle.
+    moreappId: pickStr(envelope.id),
     photos,
   });
 
@@ -613,6 +616,8 @@ async function processSemanal(
     llanta,
     llantaRisk,
     risk,
+    // Folio de registro MoreApp (envelope.id) — dentro del JSON datos, sin migración.
+    moreappId: pickStr(envelope.id),
     photos,
   };
 

@@ -66,6 +66,8 @@ export type Unit = {
   photos?: unknown[];
   km?: number | string;
   kmNextSvc?: number | string;
+  /** Folio de registro de la submission de MoreApp (envelope.id). Solo cloud-hidratado. */
+  folio?: string;
 };
 
 /** Marks for completed findings per unit, keyed by finding text. */

@@ -36,6 +36,7 @@ interface ChecklistResultados {
   nextSvc?: string;
   kmNextSvc?: number | string;
   validationErrors?: string[];
+  moreappId?: string;
   photos?: unknown[];
 }
 
@@ -150,6 +151,7 @@ function mergeUnitWithChecklist(
     F: findings,
     T: r.tires ?? {},
     minT: r.minT ?? null,
+    folio: r.moreappId ?? "",
     photos: Array.isArray(r.photos) ? r.photos : [],
     hasRefaccion: true,
   };
