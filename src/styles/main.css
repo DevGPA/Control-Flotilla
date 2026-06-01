@@ -1998,12 +1998,12 @@ select {
   transition: none; /* arrastre 1:1, sin lag */
   cursor: grabbing;
 }
-/* Controles de zoom */
+/* Controles de zoom — esquina inferior-derecha para no tapar los botones de
+   navegación (#lbnav), que van centrados abajo. */
 #lb-zoom {
   position: fixed;
   bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 18px;
   display: flex;
   gap: 6px;
   background: rgba(20, 26, 36, 0.9);
