@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-saTQ9BDcZgSEsoF21YWxRa2IfAqRWookv6RmEo2rLZE='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-54z2txnH0IBVOCEX/BmtrWkrX66j4KQ9l1ddZXGqQrA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -382,6 +382,7 @@ g.inflateBytes=async function(src){
     <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
     <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:var(--ac)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
+    <button class="chip" id="btn-sinmensual" onclick="openFleetModal('missingMensual')" title="Unidades de la flota sin check mensual en el rango seleccionado" style="display:none;border-style:dashed"><span class="chip-dot" style="background:var(--s2)"></span>Sin check <span class="chip-n" id="fc_missing"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
   <div class="sw">
@@ -2516,6 +2517,18 @@ function buildKPIs(){
   const fcRev=document.getElementById("fc_rev");if(fcRev)fcRev.textContent=r?`(${r})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
   const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcRange?`(${nSvcRange})`:"";
+  // "Sin check" mensual = catálogo (flota) − placas con inspección mensual en el rango.
+  // Solo con catálogo cloud; abre el modal (no es filtro de tabla, esas unidades no están en units).
+  const btnSinM=document.getElementById("btn-sinmensual");
+  if(btnSinM){
+    const fleetRoster=window.__fleetUnits;
+    if(Array.isArray(fleetRoster) && fleetRoster.length){
+      const pres=new Set(units.map(x=>x.plate));
+      const faltanM=fleetRoster.filter(x=>!pres.has(x.plate)).length;
+      btnSinM.style.display=faltanM?"inline-flex":"none";
+      const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=faltanM?`(${faltanM})`:"";
+    } else { btnSinM.style.display="none"; }
+  }
   // Action buttons
   const btnFleet=document.getElementById("btn-fleet-pdf");
   if(btnFleet) btnFleet.style.display=t?"flex":"none";
@@ -5292,27 +5305,36 @@ window.aplicarRangoSemanal = function(){
   renderSemanales();
 };
 
-// ── Modal Flota (clic en hero cards). kind: all | tiresCrit | svc | taller ──
+// ── Modal Flota (clic en hero cards). kind: all | tiresCrit | svc | taller | missing* ──
 let _fleetModalKind = "all";
+// Para los kinds "missing*" (sin check en el rango): el faltante es RESTA de conjuntos
+// (catálogo − presentes en el rango), no un predicado simple. Precomputamos el set de
+// placas presentes al abrir el modal, y el último check por unidad para la columna.
+let _missingPresent = new Set();
+let _missingLast = new Map();
 const _FLEET_MODAL_META = {
-  all:       { ttl:"Flota completa",                 col:"" },
-  tiresCrit: { ttl:`Unidades con llanta crítica (≤${TCRIT}mm)`, col:"Llanta mín" },
-  svc:       { ttl:"Servicio vencido o próximo",     col:"Servicio" },
-  taller:    { ttl:"Unidades en taller",             col:"Estado" },
+  all:           { ttl:"Flota completa",                 col:"" },
+  tiresCrit:     { ttl:`Unidades con llanta crítica (≤${TCRIT}mm)`, col:"Llanta mín" },
+  svc:           { ttl:"Servicio vencido o próximo",     col:"Servicio" },
+  taller:        { ttl:"Unidades en taller",             col:"Estado" },
+  missingMensual:{ ttl:"Sin check mensual en el rango",  col:"Último check" },
+  missingSemanal:{ ttl:"Sin check semanal en el rango",  col:"Último check" },
 };
+function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal"; }
 // Fuente del catálogo: flota cloud si está, si no las units cargadas (offline/xlsx).
 // Mismo fallback que buildKPIs/tlAcSearch — sin esto el modal sale vacío sin cloud.
 function _fleetSource(){
   // tiresCrit/svc = inspecciones del RANGO (units), igual que el KPI y la tabla → el
   // conteo del modal cuadra con el número de la card.
   if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return units || [];
-  // all/taller = flota completa (catálogo); fallback a units sin cloud.
+  // all/taller/missing* = flota completa (catálogo); fallback a units sin cloud.
   return (window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []);
 }
 function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
   if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
+  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate); // falta = no presente en el rango
   return true;
 }
 // Celda de detalle (6ª columna) según el kind.
@@ -5330,12 +5352,35 @@ function _fleetDetailCell(u){
   if(_fleetModalKind==="taller"){
     return `<span style="color:var(--B);font-weight:600">En taller</span>`;
   }
+  if(_isMissingKind(_fleetModalKind)){
+    const last = _fleetModalKind==="missingSemanal" ? _missingLast.get(u.plate) : pickStrFleet(u.fecha);
+    return last ? `<span style="color:var(--s2);font-size:11px">${escHtml(String(last).slice(0,10))}</span>`
+                : `<span style="color:var(--R);font-weight:600">Nunca</span>`;
+  }
   return "";
 }
 function pickStrFleet(v){ return (v===null||v===undefined)?"":String(v).trim(); }
 
 window.openFleetModal = function(kind){
   _fleetModalKind = _FLEET_MODAL_META[kind] ? kind : "all";
+  // Precompute para los kinds "sin check": placas presentes en el rango + último check.
+  if(_isMissingKind(_fleetModalKind)){
+    _missingPresent = new Set();
+    _missingLast = new Map();
+    if(_fleetModalKind==="missingMensual"){
+      for(const u of (window.units||[])) if(u.plate) _missingPresent.add(u.plate);
+    } else { // missingSemanal: presentes en el rango semanal + última fecha por unidad
+      for(const e of (typeof getSwEntriesInRange==="function"?getSwEntriesInRange():[])){
+        const k = e.uid || e.plate; if(!k) continue;
+        _missingPresent.add(k);
+      }
+      for(const p of (weeklyPeriodos||[])) for(const e of (p.entries||[])){
+        const k = e.uid || e.plate; if(!k) continue;
+        const f = String(e.fecha||"").slice(0,10);
+        if(f && (!_missingLast.has(k) || f > _missingLast.get(k))) _missingLast.set(k, f);
+      }
+    }
+  }
   const meta = _FLEET_MODAL_META[_fleetModalKind];
   const ttl = document.getElementById("fleet-mod-ttl");
   if(ttl) ttl.textContent = meta.ttl;
@@ -5464,6 +5509,13 @@ function buildKPIsSemanales(){
     kpisEl.innerHTML="";
     return;
   }
+  // "Sin check" semanal = catálogo (flota) − placas con entry semanal en el rango.
+  const fleetRosterS = window.__fleetUnits;
+  let faltanS = 0;
+  if(Array.isArray(fleetRosterS) && fleetRosterS.length){
+    const presS = new Set(entries.map(e=>e.uid||e.plate));
+    faltanS = fleetRosterS.filter(x=>!presS.has(x.plate)).length;
+  }
   const t  = entries.length;
   let nUrg=0,nRev=0,nOK=0,nAcUrg=0,nAcRev=0,nRaUrg=0,nRaRev=0,nBodyUrg=0,nBodyRev=0,nTireRev=0;
   for(let i=0;i<t;i++){
@@ -5535,6 +5587,12 @@ function buildKPIsSemanales(){
       <div class="kval" style="color:${nRaUrg?"var(--R)":nRaRev?"var(--A)":"var(--G)"}">${nRaUrg||nRaRev||"0"}</div>
       <div class="ksub">${nRaUrg?'<i data-lucide="zap" style="width:9px;height:9px;vertical-align:-1px"></i> '+nRaUrg+" crítico ":""}${nRaRev?'<i data-lucide="alert-triangle" style="width:9px;height:9px;vertical-align:-1px"></i> '+nRaRev+" bajo":(!nRaUrg?"Sin alertas":"")}</div>
     </div>
+    ${faltanS?`<div class="kc btn" onclick="openFleetModal('missingSemanal')" title="Unidades de la flota sin check semanal en el rango">
+      <div class="ktop" style="background:var(--s2)"></div>
+      <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="calendar-x" style="width:11px;height:11px"></i> Sin check</div>
+      <div class="kval" style="color:var(--A)">${faltanS}</div>
+      <div class="ksub">sin semanal en el rango</div>
+    </div>`:""}
   </div>`;
 }
 

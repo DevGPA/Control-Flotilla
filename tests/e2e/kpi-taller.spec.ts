@@ -85,6 +85,33 @@ test.describe("KPIs clickeables → modal de flota", () => {
     console.log(`[KPI] servicio kv_svc=${kpi} filas-modal=${filas}`);
     expect(filas).toBe(Number(kpi) || 0);
   });
+
+  test("card SIN CHECK mensual: modal lista catálogo − presentes en rango", async ({ page }) => {
+    await loadMensual(page);
+    // En e2e no hay cloud (__fleetUnits ausente). Simulamos un catálogo = units del rango
+    // + 2 unidades que NO están en el rango → deben salir como "sin check".
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        units: { plate?: string }[];
+        __fleetUnits: unknown[];
+      };
+      w.__fleetUnits = [
+        ...w.units,
+        { plate: "TEST-MISS-1", eco: "9001", brand: "X", branch: "Norte", fecha: "2026-01-15" },
+        { plate: "TEST-MISS-2", eco: "9002", brand: "X", branch: "Norte" }, // sin fecha → "Nunca"
+      ];
+      (window as unknown as { openFleetModal: (k: string) => void }).openFleetModal(
+        "missingMensual",
+      );
+    });
+    await expect(page.locator("#fleet-modal")).toBeVisible();
+    await expect(page.locator("#fleet-mod-ttl")).toHaveText(/Sin check mensual/i);
+    const filas = await page.locator("#fleet-mod-tbody tr").count();
+    console.log(`[KPI] sin-check filas-modal=${filas}`);
+    expect(filas).toBe(2); // las 2 unidades fuera del rango
+    // La columna de detalle muestra fecha o "Nunca".
+    await expect(page.locator("#fleet-mod-tbody")).toContainText(/Nunca/i);
+  });
 });
 
 test.describe("Taller — autocompletado de unidad", () => {
