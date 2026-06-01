@@ -28,12 +28,18 @@ async function loadMensual(page: Page) {
   await page.setInputFiles("#xinput", FIXTURE_MENSUAL);
   await expect(page.locator("#hfile")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("#tbody").locator("> *").first()).toBeVisible({ timeout: 10_000 });
-  // cerrar modal de período si abrió
+  // El modal de período abre ~400ms DESPUÉS de procesar (setTimeout en
+  // "Control de flotilla.html":2362). Hay que esperar a que abra y luego cerrarlo;
+  // si se cierra antes de que dispare el setTimeout, reabre e intercepta el clic
+  // en las hero-cards (flake). Determinista: visible → cerrar → oculto.
+  const periodoModal = page.locator("#periodo-modal");
+  await expect(periodoModal).toBeVisible({ timeout: 5000 });
   await page.evaluate(() => {
     const w = window as unknown as { closePeriodoModal?: () => void };
     w.closePeriodoModal?.();
     document.getElementById("periodo-modal")?.classList.remove("open");
   });
+  await expect(periodoModal).toBeHidden();
 }
 
 test.describe("KPIs clickeables → modal de flota", () => {
