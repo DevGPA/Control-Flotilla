@@ -463,6 +463,11 @@ async function processMensual(
   if (!placa) throw new Error("Sin placa (economico.PLACAS) — no se puede identificar la unidad");
 
   const ecoId = pickStr(eco.id);
+  // Folio de MoreApp = meta.serialNumber (el número humano del registro). Presente en
+  // webhook (body.data.meta) y backfill (element.meta). Fallback al id (UUID) si faltara.
+  const moreappId =
+    pickStr(((envelope.meta ?? {}) as Record<string, unknown>).serialNumber) ||
+    pickStr(envelope.id);
   const client = await getDataClient();
 
   // 1. Unit (idempotente por tenantId+placa)
@@ -515,9 +520,9 @@ async function processMensual(
     km: pickStr(answers.kilometraje),
     nextSvc: pickStr(answers.fechaEstimadaDelSiguienteServicio),
     kmNextSvc: pickStr(answers.kilometrajeDelSiguienteServicio),
-    // Folio de registro de la submission de MoreApp (envelope.id). Va dentro del JSON
-    // resultados (no es campo del schema → sin migración). El front lo muestra en el detalle.
-    moreappId: pickStr(envelope.id),
+    // Folio de MoreApp (meta.serialNumber). Va dentro del JSON resultados (sin migración
+    // de schema). El front lo muestra en el detalle.
+    moreappId,
     photos,
   });
 
@@ -552,6 +557,10 @@ async function processSemanal(
   if (!placa) throw new Error("Sin placa (economico.PLACAS) — semanal");
 
   const ecoId = pickStr(eco.id);
+  // Folio de MoreApp = meta.serialNumber (humano). Fallback al id (UUID).
+  const moreappId =
+    pickStr(((envelope.meta ?? {}) as Record<string, unknown>).serialNumber) ||
+    pickStr(envelope.id);
   const sucursal = pickStr(eco.SUCURSAL);
   const fechaRaw = pickStr(answers.dateAndTime);
   const periodoId = isoWeekId(fechaRaw);
@@ -616,8 +625,8 @@ async function processSemanal(
     llanta,
     llantaRisk,
     risk,
-    // Folio de registro MoreApp (envelope.id) — dentro del JSON datos, sin migración.
-    moreappId: pickStr(envelope.id),
+    // Folio de MoreApp (meta.serialNumber) — dentro del JSON datos, sin migración.
+    moreappId,
     photos,
   };
 
