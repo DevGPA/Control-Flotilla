@@ -59,7 +59,7 @@ test.describe("KPIs clickeables → modal de flota", () => {
       (window as unknown as { openFleetModal: (k: string) => void }).openFleetModal("tiresCrit");
     });
     await expect(page.locator("#fleet-modal")).toBeVisible();
-    await expect(page.locator("#fleet-mod-ttl")).toHaveText(/Llantas cr/i);
+    await expect(page.locator("#fleet-mod-ttl")).toHaveText(/Unidades con llanta/i);
     await expect(page.locator("#fleet-mod-coldet")).toHaveText(/Llanta/i);
     // El conteo del modal debe coincidir con el KPI kv4.
     const kpi = (await page.locator("#kv4").textContent())?.trim() || "0";
