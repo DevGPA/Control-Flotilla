@@ -175,7 +175,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     listChecklists(tenantId),
     listSemanales(tenantId),
     listTaller(tenantId),
-    listCheckDone(tenantId),
+    // No-fatal: si CheckDone aún no está desplegado o falla, no debe tumbar toda la
+    // hidratación de datos (units/checklists). Las completaciones son una mejora encima.
+    listCheckDone(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listCheckDone falló (no-fatal):", e);
+      return [] as Schema["CheckDone"]["type"][];
+    }),
   ]);
 
   if (units.length === 0 && semanales.length === 0 && tallerCloud.length === 0) {
