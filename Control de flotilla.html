@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-WdzaE3j72j6HXfJkQ+196D8G94jTiAjLjxjI15GTE5o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-h/GGmEieOZvYIm8nUEvk36hUet2+EbILMpem0qDoIpk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2525,8 +2525,10 @@ function buildKPIs(){
     if(Array.isArray(fleetRoster) && fleetRoster.length){
       const pres=new Set(units.map(x=>x.plate||x.uid));
       const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
-      btnSinM.style.display=faltanM?"inline-flex":"none";
-      const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=faltanM?`(${faltanM})`:"";
+      // Siempre visible con catálogo cloud (aunque sea 0) para que el usuario lo encuentre.
+      btnSinM.style.display="inline-flex";
+      btnSinM.style.opacity=faltanM?"1":"0.55";
+      const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=`(${faltanM})`;
     } else { btnSinM.style.display="none"; }
   }
   // Action buttons
@@ -2566,9 +2568,16 @@ function buildKPIs(){
   if(typeof buildAnalytics === "function") buildAnalytics();
 }
 function buildBranches(){
-  const bs=[...new Set(units.map(u=>u.branch).filter(Boolean))].sort();
+  // Catálogo completo (todas las sucursales) si hay flota cloud; si no, las del rango.
+  // Antes solo usaba `units` (rango) y cloudHydrate no llamaba a esta función → el
+  // dropdown salía vacío ("Todas") en sesiones cloud.
+  const src=(window.__fleetUnits && window.__fleetUnits.length)?window.__fleetUnits:units;
+  const bs=[...new Set((src||[]).map(u=>u.branch).filter(Boolean))].sort();
   const s=document.getElementById("bsel");
+  if(!s)return;
+  const cur=s.value;
   s.innerHTML=`<option value="all">Todas las sucursales</option>`+bs.map(b=>`<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
+  if(cur && [...s.options].some(o=>o.value===cur)) s.value=cur; // preserva selección
 }
 
 // ════════════════════════════════════════════════════════════

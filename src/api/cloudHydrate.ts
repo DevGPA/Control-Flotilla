@@ -56,6 +56,7 @@ declare global {
     buildAnalytics?: () => void;
     buildAlertsSummary?: () => void;
     buildKPIs?: () => void;
+    buildBranches?: () => void;
     showDash?: () => void;
     renderDet?: () => void;
     weeklyPeriodos?: WeeklyPeriodo[];
@@ -478,6 +479,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (typeof window.initRangoBar === "function") window.initRangoBar();
   if (typeof window.showDash === "function") window.showDash();
   if (typeof window.buildKPIs === "function") window.buildKPIs();
+  // Sin esto el filtro de sucursales (#bsel) queda vacío en sesiones cloud.
+  if (typeof window.buildBranches === "function") window.buildBranches();
   if (typeof window.renderTable === "function") window.renderTable();
   if (typeof window.buildAlertsSummary === "function") window.buildAlertsSummary();
   if (typeof window.buildAnalytics === "function") window.buildAnalytics();
