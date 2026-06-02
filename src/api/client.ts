@@ -356,3 +356,53 @@ export async function listSemanales(tenantId: string): Promise<Schema["Semanal"]
     "listSemanales",
   );
 }
+
+// ───────────────────────── CheckDone (completaciones compartidas) ─────────────────────────
+
+export type CheckDoneInput = {
+  tenantId: string;
+  unitUid: string;
+  itemKey: string;
+  done?: boolean;
+  por?: string;
+  ts?: string;
+};
+
+export async function upsertCheckDone(input: CheckDoneInput): Promise<Schema["CheckDone"]["type"]> {
+  const c = getClient();
+  const payload = { done: true, ...input };
+  const created = await c.models.CheckDone.create(payload);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.CheckDone.update(payload);
+    throwOnErrors("upsertCheckDone(update)", updated.errors);
+    if (!updated.data)
+      throw new Error(`upsertCheckDone(update) null data ${input.unitUid}/${input.itemKey}`);
+    return updated.data;
+  }
+  throwOnErrors("upsertCheckDone(create)", created.errors);
+  throw new Error(`upsertCheckDone(create) null data ${input.unitUid}/${input.itemKey}`);
+}
+
+export async function deleteCheckDone(input: {
+  tenantId: string;
+  unitUid: string;
+  itemKey: string;
+}): Promise<void> {
+  const c = getClient();
+  const { errors } = await c.models.CheckDone.delete(input);
+  throwOnErrors("deleteCheckDone", errors);
+}
+
+export async function listCheckDone(tenantId: string): Promise<Schema["CheckDone"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["CheckDone"]["type"]>(
+    (token) =>
+      c.models.CheckDone.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listCheckDone",
+  );
+}

@@ -34,6 +34,8 @@ import {
   listPeriodos,
   listSemanales,
   deleteTaller,
+  upsertCheckDone,
+  deleteCheckDone,
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
@@ -74,6 +76,8 @@ declare global {
     /** Obtiene URL firmada de S3 para una foto (lazy, cacheada hasta su expiresAt real).
      *  opts.force re-firma fresca (usado por el onerror del <img> para auto-sanar 403). */
     __cloudGetPhotoUrl?: (filename: string, opts?: { force?: boolean }) => Promise<string | null>;
+    /** Guarda/borra la completación de un hallazgo en la nube (compartida entre usuarios). */
+    __cloudSetCheck?: (unitUid: string, itemKey: string, done: boolean) => Promise<void>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
@@ -292,6 +296,29 @@ export function setupCloud(): void {
     const session = await getSession();
     if (!session) return null;
     return getCloudPhotoUrl(session.tenantId, filename, opts);
+  };
+
+  // Completación de hallazgos compartida: marca (upsert) o desmarca (delete) en la nube.
+  // E2E (?e2e=1) → no-op (sin sesión). Fire-and-forget desde toggleCheckItem.
+  window.__cloudSetCheck = async (
+    unitUid: string,
+    itemKey: string,
+    done: boolean,
+  ): Promise<void> => {
+    const session = await getSession();
+    if (!session) return;
+    if (done) {
+      await upsertCheckDone({
+        tenantId: session.tenantId,
+        unitUid,
+        itemKey,
+        done: true,
+        por: session.email ?? "",
+        ts: new Date().toISOString(),
+      });
+    } else {
+      await deleteCheckDone({ tenantId: session.tenantId, unitUid, itemKey });
+    }
   };
 
   // Auth gating al boot: si NO hay sesión, modal aparece inmediatamente y

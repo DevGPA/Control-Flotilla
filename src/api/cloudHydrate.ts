@@ -12,7 +12,7 @@
 // Triggers re-render de la UI legacy llamando window.renderTable / buildKPIs.
 
 import type { Schema } from "./amplifyClient";
-import { listUnits, listChecklists, listSemanales, listTaller } from "./client";
+import { listUnits, listChecklists, listSemanales, listTaller, listCheckDone } from "./client";
 import {
   batchGetCloudPhotoUrls,
   indexCloudPhotos,
@@ -59,6 +59,7 @@ declare global {
     buildBranches?: () => void;
     showDash?: () => void;
     renderDet?: () => void;
+    // checklistDB (completaciones, bridged al monolito) ya está declarado en main.ts como ChecklistDB.
     weeklyPeriodos?: WeeklyPeriodo[];
     activeWeeklyPeriodoId?: string | null;
     updateSwNavBadge?: () => void;
@@ -169,11 +170,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   units: number;
   source: "cloud" | "empty";
 }> {
-  const [units, checklists, semanales, tallerCloud] = await Promise.all([
+  const [units, checklists, semanales, tallerCloud, checkDones] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
     listSemanales(tenantId),
     listTaller(tenantId),
+    listCheckDone(tenantId),
   ]);
 
   if (units.length === 0 && semanales.length === 0 && tallerCloud.length === 0) {
@@ -473,6 +475,20 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     } catch (err) {
       console.warn("[cloudHydrate] photo URLs prefetch falló:", err);
     }
+  }
+
+  // Completaciones de checklist COMPARTIDAS: el cloud es la fuente de verdad. Fusiona en
+  // window.checklistDB (bridged al monolito) para que todos los usuarios vean lo atendido.
+  if (checkDones.length) {
+    const cdb = window.checklistDB ?? {};
+    for (const cd of checkDones) {
+      if (cd.done === false) continue;
+      const uid = cd.unitUid;
+      const key = cd.itemKey;
+      if (!uid || !key) continue;
+      (cdb[uid] ??= {})[key] = { done: true, ts: cd.ts ?? undefined, by: cd.por ?? undefined };
+    }
+    window.checklistDB = cdb;
   }
 
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.

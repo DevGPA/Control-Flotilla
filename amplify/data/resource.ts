@@ -113,6 +113,21 @@ const schema = a
         index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),
         index("tenantId").sortKeys(["unitUid"]).name("byTenantAndUnit"),
       ]),
+
+    // Completación de hallazgos del checklist, COMPARTIDA entre usuarios del tenant.
+    // Antes el "atendido/done" vivía solo en IndexedDB local → no se veía multi-user.
+    // 1 record por (unidad, itemKey=texto del hallazgo). Marcar = upsert; desmarcar = delete.
+    CheckDone: a
+      .model({
+        tenantId: a.string().required(),
+        unitUid: a.string().required(),
+        itemKey: a.string().required(),
+        done: a.boolean().default(true),
+        por: a.string(),
+        ts: a.string(),
+      })
+      .identifier(["tenantId", "unitUid", "itemKey"])
+      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
   })
   // Acceso IAM para el Lambda moreapp-webhook (FASE 2): ingiere envíos de MoreApp
   // y escribe Unit/Checklist (mensual) + Unit/Semanal (semanal). El grant resource

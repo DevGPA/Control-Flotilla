@@ -71,4 +71,7 @@ export type Unit = {
 };
 
 /** Marks for completed findings per unit, keyed by finding text. */
-export type ChecklistDB = Record<string, Record<string, { done?: boolean }>>;
+export type ChecklistDB = Record<
+  string,
+  Record<string, { done?: boolean; ts?: string; by?: string }>
+>;
