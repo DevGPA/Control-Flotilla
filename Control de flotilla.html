@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-54z2txnH0IBVOCEX/BmtrWkrX66j4KQ9l1ddZXGqQrA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-WdzaE3j72j6HXfJkQ+196D8G94jTiAjLjxjI15GTE5o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2438,7 +2438,7 @@ function photoImgErr(img){
     img.dataset.retried="1";
     window.__cloudGetPhotoUrl(fname,{force:true}).then(u=>{
       if(u){ img.src=u; img.style.opacity="1"; } else photoImgFail(img);
-    }).catch(()=>photoImgFail(img));
+    }).catch(err=>{ console.warn("[photoImgErr] re-firma falló:",fname,err); photoImgFail(img); });
     return;
   }
   photoImgFail(img);
@@ -2523,8 +2523,8 @@ function buildKPIs(){
   if(btnSinM){
     const fleetRoster=window.__fleetUnits;
     if(Array.isArray(fleetRoster) && fleetRoster.length){
-      const pres=new Set(units.map(x=>x.plate));
-      const faltanM=fleetRoster.filter(x=>!pres.has(x.plate)).length;
+      const pres=new Set(units.map(x=>x.plate||x.uid));
+      const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
       btnSinM.style.display=faltanM?"inline-flex":"none";
       const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=faltanM?`(${faltanM})`:"";
     } else { btnSinM.style.display="none"; }
@@ -3545,7 +3545,7 @@ function shortLbl(col){
 // ════════════════════════════════════════════════════════════
 // LIGHTBOX
 // ════════════════════════════════════════════════════════════
-function lbOpen(idx){if(!lbImgs.length)return;lbIdx=typeof idx==="string"?parseInt(idx,10):idx;lbUpdate();document.getElementById("lb").classList.add("open")}
+function lbOpen(idx){if(!lbImgs.length)return;let i=typeof idx==="string"?parseInt(idx,10):idx;if(!Number.isFinite(i)||i<0||i>=lbImgs.length)i=0;lbIdx=i;lbUpdate();document.getElementById("lb").classList.add("open")}
 function lbUpdate(){
   const item=lbImgs[lbIdx];if(!item)return;
   // Resolve URL if lazy
@@ -4805,7 +4805,7 @@ function renderPeriodoBar(){
       return`<span style="font-size:9px;font-weight:700;color:var(--s2);padding:2px 4px;letter-spacing:.5px">${escHtml(yr)}:</span>`+
         ps.map(p=>{
           const isActive=p.id===activePeriodoId;
-          const shortLabel=p.mes?MES_NAMES[p.mes].substring(0,3):p.label;
+          const shortLabel=p.mes?((MES_NAMES[parseInt(p.mes,10)]||p.label).substring(0,3)):p.label;
           const riskPct=p.units.length?Math.round(p.units.filter(x=>x.risk==="Urgente").length/p.units.length*100):0;
           const dotColor=riskPct>20?"var(--R)":riskPct>10?"var(--A)":"var(--G)";
           return`<span class="periodo-chip${isActive?" active":""}" data-action="switchPeriodo" data-arg1="${escAttr(p.id)}" title="${escAttr(p.label)} · ${p.units.length} unidades · ${riskPct}% urgente"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:${dotColor};margin-right:3px"></span>${escHtml(shortLabel)}</span>`
@@ -5015,6 +5015,10 @@ function initRangoBar(){
 function aplicarRango(){
   const d = document.getElementById("rango-desde").value;
   const h = document.getElementById("rango-hasta").value;
+  if(d && h && d > h){
+    window.notify && window.notify("La fecha 'Desde' no puede ser mayor que 'Hasta'.","warn",4000);
+    return;
+  }
   if(typeof window.applyDateRange === "function") window.applyDateRange(d, h);
   updateRangoCount();
 }
@@ -5026,8 +5030,13 @@ function updateRangoCount(){
 async function confirmPeriodo(){
   const mes  = document.getElementById("pm-mes").value;
   const anio = document.getElementById("pm-anio").value;
+  const mesN = parseInt(mes,10), anioN = parseInt(anio,10);
+  if(isNaN(mesN) || mesN<1 || mesN>12 || isNaN(anioN) || anioN<2000 || anioN>2100){
+    window.notify && window.notify("Mes/año inválido para el período.","warn",4000);
+    return;
+  }
   const id   = `${anio}-${mes}`;
-  const label= `${MES_NAMES[parseInt(mes)]} ${anio}`;
+  const label= `${MES_NAMES[mesN]} ${anio}`;
 
   // Check if period already exists
   const existing = periodos.find(p=>p.id===id);
@@ -5039,8 +5048,8 @@ async function confirmPeriodo(){
   const p = {
     id,
     label,
-    mes,
-    anio: parseInt(anio),
+    mes: mesN,
+    anio: anioN,
     uploadedAt: new Date().toISOString(),
     filename: _pendingPeriodoFname || "",
     units: units.map(u=>({
@@ -5334,7 +5343,7 @@ function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
   if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
-  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate); // falta = no presente en el rango
+  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate||u.uid); // falta = no presente en el rango
   return true;
 }
 // Celda de detalle (6ª columna) según el kind.
@@ -5368,14 +5377,14 @@ window.openFleetModal = function(kind){
     _missingPresent = new Set();
     _missingLast = new Map();
     if(_fleetModalKind==="missingMensual"){
-      for(const u of (window.units||[])) if(u.plate) _missingPresent.add(u.plate);
+      for(const u of (window.units||[])){ const k=u.plate||u.uid; if(k) _missingPresent.add(k); }
     } else { // missingSemanal: presentes en el rango semanal + última fecha por unidad
       for(const e of (typeof getSwEntriesInRange==="function"?getSwEntriesInRange():[])){
-        const k = e.uid || e.plate; if(!k) continue;
+        const k = e.plate || e.uid; if(!k) continue;
         _missingPresent.add(k);
       }
       for(const p of (weeklyPeriodos||[])) for(const e of (p.entries||[])){
-        const k = e.uid || e.plate; if(!k) continue;
+        const k = e.plate || e.uid; if(!k) continue;
         const f = String(e.fecha||"").slice(0,10);
         if(f && (!_missingLast.has(k) || f > _missingLast.get(k))) _missingLast.set(k, f);
       }
@@ -5513,8 +5522,8 @@ function buildKPIsSemanales(){
   const fleetRosterS = window.__fleetUnits;
   let faltanS = 0;
   if(Array.isArray(fleetRosterS) && fleetRosterS.length){
-    const presS = new Set(entries.map(e=>e.uid||e.plate));
-    faltanS = fleetRosterS.filter(x=>!presS.has(x.plate)).length;
+    const presS = new Set(entries.map(e=>e.plate||e.uid));
+    faltanS = fleetRosterS.filter(x=>!presS.has(x.plate||x.uid)).length;
   }
   const t  = entries.length;
   let nUrg=0,nRev=0,nOK=0,nAcUrg=0,nAcRev=0,nRaUrg=0,nRaRev=0,nBodyUrg=0,nBodyRev=0,nTireRev=0;
@@ -7013,6 +7022,16 @@ async function saveTallerEntry(){
     comentario:  document.getElementById("tf-comentario").value.trim(),
     updatedAt:   new Date().toISOString(),
   };
+
+  // Validación lógica de fechas: la salida no puede ser anterior a la entrada.
+  if(entry.fentrada && entry.fsalidaEst && entry.fsalidaEst < entry.fentrada){
+    window.notify && window.notify("La salida estimada no puede ser anterior a la fecha de ingreso.","warn",4500);
+    document.getElementById("tf-fsalida-est").focus(); return;
+  }
+  if(entry.fentrada && entry.fsalidaReal && entry.fsalidaReal < entry.fentrada){
+    window.notify && window.notify("La salida real no puede ser anterior a la fecha de ingreso.","warn",4500);
+    document.getElementById("tf-fsalida-real").focus(); return;
+  }
 
   // Auto-set fsalidaReal cuando estado=Finalizado y campo está vacío.
   if(entry.estado === "Finalizado" && !entry.fsalidaReal){

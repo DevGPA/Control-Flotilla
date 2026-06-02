@@ -57,6 +57,12 @@ async function listAll<T>(
     token = nextToken ?? null;
     pages++;
   } while (token && pages < 100);
+  // No truncar en silencio: si llegamos al tope con token pendiente, faltan datos.
+  if (token && pages >= 100) {
+    console.warn(
+      `[${label}] paginación cortada en 100 páginas (${out.length} ítems) con nextToken pendiente — datos incompletos`,
+    );
+  }
   return out;
 }
 
@@ -184,14 +190,17 @@ export type NotaInput = {
 export async function upsertNota(input: NotaInput): Promise<Schema["Nota"]["type"]> {
   const c = getClient();
   const created = await c.models.Nota.create(input);
-  if (!created.errors) return created.data!;
-  if (isConditionalCheckFailed(created.errors)) {
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
     const updated = await c.models.Nota.update(input);
     throwOnErrors("upsertNota(update)", updated.errors);
-    return updated.data!;
+    if (!updated.data)
+      throw new Error(`upsertNota(update) null data para ${input.unitUid} — auth filtering?`);
+    return updated.data;
   }
   throwOnErrors("upsertNota(create)", created.errors);
-  return created.data!;
+  // Sin errors pero sin data = authorization filtra post-create (bug clase re-key).
+  throw new Error(`upsertNota(create) null data para ${input.unitUid} — auth filtering?`);
 }
 
 export async function listNotas(tenantId: string): Promise<Schema["Nota"]["type"][]> {
@@ -280,14 +289,15 @@ export type PeriodoInput = {
 export async function upsertPeriodo(input: PeriodoInput): Promise<Schema["Periodo"]["type"]> {
   const c = getClient();
   const created = await c.models.Periodo.create(input);
-  if (!created.errors) return created.data!;
-  if (isConditionalCheckFailed(created.errors)) {
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
     const updated = await c.models.Periodo.update(input);
     throwOnErrors("upsertPeriodo(update)", updated.errors);
-    return updated.data!;
+    if (!updated.data) throw new Error(`upsertPeriodo(update) null data — auth filtering?`);
+    return updated.data;
   }
   throwOnErrors("upsertPeriodo(create)", created.errors);
-  return created.data!;
+  throw new Error(`upsertPeriodo(create) null data — auth filtering?`);
 }
 
 export async function listPeriodos(tenantId: string): Promise<Schema["Periodo"]["type"][]> {
@@ -322,14 +332,16 @@ export async function upsertSemanal(input: SemanalInput): Promise<Schema["Semana
   };
   const payload = inputStringified as unknown as Parameters<typeof c.models.Semanal.create>[0];
   const created = await c.models.Semanal.create(payload);
-  if (!created.errors) return created.data!;
-  if (isConditionalCheckFailed(created.errors)) {
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
     const updated = await c.models.Semanal.update(payload);
     throwOnErrors("upsertSemanal(update)", updated.errors);
-    return updated.data!;
+    if (!updated.data)
+      throw new Error(`upsertSemanal(update) null data para ${input.unitUid} — auth filtering?`);
+    return updated.data;
   }
   throwOnErrors("upsertSemanal(create)", created.errors);
-  return created.data!;
+  throw new Error(`upsertSemanal(create) null data para ${input.unitUid} — auth filtering?`);
 }
 
 export async function listSemanales(tenantId: string): Promise<Schema["Semanal"]["type"][]> {
