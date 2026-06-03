@@ -5,7 +5,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
@@ -593,7 +593,10 @@ async function processSemanal(
   const aceite = pickStr(answers.nivelDeAceiteDeMotorMax);
   const radiador = pickStr(answers.nivelDeLiquidoDeRadiadorMax);
   const carroceria = pickStr(answers.carroceriaSinGolpesORaspaduras);
-  const llanta = pickStr(answers.llantaDeRefaccionFuncional);
+  // dataName real de MoreApp = "cuentaConLlantaDeRefaccin" (ver FIELD_MAP). Antes
+  // se leía "llantaDeRefaccionFuncional" (nombre de COLUMNA legacy, no dataName),
+  // que NUNCA existe en answers → llanta="" → normTireRisk("")="OK" SIEMPRE.
+  const llanta = pickStr(answers.cuentaConLlantaDeRefaccin);
   const aceiteRisk = normFluidRisk(aceite);
   const radiadorRisk = normFluidRisk(radiador);
   const carroceriaRisk = bodyRiskFromSiNo(carroceria);
@@ -933,25 +936,32 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       ? Buffer.from(event.body, "base64").toString("utf-8")
       : (event.body ?? "");
 
-  // Auditoría: guarda crudo en S3 (todos los forms).
-  const auditKey = `${PREFIX}${Date.now()}.json`;
+  // Verificar firma HMAC ANTES de persistir nada: evita que un request con token
+  // válido pero firma inválida escriba objetos arbitrarios en S3 (abuso/costo) y
+  // deje headers crudos guardados. (Con SIGNING_SECRET vacío verifySignature=true.)
+  if (!verifySignature(event.headers?.["moreapp-signature"], raw)) {
+    console.warn("[moreapp-webhook] firma HMAC inválida");
+    return res(401, { error: "invalid signature" });
+  }
+
+  // Auditoría: guarda crudo en S3. Clave única (ts + uuid) para no pisar
+  // reintentos/envíos concurrentes en el mismo ms. Headers filtrados: no
+  // persistir Authorization/Cookie (secretos).
+  const safeHeaders: Record<string, string | undefined> = { ...(event.headers ?? {}) };
+  for (const h of ["authorization", "Authorization", "cookie", "Cookie"]) delete safeHeaders[h];
+  const auditKey = `${PREFIX}${Date.now()}-${randomUUID()}.json`;
   await s3.send(
     new PutObjectCommand({
       Bucket: BUCKET,
       Key: auditKey,
       Body: JSON.stringify(
-        { receivedAt: new Date().toISOString(), headers: event.headers, bodyRaw: raw },
+        { receivedAt: new Date().toISOString(), headers: safeHeaders, bodyRaw: raw },
         null,
         2,
       ),
       ContentType: "application/json",
     }),
   );
-
-  if (!verifySignature(event.headers?.["moreapp-signature"], raw)) {
-    console.warn("[moreapp-webhook] firma HMAC inválida");
-    return res(401, { error: "invalid signature" });
-  }
 
   let body: Record<string, unknown>;
   try {

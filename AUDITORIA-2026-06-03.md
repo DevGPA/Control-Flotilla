@@ -96,12 +96,20 @@ ESLint ✓. Detalle completo de cada hallazgo en [`audit/AUDITORIA-2026-06-03-de
 
 ### Backend webhook — Lambda de ingesta EN VIVO (probar en sandbox antes de prod)
 
+> **#5, #7, #8 quedan PREPARADOS en `handler.ts` (commit separado de este branch), SIN desplegar.**
+> No tienen test unitario (Lambda); validar en `npx ampx sandbox` antes de mergear a la rama que despliega prod.
+
 - **#5 — `processSemanal` lee el dataName equivocado para la llanta de refacción** (`llantaDeRefaccionFuncional` no
   existe; el real es `cuentaConLlantaDeRefaccin`) → `llantaRisk` se persiste SIEMPRE como "OK". Bug de datos real.
-  **Recomendación:** confirmar el dataName con `?sample=1&form=<SEMANAL>` y corregir; afecta ingesta nueva + requiere backfill.
-- **#6 — Zona horaria UTC vs hora de captura MX** en `fecha` del Checklist (llave compuesta) y en el cálculo de días de servicio.
-- **#7 — Clave de auditoría S3 con `Date.now()`** → colisión entre reintentos/concurrentes (pisa el crudo).
-- **#8 — El crudo se escribe en S3 (con headers completos) antes de validar la firma HMAC.**
+  **Aplicado:** `pickStr(answers.cuentaConLlantaDeRefaccin)`. _Pendiente: confirmar dataName con `?sample=1&form=<SEMANAL>`
+  y backfill de los semanales ya ingeridos (todos con `llantaRisk="OK"`)._
+- **#6 — Zona horaria UTC vs hora de captura MX** en `fecha` del Checklist (llave compuesta) y en el cálculo de días de
+  servicio. **DIFERIDO:** requiere una estrategia de zona horaria deliberada (America/Mexico_City) en todo el manejo de
+  fechas; un fix a medias empeora las fechas. No tocado.
+- **#7 — Clave de auditoría S3 con `Date.now()`** → colisión entre reintentos/concurrentes. **Aplicado:** sufijo
+  `randomUUID()` en la clave.
+- **#8 — El crudo se escribe en S3 (con headers completos) antes de validar la firma HMAC.** **Aplicado:** se verifica
+  firma ANTES de persistir + se filtran `Authorization`/`Cookie` del audit.
 
 ### Migración de datos / composite key (requieren backfill)
 
