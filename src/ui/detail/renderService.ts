@@ -131,8 +131,24 @@ function weeklyCrossRefCard(unit: Unit, weeklyPeriodos: WeeklyPeriodo[]): HTMLEl
   );
   if (candidates.length === 0) return null;
 
-  // Sort descendente por label (periodos en formato ISO-ish suelen ordenar bien)
-  candidates.sort((a, b) => (b._periodo || "").localeCompare(a._periodo || ""));
+  // Ordena por la FECHA real de la entrada (desc), no por el label del período:
+  // labels humanos como "Semana 9"/"Semana 10" no ordenan cronológicamente con
+  // localeCompare. Soporta fecha ISO (YYYY-MM-DD) y DMY (DD/MM/YYYY); fallback
+  // al label si no hay fecha parseable.
+  const fechaKey = (f?: string): number => {
+    const s = (f || "").trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return Date.UTC(+iso[1]!, +iso[2]! - 1, +iso[3]!);
+    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return Date.UTC(+dmy[3]!, +dmy[2]! - 1, +dmy[1]!);
+    return NaN;
+  };
+  candidates.sort((a, b) => {
+    const ta = fechaKey(a.fecha);
+    const tb = fechaKey(b.fecha);
+    if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) return tb - ta;
+    return (b._periodo || "").localeCompare(a._periodo || "");
+  });
   const latest = candidates[0];
   if (!latest) return null;
 

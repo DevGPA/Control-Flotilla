@@ -71,10 +71,14 @@ export async function getCloudPhotoUrl(
   opts?: { force?: boolean },
 ): Promise<string | null> {
   const key = filename.toLowerCase();
-  const cached = urlCache.get(key);
-  if (!opts?.force && cached && cached.expires > Date.now()) return cached.url;
-
+  // Verificar pertenencia al tenant ANTES de servir cache, y cachear con clave
+  // POR-TENANT: los filenames de MoreApp son poco únicos y dos tenants pueden
+  // compartir basename. Con clave sin prefijo, un cache-hit devolvía la URL
+  // firmada del otro tenant (la línea de cache estaba ANTES del guard).
   if (!hasCloudPhoto(tenantId, key)) return null;
+  const ck = `${tenantId}/${key}`;
+  const cached = urlCache.get(ck);
+  if (!opts?.force && cached && cached.expires > Date.now()) return cached.url;
 
   try {
     const result = await getUrl({ path: `photos/${tenantId}/${key}` });
@@ -83,7 +87,7 @@ export async function getCloudPhotoUrl(
     // entregar una URL que muere en segundos.
     const realExpiry =
       result.expiresAt instanceof Date ? result.expiresAt.getTime() : Date.now() + URL_TTL_MS;
-    urlCache.set(key, { url, expires: realExpiry - SKEW_MS });
+    urlCache.set(ck, { url, expires: realExpiry - SKEW_MS });
     return url;
   } catch {
     return null;
@@ -96,9 +100,10 @@ export interface PhotoUrlEntry {
   expires: number;
 }
 
-/** Lee la entrada {url, expires} cacheada tras firmar (null si no se firmó). */
-function entryFor(key: string): PhotoUrlEntry | null {
-  const c = urlCache.get(key);
+/** Lee la entrada {url, expires} cacheada tras firmar (null si no se firmó).
+ * La clave es la usada por urlCache: `${tenantId}/${filename}`. */
+function entryFor(cacheKey: string): PhotoUrlEntry | null {
+  const c = urlCache.get(cacheKey);
   return c ? { url: c.url, expires: c.expires } : null;
 }
 
@@ -115,7 +120,7 @@ export async function batchGetCloudPhotoUrls(
     filenames.map(async (f) => {
       const key = f.toLowerCase();
       const url = await getCloudPhotoUrl(tenantId, f);
-      out.set(key, url ? entryFor(key) : null);
+      out.set(key, url ? entryFor(`${tenantId}/${key}`) : null);
     }),
   );
   return out;
@@ -135,7 +140,7 @@ export async function refreshPhotoUrls(
     filenames.map(async (f) => {
       const key = f.toLowerCase();
       const url = await getCloudPhotoUrl(tenantId, f, { force: true });
-      out.set(key, url ? entryFor(key) : null);
+      out.set(key, url ? entryFor(`${tenantId}/${key}`) : null);
     }),
   );
   return out;

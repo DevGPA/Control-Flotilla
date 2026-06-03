@@ -16,8 +16,19 @@ const DOC_KEYS = new Set<string>([
 // Parser inline compat con legacy parseSvcDate (Control de flotilla.html:1505).
 // Formatos: DD/MM/YYYY o YYYY-MM-DD. null si no parseable.
 function parseSvcDate(s: unknown): Date | null {
+  if (s instanceof Date) return Number.isNaN(s.getTime()) ? null : s;
+  // Serial Excel (días desde 1899-12-30). Con cellDates:false las fechas llegan
+  // como serial numérico; el rango ~20000–90000 cubre 1954–2146 y evita
+  // interpretar números pequeños espurios como fechas absurdas. Antes parseSvcDate
+  // solo reconocía strings DMY/ISO → un serial/Date desactivaba el fallback de fecha.
+  const asSerial = (n: number): Date | null =>
+    Number.isFinite(n) && n >= 20000 && n <= 90000
+      ? new Date(Date.UTC(1899, 11, 30) + n * 86400000)
+      : null;
+  if (typeof s === "number") return asSerial(s);
   const str = String(s ?? "").trim();
   if (!str || str === "—") return null;
+  if (/^\d{5}(\.\d+)?$/.test(str)) return asSerial(parseFloat(str));
   const m1 = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   // m1 regex has 3 capture groups — guaranteed present when match succeeds
   if (m1) return new Date(+m1[3]!, +m1[2]! - 1, +m1[1]!);
@@ -25,6 +36,26 @@ function parseSvcDate(s: unknown): Date | null {
   // m2 regex has 3 capture groups — guaranteed present when match succeeds
   if (m2) return new Date(+m2[1]!, +m2[2]! - 1, +m2[3]!);
   return null;
+}
+
+// Detecta respuestas negativas compuestas además del literal "no": "No cuenta",
+// "No tiene", "Ninguna/o", "Sin refacción". Antes el gating usaba `!== "no"`
+// estricto, por lo que cualquier negativa con texto adicional se trataba como
+// afirmativa y NO disparaba el hallazgo de refacción/llanta faltante.
+// Cadena vacía / dato ausente NO cuenta como negativa (se asume presente).
+function esRespuestaNegativa(raw: unknown): boolean {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (!v) return false;
+  return (
+    v === "no" ||
+    v.startsWith("no ") ||
+    v === "ninguna" ||
+    v === "ninguno" ||
+    v === "ningun" ||
+    v.startsWith("sin ")
+  );
 }
 
 export function analyzeRow(row: ExcelRow): AnalyzeResult {
@@ -39,21 +70,17 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   // Fallback al nombre legacy para compat con exports viejos.
   const refRaw =
     row["Cuenta con llanta de Refacción?"] ?? row["Llanta de refaccion funcional"] ?? "";
-  const tieneRefaccion = String(refRaw).trim().toLowerCase() !== "no";
+  const tieneRefaccion = !esRespuestaNegativa(refRaw);
   if (!tieneRefaccion) {
     F.push({ cat: "Checklist", text: "Sin llanta de refacción funcional", lv: "Revisar" });
     bump("Revisar");
   }
 
-  // Gating llantas internas: si "¿Cuenta con...?" === "No" → skip.
-  const tieneIntPiloto =
-    String(row["¿Cuenta con Llanta Piloto trasera INTERNA?"] ?? "")
-      .trim()
-      .toLowerCase() !== "no";
-  const tieneIntCopiloto =
-    String(row["¿Cuenta con Llanta Copiloto trasera INTERNA?"] ?? "")
-      .trim()
-      .toLowerCase() !== "no";
+  // Gating llantas internas: si "¿Cuenta con...?" es negativa → skip.
+  const tieneIntPiloto = !esRespuestaNegativa(row["¿Cuenta con Llanta Piloto trasera INTERNA?"]);
+  const tieneIntCopiloto = !esRespuestaNegativa(
+    row["¿Cuenta con Llanta Copiloto trasera INTERNA?"],
+  );
 
   for (const [n, c] of Object.entries(TC)) {
     if (n === "Refacción" && !tieneRefaccion) continue;

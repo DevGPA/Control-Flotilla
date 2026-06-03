@@ -57,15 +57,15 @@ export type HistorialSummary = {
 };
 
 const COLS: Array<{ lbl: string; key: HistorialSortKey | null; w: string }> = [
-  { lbl: "Unidad",       key: "eco",         w: "70px" },
-  { lbl: "Placas",       key: "plate",       w: "110px" },
-  { lbl: "Modelo",       key: "brand",       w: "auto" },
-  { lbl: "Sucursal",     key: "sucursal",    w: "auto" },
-  { lbl: "Visitas",      key: null,          w: "110px" },
-  { lbl: "Últ. Ingreso", key: "fentrada",    w: "100px" },
-  { lbl: "F. Salida",    key: "fsalidaReal", w: "100px" },
-  { lbl: "Días",         key: null,          w: "60px" },
-  { lbl: "Gasto",        key: null,          w: "100px" },
+  { lbl: "Unidad", key: "eco", w: "70px" },
+  { lbl: "Placas", key: "plate", w: "110px" },
+  { lbl: "Modelo", key: "brand", w: "auto" },
+  { lbl: "Sucursal", key: "sucursal", w: "auto" },
+  { lbl: "Visitas", key: null, w: "110px" },
+  { lbl: "Últ. Ingreso", key: "fentrada", w: "100px" },
+  { lbl: "F. Salida", key: "fsalidaReal", w: "100px" },
+  { lbl: "Días", key: null, w: "60px" },
+  { lbl: "Gasto", key: null, w: "100px" },
 ];
 
 function fmtDate(d?: string): string {
@@ -85,7 +85,11 @@ function isClosed(e: TallerEntry): boolean {
 }
 
 function norm(s?: string): string {
-  return (s ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return (s ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function matchesQuery(lc: TallerEntry, q: string): boolean {
@@ -132,20 +136,32 @@ export function buildHistorialRows(
 
     if (!isClosed(e)) continue;
 
-    // Filtros de fecha sobre fentrada del cerrado
-    if (filter.desde && e.fentrada && e.fentrada < filter.desde) continue;
-    if (filter.hasta && e.fentrada && e.fentrada > filter.hasta) continue;
+    // Filtros de fecha sobre fentrada del cerrado. fentrada puede traer un
+    // timestamp ISO completo ("2026-04-15T10:00:00Z"): comparar solo el día
+    // (slice 0,10) para no excluir el borde superior por la hora. Una entrada
+    // cerrada SIN fentrada se considera FUERA de cualquier rango activo (antes
+    // el `&& e.fentrada` cortocircuitaba y la colaba en conteo/totales).
+    if (filter.desde || filter.hasta) {
+      const fe = (e.fentrada ?? "").slice(0, 10);
+      if (!fe) continue;
+      if (filter.desde && fe < filter.desde) continue;
+      if (filter.hasta && fe > filter.hasta) continue;
+    }
     // Filtro tipo mantenimiento
     if (!tipoMatch(e, filter.tipo)) continue;
 
     row.closedCount++;
     const gRef = e.gastoRef ?? 0;
     const gMO = e.gastoMO ?? 0;
-    const gTot = gRef + gMO > 0 ? gRef + gMO : e.gasto ?? 0;
+    const gTot = gRef + gMO > 0 ? gRef + gMO : (e.gasto ?? 0);
     row.totalGasto += gTot;
     row.totalGastoRef += gRef;
     row.totalGastoMO += gMO;
-    if (!row.latestClosed || (e.updatedAt ?? "") > (row.latestClosed.updatedAt ?? "")) {
+    // latestClosed = el cerrado (ya filtrado) de mayor updatedAt. El primer
+    // cerrado se asigna incondicionalmente para descartar el placeholder del
+    // init (que puede ser una entrada ACTIVA con updatedAt alto); el sesgo del
+    // init hacía que ninguna cerrada con updatedAt menor lo desplazara.
+    if (row.closedCount === 1 || (e.updatedAt ?? "") > (row.latestClosed.updatedAt ?? "")) {
       row.latestClosed = e;
     }
   }
@@ -153,12 +169,9 @@ export function buildHistorialRows(
   const rows: HistorialRow[] = [];
   for (const r of map.values()) {
     if (r.closedCount === 0) continue;
-    // latestClosed podría quedar con el entry inicial (no cerrado) si no se
-    // actualizó — reemplaza por el primer cerrado encontrado en entries
-    if (!isClosed(r.latestClosed)) {
-      const anyClosed = r.entries.find(isClosed);
-      if (anyClosed) r.latestClosed = anyClosed;
-    }
+    // closedCount>=1 garantiza que latestClosed ya fue reasignado a una entrada
+    // cerrada (closedCount===1 asigna incondicionalmente), por lo que no se
+    // necesita el viejo parche que tomaba el primer cerrado en orden de inserción.
     rows.push(r);
   }
   return rows;
@@ -172,7 +185,8 @@ export function filterAndSortHistorial(
 ): HistorialRow[] {
   const filtered = rows.filter((r) => {
     const lc = r.latestClosed;
-    if (filter.sucursal && filter.sucursal !== "all" && lc.sucursal !== filter.sucursal) return false;
+    if (filter.sucursal && filter.sucursal !== "all" && lc.sucursal !== filter.sucursal)
+      return false;
     if (filter.search && !matchesQuery(lc, filter.search)) return false;
     return true;
   });
@@ -241,7 +255,8 @@ function buildEmptyRow(q: string, desde: string, hasta: string): HTMLElement {
   td.appendChild(document.createElement("br"));
   const hint = document.createElement("span");
   hint.style.fontSize = "10px";
-  hint.textContent = "Las unidades aparecen aquí cuando se marca un ingreso como Finalizado en Operaciones Activas.";
+  hint.textContent =
+    "Las unidades aparecen aquí cuando se marca un ingreso como Finalizado en Operaciones Activas.";
   td.appendChild(hint);
   tr.appendChild(td);
   return tr;
@@ -269,7 +284,8 @@ function buildDataRow(
   const isActive = !isClosed(row.latest);
   if (isActive) {
     const tag = document.createElement("span");
-    tag.style.cssText = "font-size:8px;font-weight:700;color:var(--A);background:var(--Ad);padding:1px 5px;border-radius:3px;margin-left:4px";
+    tag.style.cssText =
+      "font-size:8px;font-weight:700;color:var(--A);background:var(--Ad);padding:1px 5px;border-radius:3px;margin-left:4px";
     tag.textContent = "EN TALLER";
     tdEco.appendChild(tag);
   }
@@ -393,10 +409,7 @@ function buildDataRow(
   return tr;
 }
 
-function renderKpiBar(
-  kpiBar: HTMLElement,
-  rows: HistorialRow[],
-): void {
+function renderKpiBar(kpiBar: HTMLElement, rows: HistorialRow[]): void {
   kpiBar.replaceChildren();
   if (!rows.length) {
     kpiBar.style.display = "none";
@@ -409,7 +422,8 @@ function renderKpiBar(
   const totalMO = rows.reduce((s, r) => s + r.totalGastoMO, 0);
   const totalVisitas = rows.reduce((s, r) => s + r.closedCount, 0);
   const prom = totalVisitas ? totalGasto / totalVisitas : 0;
-  void totalRef; void totalMO; // reservado para futuros KPIs
+  void totalRef;
+  void totalMO; // reservado para futuros KPIs
 
   const mkStat = (val: string, lbl: string, color: string, center = false): HTMLElement => {
     const st = document.createElement("div");
@@ -506,8 +520,7 @@ export function renderHistorial(
     if (filter.tipo && filter.tipo !== "all") {
       tags.push(filter.tipo === "sin" ? "sin tipo" : filter.tipo.toLowerCase());
     }
-    rcnt.textContent =
-      `${rows.length} unidad${rows.length !== 1 ? "es" : ""} · ${tags.length ? tags.join(" · ") : "todos los registros"}`;
+    rcnt.textContent = `${rows.length} unidad${rows.length !== 1 ? "es" : ""} · ${tags.length ? tags.join(" · ") : "todos los registros"}`;
   }
 
   if (kpiBar) renderKpiBar(kpiBar, rows);

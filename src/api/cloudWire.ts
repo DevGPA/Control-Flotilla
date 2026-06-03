@@ -169,7 +169,7 @@ export function setupCloud(): void {
       window.notify?.(summary, "ok", 4000);
       // Re-hidrata para reflejar el state autoritativo del cloud post-upload.
       // No bloquea — fire-and-forget. Si falla, el state local actual sigue válido.
-      void hydrateFromCloud(session.tenantId).catch((err) =>
+      void hydrateSerialized(session.tenantId).catch((err) =>
         console.error("[cloudSyncUnits] re-hydrate falló:", err),
       );
     }
@@ -190,7 +190,7 @@ export function setupCloud(): void {
     } else {
       window.notify?.(summary, "ok", 4000);
       // Re-hidrata para reflejar el state autoritativo del cloud post-upload.
-      void hydrateFromCloud(session.tenantId).catch((err) =>
+      void hydrateSerialized(session.tenantId).catch((err) =>
         console.error("[cloudSyncSemanales] re-hydrate falló:", err),
       );
     }
@@ -210,7 +210,7 @@ export function setupCloud(): void {
       window.notify?.(summary, "warn", 6000);
     } else {
       window.notify?.(summary, "ok", 4000);
-      void hydrateFromCloud(session.tenantId).catch((err) =>
+      void hydrateSerialized(session.tenantId).catch((err) =>
         console.error("[cloudSyncTaller] re-hydrate falló:", err),
       );
     }
@@ -251,7 +251,7 @@ export function setupCloud(): void {
   } | null> => {
     const session = await getSession();
     if (!session) return null;
-    return hydrateFromCloud(session.tenantId);
+    return hydrateSerialized(session.tenantId);
   };
 
   window.__cloudSyncPhotos = async (
@@ -281,7 +281,7 @@ export function setupCloud(): void {
     if (res.uploaded > 0) {
       try {
         await indexCloudPhotos(session.tenantId);
-        await hydrateFromCloud(session.tenantId);
+        await hydrateSerialized(session.tenantId);
       } catch (err) {
         console.warn("[cloudSyncPhotos] post-upload refresh falló:", err);
       }
@@ -362,7 +362,7 @@ export function setupCloud(): void {
     // batchGetCloudPhotoUrls para evitar race con URL map.
     if (session) {
       try {
-        const result = await hydrateFromCloud(session.tenantId);
+        const result = await hydrateSerialized(session.tenantId);
         if (result.source === "cloud" && result.units > 0) {
           window.notify?.(`☁ ${result.units} unidades cargadas del servidor`, "ok", 3000);
         }
@@ -377,6 +377,18 @@ export function setupCloud(): void {
       setupAutoRefresh(session.tenantId);
     }
   })();
+}
+
+// Serializa TODAS las hidrataciones (sync fire-and-forget tras upload +
+// auto-refresh). Sin esto, 2+ hydrateFromCloud podían correr a la vez mutando
+// window.units / __cloudPhotoUrlMap intercaladamente (interleaving con awaits de
+// red → KPIs/fotos transitorios incorrectos). Encola: a lo más una a la vez.
+type HydrateResult = Awaited<ReturnType<typeof hydrateFromCloud>>;
+let hydrateChain: Promise<unknown> = Promise.resolve();
+function hydrateSerialized(tenantId: string): Promise<HydrateResult> {
+  const next = hydrateChain.catch(() => {}).then(() => hydrateFromCloud(tenantId));
+  hydrateChain = next.catch(() => {}); // la cadena nunca queda en estado rechazado
+  return next;
 }
 
 let autoRefreshWired = false;
@@ -410,7 +422,7 @@ function setupAutoRefresh(tenantId: string): void {
     last = Date.now();
     running = true;
     try {
-      await hydrateFromCloud(tenantId);
+      await hydrateSerialized(tenantId);
       console.info(`[autoRefresh] datos actualizados (${reason})`);
     } catch (err) {
       console.warn(`[autoRefresh] falló (${reason}):`, err);

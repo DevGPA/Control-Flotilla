@@ -51,15 +51,31 @@ export async function loadZip(file: File | Blob, filename?: string): Promise<Loa
       const isImg = IMG_EXT.test(entryName);
       const isXlsx = XLSX_EXT.test(entryName);
 
-      if (isImg || isXlsx) {
+      if (isImg) {
         const bytes = await getBytes();
-        if (isImg) {
-          const key = (entryName.split("/").pop() ?? entryName).toLowerCase().trim();
-          if (key) images[key] = bytes;
-          entries.push({ name: entryName, kind: "image", size: bytes.length });
-        } else if (isXlsx && !xlsxBox.ref) {
+        const key = (entryName.split("/").pop() ?? entryName).toLowerCase().trim();
+        if (key) {
+          // Las imágenes se indexan por basename: dos entradas en carpetas
+          // distintas con el mismo basename colisionan y la 2ª pisa a la 1ª.
+          // Avisar para no perder evidencia fotográfica en silencio.
+          if (images[key]) {
+            console.warn(
+              `[zipLoader] imagen duplicada por basename "${key}" (${entryName}) — sobrescribe la previa`,
+            );
+          }
+          images[key] = bytes;
+        }
+        entries.push({ name: entryName, kind: "image", size: bytes.length });
+      } else if (isXlsx) {
+        if (!xlsxBox.ref) {
+          // Solo el PRIMER xlsx se infla a RAM. Antes se llamaba getBytes() para
+          // TODO xlsx (inflado completo) y los 2º+ se descartaban sin entrar a
+          // `entries` → CPU/RAM desperdiciada y log incompleto.
+          const bytes = await getBytes();
           xlsxBox.ref = { name: entryName, bytes };
           entries.push({ name: entryName, kind: "xlsx", size: bytes.length });
+        } else {
+          entries.push({ name: entryName, kind: "xlsx", size: 0 });
         }
       } else {
         // Para archivos "other", solo guardamos el nombre y tipo en el log de entries
@@ -103,7 +119,7 @@ export async function loadZip(file: File | Blob, filename?: string): Promise<Loa
 export async function loadZipStream(
   file: File | Blob,
   onImage: (name: string, data: Uint8Array) => Promise<void>,
-  onReport: (report: LoadedReport) => Promise<void>
+  onReport: (report: LoadedReport) => Promise<void>,
 ): Promise<void> {
   await readZipStream(file, async (entryName, getBytes) => {
     if (MACOSX_PATH.test(entryName) || entryName.startsWith(".") || entryName.endsWith("/")) {
@@ -122,4 +138,3 @@ export async function loadZipStream(
     }
   });
 }
-

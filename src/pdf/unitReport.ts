@@ -68,15 +68,18 @@ export function buildUnitReport(unit: Unit, opts: UnitReportOptions = {}): PdfDo
   doc.line(doc.margin, doc.y, doc.margin + doc.contentWidth, doc.y);
   doc.y += 4;
 
+  // Kilometraje: km es number|string; un string no numérico ("N/A", "12,345")
+  // produce Number(...) = NaN y "NaN km" en el reporte. Validar finitud.
+  const kmNum = Number(unit.km);
+  const kmStr =
+    unit.km !== undefined && unit.km !== "" && Number.isFinite(kmNum)
+      ? `${kmNum.toLocaleString("es-MX")} km`
+      : "—";
+
   const rows: Array<[string, string]> = [
     ["Fecha de inspección", unit.fecha || "—"],
     ["Sucursal", unit.branch || "—"],
-    [
-      "Kilometraje",
-      unit.km !== undefined && unit.km !== ""
-        ? `${Number(unit.km).toLocaleString("es-MX")} km`
-        : "—",
-    ],
+    ["Kilometraje", kmStr],
     ["Próximo servicio", unit.nextSvc || "—"],
     [
       "Llanta mínima (TACO)",

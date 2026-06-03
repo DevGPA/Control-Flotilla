@@ -109,7 +109,10 @@ export function computeActivasKpis(
   // Días promedio — 3 tiers
   const compArr: number[] = [];
   for (const e of entries) {
-    if (!isClosed(e) || !e.fentrada || !e.fsalidaReal) continue;
+    // Respeta el filtro activo (sucursal/área/tipo/search) igual que estArr/revArr.
+    // Antes iteraba TODAS las entradas crudas → la card "Días Prom." mostraba el
+    // promedio global aunque hubiera un filtro de sucursal/tipo aplicado.
+    if (!isClosed(e) || !matchesFilter(e, filter) || !e.fentrada || !e.fsalidaReal) continue;
     const d = daysBetween(e.fentrada, e.fsalidaReal);
     if (d != null && d >= 0) compArr.push(d);
   }

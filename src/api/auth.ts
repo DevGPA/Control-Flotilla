@@ -13,6 +13,7 @@ import {
   confirmSignIn,
   type SignInInput,
 } from "aws-amplify/auth";
+import { clearPhotoCache } from "./photoFetch";
 
 export interface AuthSession {
   username: string;
@@ -37,9 +38,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   try {
     const result = await signIn(input);
     if (result.isSignedIn) return { status: "success" };
-    if (
-      result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
-    ) {
+    if (result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED") {
       return { status: "requireNewPassword" };
     }
     return {
@@ -71,6 +70,9 @@ export async function confirmNewPassword(newPassword: string): Promise<LoginResu
 /** Cierra sesión y limpia JWT del local storage. */
 export async function logout(): Promise<void> {
   await signOut();
+  // Limpia el cache de URLs firmadas e índice de fotos: al loguear como otro
+  // tenant en el mismo navegador no debe reusarse nada del tenant anterior.
+  clearPhotoCache();
 }
 
 /** True si hay sesión Cognito válida. No throws. */

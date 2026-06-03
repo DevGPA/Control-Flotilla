@@ -524,7 +524,11 @@ function buildHeatmapOption(data: DayCount[]): echarts.EChartsCoreOption {
   const today = new Date();
   const start = new Date(today);
   start.setDate(start.getDate() - 89);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  // Formatear con componentes LOCALES, no toISOString()/UTC: los datos d.date se
+  // generan en hora local (YYYY-MM-DD); en UTC-6, toISOString por las tardes
+  // devuelve el día siguiente → calendario y llaves de datos quedaban desfasados.
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   return {
     tooltip: {

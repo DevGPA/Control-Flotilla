@@ -9,13 +9,19 @@
 
 import { TCRIT, TWARN } from "../analyzer/constants";
 import type { ChecklistDB, RiskLevel, Unit } from "../types";
-import { createVirtualTable } from "./virtualTable";
+import { createVirtualTable, type Controller } from "./virtualTable";
 
 /** Threshold a partir del cual se activa la virtualización. */
 export const VIRTUALIZE_THRESHOLD = 200;
 
 /** Altura fija asumida por fila en modo virtualizado (px). */
 export const VIRTUAL_ROW_HEIGHT = 60;
+
+// Controllers de virtualTable vivos por container. renderTable() se invoca
+// decenas de veces sobre el MISMO #tbody; sin esto, cada render en modo virtual
+// dejaba un scroll-listener + ResizeObserver acumulados → fuga de memoria y N
+// callbacks render() por scroll en flotas grandes (justo el caso virtual).
+const virtualControllers = new WeakMap<HTMLElement, Controller<Unit>>();
 
 export type RenderTableDeps = {
   units: Unit[];
@@ -117,7 +123,9 @@ export function tcell(minT: number | null, tcrit = TCRIT, twarn = TWARN): HTMLEl
     placeholder.textContent = "—";
     return placeholder;
   }
-  const pct = Math.min((minT / 10) * 100, 100);
+  // Clamp en ambos extremos: un minT negativo (dato corrupto) producía un ancho
+  // de barra negativo. El color ya cae en rojo por la cadena <=.
+  const pct = Math.max(0, Math.min((minT / 10) * 100, 100));
   const color = minT <= tcrit ? "var(--R)" : minT <= twarn ? "var(--A)" : "var(--G)";
   const wrap = document.createElement("div");
   wrap.className = "tmw";
@@ -311,6 +319,14 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
     rowHeight = VIRTUAL_ROW_HEIGHT,
   } = deps;
 
+  // Destruye el controller virtual de una invocación previa sobre este mismo
+  // container (quita su scroll-listener + ResizeObserver) antes de re-render.
+  const prevController = virtualControllers.get(container);
+  if (prevController) {
+    prevController.destroy();
+    virtualControllers.delete(container);
+  }
+
   // Reset container
   container.replaceChildren();
 
@@ -349,13 +365,14 @@ export function renderTable(container: HTMLElement, deps: RenderTableDeps): void
   if (useVirtual) {
     // virtualTable maneja todo el ciclo (append sizer+viewport, scroll listener,
     // ResizeObserver, rAF). Fila con altura fija `rowHeight`.
-    createVirtualTable<Unit>({
+    const controller = createVirtualTable<Unit>({
       container,
       rows: units,
       rowHeight,
       overscan: 6,
       renderRow: (u, i) => buildRow(u, i, ctx),
     });
+    virtualControllers.set(container, controller);
     return;
   }
 

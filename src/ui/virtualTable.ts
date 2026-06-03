@@ -7,7 +7,7 @@ export type VirtualTableOptions<T> = {
   onVisibleRangeChange?: (start: number, end: number) => void;
 };
 
-type Controller<T> = {
+export type Controller<T> = {
   setRows: (rows: T[]) => void;
   scrollToIndex: (index: number) => void;
   destroy: () => void;
