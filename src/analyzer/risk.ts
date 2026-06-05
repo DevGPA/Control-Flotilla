@@ -72,9 +72,12 @@ const FLUID_OK = normKws([
 export function normFluidRisk(val: unknown): RiskLevel {
   const v = norm(val);
   if (!v) return "OK";
-  if (FLUID_URG.some((kw) => v.includes(kw))) return "Urgente";
+  // audit 2026-06-04: OK antes que URG (igual que normBodyRisk). "sin fuga" /
+  // "no hay fuga" / "no presenta fuga" contienen "fuga" (en FLUID_URG) y deben
+  // resolver OK, no marcar Urgente a una unidad sana.
   if (FLUID_OK.some((kw) => v === kw || v.includes(kw))) return "OK";
   if (v === "si") return "OK";
+  if (FLUID_URG.some((kw) => v.includes(kw))) return "Urgente";
   return "Revisar";
 }
 
