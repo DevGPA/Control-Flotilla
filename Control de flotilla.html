@@ -4780,8 +4780,9 @@ async function persistWeeklyImages(){
 function updateSwNavBadge(){
   const badge = document.getElementById("sw-nav-badge");
   if(!badge) return;
-  // Contar urgentes en el rango activo (estilo mensual).
-  const inRange = (typeof getSwEntriesInRange==="function") ? getSwEntriesInRange() : [];
+  // Contar urgentes en el rango activo (estilo mensual). audit 2026-06-05: por unidad
+  // (no por inspección) para que el badge cuadre con el KPI "Atención Urgente".
+  const inRange = (typeof getSwUnitsInRange==="function") ? getSwUnitsInRange() : [];
   const nUrg = inRange.filter(e=>effRisk(e)==="Urgente").length;
   if(nUrg>0){
     badge.textContent=nUrg;
@@ -5517,6 +5518,23 @@ function getSwEntriesInRange(){
   return out;
 }
 
+// audit 2026-06-05: vista de "estado de flota" — UNA fila por unidad (placa||uid),
+// su inspección MÁS RECIENTE dentro del rango. getSwEntriesInRange() devuelve TODAS
+// las inspecciones (una por unidad×semana), así que un rango de varias semanas
+// inflaba los KPIs/tabla contando la misma unidad una vez por semana. Esto deduplica
+// para que los conteos representen unidades, no inspecciones (coherente con "% de la
+// flota" y con SIN CHECK que ya cuenta placas únicas). Para histórico/fotos/detalle
+// por semana se sigue usando getSwEntriesInRange() (set completo).
+function getSwUnitsInRange(){
+  const byUnit = new Map();
+  for(const e of getSwEntriesInRange()){
+    const k = e.plate || e.uid || e._swKey;
+    const prev = byUnit.get(k);
+    if(!prev || isoDay(e.fecha) > isoDay(prev.fecha)) byUnit.set(k, e);
+  }
+  return [...byUnit.values()];
+}
+
 function renderSemanales(){
   renderWeeklyPeriodoBar();
   buildKPIsSemanales();
@@ -5552,7 +5570,7 @@ function renderWeeklyPeriodoBar(){
 function buildKPIsSemanales(){
   const kpisEl = document.getElementById("sw-kpis");
   if(!kpisEl) return;
-  const entries = getSwEntriesInRange();
+  const entries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (no por inspección/semana)
   if(!entries.length){
     kpisEl.innerHTML="";
     return;
@@ -5645,7 +5663,7 @@ function buildKPIsSemanales(){
 }
 
 function renderTableSemanales(){
-  const allEntries = getSwEntriesInRange();
+  const allEntries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (la inspección más reciente del rango)
   const empty  = document.getElementById("sw-empty");
   const table  = document.getElementById("sw-table");
   const tbody  = document.getElementById("sw-tbody");
@@ -5775,7 +5793,7 @@ function renderTableSemanales(){
   }).join("");
 
   if(rcnt) rcnt.textContent = rows.length===allEntries.length
-    ? `${rows.length} inspección${rows.length!==1?"es":""}` : `${rows.length} de ${allEntries.length}`;
+    ? `${rows.length} unidad${rows.length!==1?"es":""}` : `${rows.length} de ${allEntries.length}`;
 }
 
 // Abre el lightbox con las fotos semanales de una unidad. swKey = uid::periodoId
