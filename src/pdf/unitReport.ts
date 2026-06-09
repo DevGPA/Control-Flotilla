@@ -5,6 +5,7 @@
 // futuras. Por ahora coexiste con legado via feature flag.
 
 import { PdfDoc, PDF_COLORS, riskColor } from "./engine";
+import { isFindingDone } from "../analyzer/findingKey";
 import type { Unit, ChecklistDB } from "../types";
 
 export type UnitReportOptions = {
@@ -103,7 +104,7 @@ export function buildUnitReport(unit: Unit, opts: UnitReportOptions = {}): PdfDo
   doc.y += 4;
 
   const dm = checklistDB[unit.uid] || {};
-  const pending = unit.F.filter((f) => !dm[f.text]?.done);
+  const pending = unit.F.filter((f) => !isFindingDone(dm, f, unit.fecha));
   if (pending.length === 0) {
     doc.text("Sin hallazgos pendientes. Unidad operativa.", doc.margin, doc.y, {
       size: 9,

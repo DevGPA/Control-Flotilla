@@ -35,7 +35,6 @@ import {
   listSemanales,
   deleteTaller,
   upsertCheckDone,
-  deleteCheckDone,
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
@@ -76,8 +75,10 @@ declare global {
     /** Obtiene URL firmada de S3 para una foto (lazy, cacheada hasta su expiresAt real).
      *  opts.force re-firma fresca (usado por el onerror del <img> para auto-sanar 403). */
     __cloudGetPhotoUrl?: (filename: string, opts?: { force?: boolean }) => Promise<string | null>;
-    /** Guarda/borra la completación de un hallazgo en la nube (compartida entre usuarios). */
-    __cloudSetCheck?: (unitUid: string, itemKey: string, done: boolean) => Promise<void>;
+    /** Guarda la completación de un hallazgo en la nube (compartida entre usuarios).
+     *  Fase C1: plate = placa cruda (no uid de fila); itemKey = findingKey estable;
+     *  done:false = tombstone (propaga desmarcados); ts = timestamp del toggle. */
+    __cloudSetCheck?: (plate: string, itemKey: string, done: boolean, ts?: string) => Promise<void>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
@@ -298,26 +299,49 @@ export function setupCloud(): void {
     return getCloudPhotoUrl(session.tenantId, filename, opts);
   };
 
-  // Completación de hallazgos compartida: marca (upsert) o desmarca (delete) en la nube.
-  // E2E (?e2e=1) → no-op (sin sesión). Fire-and-forget desde toggleCheckItem.
+  // Completación de hallazgos compartida (Fase C1).
+  // - unitUid = PLACA cruda (no uid de fila placa__fecha) — identidad física.
+  // - itemKey = findingKey estable (Llanta:/Bin:/… sin valores volátiles).
+  // - Desmarcar = TOMBSTONE upsert {done:false} (no delete): conserva el ts para
+  //   que el LWW del dual-read mate alias legacy, y propaga el desmarcado a los
+  //   demás usuarios vía merge (el merge viejo ignoraba done:false).
+  // - Cola serializada por (placa,key): toggles rápidos on/off aterrizan en orden.
+  // - __checkDirty: registro {placaKey → ts} del último toggle local; el merge de
+  //   hydrate lo respeta para no pisar un toggle reciente con un snapshot viejo.
+  // E2E (?e2e=1) → no-op (sin sesión).
+  const checkQueues = new Map<string, Promise<void>>();
+  const checkDirty: Record<string, string> = {};
+  window.__checkDirty = checkDirty;
   window.__cloudSetCheck = async (
-    unitUid: string,
+    plate: string,
     itemKey: string,
     done: boolean,
+    ts?: string,
   ): Promise<void> => {
     const session = await getSession();
     if (!session) return;
-    if (done) {
-      await upsertCheckDone({
-        tenantId: session.tenantId,
-        unitUid,
-        itemKey,
-        done: true,
-        por: session.email ?? "",
-        ts: new Date().toISOString(),
-      });
-    } else {
-      await deleteCheckDone({ tenantId: session.tenantId, unitUid, itemKey });
+    const stamp = ts ?? new Date().toISOString();
+    const qk = `${plate} ${itemKey}`;
+    checkDirty[qk] = stamp;
+    const prev = checkQueues.get(qk) ?? Promise.resolve();
+    const next = prev
+      .catch(() => undefined) // un fallo previo no bloquea el siguiente toggle
+      .then(() =>
+        upsertCheckDone({
+          tenantId: session.tenantId,
+          unitUid: plate,
+          itemKey,
+          done,
+          por: session.email ?? "",
+          ts: stamp,
+        }),
+      )
+      .then(() => undefined);
+    checkQueues.set(qk, next);
+    try {
+      await next;
+    } finally {
+      if (checkQueues.get(qk) === next) checkQueues.delete(qk);
     }
   };
 

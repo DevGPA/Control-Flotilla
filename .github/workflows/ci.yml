@@ -41,6 +41,9 @@ jobs:
       - name: XSS audit (innerHTML patterns en legado)
         run: npm run audit:xss
 
+      - name: CSP sync check (hashes de <script> inline vigentes)
+        run: npm run audit:csp
+
       - name: npm audit (high+ only)
         run: npm audit --audit-level=high --omit=dev
         # --omit=dev: ignoramos dev-tool vulns (workbox chain, solo build-time).

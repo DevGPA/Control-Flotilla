@@ -72,7 +72,12 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     row["Cuenta con llanta de Refacción?"] ?? row["Llanta de refaccion funcional"] ?? "";
   const tieneRefaccion = !esRespuestaNegativa(refRaw);
   if (!tieneRefaccion) {
-    F.push({ cat: "Checklist", text: "Sin llanta de refacción funcional", lv: "Revisar" });
+    F.push({
+      cat: "Checklist",
+      key: "Chk:Refaccion",
+      text: "Sin llanta de refacción funcional",
+      lv: "Revisar",
+    });
     bump("Revisar");
   }
 
@@ -93,10 +98,20 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
       const v = raw > 0 && raw < 1 ? Math.round(raw * 100) / 10 : raw;
       T[n] = v;
       if (v <= TCRIT) {
-        F.push({ cat: "Llantas", text: `${n}: ${v}mm — desgaste crítico`, lv: "Urgente" });
+        F.push({
+          cat: "Llantas",
+          key: `Llanta:${n}`,
+          text: `${n}: ${v}mm — desgaste crítico`,
+          lv: "Urgente",
+        });
         bump("Urgente");
       } else if (v <= TWARN) {
-        F.push({ cat: "Llantas", text: `${n}: ${v}mm — revisar desgaste`, lv: "Revisar" });
+        F.push({
+          cat: "Llantas",
+          key: `Llanta:${n}`,
+          text: `${n}: ${v}mm — revisar desgaste`,
+          lv: "Revisar",
+        });
         bump("Revisar");
       }
     }
@@ -105,7 +120,8 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   for (const [c, r] of Object.entries(BIN)) {
     if (isBinFail(row[c])) {
       const cat = DOC_KEYS.has(c) ? "Documentos" : "Checklist";
-      F.push({ cat, text: BIN_LABELS[c] || c, lv: r });
+      // key = columna Excel (estable); BIN_LABELS es solo display (editable).
+      F.push({ cat, key: `Bin:${c}`, text: BIN_LABELS[c] || c, lv: r });
       bump(r);
     }
   }
@@ -118,7 +134,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
         .toLowerCase()
         .includes("bajo")
     ) {
-      F.push({ cat: "Fluidos", text: `${c}: nivel BAJO`, lv: "Urgente" });
+      F.push({ cat: "Fluidos", key: `Fluido:${c}`, text: `${c}: nivel BAJO`, lv: "Urgente" });
       bump("Urgente");
     }
   }
@@ -133,7 +149,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
         .toLowerCase()
         .includes("bajo")
     ) {
-      F.push({ cat: "Fluidos", text: `${c}: nivel bajo`, lv: "Revisar" });
+      F.push({ cat: "Fluidos", key: `Fluido:${c}`, text: `${c}: nivel bajo`, lv: "Revisar" });
       bump("Revisar");
     }
   }
@@ -152,6 +168,9 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     if (diff <= 0) {
       F.push({
         cat: "Mantenimiento",
+        // Una sola key para vencido/próximo: el texto cambia en cada re-upload
+        // (km/días relativos) y la transición de nivel no debe huerfanar la marca.
+        key: "Mant:Servicio",
         text: `Servicio VENCIDO (${Math.abs(Math.round(diff))}km excedidos)`,
         lv: "Urgente",
       });
@@ -159,6 +178,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     } else if (diff <= 1000) {
       F.push({
         cat: "Mantenimiento",
+        key: "Mant:Servicio",
         text: `Servicio próximo (${Math.round(diff)}km restantes)`,
         lv: "Revisar",
       });
@@ -176,6 +196,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
       if (diffDays < 0) {
         F.push({
           cat: "Mantenimiento",
+          key: "Mant:Servicio",
           text: `Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,
           lv: "Urgente",
         });
@@ -183,6 +204,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
       } else if (diffDays <= 30) {
         F.push({
           cat: "Mantenimiento",
+          key: "Mant:Servicio",
           text: `Servicio próximo (${diffDays} días)`,
           lv: "Revisar",
         });

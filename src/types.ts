@@ -4,6 +4,13 @@ export type Finding = {
   cat: "Llantas" | "Checklist" | "Documentos" | "Fluidos" | "Mantenimiento";
   text: string;
   lv: RiskLevel;
+  /**
+   * Identidad ESTABLE del hallazgo (Fase C1): `Llanta:<pos>`, `Bin:<columna>`,
+   * `Fluido:<columna>`, `Mant:Servicio`, `Chk:Refaccion`. Nunca embebe valores
+   * medidos/fechas/conteos. Es la clave de checklistDB y CheckDone cloud
+   * (vía findingKey(f) = f.key || f.text). Opcional: findings sin key usan text.
+   */
+  key?: string;
 };
 
 export type TireReadings = Record<string, number>;

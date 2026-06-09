@@ -2,3 +2,8 @@
 # Ensure node+npm en PATH (git hooks Windows MSYS pierden PATH user).
 export PATH="/c/Program Files/nodejs:$PATH"
 npx lint-staged
+
+# CSP drift gate (~0.4s) — el CSP autoriza los <script> inline por hash sha256.
+# Editar un inline script sin correr `npm run csp:sync` rompe la app en prod
+# (outage 2026-06-09). Si falla: npm run csp:sync && re-stage el HTML/nginx.conf.
+npm run audit:csp
