@@ -136,7 +136,8 @@ describe("renderChecklist", () => {
     const item = c.querySelector(".ck-actionable") as HTMLElement;
     expect(item).not.toBeNull();
     item.click();
-    expect(onToggle).toHaveBeenCalledWith("u1", "piloto 3mm");
+    // Fase C1: (uid, findingKey, aliasText, want). Sin f.key → key = text.
+    expect(onToggle).toHaveBeenCalledWith("u1", "piloto 3mm", "piloto 3mm", "1");
   });
 
   it("item done no dispara onToggle... bueno SI lo dispara (permite des-marcar)", () => {
@@ -149,7 +150,8 @@ describe("renderChecklist", () => {
 
     const item = c.querySelector(".ck-done") as HTMLElement;
     item.click();
-    expect(onToggle).toHaveBeenCalledWith("u1", "x");
+    // Item done → want="0" (des-marcar).
+    expect(onToggle).toHaveBeenCalledWith("u1", "x", "x", "0");
   });
 
   it("agrupa por categoría en orden Llantas → Fluidos → Documentos → Checklist", () => {

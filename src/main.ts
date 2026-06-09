@@ -92,7 +92,8 @@ declare global {
     deleteManualPhoto?: (uid: string, photoId: string) => void;
     lazyObserver?: IntersectionObserver;
     __lightbox?: LightboxApi;
-    toggleCheckItem?: (uid: string, text: string) => void;
+    // Fase C1: (uid, itemKey estable, aliasText display, want "1"/"0").
+    toggleCheckItem?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void;
     addNote?: (uid: string) => void;
     deleteNote?: (uid: string, noteId: string) => void;
     addAction?: (uid: string, findingText: string) => void;

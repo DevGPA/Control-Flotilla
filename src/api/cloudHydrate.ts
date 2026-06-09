@@ -20,6 +20,8 @@ import {
   type PhotoUrlEntry,
 } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
+import { mergeCheckDones } from "./mergeCheckDones";
+import type { DoneMap } from "../analyzer/findingKey";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
@@ -78,6 +80,12 @@ declare global {
     initRangoBar?: () => void;
     // Flota: unidades distintas (catálogo) con última inspección — para KPIs hero + dona.
     __fleetUnits?: Unit[];
+    // Fase C1: registro de toggles locales recientes ("placa key" → ts) que el
+    // merge respeta; lo escribe cloudWire.__cloudSetCheck.
+    __checkDirty?: Record<string, string>;
+    // Funciones globales del script legacy (function declarations → window.*).
+    dbPut?: (store: string, key: string, value: unknown) => Promise<unknown>;
+    recalcAllRisks?: () => void;
   }
 }
 
@@ -497,19 +505,33 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     }
   }
 
-  // Completaciones de checklist COMPARTIDAS: el cloud es la fuente de verdad. Fusiona en
-  // window.checklistDB (bridged al monolito) para que todos los usuarios vean lo atendido.
+  // Completaciones de checklist COMPARTIDAS (Fase C1): merge puro con fan-out
+  // por placa, tombstones (done:false propaga desmarcados) y dirty-skip (no
+  // pisa un toggle local más reciente). Ver mergeCheckDones.ts.
   if (checkDones.length) {
-    const cdb = window.checklistDB ?? {};
-    for (const cd of checkDones) {
-      if (cd.done === false) continue;
-      const uid = cd.unitUid;
-      const key = cd.itemKey;
-      if (!uid || !key) continue;
-      (cdb[uid] ??= {})[key] = { done: true, ts: cd.ts ?? undefined, by: cd.por ?? undefined };
+    const { cdb, modifiedUids } = mergeCheckDones({
+      checkDones,
+      rows: (window.__inspections ?? legacyUnits).map((u) => ({ uid: u.uid, plate: u.plate })),
+      cdb: (window.checklistDB ?? {}) as Record<string, DoneMap>,
+      dirty: window.__checkDirty,
+    });
+    window.checklistDB = cdb as ChecklistDB;
+    // Persistir a IndexedDB (H7): sin esto un arranque offline restaura el
+    // snapshot viejo y "revive" desmarcados ya propagados.
+    if (typeof window.dbPut === "function") {
+      for (const uid of modifiedUids) {
+        try {
+          void window.dbPut("checklist", uid, cdb[uid]);
+        } catch {
+          /* persistencia best-effort */
+        }
+      }
     }
-    window.checklistDB = cdb;
   }
+  // Recalcular el riesgo efectivo por fila con las completaciones aplicadas —
+  // antes de C1 no se llamaba y el badge de riesgo nunca descontaba atendidos
+  // en sesiones cloud.
+  if (typeof window.recalcAllRisks === "function") window.recalcAllRisks();
 
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.
   if (typeof window.initRangoBar === "function") window.initRangoBar();

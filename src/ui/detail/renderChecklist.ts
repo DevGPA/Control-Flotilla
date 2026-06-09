@@ -11,6 +11,7 @@
 //   6. Toggle done via onClick → onToggle callback
 
 import { CATI } from "../../analyzer/constants";
+import { findingKey, isFindingDone } from "../../analyzer/findingKey";
 import type { ChecklistDB, Finding, RiskLevel, Unit } from "../../types";
 
 export type ChecklistItemDiff = {
@@ -33,8 +34,10 @@ export type RenderChecklistDeps = {
   checklistDB?: ChecklistDB;
   /** Diff computado externamente (opcional) para mostrar cambios vs periodo anterior. */
   diff?: PeriodDiff | null;
-  /** Callback al hacer click en un finding para togglear su estado done. */
-  onToggle?: (uid: string, findingText: string) => void;
+  /** Callback al togglear un finding. Fase C1: recibe la key ESTABLE
+   *  (findingKey), el texto display (alias legacy para el dual-read) y el
+   *  nuevo estado deseado ("1" marcar / "0" desmarcar). */
+  onToggle?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void;
 };
 
 const RISK_ORDER: Record<RiskLevel, number> = { OK: 0, Completar: 1, Revisar: 2, Urgente: 3 };
@@ -48,25 +51,27 @@ export function computeDiff(
   previousFindings: Finding[],
   label: string,
 ): PeriodDiff {
-  const curMap = new Map(currentFindings.map((f) => [f.text, f.lv]));
-  const prevMap = new Map(previousFindings.map((f) => [f.text, f.lv]));
+  // Fase C1: diff por findingKey (identidad estable) — un cambio de mm de llanta
+  // ya no produce el falso "resuelto + nuevo". `item` sigue siendo el texto display.
+  const curMap = new Map(currentFindings.map((f) => [findingKey(f), { lv: f.lv, text: f.text }]));
+  const prevMap = new Map(previousFindings.map((f) => [findingKey(f), { lv: f.lv, text: f.text }]));
   const all = new Set([...curMap.keys(), ...prevMap.keys()]);
   const diff: PeriodDiff = { newFails: [], resolved: [], worsened: [], improved: [], label };
 
-  for (const item of all) {
-    const cur = curMap.get(item);
-    const prev = prevMap.get(item);
+  for (const k of all) {
+    const cur = curMap.get(k);
+    const prev = prevMap.get(k);
     if (cur && !prev) {
-      diff.newFails.push({ item, lv: cur });
+      diff.newFails.push({ item: cur.text, lv: cur.lv });
     } else if (!cur && prev) {
-      diff.resolved.push({ item, lv: prev });
-    } else if (cur && prev && cur !== prev) {
+      diff.resolved.push({ item: prev.text, lv: prev.lv });
+    } else if (cur && prev && cur.lv !== prev.lv) {
       // RISK_ORDER es Record<RiskLevel, number> exhaustivo — lookup siempre definido.
       // Sin `?? 0` defensivo: dejar que TS detecte si alguien rompe el invariante.
-      if (RISK_ORDER[cur] > RISK_ORDER[prev]) {
-        diff.worsened.push({ item, from: prev, to: cur });
+      if (RISK_ORDER[cur.lv] > RISK_ORDER[prev.lv]) {
+        diff.worsened.push({ item: cur.text, from: prev.lv, to: cur.lv });
       } else {
-        diff.improved.push({ item, from: prev, to: cur });
+        diff.improved.push({ item: cur.text, from: prev.lv, to: cur.lv });
       }
     }
   }
@@ -230,7 +235,7 @@ function findingItem(
   uid: string,
   isDone: boolean,
   highlightChange: boolean,
-  onToggle?: (uid: string, text: string) => void,
+  onToggle?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void,
 ): HTMLElement {
   const el = document.createElement("div");
   const cls = isDone
@@ -244,7 +249,7 @@ function findingItem(
   if (highlightChange) el.style.boxShadow = "inset 0 0 0 1.5px var(--O)";
 
   if (onToggle) {
-    el.addEventListener("click", () => onToggle(uid, f.text));
+    el.addEventListener("click", () => onToggle(uid, findingKey(f), f.text, isDone ? "0" : "1"));
   }
 
   const iconSpan = document.createElement("span");
@@ -287,7 +292,7 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
   const doneMap = checklistDB[unit.uid] ?? {};
   const counts = { urg: 0, rev: 0, comp: 0, done: 0 };
   for (const f of unit.F) {
-    if (doneMap[f.text]?.done) counts.done++;
+    if (isFindingDone(doneMap, f, unit.fecha)) counts.done++;
     else if (f.lv === "Urgente") counts.urg++;
     else if (f.lv === "Completar") counts.comp++;
     else counts.rev++;
@@ -352,7 +357,7 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
     const grid = document.createElement("div");
     grid.className = "ck-grid";
     for (const f of sorted) {
-      const isDone = Boolean(doneMap[f.text]?.done);
+      const isDone = isFindingDone(doneMap, f, unit.fecha);
       const isNewItem = !wasInPrev(f.text);
       const isChanged = changedRisk(f.text);
       grid.appendChild(findingItem(f, unit.uid, isDone, isNewItem || isChanged, onToggle));

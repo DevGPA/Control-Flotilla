@@ -8,6 +8,7 @@
 // entran como deps para mantener el módulo DOM-agnostic/testeable.
 
 import { TCRIT, TWARN } from "../analyzer/constants";
+import { isFindingDone } from "../analyzer/findingKey";
 import type { ChecklistDB, RiskLevel, Unit } from "../types";
 import { createVirtualTable, type Controller } from "./virtualTable";
 
@@ -92,12 +93,12 @@ function dotRow(color: string, text: string): HTMLElement {
 
 /**
  * Resumen de hallazgos pendientes (findings no-done) por severidad.
- * Las cuentas se derivan de `u.F` descontando lo marcado como done en
- * `checklistDB[u.uid][finding.text].done`.
+ * Fase C1: descuenta lo atendido vía isFindingDone (dual-read key/texto + LWW
+ * + corte temporal por fecha de la inspección).
  */
 export function fcell(u: Unit, checklistDB: ChecklistDB = {}): HTMLElement {
   const dm = checklistDB[u.uid] || {};
-  const pending = u.F.filter((f) => !dm[f.text]?.done);
+  const pending = u.F.filter((f) => !isFindingDone(dm, f, u.fecha));
   const a = pending.filter((f) => f.lv === "Urgente").length;
   const b = pending.filter((f) => f.lv === "Revisar").length;
   const c = pending.filter((f) => f.lv === "Completar").length;

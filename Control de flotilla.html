@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-xiHZzi1jsOQUDZ+qNxLEKVsZdgJOYeu6kCU/TxSchbA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-I6sidaihwULHXIfaPasFpr1a9At5LEOI0Wbe6nwbh20='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1351,7 +1351,10 @@ function analyzeRow(row){
   // Fallback al nombre legacy para compat con exports viejos.
   const refRaw = row["Cuenta con llanta de Refacción?"] ?? row["Llanta de refaccion funcional"] ?? "";
   const tieneRefaccion = String(refRaw).trim().toLowerCase() !== "no";
-  if(!tieneRefaccion){F.push({cat:"Checklist",text:"Sin llanta de refacción",lv:"Completar"});esc("Completar")}
+  // Fase C1: f.key = identidad ESTABLE del hallazgo (sin valores medidos/fechas).
+  // Es la clave de checklistDB/CheckDone vía findingKey(f)=f.key||f.text; el texto
+  // queda solo como display. Mismas keys que src/analyzer/analyzeRow.ts (paridad).
+  if(!tieneRefaccion){F.push({cat:"Checklist",key:"Chk:Refaccion",text:"Sin llanta de refacción",lv:"Completar"});esc("Completar")}
   // Gating de llantas internas: si la columna "¿Cuenta con...?" === "No" → skip.
   // Evita falsos urgentes en unidades con tracción trasera sencilla.
   const tieneIntPiloto = String(row["¿Cuenta con Llanta Piloto trasera INTERNA?"]||"").trim().toLowerCase()!=="no";
@@ -1364,19 +1367,55 @@ function analyzeRow(row){
     const _raw=parseFloat(row[c]);if(!isNaN(_raw)){
       // TACO: 0<v<1 viene en cm (0.4cm=4mm) → ×10. 0 (lisa) y ≥1 igual.
       const v=_raw>0&&_raw<1?Math.round(_raw*100)/10:_raw;T[n]=v;
-      if(v<=TCRIT){F.push({cat:"Llantas",text:`${n}: ${v}mm — desgaste crítico`,lv:"Urgente"});esc("Urgente")}
-      else if(v<=TWARN){F.push({cat:"Llantas",text:`${n}: ${v}mm — revisar desgaste`,lv:"Revisar"});esc("Revisar")}
+      if(v<=TCRIT){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — desgaste crítico`,lv:"Urgente"});esc("Urgente")}
+      else if(v<=TWARN){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — revisar desgaste`,lv:"Revisar"});esc("Revisar")}
     }
   }
   for(const[c,r]of Object.entries(BIN))
-    if(isBinFail(row[c])){F.push({cat:"Checklist",text:BIN_LABELS[c]||c,lv:r});esc(r)}
+    if(isBinFail(row[c])){F.push({cat:"Checklist",key:`Bin:${c}`,text:BIN_LABELS[c]||c,lv:r});esc(r)}
   // Tarjeta circulación vencida ya capturada por isBinFail (incluye "vencid").
   for(const c of["Nivel de aceite de motor max","Nivel de liquido de frenos max"])
-    if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",text:`${c}: nivel BAJO`,lv:"Urgente"});esc("Urgente")}
+    if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel BAJO`,lv:"Urgente"});esc("Urgente")}
   for(const c of["Nivel de liquido de radiador max","Nivel de aceite de direccion max"])
-    if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",text:`${c}: nivel bajo`,lv:"Revisar"});esc("Revisar")}
+    if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel bajo`,lv:"Revisar"});esc("Revisar")}
   const tv=Object.values(T);
   return{max,F,T,minT:tv.length?Math.min(...tv):null};
+}
+
+// ── Fase C1: identidad estable de hallazgos + lectura de completaciones ─────
+// ESPEJO de src/analyzer/findingKey.ts (misma semántica; test de paridad en
+// tests/audit-fase-c1.test.ts). findingKey(f) es LA clave de checklistDB y de
+// CheckDone cloud; isFindingDone hace dual-read (key nueva + texto legacy) con
+// last-write-wins por ts, respeta tombstones (done:false) y aplica corte
+// temporal: la marca solo cubre inspecciones con fecha <= día del ts de la marca.
+function findingKey(f){ return (f&&f.key)||(f&&f.text)||""; }
+function plateOfUid(uid){ return String(uid==null?"":uid).split("__")[0]||""; }
+function isoDayOf(v){
+  if(v instanceof Date&&!isNaN(v.getTime()))
+    return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,"0")}-${String(v.getDate()).padStart(2,"0")}`;
+  const s=String(v==null?"":v).trim();
+  const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso)return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(dmy)return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
+  return "";
+}
+function resolveDoneEntry(dm,f){
+  if(!dm)return undefined;
+  const k=findingKey(f);
+  const a=dm[k];
+  const b=k!==f.text?dm[f.text]:undefined;
+  if(a&&b)return ((b.ts||"")>(a.ts||""))?b:a;
+  return a||b;
+}
+function isFindingDone(dm,f,fechaFila){
+  const e=resolveDoneEntry(dm,f);
+  if(!e||e.done!==true)return false;
+  if(fechaFila!=null&&e.ts){
+    const fila=isoDayOf(fechaFila), marca=isoDayOf(e.ts);
+    if(fila&&marca&&fila>marca)return false;
+  }
+  return true;
 }
 
 function fDate(v){
@@ -1666,8 +1705,8 @@ function _qMatch(q, ecoVal, textFields){
 // Modelo C-mod: filtros por nivel matchean unidades con AL MENOS un pending
 // del nivel (descontando atendidos via checklistDB). Overlap permitido entre
 // chips Urgente/Revisar/Completar. Chip "OK" = unidades sin pending.
-const _hasPending=(u,lv)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv===lv&&!(dm[f.text]&&dm[f.text].done))};
-const _hasAnyPending=(u)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>!(dm[f.text]&&dm[f.text].done))};
+const _hasPending=(u,lv)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv===lv&&!isFindingDone(dm,f,u.fecha))};
+const _hasAnyPending=(u)=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>!isFindingDone(dm,f,u.fecha))};
 const filt=()=>sortedUnits(units.filter(u=>{
   // Filtro de nivel (curF) como GATE (no early-return que se salte la búsqueda).
   // "taller" lo dispara el donut binario; "svcvencido" = servicio ≤30 días.
@@ -2520,7 +2559,7 @@ function buildKPIs(){
   let u=0,r=0,withObs=0,nSvcRange=0;
   for(const x of units){
     const dm=checklistDB[x.uid]||{};
-    const pend=x.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
+    const pend=x.F.filter(f=>!isFindingDone(dm,f,x.fecha));
     if(pend.some(f=>f.lv==="Urgente")) u++;
     if(pend.some(f=>f.lv==="Revisar")) r++;
     if(x.obs) withObs++;
@@ -2610,7 +2649,7 @@ function buildAnalytics(){
     let stat = branchMap.get(branch);
     if(!stat){ stat = { branch, urgente:0, revisar:0, operativa:0 }; branchMap.set(branch, stat); }
     const dm = checklistDB[x.uid] || {};
-    const pend = x.F.filter(f => !(dm[f.text] && dm[f.text].done));
+    const pend = x.F.filter(f => !isFindingDone(dm, f, x.fecha));
     const hasU = pend.some(f => f.lv === "Urgente");
     const hasR = pend.some(f => f.lv === "Revisar");
     if(hasU) stat.urgente++;
@@ -2625,7 +2664,7 @@ function buildAnalytics(){
   for(const x of units){
     const dm = checklistDB[x.uid] || {};
     for(const f of x.F){
-      if(dm[f.text] && dm[f.text].done) continue; // skip atendidos
+      if(isFindingDone(dm, f, x.fecha)) continue; // skip atendidos
       const stat = catMap.get(f.cat);
       if(!stat) continue;
       if(f.lv === "Urgente") stat.urgente++;
@@ -2867,7 +2906,7 @@ function mkpill(r){
 }
 function fcell(u){
   const dm=checklistDB[u.uid]||{};
-  const pf=u.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
+  const pf=u.F.filter(f=>!isFindingDone(dm,f,u.fecha));
   const a=pf.filter(f=>f.lv==="Urgente").length,b=pf.filter(f=>f.lv==="Revisar").length,cc=pf.filter(f=>f.lv==="Completar").length;
   if(!a&&!b&&!cc)return`<span style="color:var(--G);font-size:10px">Ninguno</span>`;
   return`<div class="fcw">${a?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--R);display:inline-block;flex-shrink:0"></span><span style="color:var(--R);font-size:10px">${a} urgente${a>1?"s":""}</span></div>`:""}${b?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--A);display:inline-block;flex-shrink:0"></span><span style="color:var(--A);font-size:10px">${b} revisar</span></div>`:""}${cc?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--B);display:inline-block;flex-shrink:0"></span><span style="color:var(--B);font-size:10px">${cc} completar</span></div>`:""}</div>`;
@@ -3091,7 +3130,7 @@ function renderDet(){
     ].filter(Boolean).join('<span class="msep">·</span>')}</div>`;
   const photoCount=u.photos.length;
   const noteCount=(notesDB[u.uid]||[]).length;
-  const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !(dm[f.text]&&dm[f.text].done);}).length;
+  const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !isFindingDone(dm,f,u.fecha);}).length;
   const tabs=[
     {id:"c",label:"Checklist",ico:'<i data-lucide="check-square" style="width:11px;height:11px;vertical-align:-2px"></i>',n:pendingFindings||""},
     {id:"t",label:"Llantas",ico:'<i data-lucide="disc-3" style="width:11px;height:11px;vertical-align:-2px"></i>'},
@@ -3207,7 +3246,7 @@ function renderChecklist(u,body){
   // Counts with done overlay
   let urgCnt=0,revCnt=0,compCnt=0,doneCnt=0;
   allF.forEach(f=>{
-    if(doneMap[f.text]&&doneMap[f.text].done){doneCnt++;}
+    if(isFindingDone(doneMap,f,u.fecha)){doneCnt++;}
     else if(f.lv==="Urgente")urgCnt++;
     else if(f.lv==="Completar")compCnt++;
     else revCnt++;
@@ -3223,24 +3262,26 @@ function renderChecklist(u,body){
       const prevU=prevP.units.find(x=>x.uid===u.uid||(x.eco&&x.eco===u.eco)||(x.plate&&u.plate&&x.plate===u.plate));
       if(prevU){
         prevFMap={};
-        prevU.F.forEach(f=>{prevFMap[f.text]={lv:f.lv}});
+        // Fase C1: diff por findingKey (identidad estable) — un cambio de mm ya no
+        // genera el falso "resuelto + nuevo"; el display sigue siendo el texto.
+        prevU.F.forEach(f=>{prevFMap[findingKey(f)]={lv:f.lv,text:f.text}});
         prevLabel=prevP.label;
       }
     }
   }
-  const curFMap={};allF.forEach(f=>{curFMap[f.text]={lv:f.lv}});
+  const curFMap={};allF.forEach(f=>{curFMap[findingKey(f)]={lv:f.lv,text:f.text}});
   let diffHtml="";
   if(prevFMap){
-    const allTexts=new Set([...Object.keys(curFMap),...Object.keys(prevFMap)]);
+    const allKeys=new Set([...Object.keys(curFMap),...Object.keys(prevFMap)]);
     const newFails=[],resolved=[],worsened=[],improved=[];
-    allTexts.forEach(item=>{
-      const cur=curFMap[item],prev=prevFMap[item];
-      if(cur&&!prev) newFails.push({item,lv:cur.lv});
-      else if(!cur&&prev) resolved.push({item,lv:prev.lv});
+    allKeys.forEach(k=>{
+      const cur=curFMap[k],prev=prevFMap[k];
+      if(cur&&!prev) newFails.push({item:cur.text,lv:cur.lv});
+      else if(!cur&&prev) resolved.push({item:prev.text,lv:prev.lv});
       else if(cur&&prev&&cur.lv!==prev.lv){
         const riskOrd={OK:0,Completar:1,Revisar:2,Urgente:3};
-        if((riskOrd[cur.lv]||0)>(riskOrd[prev.lv]||0)) worsened.push({item,from:prev.lv,to:cur.lv});
-        else improved.push({item,from:prev.lv,to:cur.lv});
+        if((riskOrd[cur.lv]||0)>(riskOrd[prev.lv]||0)) worsened.push({item:cur.text,from:prev.lv,to:cur.lv});
+        else improved.push({item:cur.text,from:prev.lv,to:cur.lv});
       }
     });
     if(newFails.length||resolved.length||worsened.length||improved.length){
@@ -3283,12 +3324,14 @@ function renderChecklist(u,body){
     const items=[...grp[cat].filter(f=>f.lv==="Urgente"),...grp[cat].filter(f=>f.lv==="Revisar"),...grp[cat].filter(f=>f.lv==="Completar")];
     html+=`<div><div class="ck-cat-ttl">${CATI[cat]||"•"} ${cat} <span style="font-size:9px;font-weight:600;color:var(--s2);font-style:normal">${items.length}</span></div><div class="ck-grid">`;
     for(const f of items){
-      const done=doneMap[f.text]&&doneMap[f.text].done;
-      const prevF=prevFMap?prevFMap[f.text]:null;
+      const done=isFindingDone(doneMap,f,u.fecha);
+      const prevF=prevFMap?prevFMap[findingKey(f)]:null;
       const isNew=prevFMap&&!prevF;
       const changed=prevFMap&&prevF&&prevF.lv!==f.lv;
       const changeStyle=(isNew||changed)?` style="box-shadow:inset 0 0 0 1.5px var(--O)"`:"";
-      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}" data-stop-propagation="1"`;
+      // arg2 = key estable (clave de persistencia) · arg3 = texto display (alias
+      // legacy para el dual-read del toggle) · arg4 = nuevo estado deseado.
+      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1"`;
       const bodyAttr=`data-action="openMnPhotoForFinding" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"`;
       if(done){
         html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
@@ -3309,8 +3352,12 @@ function renderChecklist(u,body){
 async function loadAllChecklist(){
   try{
     const all=await dbGetAll("checklist");
-    checklistDB={};
-    all.forEach(({key,value})=>{checklistDB[key]=value;});
+    // Fase C1 (H8): MERGE en vez de reemplazar — un hydrate cloud puede haber
+    // poblado checklistDB antes de que este restore termine; pisarlo descartaría
+    // las completaciones de otros usuarios hasta el próximo poll.
+    const merged=checklistDB||{};
+    all.forEach(({key,value})=>{merged[key]=Object.assign({},value,merged[key]);});
+    checklistDB=merged;
   }catch(e){console.warn("loadAllChecklist:",e)}
 }
 
@@ -3318,7 +3365,7 @@ async function loadAllChecklist(){
 function recalcRisk(u){
   if(!u._origRisk) u._origRisk=u.risk; // preserve original from Excel
   const dm=checklistDB[u.uid]||{};
-  const pending=u.F.filter(f=>!(dm[f.text]&&dm[f.text].done));
+  const pending=u.F.filter(f=>!isFindingDone(dm,f,u.fecha));
   if(!pending.length){ u.risk="OK"; return; }
   const RO={Urgente:3,Revisar:2,Completar:1.5,OK:1};
   let max="OK";
@@ -3329,28 +3376,37 @@ function recalcAllRisks(){
   units.forEach(u=>recalcRisk(u));
 }
 
-async function toggleCheckItem(uid,itemText){
-  // Validar que el uid exista en units — evita entradas huérfanas en checklistDB.
+// Fase C1: itemKey = findingKey (identidad estable); aliasText = texto display
+// (solo para que el tombstone gane por LWW a marcas legacy); want = "1"/"0"
+// estado deseado calculado por el render (con dual-read no se puede inferir del
+// lookup directo). Escribe SIEMPRE bajo la key estable; fan-out local a todas
+// las filas de la misma placa; cloud por PLACA (no uid de fila).
+async function toggleCheckItem(uid,itemKey,aliasText,want){
   const u=units.find(x=>x.uid===uid);
   if(!u){ console.warn("[toggleCheckItem] uid no existe en units:",uid); return; }
-  if(!checklistDB[uid]) checklistDB[uid]={};
-  const cur=checklistDB[uid][itemText];
-  const nowDone=!(cur&&cur.done);
-  if(cur&&cur.done){
-    delete checklistDB[uid][itemText];
-    if(!Object.keys(checklistDB[uid]).length) delete checklistDB[uid];
-  } else {
-    checklistDB[uid][itemText]={done:true,ts:new Date().toISOString()};
+  const ts=new Date().toISOString();
+  const nowDone=want!=null?want==="1":!isFindingDone(checklistDB[uid]||{},{key:itemKey,text:aliasText||itemKey},u.fecha);
+  const plate=(u.plate||plateOfUid(u.uid)||"").trim();
+  // Fan-out local: misma placa = misma unidad física → todas sus filas (meses/
+  // semanas distintos en sesión cloud) comparten la marca. El corte temporal de
+  // isFindingDone decide por-fila si la marca aplica.
+  const targets=units.filter(x=>x===u||(plate&&(x.plate||plateOfUid(x.uid))===plate));
+  for(const t of targets){
+    if(!checklistDB[t.uid]) checklistDB[t.uid]={};
+    // Tombstone {done:false,ts} en vez de delete: conserva el ts para que el
+    // LWW del dual-read gane a marcas viejas bajo el texto display.
+    checklistDB[t.uid][itemKey]={done:nowDone,ts};
+    try{ await dbPut("checklist",t.uid,checklistDB[t.uid]); }
+    catch(e){ console.warn("[toggleCheckItem] dbPut falló:",t.uid,e); }
+    recalcRisk(t);
   }
-  await dbPut("checklist",uid,checklistDB[uid]||{});
-  // Sincroniza a la nube para que TODOS los usuarios vean lo atendido (no solo este navegador).
-  if(typeof window.__cloudSetCheck==="function"){
-    window.__cloudSetCheck(uid,itemText,nowDone).catch(e=>{
+  // Cloud por PLACA con key estable. Sin placa real (SIN_ID) → solo local.
+  if(typeof window.__cloudSetCheck==="function" && plate && plate!=="SIN_ID"){
+    window.__cloudSetCheck(plate,itemKey,nowDone,ts).catch(e=>{
       console.warn("[toggleCheckItem] sync cloud falló:",e);
       window.notify && window.notify("No se pudo sincronizar el check a la nube (queda guardado local).","warn",4500);
     });
   }
-  recalcRisk(u);
   buildKPIs(); renderTable(); renderDet();
 }
 

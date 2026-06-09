@@ -12,16 +12,19 @@ export PATH="/c/Program Files/nodejs:$PATH"
 
 set -e
 
-echo "→ [1/4] Typecheck (tsc --noEmit)..."
+echo "→ [1/5] Typecheck (tsc --noEmit)..."
 npm run typecheck
 
-echo "→ [2/4] Lint (eslint)..."
+echo "→ [2/5] Lint (eslint)..."
 npm run lint
 
-echo "→ [3/4] Unit tests (vitest)..."
+echo "→ [3/5] Unit tests (vitest)..."
 npm run test:run
 
-echo "→ [4/4] E2E tests (playwright)..."
+echo "→ [4/5] CSP sync check (audit:csp)..."
+npm run audit:csp
+
+echo "→ [5/5] E2E tests (playwright)..."
 npm run test:e2e
 
 echo "✓ Pre-push OK — push procede"
