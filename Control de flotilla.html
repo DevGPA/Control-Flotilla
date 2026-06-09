@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-I6sidaihwULHXIfaPasFpr1a9At5LEOI0Wbe6nwbh20='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-5qta2o1KK20Fyab+AkvUmFIuHLrji3KaYQ2WR8TkKv8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1033,13 +1033,39 @@ async function persistState(filename){
 async function restoreState(){
   return window.runSafe("Restaurar sesión", _restoreStateImpl);
 }
+// ¿Hay credenciales Cognito persistidas? (señal de que el hydrate cloud va a
+// traer los datos — fix 2026-06-09: usuarios cloud sin IndexedDB local veían
+// el drop zone "cargar ZIP" mientras/aunque el servidor tenía sus datos).
+function _hasCloudCreds(){
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      if(String(localStorage.key(i)).startsWith("CognitoIdentityServiceProvider")) return true;
+    }
+  }catch(e){}
+  return false;
+}
+// Llamado por el boot cloud (cloudWire) cuando el hydrate terminó VACÍO o falló
+// y no hay datos locales: ahí sí corresponde ofrecer la carga manual.
+window.__showEmptyState = function(){
+  if(units.length || (typeof weeklyPeriodos!=="undefined" && weeklyPeriodos.length)) return;
+  document.getElementById("ldr").style.display = "none";
+  document.getElementById("dz").style.display  = "flex";
+};
 async function _restoreStateImpl(){
   try{
     showLoader("Restaurando sesión anterior…");
     const session = await dbGet("meta", "session");
     if(!session || !session.units || !session.units.length){
-      document.getElementById("ldr").style.display = "none";
-      document.getElementById("dz").style.display  = "flex";
+      if(_hasCloudCreds()){
+        // Sesión cloud conocida: NO mostrar el drop zone — el hydrate está en
+        // camino (cloudWire lo dispara al boot) y llamará showDash() al poblar.
+        // Watchdog: si en 25s no llegó nada (offline/fallo), cae al drop zone.
+        showLoader("Cargando datos del servidor…");
+        setTimeout(()=>{ window.__showEmptyState(); }, 25000);
+      } else {
+        document.getElementById("ldr").style.display = "none";
+        document.getElementById("dz").style.display  = "flex";
+      }
       return false;
     }
 

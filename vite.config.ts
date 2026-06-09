@@ -73,6 +73,10 @@ export default defineConfig(({ mode }) => ({
     verifyPwaIcons,
     VitePWA({
       registerType: "autoUpdate",
+      // Registro MANUAL en src/main.ts (updateViaCache:'none' + update periódico).
+      // El registerSW.js autogenerado era un register() pelón sin mecanismo de
+      // actualización → usuarios atascados en versiones viejas (2026-06-09).
+      injectRegister: null,
       includeAssets: ["favicon.svg"],
       manifest: {
         name: "Control de Flotilla GPA",
@@ -94,6 +98,9 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // Fuentes self-hosted en vendor/fonts/ (P1.8). globPatterns las precache al build.
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Recarga las pestañas con app shell viejo al activarse un SW de UPDATE
+        // (ver public/sw-force-reload.js — incidente PWA stale 2026-06-09).
+        importScripts: ["sw-force-reload.js"],
       },
     }),
   ],

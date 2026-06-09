@@ -81,6 +81,8 @@ declare global {
     __cloudSetCheck?: (plate: string, itemKey: string, done: boolean, ts?: string) => Promise<void>;
     /** Notify wrapper del legado (toast). */
     notify?: (msg: string, kind?: string, ms?: number) => void;
+    /** Muestra el drop zone si NO hay datos (lo define el HTML; fix drop-zone 2026-06-09). */
+    __showEmptyState?: () => void;
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
   }
@@ -389,10 +391,16 @@ export function setupCloud(): void {
         const result = await hydrateSerialized(session.tenantId);
         if (result.source === "cloud" && result.units > 0) {
           window.notify?.(`☁ ${result.units} unidades cargadas del servidor`, "ok", 3000);
+        } else {
+          // Cloud sin datos y sin datos locales → ahora sí, ofrecer carga manual
+          // (el boot del HTML mantiene el loader "Cargando datos del servidor…"
+          // cuando hay credenciales Cognito — fix drop-zone 2026-06-09).
+          window.__showEmptyState?.();
         }
       } catch (err) {
         console.error("[cloud] Hydrate falló:", err);
         window.notify?.("Cloud sync indisponible — usando datos locales", "warn", 4000);
+        window.__showEmptyState?.();
       }
       // Auto-refresh sin F5: re-hidrata al volver a la pestaña + poll ligero en
       // background (solo cuando la pestaña está visible). Barato porque

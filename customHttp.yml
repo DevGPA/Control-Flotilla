@@ -22,6 +22,23 @@ customHeaders:
       # acá causa drift entre header (stale) y meta (fresh) cuando se editan
       # inline scripts. X-Frame-Options DENY arriba cubre frame-ancestors.
 
+  # ⚠️ ORDEN IMPORTA: en Amplify Hosting, cuando varios patterns matchean,
+  # GANA LA ÚLTIMA regla. Los catch-all van PRIMERO y los archivos específicos
+  # (sw.js, registerSW.js, manifest) AL FINAL para que los sobrescriban.
+  # Incidente 2026-06-09: sw.js se servía con max-age=1año immutable (la regla
+  # genérica de .js pisaba la suya) → usuarios atascados en versiones viejas
+  # de la PWA hasta hacer hard refresh.
+
+  # Assets con hash — cache agresivo 1 año
+  - pattern: '**/*.@(js|css|woff2)'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, immutable'
+  - pattern: '**/*.@(png|jpg|jpeg|gif|ico|svg|webp)'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, immutable'
+
   # index.html SIEMPRE fresco — evita que apunte a assets con hash viejos
   # (página sin CSS intermitente tras deploys). Revalida con ETag (304 barato).
   - pattern: '/'
@@ -37,7 +54,8 @@ customHeaders:
       - key: 'Cache-Control'
         value: 'no-cache, must-revalidate'
 
-  # Service worker NO cache (PWA fresh updates)
+  # Service worker y registro NO cache (PWA fresh updates) — DEBEN ir después
+  # del catch-all de .js para ganarle.
   - pattern: '**/sw.js'
     headers:
       - key: 'Cache-Control'
@@ -50,13 +68,7 @@ customHeaders:
     headers:
       - key: 'Cache-Control'
         value: 'no-cache, no-store, must-revalidate'
-
-  # Assets con hash — cache agresivo 1 año
-  - pattern: '**/*.@(js|css|woff2)'
+  - pattern: '**/manifest.webmanifest'
     headers:
       - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
-  - pattern: '**/*.@(png|jpg|jpeg|gif|ico|svg|webp)'
-    headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, immutable'
+        value: 'no-cache, must-revalidate'

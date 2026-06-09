@@ -86,6 +86,8 @@ declare global {
     // Funciones globales del script legacy (function declarations → window.*).
     dbPut?: (store: string, key: string, value: unknown) => Promise<unknown>;
     recalcAllRisks?: () => void;
+    initRangoSemanal?: () => void;
+    renderSemanales?: () => void;
   }
 }
 
@@ -350,6 +352,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       window.activeWeeklyPeriodoId = weeklyPeriodos[weeklyPeriodos.length - 1]!.id;
     }
     if (typeof window.updateSwNavBadge === "function") window.updateSwNavBadge();
+    // Fix 2026-06-09: inicializar la barra de rango de fechas y re-render de la
+    // vista semanal. Antes solo se actualizaba el badge — si el usuario estaba
+    // parado en "Semanales" cuando llegaba el hydrate, la vista (filtro de
+    // fechas, KPIs, tabla) quedaba vacía hasta navegar fuera y volver.
+    if (typeof window.initRangoSemanal === "function") window.initRangoSemanal();
+    if (typeof window.renderSemanales === "function") window.renderSemanales();
     console.info(`[cloudHydrate] ${weeklyPeriodos.length} períodos semanales hidratados`);
   }
 
@@ -536,6 +544,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Trigger re-render del legacy. Sin esto, UI sigue vacía aunque state esté lleno.
   if (typeof window.initRangoBar === "function") window.initRangoBar();
   if (typeof window.showDash === "function") window.showDash();
+  // Header status: sin esto quedaba "Sin datos cargados" en sesiones cloud puras.
+  {
+    const hstxt = document.getElementById("hstxt");
+    if (hstxt && legacyUnits.length > 0) hstxt.textContent = "Datos del servidor (nube)";
+    const hdot = document.getElementById("hdot");
+    if (hdot && legacyUnits.length > 0) hdot.className = "hdot live";
+  }
   if (typeof window.buildKPIs === "function") window.buildKPIs();
   // Sin esto el filtro de sucursales (#bsel) queda vacío en sesiones cloud.
   if (typeof window.buildBranches === "function") window.buildBranches();
