@@ -6,13 +6,7 @@ import type { RiskLevel, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "./weeklyStore";
 import { uniqueWeeklySucursales } from "./weeklyStore";
 
-export type WeeklyRiskFilter =
-  | "all"
-  | "Urgente"
-  | "Revisar"
-  | "OK"
-  | "carroceria"
-  | "llanta";
+export type WeeklyRiskFilter = "all" | "Urgente" | "Revisar" | "OK" | "carroceria" | "llanta";
 
 export type WeeklySortCol =
   | "_idx"
@@ -53,8 +47,13 @@ export function filterAndSortWeekly(
   sortDir: 1 | -1,
 ): WeeklyEntry[] {
   const rows = entries.filter((e) => {
-    if (filter.riskFilter === "carroceria" && e.carroceriaRisk === "OK") return false;
-    if (filter.riskFilter === "llanta" && e.llantaRisk === "OK") return false;
+    // carroceriaRisk/llantaRisk son opcionales: un undefined se pinta como
+    // "Sin daños"/"Con refacción" (= OK) en la celda y NO cuenta en el KPI.
+    // Tratar undefined igual que "OK" evita que el filtro deje pasar filas que
+    // la propia tabla muestra como OK (descuadre tarjeta vs filas).
+    if (filter.riskFilter === "carroceria" && (!e.carroceriaRisk || e.carroceriaRisk === "OK"))
+      return false;
+    if (filter.riskFilter === "llanta" && (!e.llantaRisk || e.llantaRisk === "OK")) return false;
     if (
       filter.riskFilter !== "all" &&
       filter.riskFilter !== "carroceria" &&
@@ -66,7 +65,9 @@ export function filterAndSortWeekly(
     if (filter.search) {
       const q = filter.search.toLowerCase();
       return [e.eco, e.plate, e.brand, e.branch, e.responsable].some((v) =>
-        String(v || "").toLowerCase().includes(q),
+        String(v || "")
+          .toLowerCase()
+          .includes(q),
       );
     }
     return true;
@@ -358,9 +359,7 @@ export function renderTableSemanales(deps: RenderTableSemanalesDeps): TableSeman
     if (cam) ecoCell.appendChild(cam);
     tr.appendChild(ecoCell);
 
-    tr.appendChild(
-      td(e.plate || "—", "font-weight:600;color:var(--ac);font-family:var(--fm)"),
-    );
+    tr.appendChild(td(e.plate || "—", "font-weight:600;color:var(--ac);font-family:var(--fm)"));
 
     const kmCell = td(formatKm(e.km));
     kmCell.className = "sw-km";

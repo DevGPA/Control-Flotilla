@@ -315,12 +315,9 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
   const catsWrap = document.createElement("div");
   catsWrap.className = "ck-cats";
 
-  // Build prev finding map for highlight
-  const prevFMap = new Map<string, RiskLevel>();
-  if (diff) {
-    for (const f of diff.newFails) if (f.lv) prevFMap.set(f.item, f.lv); // stub
-    // Technically, we only need to know if finding was in prev. We'll rely on diff categories.
-  }
+  // El resaltado de hallazgos usa wasInPrev()/changedRisk() directamente sobre
+  // diff.newFails/worsened/improved. (Antes había un prevFMap stub que se
+  // construía pero nunca se consultaba — código muerto, eliminado.)
   const wasInPrev = (text: string): boolean => {
     if (!diff) return true; // sin diff, nunca highlight como nuevo
     // Si está en newFails, es NUEVO → no estaba en prev

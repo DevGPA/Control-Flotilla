@@ -1440,14 +1440,10 @@ function normFluidRisk(val){
   const v = String(val||"").trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   if(!v) return "OK"; // campo vacío = sin novedad
 
-  // 🔴 Urgente — lista CERRADA de palabras inmovilizantes
-  const URG = ["vacio","sin aceite","sin refrigerante","sin agua",
-               "sin fluido","fuga","peligro","agotado","quemado",
-               "no tiene aceite","no tiene fluido","perdida de aceite",
-               "sin oil"];
-  if(URG.some(kw => v.includes(kw))) return "Urgente";
-
-  // 🟢 OK — whitelist amplia: respuestas positivas y nominales conocidas
+  // 🟢 OK — whitelist amplia: respuestas positivas y nominales conocidas.
+  // audit 2026-06-04: OK se evalúa ANTES que URG (igual que normBodyRisk) para que
+  // "sin fuga" / "no hay fuga" / "no presenta fuga" NO caigan en el match suelto de
+  // "fuga" en URG y marquen como Urgente a una unidad sana.
   const OK = ["ok","correcto","correcta","normal","bien","bueno","buena",
               "optimo","optima","nivel optimo","nivel optima",
               "maximo","al tope","lleno","llena","completo","completa",
@@ -1457,6 +1453,13 @@ function normFluidRisk(val){
               "no hay fuga","estable","perfecto","perfecta"];
   if(OK.some(kw => v === kw || v.includes(kw))) return "OK";
   if(v === "si") return "OK";
+
+  // 🔴 Urgente — lista CERRADA de palabras inmovilizantes
+  const URG = ["vacio","sin aceite","sin refrigerante","sin agua",
+               "sin fluido","fuga","peligro","agotado","quemado",
+               "no tiene aceite","no tiene fluido","perdida de aceite",
+               "sin oil"];
+  if(URG.some(kw => v.includes(kw))) return "Urgente";
 
   // 🟡 Revisar — catch-all: algo fue anotado que no es positivo ni crítico
   return "Revisar";
@@ -2147,7 +2150,7 @@ function loadWBSemanal(wb, fname){
         let fechaStr = "—";
         if(fechaRaw){
           try{
-            if(typeof fechaRaw==="number") fechaStr=new Date((fechaRaw-25569)*86400000).toLocaleDateString("es-MX");
+            if(typeof fechaRaw==="number") fechaStr=fDate(fechaRaw); // audit 2026-06-04: fDate usa XLSX.SSF.parse_date_code (TZ-neutral); el cálculo manual (serial-25569)*86400000 + toLocaleDateString daba la fecha un día antes en UTC-6.
             else if(fechaRaw instanceof Date) fechaStr=fechaRaw.toLocaleDateString("es-MX");
             else fechaStr=String(fechaRaw).substring(0,10);
           }catch{fechaStr=String(fechaRaw).substring(0,10);}
@@ -4287,12 +4290,20 @@ async function exportFleetPDF(){
   let y=M;
 
   // PDF paleta — hex literales Tremor (always light-theme, printable).
+  // audit 2026-06-04: faltaba C.O (usado en la tarjeta "LLANTAS CRIT.") y los tints,
+  // lo que lanzaba setTextColor(undefined) y abortaba TODO el PDF. Paridad con exportPDF.
   const C={
-    R:"#E11D48", A:"#D97706", G:"#059669", B:"#1D4ED8",
+    R:"#E11D48", A:"#D97706", G:"#059669", B:"#1D4ED8", O:"#EA580C",
     T:"#2563EB", T2:"#1D4ED8",
     bg:"#FFFFFF", bg2:"#EFF1F5", bg3:"#E8EAF0",
     ln:"#E5E6EB", s1:"#475569", s2:"#64748B", s3:"#6B7280",
-    w1:"#0F172A", w2:"#1E293B"
+    w1:"#0F172A", w2:"#1E293B",
+    // Tints (Tremor color-200/50 equivalents, opacos para jsPDF)
+    Rl:"#FECDD3", Rd:"#FFF1F2",
+    Al:"#FDE68A", Ad:"#FFFBEB",
+    Gl:"#A7F3D0", Gd:"#ECFDF5",
+    Bl:"#BFDBFE", Bd:"#EFF6FF",
+    Ol:"#FED7AA", Od:"#FFF7ED"
   };
 
   const chk=(need=10)=>{ if(y+need>PH-14){ doc.addPage(); y=M; drawPageHeader(); } };
@@ -4769,8 +4780,9 @@ async function persistWeeklyImages(){
 function updateSwNavBadge(){
   const badge = document.getElementById("sw-nav-badge");
   if(!badge) return;
-  // Contar urgentes en el rango activo (estilo mensual).
-  const inRange = (typeof getSwEntriesInRange==="function") ? getSwEntriesInRange() : [];
+  // Contar urgentes en el rango activo (estilo mensual). audit 2026-06-05: por unidad
+  // (no por inspección) para que el badge cuadre con el KPI "Atención Urgente".
+  const inRange = (typeof getSwUnitsInRange==="function") ? getSwUnitsInRange() : [];
   const nUrg = inRange.filter(e=>effRisk(e)==="Urgente").length;
   if(nUrg>0){
     badge.textContent=nUrg;
@@ -5481,18 +5493,46 @@ function swRangoLabel(){
 // entry (no período): "28/05 → 28/05" devuelve solo inspecciones del 28/05,
 // no toda la Semana 22. Cada entry queda taggeada con _periodo / _periodoId /
 // _swKey para evitar colisiones cuando una unidad aparece en varias semanas.
+// audit 2026-06-04: normaliza una fecha (DMY "28/05/2026" o ISO "2026-05-28[ hh:mm]")
+// a "YYYY-MM-DD" para comparar contra el rango. swRangeFrom/swRangeTo vienen del
+// <input type="date"> (siempre ISO); e.fecha llega en DMY desde el loader semanal, así
+// que la comparación lexicográfica string-vs-string descartaba TODAS las entries.
+function isoDay(s){
+  const d = parseSvcDate(String(s||"").slice(0,10));
+  if(!d) return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
 function getSwEntriesInRange(){
   const out = [];
+  const from = swRangeFrom ? isoDay(swRangeFrom) : null;
+  const to   = swRangeTo   ? isoDay(swRangeTo)   : null;
   for(const p of weeklyPeriodos){
     for(const e of p.entries){
-      if(swRangeFrom && swRangeTo){
-        const f = String(e.fecha||"").slice(0,10);  // "2026-05-28 07:25" → "2026-05-28"
-        if(!f || f < swRangeFrom || f > swRangeTo) continue;
+      if(from && to){
+        const f = isoDay(e.fecha);
+        if(!f || f < from || f > to) continue;
       }
       out.push({ ...e, _periodo: p.label, _periodoId: p.id, _swKey: `${e.uid}::${p.id}` });
     }
   }
   return out;
+}
+
+// audit 2026-06-05: vista de "estado de flota" — UNA fila por unidad (placa||uid),
+// su inspección MÁS RECIENTE dentro del rango. getSwEntriesInRange() devuelve TODAS
+// las inspecciones (una por unidad×semana), así que un rango de varias semanas
+// inflaba los KPIs/tabla contando la misma unidad una vez por semana. Esto deduplica
+// para que los conteos representen unidades, no inspecciones (coherente con "% de la
+// flota" y con SIN CHECK que ya cuenta placas únicas). Para histórico/fotos/detalle
+// por semana se sigue usando getSwEntriesInRange() (set completo).
+function getSwUnitsInRange(){
+  const byUnit = new Map();
+  for(const e of getSwEntriesInRange()){
+    const k = e.plate || e.uid || e._swKey;
+    const prev = byUnit.get(k);
+    if(!prev || isoDay(e.fecha) > isoDay(prev.fecha)) byUnit.set(k, e);
+  }
+  return [...byUnit.values()];
 }
 
 function renderSemanales(){
@@ -5530,7 +5570,7 @@ function renderWeeklyPeriodoBar(){
 function buildKPIsSemanales(){
   const kpisEl = document.getElementById("sw-kpis");
   if(!kpisEl) return;
-  const entries = getSwEntriesInRange();
+  const entries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (no por inspección/semana)
   if(!entries.length){
     kpisEl.innerHTML="";
     return;
@@ -5623,7 +5663,7 @@ function buildKPIsSemanales(){
 }
 
 function renderTableSemanales(){
-  const allEntries = getSwEntriesInRange();
+  const allEntries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (la inspección más reciente del rango)
   const empty  = document.getElementById("sw-empty");
   const table  = document.getElementById("sw-table");
   const tbody  = document.getElementById("sw-tbody");
@@ -5753,7 +5793,7 @@ function renderTableSemanales(){
   }).join("");
 
   if(rcnt) rcnt.textContent = rows.length===allEntries.length
-    ? `${rows.length} inspección${rows.length!==1?"es":""}` : `${rows.length} de ${allEntries.length}`;
+    ? `${rows.length} unidad${rows.length!==1?"es":""}` : `${rows.length} de ${allEntries.length}`;
 }
 
 // Abre el lightbox con las fotos semanales de una unidad. swKey = uid::periodoId
@@ -6503,7 +6543,9 @@ function exportTallerActivasExcel(){
     return db-da;
   }).forEach(e=>{
     const dias=e.fentrada?Math.max(0,Math.round((Date.now()-new Date(e.fentrada))/86400000)):"";
-    const gTotal=(e.gastoRef||0)+(e.gastoMO||0);
+    // audit 2026-06-04: fallback a e.gasto (registros legacy/cloud sin desglose Ref/MO),
+    // igual que exportTallerHistorialExcel; antes el Gasto Total salía siempre $0.
+    const gTotal=(e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0);
     rows.push([e.eco||"",e.plate||"",e.brand||"",e.sucursal||"",e.area||"",e.tipo||"",e.estado||"En Diagnóstico",fmtDate(e.freporte),fmtDate(e.fentrada),fmtDate(e.fsalidaEst),dias,e.tecnico||"",e.gastoRef||0,e.gastoMO||0,gTotal,e.refacciones||"",e.comentario||""]);
   });
 

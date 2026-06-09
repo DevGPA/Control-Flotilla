@@ -94,14 +94,16 @@ function buildEmptyStateNoZip(uid: string, onAdd?: (uid: string) => void): HTMLE
   wrap.appendChild(subtitle);
 
   const addBtn = document.createElement("button");
-  addBtn.style.cssText = "padding:8px 16px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px";
+  addBtn.style.cssText =
+    "padding:8px 16px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px";
   addBtn.appendChild(lucideIcon("camera", 13));
   addBtn.appendChild(document.createTextNode(" Agregar fotos"));
   if (onAdd) addBtn.addEventListener("click", () => onAdd(uid));
   wrap.appendChild(addBtn);
 
   const help = document.createElement("div");
-  help.style.cssText = "margin-top:14px;background:var(--bg3);border:1px solid var(--ln);border-radius:8px;padding:12px;text-align:left;font-size:11px;color:var(--s2)";
+  help.style.cssText =
+    "margin-top:14px;background:var(--bg3);border:1px solid var(--ln);border-radius:8px;padding:12px;text-align:left;font-size:11px;color:var(--s2)";
   const helpTitle = document.createElement("div");
   helpTitle.style.marginBottom = "5px";
   const helpB = document.createElement("b");
@@ -109,7 +111,11 @@ function buildEmptyStateNoZip(uid: string, onAdd?: (uid: string) => void): HTMLE
   helpB.textContent = "O desde MoreApp:";
   helpTitle.appendChild(helpB);
   help.appendChild(helpTitle);
-  ["1. Ve a tu formulario → Exportar", "2. Selecciona Descargar ZIP", "3. Sube ese ZIP al dashboard"].forEach((t) => {
+  [
+    "1. Ve a tu formulario → Exportar",
+    "2. Selecciona Descargar ZIP",
+    "3. Sube ese ZIP al dashboard",
+  ].forEach((t) => {
     const line = document.createElement("div");
     line.textContent = t;
     line.style.marginBottom = "3px";
@@ -126,7 +132,8 @@ function buildEmptyStateZipNoPhotos(uid: string, onAdd?: (uid: string) => void):
   wrap.appendChild(document.createTextNode("Sin fotos registradas para esta unidad."));
   wrap.appendChild(document.createElement("br"));
   const btn = document.createElement("button");
-  btn.style.cssText = "margin-top:8px;padding:5px 12px;background:none;border:1px dashed var(--ln);border-radius:6px;font-size:10px;color:var(--s1);cursor:pointer";
+  btn.style.cssText =
+    "margin-top:8px;padding:5px 12px;background:none;border:1px dashed var(--ln);border-radius:6px;font-size:10px;color:var(--s1);cursor:pointer";
   btn.textContent = "+ Agregar foto manual";
   if (onAdd) btn.addEventListener("click", () => onAdd(uid));
   wrap.appendChild(btn);
@@ -148,7 +155,8 @@ function buildHeader(totalPhotos: number, uid: string, onAdd?: (uid: string) => 
   hdr.appendChild(hint);
 
   const addBtn = document.createElement("button");
-  addBtn.style.cssText = "margin-left:auto;padding:3px 8px;border:1px dashed var(--ln);border-radius:5px;font-size:9px;color:var(--s1);background:none;cursor:pointer";
+  addBtn.style.cssText =
+    "margin-left:auto;padding:3px 8px;border:1px dashed var(--ln);border-radius:5px;font-size:9px;color:var(--s1);background:none;cursor:pointer";
   addBtn.textContent = "+ Agregar foto";
   if (onAdd) addBtn.addEventListener("click", () => onAdd(uid));
   hdr.appendChild(addBtn);
@@ -162,6 +170,7 @@ function buildZipThumb(
   lightbox: LightboxApi | undefined,
   items: LightboxItem[],
   lazyObserver?: IntersectionObserver,
+  resolveZipUrl?: (fname: string) => string | null,
 ): HTMLElement {
   const item = document.createElement("div");
   item.className = "pgitem";
@@ -190,10 +199,14 @@ function buildZipThumb(
   item.appendChild(img);
   if (lazyObserver) lazyObserver.observe(img);
   else {
-    // Sin observer: fallback eager — asigna src directo para que la imagen cargue
-    // (ej. IntersectionObserver no soportado, o caller no inyectó).
-    img.src = entry.fname;
-    img.style.opacity = "1";
+    // Sin observer: fallback eager — resuelve la URL real vía resolveZipUrl
+    // (antes asignaba entry.fname crudo como src → imagen rota cuando el caller
+    // no inyecta lazyObserver o IntersectionObserver no está soportado).
+    const u = resolveZipUrl?.(entry.fname);
+    if (u) {
+      img.src = u;
+      img.style.opacity = "1";
+    }
   }
 
   const label = document.createElement("div");
@@ -233,7 +246,8 @@ function buildManualThumb(
 
   if (onDelete) {
     const delBtn = document.createElement("button");
-    delBtn.style.cssText = "position:absolute;top:2px;right:2px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;line-height:1";
+    delBtn.style.cssText =
+      "position:absolute;top:2px;right:2px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;line-height:1";
     delBtn.textContent = "✕";
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -262,6 +276,12 @@ export function renderPhotoGallery(container: HTMLElement, deps: PhotoGalleryDep
     onDeleteManualPhoto,
   } = deps;
 
+  // Desconecta del observer compartido las imágenes lazy del render anterior
+  // antes de reemplazar el contenido. Sin esto, el singleton lazyObserver
+  // acumula <img> ya removidos del DOM en cada re-render del panel (fuga).
+  if (lazyObserver) {
+    container.querySelectorAll("img.lazy-img").forEach((i) => lazyObserver.unobserve(i));
+  }
   container.replaceChildren();
 
   const photos = (unit.photos ?? []) as unknown as PhotoEntry[];
@@ -310,7 +330,9 @@ export function renderPhotoGallery(container: HTMLElement, deps: PhotoGalleryDep
     const grid = document.createElement("div");
     grid.className = "pgrid";
     for (const entry of items) {
-      grid.appendChild(buildZipThumb(entry, zipIdx, lightbox, lbItems, lazyObserver));
+      grid.appendChild(
+        buildZipThumb(entry, zipIdx, lightbox, lbItems, lazyObserver, resolveZipUrl),
+      );
       zipIdx++;
     }
     grpWrap.appendChild(grid);
@@ -349,14 +371,6 @@ export function renderPhotoGallery(container: HTMLElement, deps: PhotoGalleryDep
   }
 
   container.appendChild(cats);
-
-  // Also accept if caller passes resolveZipUrl — rewire lightbox to use it
-  if (lightbox && resolveZipUrl) {
-    // Patch lightbox's resolveUrl by replacing urls on-the-fly during open.
-    // (Lightbox's internal resolveUrl is set at construction; we already
-    // passed it via LightboxOptions at boot. No-op here.)
-  }
-  void resolveZipUrl;
 }
 
 // Export helper for tests

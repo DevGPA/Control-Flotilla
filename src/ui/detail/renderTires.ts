@@ -12,7 +12,9 @@ export type RenderTiresDeps = {
 };
 
 function tireRow(name: string, valueMm: number, tcrit: number, twarn: number): HTMLElement {
-  const pct = Math.min((valueMm / 10) * 100, 100);
+  // Clamp en ambos extremos: un valueMm negativo (dato corrupto) producía un
+  // ancho de barra negativo. El color/status ya cae en CRÍTICO por la cadena <=.
+  const pct = Math.max(0, Math.min((valueMm / 10) * 100, 100));
   const color = valueMm <= tcrit ? "var(--R)" : valueMm <= twarn ? "var(--A)" : "var(--G)";
   const status = valueMm <= tcrit ? "CRÍTICO" : valueMm <= twarn ? "Vigilar" : "OK";
 
@@ -83,7 +85,8 @@ function alertBox(minT: number, tcrit: number, twarn: number): HTMLElement {
   const ac = minT <= tcrit ? "var(--R)" : minT <= twarn ? "var(--A)" : "var(--G)";
   const ab = minT <= tcrit ? "var(--Rd)" : minT <= twarn ? "var(--Ad)" : "var(--Gd)";
   const al = minT <= tcrit ? "var(--Rl)" : minT <= twarn ? "var(--Al)" : "var(--Gl)";
-  const text = minT <= tcrit ? "Reemplazo urgente" : minT <= twarn ? "Programar reemplazo" : "Buen estado";
+  const text =
+    minT <= tcrit ? "Reemplazo urgente" : minT <= twarn ? "Programar reemplazo" : "Buen estado";
 
   const alert = document.createElement("div");
   alert.className = "talert";

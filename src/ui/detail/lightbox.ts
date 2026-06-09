@@ -42,16 +42,26 @@ export function createLightbox(opts: LightboxOptions = {}): LightboxApi {
   const overlay = document.createElement("div");
   overlay.id = overlayId;
   overlay.className = "lb";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:10000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px";
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:10000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px";
 
   const img = document.createElement("img");
   img.id = `${overlayId}-img`;
   img.style.cssText = "max-width:92vw;max-height:80vh;object-fit:contain";
+  // Auto-sanado: si la URL firmada expiró (403), re-resolver una vez. Acotado
+  // (solo re-asigna si la nueva URL difiere) para no entrar en loop de error.
+  img.addEventListener("error", () => {
+    const item = items[idx];
+    if (!item || !item.fname || !resolveUrl) return;
+    const fresh = resolveUrl(item.fname);
+    if (fresh && fresh !== img.src) img.src = fresh;
+  });
   overlay.appendChild(img);
 
   const label = document.createElement("div");
   label.id = `${overlayId}-label`;
-  label.style.cssText = "color:#fff;font-size:14px;font-weight:600;max-width:90vw;text-align:center";
+  label.style.cssText =
+    "color:#fff;font-size:14px;font-weight:600;max-width:90vw;text-align:center";
   overlay.appendChild(label);
 
   const counter = document.createElement("div");
@@ -104,10 +114,12 @@ export function createLightbox(opts: LightboxOptions = {}): LightboxApi {
   function update(): void {
     const item = items[idx];
     if (!item) return;
-    if (!item.url && item.fname && resolveUrl) {
-      item.url = resolveUrl(item.fname) ?? undefined;
-    }
-    img.src = item.url ?? "";
+    // Resolver SIEMPRE para items con fname (ZIP/cloud): las URLs S3 firmadas
+    // expiran y memoizar item.url daba 403 al volver a una foto ya vista. Items
+    // sin fname (foto manual con object URL) usan item.url directamente.
+    const url =
+      item.fname && resolveUrl ? (resolveUrl(item.fname) ?? item.url ?? "") : (item.url ?? "");
+    img.src = url;
     label.textContent = item.label;
     counter.textContent = `${idx + 1} de ${items.length}`;
     // Hide nav buttons if only 1 item

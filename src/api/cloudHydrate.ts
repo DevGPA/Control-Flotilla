@@ -92,6 +92,19 @@ function monthOf(fecha: string | null | undefined): string | null {
   return null;
 }
 
+/** Normaliza una fecha de checklist a ISO YYYY-MM-DD para ORDENAR/COMPARAR.
+ * Acepta ISO (passthrough) o legacy DD/MM/YYYY. "" si no parseable. NO se usa
+ * para construir uids ni el campo `fecha` mostrado, para no re-keyear los
+ * CheckDones existentes (cuya llave depende del uid `placa__fecha`). */
+function isoDay(fecha: string | null | undefined): string {
+  const s = String(fecha ?? "").trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]!.padStart(2, "0")}-${dmy[1]!.padStart(2, "0")}`;
+  return "";
+}
+
 function periodoLabelFromId(id: string): string {
   // "2026-W21" → "Semana 21, 2026"
   const m = id.match(/^(\d{4})-W(\d{1,2})$/);
@@ -350,23 +363,25 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     row.uid = `${row.plate ?? c.unitUid}__${fecha}`; // único por inspección
     inspections.push(row);
   }
-  // Desc por fecha (más reciente primero).
-  inspections.sort((a, b) => String(b.fecha ?? "").localeCompare(String(a.fecha ?? "")));
+  // Desc por fecha (más reciente primero). Normaliza DMY→ISO para ordenar bien.
+  inspections.sort((a, b) => isoDay(b.fecha).localeCompare(isoDay(a.fecha)));
 
   // Flota = unidades distintas del catálogo con su ÚLTIMO checklist (estado actual,
   // independiente del rango). Alimenta los KPIs hero + dona Operativa/Taller.
   const latestByUnit = new Map<string, Schema["Checklist"]["type"]>();
   for (const c of checklists) {
     const e = latestByUnit.get(c.unitUid);
-    if (!e || (c.fecha ?? "") > (e.fecha ?? "")) latestByUnit.set(c.unitUid, c);
+    if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(c.unitUid, c);
   }
   window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
 
   let legacyUnits: Unit[];
   if (inspections.length > 0) {
     window.__inspections = inspections;
+    // Min/max en ISO para que __inspMinDate/__inspMaxDate y el datepicker
+    // (type=date → ISO) ordenen cronológicamente aunque la fecha venga en DMY.
     const fechas = inspections
-      .map((i) => String(i.fecha ?? "").slice(0, 10))
+      .map((i) => isoDay(i.fecha))
       .filter(Boolean)
       .sort();
     window.__inspMinDate = fechas[0];
@@ -380,8 +395,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       const from = fromISO || "0000-01-01";
       const to = toISO || "9999-12-31";
       const sel = (window.__inspections ?? []).filter((i) => {
-        const f = String(i.fecha ?? "").slice(0, 10);
-        return f >= from && f <= to;
+        const f = isoDay(i.fecha); // normaliza DMY→ISO para comparar contra from/to (ISO)
+        return f !== "" && f >= from && f <= to;
       });
       window.units = sel;
       if (typeof window.buildKPIs === "function") window.buildKPIs();

@@ -261,8 +261,11 @@ if (readFlag("USE_NEW_RENDER")) {
     if (window.filt) {
       try {
         const r = window.filt();
+        // Un [] de filt() es un resultado legítimo ("sin coincidencias") y debe
+        // renderizarse como estado vacío, NO reemplazarse por allUnits (eso
+        // mostraba TODA la flota ignorando el filtro). El fallback a allUnits
+        // solo aplica cuando filt() LANZA (catch de abajo).
         rows = safeUnitArray(r, "window.filt() result");
-        if (rows.length === 0 && allUnits.length > 0) rows = allUnits;
       } catch (err) {
         console.warn("[renderTable] window.filt() lanzó, fallback a allUnits:", err);
         rows = allUnits;
