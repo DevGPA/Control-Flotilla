@@ -23,6 +23,34 @@
 import { setupCloud } from "./api/cloudWire";
 setupCloud();
 
+// ── Registro del Service Worker (PWA) ────────────────────────────────────────
+// Manual (injectRegister:null en vite.config) — el registerSW.js autogenerado
+// era un register() sin mecanismo de actualización y los usuarios quedaban
+// atascados en versiones viejas del app shell (incidente 2026-06-09).
+// - updateViaCache:'none': el update check del sw.js y sus importScripts SIEMPRE
+//   van a red (inmune a headers de cache mal configurados).
+// - update() periódico + al volver a la pestaña: sesiones/PWAs abiertas días
+//   detectan deploys sin esperar una navegación.
+// - El reload al activarse un update lo hace el propio SW (sw-force-reload.js).
+// En dev (vite) no existe sw.js → el catch silencia el 404. E2E (?e2e=1) no
+// registra para no interferir con los specs.
+if ("serviceWorker" in navigator && !window.location.search.includes("e2e=1")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("./sw.js", { scope: "./", updateViaCache: "none" })
+      .then((reg) => {
+        const update = (): void => {
+          reg.update().catch(() => {});
+        };
+        setInterval(update, 60 * 60 * 1000);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) update();
+        });
+      })
+      .catch(() => {});
+  });
+}
+
 import { renderTable as renderTableNew } from "./ui/renderTable";
 import { renderChecklist as renderChecklistNew } from "./ui/detail/renderChecklist";
 import {
