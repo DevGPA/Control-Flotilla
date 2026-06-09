@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-QchEybj2xsB6EVY4xisEHPdGaJus1e+IvVO4++55l/o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-xiHZzi1jsOQUDZ+qNxLEKVsZdgJOYeu6kCU/TxSchbA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -986,10 +986,22 @@ async function persistState(filename){
       imgCount: keys.length
     }, "session");
 
-    imgStore.clear();
-    for(const k of keys){
-      imgStore.put(zipImgs[k], k);
-    }
+    // Fase B (audit 2026-06-04): NO usar imgStore.clear() — borraría las fotos
+    // MANUALES (keys "manual_*") que comparten este store 'images' y se perderían
+    // de forma irrecuperable en cada carga de Excel. Borramos selectivamente solo
+    // las keys NO-manual (las del ZIP previo) con cursor, y preservamos las manuales
+    // (mismo patrón que loadManualPhotos). El re-write del ZIP actual se hace al
+    // terminar el recorrido, dentro de la misma transacción.
+    const delCur = imgStore.openCursor();
+    delCur.onsuccess = ev => {
+      const c = ev.target.result;
+      if(!c){
+        for(const k of keys){ imgStore.put(zipImgs[k], k); }
+        return;
+      }
+      if(typeof c.key === "string" && !c.key.startsWith("manual_")) c.delete();
+      c.continue();
+    };
 
     tx.oncomplete = () => {
       const t = new Date(savedAt).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
