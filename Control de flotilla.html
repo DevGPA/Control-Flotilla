@@ -986,10 +986,22 @@ async function persistState(filename){
       imgCount: keys.length
     }, "session");
 
-    imgStore.clear();
-    for(const k of keys){
-      imgStore.put(zipImgs[k], k);
-    }
+    // Fase B (audit 2026-06-04): NO usar imgStore.clear() — borraría las fotos
+    // MANUALES (keys "manual_*") que comparten este store 'images' y se perderían
+    // de forma irrecuperable en cada carga de Excel. Borramos selectivamente solo
+    // las keys NO-manual (las del ZIP previo) con cursor, y preservamos las manuales
+    // (mismo patrón que loadManualPhotos). El re-write del ZIP actual se hace al
+    // terminar el recorrido, dentro de la misma transacción.
+    const delCur = imgStore.openCursor();
+    delCur.onsuccess = ev => {
+      const c = ev.target.result;
+      if(!c){
+        for(const k of keys){ imgStore.put(zipImgs[k], k); }
+        return;
+      }
+      if(typeof c.key === "string" && !c.key.startsWith("manual_")) c.delete();
+      c.continue();
+    };
 
     tx.oncomplete = () => {
       const t = new Date(savedAt).toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
