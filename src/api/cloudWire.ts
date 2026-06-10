@@ -21,6 +21,7 @@ import {
   uploadUnitsToCloud,
   uploadSemanalesToCloud,
   uploadTallerToCloud,
+  tallerCloudKey,
   type BatchResult,
   type LegacyUnit,
   type LegacySemanalEntry,
@@ -34,6 +35,7 @@ import {
   listPeriodos,
   listSemanales,
   deleteTaller,
+  findCloudTallerByFolio,
   upsertCheckDone,
 } from "./client";
 import { hydrateFromCloud } from "./cloudHydrate";
@@ -64,8 +66,11 @@ declare global {
     ) => Promise<BatchResult>;
     /** Upload entries de taller a DynamoDB (Taller model). */
     __cloudSyncTaller?: (entries: LegacyTallerEntry[]) => Promise<BatchResult>;
-    /** Borra un Taller record del cloud por su entry legacy. */
+    /** Borra TODAS las filas cloud de un registro de taller (folio-lookup, Fase C2). */
     __cloudDeleteTaller?: (entry: LegacyTallerEntry) => Promise<void>;
+    /** Guarda/edita un registro de taller con re-key seguro: upsert nuevo →
+     *  delete de filas viejas del mismo folio (Fase C2). */
+    __cloudReplaceTaller?: (entry: LegacyTallerEntry) => Promise<void>;
     /** Refetch todos los datos del tenant — overwrite state local. */
     __cloudFetchAll?: () => Promise<CloudSnapshot | null>;
     /** Hidrata window.units desde cloud + trigger re-render UI legacy. */
@@ -220,18 +225,54 @@ export function setupCloud(): void {
     return res;
   };
 
+  // Fase C2 (audit 2026-06-04 P1 #10): borra TODAS las filas cloud del registro
+  // localizándolas por folio (e.id) — NUNCA recomputando la clave (las filas
+  // históricas con fallback a updatedAt son irreproducibles; el delete por
+  // clave recomputada fallaba silencioso y el registro "resucitaba" en el
+  // próximo hydrate). De paso limpia duplicados históricos de ese id.
   window.__cloudDeleteTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const unitUid = entry.plate || entry.eco || entry.unitKey || entry.id;
-    const fechaEntrada = entry.fentrada || entry.freporte || entry.updatedAt;
-    if (!unitUid || !fechaEntrada) {
-      throw new Error("deleteTaller: faltan unitUid o fechaEntrada");
+    const rows = await findCloudTallerByFolio(session.tenantId, String(entry.id ?? ""));
+    for (const t of rows) {
+      await deleteTaller({
+        tenantId: session.tenantId,
+        unitUid: t.unitUid,
+        fechaEntrada: t.fechaEntrada,
+      });
     }
-    await deleteTaller({
-      tenantId: session.tenantId,
-      unitUid: String(unitUid),
-      fechaEntrada,
-    });
+    if (rows.length) console.info(`[cloudDeleteTaller] ${rows.length} fila(s) borradas (folio)`);
+  };
+
+  // Fase C2: guardar/editar un registro de taller con re-key SEGURO.
+  // Orden: upsert de la clave nueva PRIMERO → luego borrar las filas viejas del
+  // mismo folio cuya clave difiera (un fallo del delete deja un duplicado
+  // transitorio que el dedup de lectura absorbe; un fallo del upsert no borra
+  // nada — nunca se pierden datos, H12). Si la clave no cambió, el lookup
+  // simplemente no encuentra filas que borrar.
+  window.__cloudReplaceTaller = async (entry: LegacyTallerEntry): Promise<void> => {
+    const session = await ensureSession();
+    const res = await uploadTallerToCloud([entry], session.tenantId);
+    if (res.errors.length) {
+      throw new Error(`replaceTaller upsert falló: ${res.errors[0]?.error ?? "?"}`);
+    }
+    const nueva = tallerCloudKey(entry);
+    const rows = await findCloudTallerByFolio(session.tenantId, String(entry.id ?? ""));
+    const viejas = rows.filter(
+      (t) => !(t.unitUid === nueva.unitUid && t.fechaEntrada === nueva.fechaEntrada),
+    );
+    for (const t of viejas) {
+      try {
+        await deleteTaller({
+          tenantId: session.tenantId,
+          unitUid: t.unitUid,
+          fechaEntrada: t.fechaEntrada,
+        });
+      } catch (err) {
+        console.warn("[cloudReplaceTaller] delete de fila vieja falló (dedup la cubre):", err);
+      }
+    }
+    if (viejas.length)
+      console.info(`[cloudReplaceTaller] re-key: ${viejas.length} fila(s) viejas borradas`);
   };
 
   window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {
