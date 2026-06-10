@@ -177,6 +177,35 @@ export async function deleteTaller(input: {
   throwOnErrors("deleteTaller", errors);
 }
 
+/**
+ * Localiza TODAS las filas cloud de un registro de taller por su id legacy
+ * (folio) — Fase C2 (audit 2026-06-04 P1 #10/H13). Las filas históricas se
+ * escribieron con claves irreproducibles (fallback a `updatedAt` regenerado),
+ * así que para editar/borrar NUNCA se recomputa la clave: se busca por
+ * `folio === id` (batchUpload siempre escribe folio=e.id) con fallback a
+ * `datos.id === id` (filas muy viejas sin folio), y cada fila encontrada se
+ * borra por SU clave real (unitUid, fechaEntrada).
+ */
+export async function findCloudTallerByFolio(
+  tenantId: string,
+  folioId: string,
+): Promise<Schema["Taller"]["type"][]> {
+  if (!folioId) return [];
+  const rows = await listTaller(tenantId);
+  return rows.filter((t) => {
+    if (t.folio === folioId) return true;
+    try {
+      const datos =
+        typeof t.datos === "string"
+          ? (JSON.parse(t.datos) as { id?: unknown })
+          : ((t.datos ?? {}) as { id?: unknown });
+      return String(datos.id ?? "") === folioId;
+    } catch {
+      return false;
+    }
+  });
+}
+
 // ───────────────────────── Nota ─────────────────────────
 
 export type NotaInput = {

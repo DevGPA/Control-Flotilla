@@ -20,6 +20,7 @@ import {
   type PhotoUrlEntry,
 } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
+import { dedupTallerCloudRows } from "./tallerDedup";
 import { mergeCheckDones } from "./mergeCheckDones";
 import type { DoneMap } from "../analyzer/findingKey";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
@@ -223,7 +224,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       const id = String(datos.id ?? t.folio ?? "");
       if (id) cloudIds.add(id);
     }
-    const orphans = localTaller.filter((e) => !cloudIds.has(e.id));
+    // Fase C2 (guarda anti-resurrección): NO re-subir entries que YA estuvieron
+    // en el cloud (`_cloud:true`, marcado al hidratar). Sin esto, cuando un
+    // usuario A borraba un registro, el usuario B —con la copia en su IndexedDB—
+    // lo re-subía como "huérfano" en su próximo hydrate y el registro resucitaba.
+    const orphans = localTaller.filter(
+      (e) => !cloudIds.has(e.id) && !(e as { _cloud?: boolean })._cloud,
+    );
     if (orphans.length > 0) {
       console.info(`[cloudHydrate] migrando ${orphans.length} taller entries locales al cloud`);
       try {
@@ -270,8 +277,21 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
 
   // ── Hydrate taller → window.tallerEntries ──────────────────
   // Cada Taller row reconstruye TallerEntry legacy desde datos JSON.
-  if (tallerCloud.length > 0) {
-    const tallerEntries: TallerEntry[] = tallerCloud.map((t) => {
+  // Fase C2: dedup en lectura — los re-keys históricos dejaron filas duplicadas
+  // del mismo registro; la vista muestra UNA por id (gana la más reciente).
+  // El reemplazo corre SIEMPRE (incluso con 0 filas): si otro usuario borró el
+  // último registro, la copia en RAM de los demás también debe desaparecer.
+  // El cloud es autoritativo aquí — la auto-migración (arriba) ya re-subió los
+  // huérfanos legítimos pre-cloud, y el early-return de "cloud 100% vacío"
+  // protege a tenants nuevos sin tocar su estado local.
+  {
+    const dedupedTaller = dedupTallerCloudRows(tallerCloud);
+    if (dedupedTaller.length < tallerCloud.length) {
+      console.info(
+        `[cloudHydrate] taller dedup: ${tallerCloud.length - dedupedTaller.length} fila(s) duplicada(s) ocultas`,
+      );
+    }
+    const tallerEntries: TallerEntry[] = dedupedTaller.map((t) => {
       const datos = safeParseObj(t.datos);
       const estadoRaw = datos.estado ?? (t.estatus === "cerrado" ? "Finalizado" : "En Diagnóstico");
       const estado: TallerEstado = migrateEstado(estadoRaw);
@@ -297,6 +317,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         refacciones: String(datos.refacciones ?? ""),
         comentario: String(datos.comentario ?? ""),
         updatedAt: String(datos.updatedAt ?? ""),
+        // Marca "ya estuvo en cloud" — la auto-migración no lo re-sube si otro
+        // usuario lo borra (guarda anti-resurrección, Fase C2). Persiste al
+        // IndexedDB local junto con el entry.
+        _cloud: true,
       };
     });
     window.tallerEntries = tallerEntries;

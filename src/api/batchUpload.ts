@@ -391,6 +391,23 @@ interface LegacyTallerEntry {
  * en datos (JSON) — campos del schema (motivo, estatus) son strict-typed para
  * compatibility con queries.
  */
+/**
+ * Clave cloud de un registro de taller — Fase C2 (audit 2026-06-04 P1 #11).
+ * El identifier del modelo es (tenantId, unitUid, fechaEntrada). Antes, con
+ * fentrada/freporte vacíos, fechaEntrada caía a `updatedAt` (regenerado en CADA
+ * guardado) → cada edición/finalización creaba una fila cloud NUEVA (duplicados
+ * fantasma). Ahora el fallback es `sin-fecha:`+e.id — e.id (`tl_<ts>`) es
+ * inmutable, así que la clave es estable y recomputable. La UI no se rompe:
+ * `fentrada` se hidrata desde `datos.fentrada` (el JSON), no desde la clave.
+ * Regla operativa (decisión 2026-06-09): máx. 1 ingreso por unidad por día —
+ * un segundo ingreso same-day upserta sobre la misma fila.
+ */
+export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEntrada: string } {
+  const unitUid = String(e.plate || e.eco || e.unitKey || e.id || "");
+  const fechaEntrada = e.fentrada || e.freporte || `sin-fecha:${e.id}`;
+  return { unitUid, fechaEntrada };
+}
+
 export async function uploadTallerToCloud(
   entries: LegacyTallerEntry[],
   tenantId: string,
@@ -406,8 +423,7 @@ export async function uploadTallerToCloud(
   };
 
   for (const e of entries) {
-    const unitUid = e.plate || e.eco || e.unitKey || e.id;
-    const fechaEntrada = e.fentrada || e.freporte || e.updatedAt || new Date().toISOString();
+    const { unitUid, fechaEntrada } = tallerCloudKey(e);
     if (!unitUid) {
       result.skipped++;
       continue;

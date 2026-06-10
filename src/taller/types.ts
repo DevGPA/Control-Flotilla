@@ -64,6 +64,10 @@ export type TallerEntry = {
   // Meta
   createdAt?: string;
   updatedAt?: string;
+  /** Fase C2: marcado al hidratar del cloud. La auto-migración NO re-sube
+   *  entries con esta marca (guarda anti-resurrección cuando otro usuario
+   *  borra el registro). Persiste al IndexedDB local. */
+  _cloud?: boolean;
 };
 
 export type TallerFilter = {
