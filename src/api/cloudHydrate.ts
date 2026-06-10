@@ -279,7 +279,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Cada Taller row reconstruye TallerEntry legacy desde datos JSON.
   // Fase C2: dedup en lectura — los re-keys históricos dejaron filas duplicadas
   // del mismo registro; la vista muestra UNA por id (gana la más reciente).
-  if (tallerCloud.length > 0) {
+  // El reemplazo corre SIEMPRE (incluso con 0 filas): si otro usuario borró el
+  // último registro, la copia en RAM de los demás también debe desaparecer.
+  // El cloud es autoritativo aquí — la auto-migración (arriba) ya re-subió los
+  // huérfanos legítimos pre-cloud, y el early-return de "cloud 100% vacío"
+  // protege a tenants nuevos sin tocar su estado local.
+  {
     const dedupedTaller = dedupTallerCloudRows(tallerCloud);
     if (dedupedTaller.length < tallerCloud.length) {
       console.info(
