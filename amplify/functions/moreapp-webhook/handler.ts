@@ -260,22 +260,11 @@ function norm(s: unknown): string {
 function normFluidRisk(val: unknown): string {
   const v = norm(val);
   if (!v) return "OK";
-  const URG = [
-    "vacio",
-    "sin aceite",
-    "sin refrigerante",
-    "sin agua",
-    "sin fluido",
-    "fuga",
-    "peligro",
-    "agotado",
-    "quemado",
-    "no tiene aceite",
-    "no tiene fluido",
-    "perdida de aceite",
-    "sin oil",
-  ];
-  if (URG.some((kw) => v.includes(kw))) return "Urgente";
+  // audit 2026-06-10 (N-WH-01): OK ANTES que URG, en sync con src/analyzer/risk.ts
+  // y el HTML. "sin fuga" / "no hay fuga" / "no presenta fuga" contienen "fuga"
+  // (substring en URG) y deben resolver OK, no marcar Urgente a una unidad sana.
+  // Antes del fix esta réplica evaluaba URG primero → semanales ingeridas por
+  // MoreApp guardaban unidades sanas como Urgente.
   const OK = [
     "ok",
     "correcto",
@@ -317,6 +306,22 @@ function normFluidRisk(val: unknown): string {
   ];
   if (OK.some((kw) => v === kw || v.includes(kw))) return "OK";
   if (v === "si") return "OK";
+  const URG = [
+    "vacio",
+    "sin aceite",
+    "sin refrigerante",
+    "sin agua",
+    "sin fluido",
+    "fuga",
+    "peligro",
+    "agotado",
+    "quemado",
+    "no tiene aceite",
+    "no tiene fluido",
+    "perdida de aceite",
+    "sin oil",
+  ];
+  if (URG.some((kw) => v.includes(kw))) return "Urgente";
   return "Revisar";
 }
 function normTireRisk(val: unknown): string {
