@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-FN5Qt7r12QRooP3e9J9czuGGbTOtvh1/Co9R4BopQqk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-T87PXo9y/QEZfuCnNQkSnoZXnKvZzOXEltmevePUD+g='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1292,19 +1292,22 @@ const BIN={
   // ── Seguridad activa → URGENTE (falla = riesgo inmediato) ──
   "Luces y cuartos delanteros funcionando":"Urgente",
   "Cinturones de seguridad funcionando (todos)":"Urgente",
-  // ── Condición del vehículo → REVISAR (monitorear/reparar) ─
-  "Carroceria con golpes o raspaduras":"Revisar",
+  // ── MATRIZ DE DECISIÓN 2026-06-11 (unificación de motores; en sync con
+  // src/analyzer/constants.ts — test de paridad en decision-matrix test):
+  // Afectan manejo/seguridad → REVISAR ─
   "Espejos laterales en buen estado":"Revisar",
   "Cristales en buenas condiciones":"Revisar",
-  "Molduras completas y en buen estado":"Revisar",
   "Tapon de la gasolina":"Revisar",
   "Bocina del claxon funcionando":"Revisar",
   "Limpia parabrisas funcionando correctamente":"Revisar",
   "Tacometro en buenas condiciones":"Revisar",
   "Espejo retrovisor en buenas condiciones":"Revisar",
   "Luces interiores funcionando":"Revisar",
-  "Asientos en buen estado":"Revisar",
-  "Tapetes completos":"Revisar",
+  // Estéticos / de uso → COMPLETAR (no descalifican unidad) ─
+  "Carroceria con golpes o raspaduras":"Completar",
+  "Molduras completas y en buen estado":"Completar",
+  "Asientos en buen estado":"Completar",
+  "Tapetes completos":"Completar",
   // ── Kit de emergencia → COMPLETAR (obtener/reponer) ────────
   // "Llanta de refaccion funcional" se maneja aparte
   "Gato adecuado para el vehiculo y su palanca":"Completar",
@@ -1323,8 +1326,19 @@ const CATI={
   Llantas:'<i data-lucide="disc-3" style="width:12px;height:12px;vertical-align:-2px"></i>',
   Checklist:'<i data-lucide="clipboard-list" style="width:12px;height:12px;vertical-align:-2px"></i>',
   Documentos:'<i data-lucide="file-text" style="width:12px;height:12px;vertical-align:-2px"></i>',
-  Fluidos:'<i data-lucide="droplet" style="width:12px;height:12px;vertical-align:-2px"></i>'
+  Fluidos:'<i data-lucide="droplet" style="width:12px;height:12px;vertical-align:-2px"></i>',
+  Mantenimiento:'<i data-lucide="wrench" style="width:12px;height:12px;vertical-align:-2px"></i>'
 };
+// Decisión 2026-06-11 (F): keys BIN que son documentos regulatorios → categoría
+// "Documentos" (espejo de DOC_KEYS en src/analyzer/analyzeRow.ts).
+const DOC_KEYS=new Set([
+  'Licencia de "chofer" acorde a vehiculo vigente',
+  "Tarjeta de circulacion vigente",
+  "Poliza de seguro vigente",
+  "Calcomonia de refrendo vehicular",
+  "Tarjeta/calcamonia de verificacion ambiental vigente",
+  "Calcamonia de ultimo servicio (en parabrisas)",
+]);
 const RO={Urgente:3,Revisar:2,Completar:1.5,OK:1};
 
 // Etiquetas display: forma de "problema/falla" para evitar ambiguedad de pregunta-positiva.
@@ -1398,12 +1412,34 @@ function analyzeRow(row){
     }
   }
   for(const[c,r]of Object.entries(BIN))
-    if(isBinFail(row[c])){F.push({cat:"Checklist",key:`Bin:${c}`,text:BIN_LABELS[c]||c,lv:r});esc(r)}
+    // Decisión 2026-06-11 (F): documentos regulatorios en categoría propia
+    // "Documentos" (igual que el motor TS) — papeles vencidos se ven aparte.
+    if(isBinFail(row[c])){F.push({cat:DOC_KEYS.has(c)?"Documentos":"Checklist",key:`Bin:${c}`,text:BIN_LABELS[c]||c,lv:r});esc(r)}
   // Tarjeta circulación vencida ya capturada por isBinFail (incluye "vencid").
   for(const c of["Nivel de aceite de motor max","Nivel de liquido de frenos max"])
     if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel BAJO`,lv:"Urgente"});esc("Urgente")}
   for(const c of["Nivel de liquido de radiador max","Nivel de aceite de direccion max"])
     if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel bajo`,lv:"Revisar"});esc("Revisar")}
+  // Decisión 2026-06-11 (C2): el servicio AFECTA el estatus de la unidad — antes
+  // este motor no generaba finding por servicio (solo el KPI agregado) y la
+  // misma unidad salía Urgente en cloud pero "OK" en esta tabla. Regla unificada
+  // (espejo de src/analyzer/analyzeRow.ts): km autoritativo, fecha = fallback;
+  // VENCIDO → Revisar · PRÓXIMO A VENCER (≤1000km / ≤30 días) → Completar.
+  const kmActual=parseFloat(String(row["Kilometraje"]??"0"));
+  const kmSiguiente=parseFloat(String(row["Kilometraje del siguiente servicio"]??"0"));
+  if(kmActual>0&&kmSiguiente>0){
+    const diff=kmSiguiente-kmActual;
+    if(diff<=0){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio VENCIDO (${Math.abs(Math.round(diff))}km excedidos)`,lv:"Revisar"});esc("Revisar")}
+    else if(diff<=1000){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${Math.round(diff)}km restantes)`,lv:"Completar"});esc("Completar")}
+  } else {
+    const svcDate=parseSvcDate(row["Fecha estimada del siguiente servicio"]);
+    if(svcDate){
+      const today0=new Date();today0.setHours(0,0,0,0);
+      const diffDays=Math.floor((svcDate.getTime()-today0.getTime())/86400000);
+      if(diffDays<0){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,lv:"Revisar"});esc("Revisar")}
+      else if(diffDays<=30){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${diffDays} días)`,lv:"Completar"});esc("Completar")}
+    }
+  }
   const tv=Object.values(T);
   return{max,F,T,minT:tv.length?Math.min(...tv):null};
 }
@@ -4327,7 +4363,10 @@ function showResumenEjecutivo(){
     text+=`TALLER\n`;
     text+=`• Unidades en taller: ${enTaller.length}\n`;
     if(tallerLargo.length) text+=`• Mas de 7 dias: ${tallerLargo.length} — ${tallerLargo.map(e=>`${e.eco||e.plate} (${Math.round((Date.now()-new Date(e.fentrada))/86400000)}d)`).join(", ")}\n`;
-    const gastoTotal=enTaller.reduce((s,e)=>s+(e.gastoRef||0)+(e.gastoMO||0),0);
+    // Patrón canónico de gasto (audit 2026-06-10 #8): Ref+MO con fallback a
+    // e.gasto — el form solo captura e.gasto, así que sin el fallback este KPI
+    // reportaba $0 a Tesorería aunque hubiera gasto capturado.
+    const gastoTotal=enTaller.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
     if(gastoTotal) text+=`• Gasto acumulado activas: $${gastoTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}\n`;
     text+=`\n`;
   }
@@ -6897,7 +6936,10 @@ function renderHistorialModal(){
     .sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""));
   if(!allEntries.length) return;
   const first = allEntries[0];
-  const totalGasto = allEntries.reduce((s,e)=>s+(e.gasto||0),0);
+  // Patrón canónico de gasto (audit 2026-06-10 #9): e.gasto con fallback a
+  // Ref+MO — las entradas hidratadas del cloud traen el desglose con gasto=0,
+  // y esta tarjeta reportaba $0 mientras su propia fila Subtotal sí sumaba bien.
+  const totalGasto = allEntries.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
   const nCor  = allEntries.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = allEntries.filter(e=>e.tipo==="Preventivo").length;
   const nSinTipo = allEntries.filter(e=>!e.tipo).length;

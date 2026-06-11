@@ -72,13 +72,15 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     row["Cuenta con llanta de Refacción?"] ?? row["Llanta de refaccion funcional"] ?? "";
   const tieneRefaccion = !esRespuestaNegativa(refRaw);
   if (!tieneRefaccion) {
+    // Decisión 2026-06-11 (D): Completar — es una acción de reposición (falta
+    // que completar), no una falla operativa. En sync con el motor HTML.
     F.push({
       cat: "Checklist",
       key: "Chk:Refaccion",
       text: "Sin llanta de refacción funcional",
-      lv: "Revisar",
+      lv: "Completar",
     });
-    bump("Revisar");
+    bump("Completar");
   }
 
   // Gating llantas internas: si "¿Cuenta con...?" es negativa → skip.
@@ -127,8 +129,10 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   }
 
   // Tarjeta circulación vencida ya capturada por isBinFail (incluye "vencid").
-  // Frenos bajo = Urgente (seguridad crítica). Aceite motor bajo = Revisar (no inmediato).
-  for (const c of ["Nivel de liquido de frenos max"]) {
+  // Decisión 2026-06-11 (B): frenos Y ACEITE DE MOTOR bajos = Urgente (riesgo de
+  // daño de motor en operación de reparto; criterio conservador). En sync con el
+  // motor HTML, que siempre los agrupó así.
+  for (const c of ["Nivel de liquido de frenos max", "Nivel de aceite de motor max"]) {
     if (
       String(row[c] || "")
         .toLowerCase()
@@ -139,11 +143,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     }
   }
 
-  for (const c of [
-    "Nivel de aceite de motor max",
-    "Nivel de liquido de radiador max",
-    "Nivel de aceite de direccion max",
-  ]) {
+  for (const c of ["Nivel de liquido de radiador max", "Nivel de aceite de direccion max"]) {
     if (
       String(row[c] || "")
         .toLowerCase()
@@ -165,6 +165,9 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
 
   if (hasKmData) {
     const diff = kmSiguiente - kmActual;
+    // Decisión 2026-06-11 (C2): servicio VENCIDO = Revisar (planeación urgente,
+    // pero la unidad sigue operando — "Urgente" se reserva para fallas reales);
+    // PRÓXIMO A VENCER (≤1000km / ≤30 días) = Completar (agendar taller).
     if (diff <= 0) {
       F.push({
         cat: "Mantenimiento",
@@ -172,17 +175,17 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
         // (km/días relativos) y la transición de nivel no debe huerfanar la marca.
         key: "Mant:Servicio",
         text: `Servicio VENCIDO (${Math.abs(Math.round(diff))}km excedidos)`,
-        lv: "Urgente",
+        lv: "Revisar",
       });
-      bump("Urgente");
+      bump("Revisar");
     } else if (diff <= 1000) {
       F.push({
         cat: "Mantenimiento",
         key: "Mant:Servicio",
-        text: `Servicio próximo (${Math.round(diff)}km restantes)`,
-        lv: "Revisar",
+        text: `Servicio próximo a vencer (${Math.round(diff)}km restantes)`,
+        lv: "Completar",
       });
-      bump("Revisar");
+      bump("Completar");
     }
   } else {
     // Fallback fecha cuando no hay datos de km. Columna MoreApp:
@@ -198,17 +201,17 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
           cat: "Mantenimiento",
           key: "Mant:Servicio",
           text: `Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,
-          lv: "Urgente",
+          lv: "Revisar",
         });
-        bump("Urgente");
+        bump("Revisar");
       } else if (diffDays <= 30) {
         F.push({
           cat: "Mantenimiento",
           key: "Mant:Servicio",
-          text: `Servicio próximo (${diffDays} días)`,
-          lv: "Revisar",
+          text: `Servicio próximo a vencer (${diffDays} días)`,
+          lv: "Completar",
         });
-        bump("Revisar");
+        bump("Completar");
       }
     }
   }

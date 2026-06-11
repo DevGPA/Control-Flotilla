@@ -37,7 +37,8 @@ describe("effRisk", () => {
   it("ambos OK → OK", () => {
     expect(effRisk(mkE({ aceiteRisk: "OK", radiadorRisk: "OK" }))).toBe("OK");
   });
-  it("carrocería Urgente (volcadura) escala → Urgente", () => {
+  // Decisión 2026-06-11 (A1): solo aceite+radiador (2 vitales) votan el estatus.
+  it("carrocería Urgente NO escala el estatus (2-vital, decisión A1)", () => {
     expect(
       effRisk(
         mkE({
@@ -47,9 +48,9 @@ describe("effRisk", () => {
           llantaRisk: "OK",
         }),
       ),
-    ).toBe("Urgente");
+    ).toBe("OK");
   });
-  it("llanta Revisar escala → Revisar", () => {
+  it("llanta Revisar NO escala el estatus (2-vital, decisión A1)", () => {
     expect(
       effRisk(
         mkE({
@@ -59,7 +60,7 @@ describe("effRisk", () => {
           llantaRisk: "Revisar",
         }),
       ),
-    ).toBe("Revisar");
+    ).toBe("OK");
   });
   it("undefined → OK", () => expect(effRisk(undefined)).toBe("OK"));
 });

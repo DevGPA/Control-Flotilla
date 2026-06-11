@@ -13,18 +13,25 @@ export const TC: Record<string, string> = {
 export const TCRIT = 3.99;
 export const TWARN = 6.99;
 
+// Niveles por ítem — MATRIZ DE DECISIÓN Navares 2026-06-11 (unificación de los
+// dos motores; idéntica al BIN del HTML legacy — test de paridad en
+// tests/decision-matrix-2026-06-11.test.ts):
+//  · REVISAR los que afectan el manejo: espejo retrovisor, luces interiores,
+//    tacómetro (+ espejos laterales, cristales, tapón, claxon, limpiaparabrisas).
+//  · COMPLETAR los estéticos/de uso: golpes de carrocería, molduras, asientos,
+//    tapetes (+ kit de emergencia y documentos).
 export const BIN: Record<string, RiskLevel> = {
   "Luces y cuartos delanteros funcionando": "Urgente",
   "Cinturones de seguridad funcionando (todos)": "Urgente",
-  // Cosméticos / no afectan operación → Completar (no descalifican unidad).
+  // Estéticos / de uso → Completar (no descalifican unidad).
   "Carroceria con golpes o raspaduras": "Completar",
   "Molduras completas y en buen estado": "Completar",
-  "Tacometro en buenas condiciones": "Completar",
-  "Espejo retrovisor en buenas condiciones": "Completar",
-  "Luces interiores funcionando": "Completar",
   "Asientos en buen estado": "Completar",
   "Tapetes completos": "Completar",
-  // Mantienen Revisar — afectan operación/seguridad real.
+  // Afectan manejo/seguridad real → Revisar.
+  "Tacometro en buenas condiciones": "Revisar",
+  "Espejo retrovisor en buenas condiciones": "Revisar",
+  "Luces interiores funcionando": "Revisar",
   "Espejos laterales en buen estado": "Revisar",
   "Cristales en buenas condiciones": "Revisar",
   "Tapon de la gasolina": "Revisar",
@@ -107,6 +114,7 @@ export const CATI: Record<string, string> = {
   Checklist: "📋",
   Documentos: "📄",
   Fluidos: "🧪",
+  Mantenimiento: "🔧",
 };
 
 export const RO: Record<RiskLevel, number> = {
