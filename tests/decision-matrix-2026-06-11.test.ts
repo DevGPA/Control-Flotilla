@@ -35,6 +35,21 @@ describe("Paridad BIN: motor HTML legacy ↔ motor TS (candado anti-drift)", () 
     ).toBeGreaterThan(20);
     expect(htmlBin).toEqual(BIN);
   });
+
+  it("los DOC_KEYS de ambos motores son idénticos (candado decisión F)", () => {
+    const html = readFileSync("Control de flotilla.html", "utf8");
+    const m = html.match(/const DOC_KEYS=new Set\(\[([\s\S]*?)\]\);/);
+    expect(m, "no se encontró `const DOC_KEYS=new Set([...])` en el HTML").toBeTruthy();
+    const htmlDocs = [...m![1]!.matchAll(/(['"])((?:\\.|(?!\1).)*)\1/g)]
+      .map((e) => e[2]!.replace(/\\"/g, '"'))
+      .sort();
+    // El TS define DOC_KEYS en analyzeRow.ts; lo verificamos por comportamiento:
+    // cada key del HTML debe producir cat='Documentos' en el motor TS.
+    expect(htmlDocs.length).toBe(6);
+    for (const col of htmlDocs) {
+      expect(analyzeRow({ [col]: "No" }).F[0]!.cat, col).toBe("Documentos");
+    }
+  });
 });
 
 describe("Decisión A1 — solo aceite + radiador son vitales", () => {
