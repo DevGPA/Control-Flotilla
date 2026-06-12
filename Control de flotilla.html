@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-uuev0hoaIHcxJun923riZIV7tRuvaBGNO6KUOzrYvgw='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-u1fv2OY4IzM19BRPI5RfFyoWWqcuvqPPA2t59Gf4JHg='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -231,6 +231,9 @@ g.inflateBytes=async function(src){
         <i data-lucide="more-horizontal" style="width:14px;height:14px"></i>
       </button>
       <div id="more-menu" role="menu" aria-label="Más opciones">
+        <button class="ubtn" id="btn-install-pwa" onclick="promptInstallPWA()" style="display:none" title="Instalar como aplicación" role="menuitem">
+          <i data-lucide="download" style="width:12px;height:12px"></i> <span class="ubtn-txt">Instalar app</span>
+        </button>
         <button class="ubtn" id="btn-resumen" onclick="showResumenEjecutivo()" style="display:none" title="Generar resumen ejecutivo de texto" role="menuitem">
           <i data-lucide="file-text" style="width:12px;height:12px"></i> <span class="ubtn-txt">Resumen ejecutivo</span>
         </button>
@@ -719,6 +722,9 @@ g.inflateBytes=async function(src){
       <button class="dcls" onclick="closeTallerModal()" aria-label="Cerrar modal de taller" style="position:static">✕</button>
     </div>
     <div class="tl-mbody">
+      <!-- UX Fase 3 (2026-06-11): 13 campos seccionados — antes era un scroll
+           plano sin jerarquía. -->
+      <div class="tl-sec">Identificación de la unidad</div>
       <div class="tl-field full tl-ac-wrap">
         <label for="tf-eco">No. Unidad / Eco — <span style="color:var(--ac);font-weight:700">escribe para buscar</span></label>
         <input id="tf-eco" type="text" placeholder="Ej: 42 — busca en flota e historial"
@@ -751,6 +757,7 @@ g.inflateBytes=async function(src){
           <option value="ADMINISTRACION">ADMINISTRACION</option>
         </select>
       </div>
+      <div class="tl-sec">Mantenimiento</div>
       <div class="tl-field">
         <label for="tf-estado">Estado</label>
         <select id="tf-estado">
@@ -769,6 +776,7 @@ g.inflateBytes=async function(src){
           <option value="Preventivo">Mtto Preventivo</option>
         </select>
       </div>
+      <div class="tl-sec">Fechas</div>
       <div class="tl-field">
         <label for="tf-freporte">Fecha de Reporte Falla</label>
         <input id="tf-freporte" type="date"/>
@@ -785,6 +793,7 @@ g.inflateBytes=async function(src){
         <label for="tf-fsalida-real">Fecha Real de Salida</label>
         <input id="tf-fsalida-real" type="date"/>
       </div>
+      <div class="tl-sec">Costos y responsable</div>
       <div class="tl-field">
         <label for="tf-km">Kilometraje al Ingreso <span style="color:var(--R)">*</span></label>
         <input id="tf-km" type="number" min="1" step="1" placeholder="Ej: 85000" required/>
@@ -797,6 +806,7 @@ g.inflateBytes=async function(src){
         <label for="tf-tecnico">Tecnico Asignado</label>
         <input id="tf-tecnico" type="text" placeholder="Nombre del tecnico o taller externo"/>
       </div>
+      <div class="tl-sec">Notas</div>
       <div class="tl-field full">
         <label for="tf-refacciones">Refacciones / Trabajos Realizados</label>
         <textarea id="tf-refacciones" placeholder="Listado de refacciones o trabajos realizados..." style="min-height:56px"></textarea>
@@ -3919,6 +3929,31 @@ document.addEventListener("click",e=>{
   if(!wrap)toggleMoreMenu(false);
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape")toggleMoreMenu(false);});
+
+// UX Fase 3 (2026-06-11): instalación de la PWA visible — antes el prompt del
+// navegador se perdía y los operadores no sabían que podían instalarla.
+let _pwaPrompt=null;
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  _pwaPrompt=e;
+  const b=document.getElementById("btn-install-pwa");
+  if(b)b.style.display="flex";
+});
+function promptInstallPWA(){
+  if(!_pwaPrompt)return;
+  _pwaPrompt.prompt();
+  _pwaPrompt.userChoice.finally(()=>{
+    _pwaPrompt=null;
+    const b=document.getElementById("btn-install-pwa");
+    if(b)b.style.display="none";
+    toggleMoreMenu(false);
+  });
+}
+window.promptInstallPWA=promptInstallPWA;
+window.addEventListener("appinstalled",()=>{
+  const b=document.getElementById("btn-install-pwa");
+  if(b)b.style.display="none";
+});
 
 // ════════════════════════════════════════════════════════════
 // SORT
