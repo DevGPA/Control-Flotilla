@@ -55,17 +55,21 @@ describe("calcEstatusSemanal", () => {
     expect(calcEstatusSemanal("OK", "Urgente", "OK", "OK")).toBe("Urgente");
   });
 
-  it("carrocería Urgente (volcadura) → Urgente", () => {
-    expect(calcEstatusSemanal("OK", "OK", "Urgente", "OK")).toBe("Urgente");
+  // Decisión de negocio 2026-06-11 (A1): SOLO aceite + radiador son vitales.
+  // Carrocería y llanta NO votan el estatus global — una unidad con un golpe
+  // o sin refacción sigue circulando (antes el motor TS escalaba con los 4,
+  // divergiendo del HTML y del webhook que siempre fueron 2-vital).
+  it("carrocería Urgente NO escala el estatus (2-vital, decisión A1)", () => {
+    expect(calcEstatusSemanal("OK", "OK", "Urgente", "OK")).toBe("OK");
   });
 
-  it("llanta Urgente → Urgente", () => {
-    expect(calcEstatusSemanal("OK", "OK", "OK", "Urgente")).toBe("Urgente");
+  it("llanta Urgente NO escala el estatus (2-vital, decisión A1)", () => {
+    expect(calcEstatusSemanal("OK", "OK", "OK", "Urgente")).toBe("OK");
   });
 
-  it("carrocería o llanta Revisar → Revisar", () => {
-    expect(calcEstatusSemanal("OK", "OK", "Revisar", "OK")).toBe("Revisar");
-    expect(calcEstatusSemanal("OK", "OK", "OK", "Revisar")).toBe("Revisar");
+  it("carrocería o llanta Revisar NO escalan (2-vital, decisión A1)", () => {
+    expect(calcEstatusSemanal("OK", "OK", "Revisar", "OK")).toBe("OK");
+    expect(calcEstatusSemanal("OK", "OK", "OK", "Revisar")).toBe("OK");
   });
 
   it("Revisar en vitales escala a Revisar", () => {

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-FN5Qt7r12QRooP3e9J9czuGGbTOtvh1/Co9R4BopQqk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-FGnJRCFUAC7jtaIs7a4FPvM57sT5f7f+ZlZ8MrEwH8A='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1292,19 +1292,22 @@ const BIN={
   // ── Seguridad activa → URGENTE (falla = riesgo inmediato) ──
   "Luces y cuartos delanteros funcionando":"Urgente",
   "Cinturones de seguridad funcionando (todos)":"Urgente",
-  // ── Condición del vehículo → REVISAR (monitorear/reparar) ─
-  "Carroceria con golpes o raspaduras":"Revisar",
+  // ── MATRIZ DE DECISIÓN 2026-06-11 (unificación de motores; en sync con
+  // src/analyzer/constants.ts — test de paridad en decision-matrix test):
+  // Afectan manejo/seguridad → REVISAR ─
   "Espejos laterales en buen estado":"Revisar",
   "Cristales en buenas condiciones":"Revisar",
-  "Molduras completas y en buen estado":"Revisar",
   "Tapon de la gasolina":"Revisar",
   "Bocina del claxon funcionando":"Revisar",
   "Limpia parabrisas funcionando correctamente":"Revisar",
   "Tacometro en buenas condiciones":"Revisar",
   "Espejo retrovisor en buenas condiciones":"Revisar",
   "Luces interiores funcionando":"Revisar",
-  "Asientos en buen estado":"Revisar",
-  "Tapetes completos":"Revisar",
+  // Estéticos / de uso → COMPLETAR (no descalifican unidad) ─
+  "Carroceria con golpes o raspaduras":"Completar",
+  "Molduras completas y en buen estado":"Completar",
+  "Asientos en buen estado":"Completar",
+  "Tapetes completos":"Completar",
   // ── Kit de emergencia → COMPLETAR (obtener/reponer) ────────
   // "Llanta de refaccion funcional" se maneja aparte
   "Gato adecuado para el vehiculo y su palanca":"Completar",
@@ -1323,8 +1326,19 @@ const CATI={
   Llantas:'<i data-lucide="disc-3" style="width:12px;height:12px;vertical-align:-2px"></i>',
   Checklist:'<i data-lucide="clipboard-list" style="width:12px;height:12px;vertical-align:-2px"></i>',
   Documentos:'<i data-lucide="file-text" style="width:12px;height:12px;vertical-align:-2px"></i>',
-  Fluidos:'<i data-lucide="droplet" style="width:12px;height:12px;vertical-align:-2px"></i>'
+  Fluidos:'<i data-lucide="droplet" style="width:12px;height:12px;vertical-align:-2px"></i>',
+  Mantenimiento:'<i data-lucide="wrench" style="width:12px;height:12px;vertical-align:-2px"></i>'
 };
+// Decisión 2026-06-11 (F): keys BIN que son documentos regulatorios → categoría
+// "Documentos" (espejo de DOC_KEYS en src/analyzer/analyzeRow.ts).
+const DOC_KEYS=new Set([
+  'Licencia de "chofer" acorde a vehiculo vigente',
+  "Tarjeta de circulacion vigente",
+  "Poliza de seguro vigente",
+  "Calcomonia de refrendo vehicular",
+  "Tarjeta/calcamonia de verificacion ambiental vigente",
+  "Calcamonia de ultimo servicio (en parabrisas)",
+]);
 const RO={Urgente:3,Revisar:2,Completar:1.5,OK:1};
 
 // Etiquetas display: forma de "problema/falla" para evitar ambiguedad de pregunta-positiva.
@@ -1398,12 +1412,34 @@ function analyzeRow(row){
     }
   }
   for(const[c,r]of Object.entries(BIN))
-    if(isBinFail(row[c])){F.push({cat:"Checklist",key:`Bin:${c}`,text:BIN_LABELS[c]||c,lv:r});esc(r)}
+    // Decisión 2026-06-11 (F): documentos regulatorios en categoría propia
+    // "Documentos" (igual que el motor TS) — papeles vencidos se ven aparte.
+    if(isBinFail(row[c])){F.push({cat:DOC_KEYS.has(c)?"Documentos":"Checklist",key:`Bin:${c}`,text:BIN_LABELS[c]||c,lv:r});esc(r)}
   // Tarjeta circulación vencida ya capturada por isBinFail (incluye "vencid").
-  for(const c of["Nivel de aceite de motor max","Nivel de liquido de frenos max"])
+  for(const c of["Nivel de liquido de frenos max","Nivel de aceite de motor max"])
     if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel BAJO`,lv:"Urgente"});esc("Urgente")}
   for(const c of["Nivel de liquido de radiador max","Nivel de aceite de direccion max"])
     if(String(row[c]||"").toLowerCase().includes("bajo")){F.push({cat:"Fluidos",key:`Fluido:${c}`,text:`${c}: nivel bajo`,lv:"Revisar"});esc("Revisar")}
+  // Decisión 2026-06-11 (C2): el servicio AFECTA el estatus de la unidad — antes
+  // este motor no generaba finding por servicio (solo el KPI agregado) y la
+  // misma unidad salía Urgente en cloud pero "OK" en esta tabla. Regla unificada
+  // (espejo de src/analyzer/analyzeRow.ts): km autoritativo, fecha = fallback;
+  // VENCIDO → Revisar · PRÓXIMO A VENCER (≤1000km / ≤30 días) → Completar.
+  const kmActual=parseFloat(String(row["Kilometraje"]??"0"));
+  const kmSiguiente=parseFloat(String(row["Kilometraje del siguiente servicio"]??"0"));
+  if(kmActual>0&&kmSiguiente>0){
+    const diff=kmSiguiente-kmActual;
+    if(diff<=0){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio VENCIDO (${Math.abs(Math.round(diff))}km excedidos)`,lv:"Revisar"});esc("Revisar")}
+    else if(diff<=1000){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${Math.round(diff)}km restantes)`,lv:"Completar"});esc("Completar")}
+  } else {
+    const svcDate=parseSvcDate(row["Fecha estimada del siguiente servicio"]);
+    if(svcDate){
+      const today0=new Date();today0.setHours(0,0,0,0);
+      const diffDays=Math.floor((svcDate.getTime()-today0.getTime())/86400000);
+      if(diffDays<0){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio VENCIDO (${Math.abs(diffDays)} días atrás)`,lv:"Revisar"});esc("Revisar")}
+      else if(diffDays<=30){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${diffDays} días)`,lv:"Completar"});esc("Completar")}
+    }
+  }
   const tv=Object.values(T);
   return{max,F,T,minT:tv.length?Math.min(...tv):null};
 }
@@ -1662,12 +1698,22 @@ function getISOWeek(date){
   return{year:d.getFullYear(),week:wk};
 }
 
-// ── Parsear fecha "DD/MM/YYYY" o "YYYY-MM-DD" → Date ────
+// ── Parsear fecha "DD/MM/YYYY" | "YYYY-MM-DD" | serial Excel | Date → Date ──
+// ESPEJO de parseSvcDate en src/analyzer/analyzeRow.ts. Review 2026-06-11:
+// el pipeline lee con cellDates:false → las fechas llegan como SERIAL numérico
+// (p.ej. 45826) y esta función solo reconocía strings DMY/ISO → el fallback de
+// fecha del finding Mant:Servicio quedaba muerto en este motor (el TS sí lo
+// maneja). Serial: días desde 1899-12-30; rango 20000-90000 = años 1954-2146.
 function parseSvcDate(s){
-  if(!s||s==="—")return null;
-  const m=String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(s instanceof Date)return isNaN(s.getTime())?null:s;
+  const asSerial=n=>(isFinite(n)&&n>=20000&&n<=90000)?new Date(Date.UTC(1899,11,30)+n*86400000):null;
+  if(typeof s==="number")return asSerial(s);
+  const str=String(s==null?"":s).trim();
+  if(!str||str==="—")return null;
+  if(/^\d{5}(\.\d+)?$/.test(str))return asSerial(parseFloat(str));
+  const m=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if(m)return new Date(+m[3],+m[2]-1,+m[1]);
-  const m2=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const m2=str.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(m2)return new Date(+m2[1],+m2[2]-1,+m2[3]);
   return null;
 }
@@ -1737,10 +1783,15 @@ const filt=()=>sortedUnits(units.filter(u=>{
   // Filtro de nivel (curF) como GATE (no early-return que se salte la búsqueda).
   // "taller" lo dispara el donut binario; "svcvencido" = servicio ≤30 días.
   if(curF==="taller" && !isUnitEnTaller(u)) return false;
-  if(curF==="svcvencido"){const today1=new Date();today1.setHours(0,0,0,0);const d30b=new Date(today1);d30b.setDate(d30b.getDate()+30);const ds=parseSvcDate(u.nextSvc);if(!(ds&&ds<=d30b))return false;}
+  // Review 2026-06-11: km-autoritativo vía svcStatus (antes solo-fecha → el
+  // filtro contradecía al finding Mant:Servicio y al hero KPI de la misma vista).
+  if(curF==="svcvencido"){const ss=svcStatus(u);if(ss!=="vencido"&&ss!=="proximo")return false;}
   if(curF==="obs"&&!u.obs)return false;
   if(curF==="Urgente"&&!_hasPending(u,"Urgente"))return false;
   if(curF==="Revisar"&&!_hasPending(u,"Revisar"))return false;
+  // Review 2026-06-11: la alerta "Pendientes" dispara setF('Completar') pero
+  // este gate no existía → el click dejaba la tabla SIN filtrar.
+  if(curF==="Completar"&&!_hasPending(u,"Completar"))return false;
   if(curB!=="all"&&u.branch!==curB)return false;
   // Búsqueda: AND con TODOS los filtros anteriores (antes los early-return de
   // taller/svcvencido la ignoraban).
@@ -2589,8 +2640,9 @@ function buildKPIs(){
     if(pend.some(f=>f.lv==="Urgente")) u++;
     if(pend.some(f=>f.lv==="Revisar")) r++;
     if(x.obs) withObs++;
-    const sd=parseSvcDate(x.nextSvc);
-    if(sd && sd<=d30) nSvcRange++;
+    // Review 2026-06-11: km-first (svcStatus), en sync con filtro/finding/hero.
+    const ss=svcStatus(x);
+    if(ss==="vencido"||ss==="proximo") nSvcRange++;
   }
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
   const fc0=document.getElementById("fc0");if(fc0)fc0.textContent=u?`(${u})`:"";
@@ -2828,9 +2880,10 @@ function buildAlertsSummary(){
   const today=new Date();today.setHours(0,0,0,0);
   const d30=new Date(today);d30.setDate(d30.getDate()+30);
 
-  // 1. Servicio vencido o próximo
-  const svcVencido=units.filter(u=>{const d=parseSvcDate(u.nextSvc);return d&&d<today;});
-  const svcProximo=units.filter(u=>{const d=parseSvcDate(u.nextSvc);return d&&d>=today&&d<=d30;});
+  // 1. Servicio vencido o próximo — km-autoritativo vía svcStatus (review
+  // 2026-06-11: antes solo-fecha → la alerta contradecía al checklist).
+  const svcVencido=units.filter(u=>svcStatus(u)==="vencido");
+  const svcProximo=units.filter(u=>svcStatus(u)==="proximo");
   if(svcVencido.length)
     alerts.push({sev:"r",icon:"alert-circle",count:svcVencido.length,short:"Servicio vencido",
       detail:svcVencido.slice(0,8).map(u=>`${u.eco||u.plate} (${u.nextSvc})`).join(", ")+(svcVencido.length>8?` y ${svcVencido.length-8} más`:""),
@@ -2868,8 +2921,11 @@ function buildAlertsSummary(){
       }).join(", ")+(tallerLargo.length>8?` y ${tallerLargo.length-8} más`:""),
       action:"taller"});
 
-  // 5. Unidades con hallazgos "Completar" pendientes
-  const completar=units.filter(u=>u.F.some(f=>f.lv==="Completar"));
+  // 5. Unidades con hallazgos "Completar" pendientes. Review 2026-06-11:
+  // descuenta atendidos vía isFindingDone (igual que los chips fc0/fc_rev) —
+  // con la matriz nueva el universo Completar creció (estéticos + svc próximo)
+  // y sin el descuento el chip contaba casi toda la flota.
+  const completar=units.filter(u=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv==="Completar"&&!isFindingDone(dm,f,u.fecha));});
   if(completar.length)
     alerts.push({sev:"n",icon:"clipboard-list",count:completar.length,short:"Pendientes",
       action:"Completar"});
@@ -3085,21 +3141,18 @@ function renderTable(){
     dt.textContent = u.fecha || "—";
     divKM.appendChild(km);
     divKM.appendChild(dt);
-    if(u.nextSvc && u.nextSvc !== "—"){
-      // Guard: km autoritativo. Si km tiene buffer, la fecha-estimación no manda
-      // (puede estar stale). Evita falsos "Svc vencido" como bug #78.
-      const kmA = parseFloat(String(u.km||""));
-      const kmN = parseFloat(String(u.kmNextSvc||""));
-      const kmHasBuffer = kmA > 0 && kmN > 0 && (kmN - kmA) > 0;
-      if(!kmHasBuffer){
-        const sd = parseSvcDate(u.nextSvc);
-        if(sd){
-          const svcEl=document.createElement("div");
-          svcEl.style.cssText="font-size:8px;margin-top:2px;font-weight:700";
-          if(sd<today0){svcEl.style.color="var(--R)";svcEl.innerHTML='<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-2px"></i> Svc vencido';}
-          else if(sd<=d30c){svcEl.style.color="var(--A)";svcEl.innerHTML='<i data-lucide="clock" style="width:10px;height:10px;vertical-align:-2px"></i> Svc próximo';}
-          if(svcEl.textContent)divKM.appendChild(svcEl);
-        }
+    {
+      // Review 2026-06-11: badge unificado vía svcStatus (km autoritativo,
+      // fecha fallback) — la MISMA regla que el finding Mant:Servicio, el
+      // filtro, las alertas y el hero KPI. Antes era fecha-céntrico con guard
+      // parcial de buffer (no cubría km vencido con fecha futura).
+      const ss=svcStatus(u);
+      if(ss!=="ok"){
+        const svcEl=document.createElement("div");
+        svcEl.style.cssText="font-size:8px;margin-top:2px;font-weight:700";
+        if(ss==="vencido"){svcEl.style.color="var(--R)";svcEl.innerHTML='<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-2px"></i> Svc vencido';}
+        else {svcEl.style.color="var(--A)";svcEl.innerHTML='<i data-lucide="clock" style="width:10px;height:10px;vertical-align:-2px"></i> Svc próximo';}
+        divKM.appendChild(svcEl);
       }
     }
     appendSecureCell(tr, divKM);
@@ -4290,8 +4343,9 @@ function showResumenEjecutivo(){
   const ct=units.filter(x=>x.minT!==null&&x.minT<=TCRIT);
   const today=new Date();today.setHours(0,0,0,0);
   const d30=new Date(today);d30.setDate(d30.getDate()+30);
-  const svcV=units.filter(x=>{const d=parseSvcDate(x.nextSvc);return d&&d<today;});
-  const svcP=units.filter(x=>{const d=parseSvcDate(x.nextSvc);return d&&d>=today&&d<=d30;});
+  // km-autoritativo vía svcStatus (review 2026-06-11; antes solo-fecha).
+  const svcV=units.filter(x=>svcStatus(x)==="vencido");
+  const svcP=units.filter(x=>svcStatus(x)==="proximo");
   const isClosed=e=>e.estado==="Finalizado";
   const enTaller=tallerEntries.filter(e=>!isClosed(e));
   const tallerLargo=enTaller.filter(e=>e.fentrada&&Math.round((Date.now()-new Date(e.fentrada))/86400000)>7);
@@ -4327,7 +4381,10 @@ function showResumenEjecutivo(){
     text+=`TALLER\n`;
     text+=`• Unidades en taller: ${enTaller.length}\n`;
     if(tallerLargo.length) text+=`• Mas de 7 dias: ${tallerLargo.length} — ${tallerLargo.map(e=>`${e.eco||e.plate} (${Math.round((Date.now()-new Date(e.fentrada))/86400000)}d)`).join(", ")}\n`;
-    const gastoTotal=enTaller.reduce((s,e)=>s+(e.gastoRef||0)+(e.gastoMO||0),0);
+    // Patrón canónico de gasto (audit 2026-06-10 #8): Ref+MO con fallback a
+    // e.gasto — el form solo captura e.gasto, así que sin el fallback este KPI
+    // reportaba $0 a Tesorería aunque hubiera gasto capturado.
+    const gastoTotal=enTaller.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
     if(gastoTotal) text+=`• Gasto acumulado activas: $${gastoTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}\n`;
     text+=`\n`;
   }
@@ -4690,7 +4747,9 @@ async function exportFleetPDF(){
     line(M,y,M+CW,y,C.ln); y+=8;
     rrect(M,y,CW,11,2,C.Bd,C.B);
     rect(M,y,3,11,C.B);
-    txt("UNIDADES CON DOCUMENTACIÓN PENDIENTE",M+7,y+4.5,9,C.B,"left",true);
+    // Review 2026-06-11: el cohorte Completar ya no es solo documentos (incluye
+    // estéticos de carrocería y "Servicio próximo a vencer") — título genérico.
+    txt("UNIDADES CON PENDIENTES POR COMPLETAR",M+7,y+4.5,9,C.B,"left",true);
     txt(`${completar.length} unidades`,PW-M,y+7,7,C.B,"right");
     y+=17;
     completar.forEach((u,idx)=>{
@@ -6897,7 +6956,10 @@ function renderHistorialModal(){
     .sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||""));
   if(!allEntries.length) return;
   const first = allEntries[0];
-  const totalGasto = allEntries.reduce((s,e)=>s+(e.gasto||0),0);
+  // Patrón canónico de gasto (audit 2026-06-10 #9): e.gasto con fallback a
+  // Ref+MO — las entradas hidratadas del cloud traen el desglose con gasto=0,
+  // y esta tarjeta reportaba $0 mientras su propia fila Subtotal sí sumaba bien.
+  const totalGasto = allEntries.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
   const nCor  = allEntries.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = allEntries.filter(e=>e.tipo==="Preventivo").length;
   const nSinTipo = allEntries.filter(e=>!e.tipo).length;

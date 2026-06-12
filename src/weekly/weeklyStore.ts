@@ -14,18 +14,15 @@ export type WeeklyPeriodo = {
 };
 
 /**
- * Risk efectivo de una entry semanal — combina aceite + radiador (los vitales)
- * via calcEstatusSemanal. Carrocería y llanta se ignoran por regla de negocio
- * (ver risk.ts línea ~162).
+ * Risk efectivo de una entry semanal — combina aceite + radiador (los 2 vitales,
+ * decisión de negocio 2026-06-11 A1) via calcEstatusSemanal. Carrocería y llanta
+ * NO votan el estatus global (calcEstatusSemanal los ignora — antes este
+ * comentario y el código se contradecían: se decía "se ignoran" pero se pasaban
+ * los 4 y la función escalaba con todos).
  */
 export function effRisk(entry: WeeklyEntry | undefined): RiskLevel {
   if (!entry) return "OK";
-  return calcEstatusSemanal(
-    entry.aceiteRisk,
-    entry.radiadorRisk,
-    entry.carroceriaRisk,
-    entry.llantaRisk,
-  );
+  return calcEstatusSemanal(entry.aceiteRisk, entry.radiadorRisk);
 }
 
 /**

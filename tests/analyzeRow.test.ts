@@ -53,7 +53,8 @@ describe("analyzeRow", () => {
       "Cuenta con llanta de Refacción?": "No",
       "Nivel TACO de llanta REFACCION": 0,
     });
-    expect(r.max).toBe("Revisar");
+    // Decisión 2026-06-11 (D): sin refacción = Completar (acción de reposición).
+    expect(r.max).toBe("Completar");
     expect(r.F.some((f) => f.text === "Sin llanta de refacción funcional")).toBe(true);
     expect(r.F.some((f) => f.cat === "Llantas" && f.lv === "Urgente")).toBe(false);
     expect(r.T["Refacción"]).toBeUndefined();
@@ -137,20 +138,22 @@ describe("analyzeRow", () => {
     expect(f?.cat).toBe("Checklist");
   });
 
-  it("Mantenimiento por fecha: 'Fecha estimada del siguiente servicio' vencida → Urgente", () => {
+  // Decisión 2026-06-11 (C2): VENCIDO = Revisar (planeación, la unidad sigue
+  // operando); PRÓXIMO A VENCER (≤30 días / ≤1000 km) = Completar.
+  it("Mantenimiento por fecha: 'Fecha estimada del siguiente servicio' vencida → Revisar", () => {
     const past = new Date(Date.now() - 5 * 86400000);
     const dd = String(past.getDate()).padStart(2, "0");
     const mm = String(past.getMonth() + 1).padStart(2, "0");
     const yyyy = past.getFullYear();
     const r = analyzeRow({ "Fecha estimada del siguiente servicio": `${dd}/${mm}/${yyyy}` });
-    expect(r.max).toBe("Urgente");
+    expect(r.max).toBe("Revisar");
     const f = r.F.find((f) => f.cat === "Mantenimiento");
     expect(f).toBeDefined();
     expect(f?.text).toContain("VENCIDO");
-    expect(f?.lv).toBe("Urgente");
+    expect(f?.lv).toBe("Revisar");
   });
 
-  it("Mantenimiento por fecha: próximo <=30 días → Revisar", () => {
+  it("Mantenimiento por fecha: próximo <=30 días → Completar 'próximo a vencer'", () => {
     const soon = new Date(Date.now() + 15 * 86400000);
     const dd = String(soon.getDate()).padStart(2, "0");
     const mm = String(soon.getMonth() + 1).padStart(2, "0");
@@ -158,7 +161,8 @@ describe("analyzeRow", () => {
     const r = analyzeRow({ "Fecha estimada del siguiente servicio": `${dd}/${mm}/${yyyy}` });
     const f = r.F.find((f) => f.cat === "Mantenimiento");
     expect(f).toBeDefined();
-    expect(f?.lv).toBe("Revisar");
+    expect(f?.lv).toBe("Completar");
+    expect(f?.text).toContain("próximo a vencer");
   });
 
   it("Mantenimiento por fecha: >30 días → no dispara finding", () => {
@@ -176,19 +180,19 @@ describe("analyzeRow", () => {
       "Kilometraje del siguiente servicio": 30500,
       "Fecha estimada del siguiente servicio": "04/05/2026", // pasada
     });
-    // diff km = 375 → "próximo" (Revisar), NUNCA VENCIDO por fecha stale.
-    expect(r.max).toBe("Revisar");
+    // diff km = 375 → "próximo a vencer" (Completar), NUNCA VENCIDO por fecha stale.
+    expect(r.max).toBe("Completar");
     expect(r.F.some((f) => f.text.includes("VENCIDO"))).toBe(false);
     expect(r.F.some((f) => f.text.includes("próximo") && f.text.includes("km"))).toBe(true);
   });
 
-  it("km vencido (diff <= 0) → Urgente aunque fecha sea futura", () => {
+  it("km vencido (diff <= 0) → Revisar aunque fecha sea futura (decisión C2)", () => {
     const r = analyzeRow({
       Kilometraje: 31000,
       "Kilometraje del siguiente servicio": 30500,
       "Fecha estimada del siguiente servicio": "01/12/2099",
     });
-    expect(r.max).toBe("Urgente");
+    expect(r.max).toBe("Revisar");
     expect(r.F.some((f) => f.text.includes("500km excedidos"))).toBe(true);
   });
 
@@ -202,11 +206,11 @@ describe("analyzeRow", () => {
     expect(r.F.some((f) => f.cat === "Mantenimiento")).toBe(false);
   });
 
-  it("sin km data, fecha vencida → Urgente (fallback funciona)", () => {
+  it("sin km data, fecha vencida → Revisar (fallback funciona, decisión C2)", () => {
     const r = analyzeRow({
       "Fecha estimada del siguiente servicio": "01/01/2026",
     });
-    expect(r.max).toBe("Urgente");
+    expect(r.max).toBe("Revisar");
     expect(r.F.some((f) => f.text.includes("días atrás"))).toBe(true);
   });
 
@@ -216,9 +220,11 @@ describe("analyzeRow", () => {
     expect(r.F.some((f) => f.text === "Espejo retrovisor en buenas condiciones")).toBe(false);
   });
 
-  it("marca Revisar cuando nivel de aceite de motor está bajo", () => {
+  it("marca Urgente cuando nivel de aceite de motor está bajo (decisión B)", () => {
+    // Decisión 2026-06-11 (B): aceite bajo = riesgo de daño de motor → Urgente,
+    // agrupado con frenos (en sync con el motor HTML que siempre fue así).
     const r = analyzeRow({ "Nivel de aceite de motor max": "Nivel bajo" });
-    expect(r.max).toBe("Revisar");
+    expect(r.max).toBe("Urgente");
   });
 
   it("marca Urgente cuando nivel de líquido de frenos está bajo", () => {
@@ -236,18 +242,30 @@ describe("analyzeRow", () => {
     expect(r.max).toBe("Urgente");
   });
 
-  it("BIN cosméticos reclasificados → Completar (no descalifican operativa)", () => {
+  // Decisión 2026-06-11 (E): dividir por seguridad — estéticos/de uso →
+  // Completar; los que afectan el manejo → Revisar.
+  it("BIN estéticos/de uso → Completar (decisión E)", () => {
     const cosmetic = [
-      "Espejo retrovisor en buenas condiciones",
+      "Carroceria con golpes o raspaduras",
       "Molduras completas y en buen estado",
       "Asientos en buen estado",
       "Tapetes completos",
-      "Tacometro en buenas condiciones",
-      "Luces interiores funcionando",
     ];
     for (const item of cosmetic) {
       const r = analyzeRow({ [item]: "No" });
       expect(r.max, `${item} debería ser Completar`).toBe("Completar");
+    }
+  });
+
+  it("BIN que afectan el manejo → Revisar (decisión E)", () => {
+    const manejo = [
+      "Espejo retrovisor en buenas condiciones",
+      "Luces interiores funcionando",
+      "Tacometro en buenas condiciones",
+    ];
+    for (const item of manejo) {
+      const r = analyzeRow({ [item]: "No" });
+      expect(r.max, `${item} debería ser Revisar`).toBe("Revisar");
     }
   });
 
