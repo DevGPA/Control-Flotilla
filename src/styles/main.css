@@ -932,6 +932,21 @@ select.filter-active {
   color: var(--ac) !important;
   font-weight: 600;
 }
+/* UX Fase 3: títulos de sección del modal de taller */
+.tl-sec {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--s1);
+  border-bottom: 1px solid var(--ln);
+  padding-bottom: 4px;
+  margin-top: 6px;
+}
+.tl-sec:first-child {
+  margin-top: 0;
+}
 /* UX Fase 1: menú "⋯" del header */
 .more-wrap {
   position: relative;
@@ -4312,7 +4327,20 @@ select.filter-active {
   }
   .hacts .ubtn,
   .hfile .ubtn {
-    min-height: 40px;
+    /* UX Fase 3: 40→44px (Apple HIG / Material) — fallos de tap en jornadas largas */
+    min-height: 44px;
+  }
+  /* UX Fase 3: chips de filtro táctiles — antes ~20px de alto con font 10.5px,
+     el control más usado del día a día en campo era el más difícil de picar. */
+  .chip {
+    min-height: 36px;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  .rp-btn {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 11px;
   }
 
   /* Hero / KPI: stack vertical */
@@ -4339,15 +4367,26 @@ select.filter-active {
     padding: 10px;
   }
 
-  /* Tabla: scroll horizontal forzado */
+  /* UX Fase 3 (2026-06-11): tabla SIN scroll horizontal en móvil — 5 columnas
+     esenciales (ECO, Unidad/Inspector, Estado, Hallazgos, KM/Fecha); se ocultan
+     # de fila, Comentarios y Llantas (viven completos en el panel detalle).
+     Antes: min-width 760px → swipe horizontal infinito en campo. */
   #tb,
   #tw {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
   }
-  #tb table,
-  #tw table {
-    min-width: 760px;
+  .thd,
+  .tr {
+    --col-tpl: 64px minmax(0, 1fr) 82px 88px 78px;
+    padding: 0 10px;
+  }
+  .thd > :nth-child(1),
+  .tr > :nth-child(1),
+  .thd > :nth-child(6),
+  .tr > :nth-child(6),
+  .thd > :nth-child(7),
+  .tr > :nth-child(7) {
+    display: none;
   }
 
   /* Drop zone más compacta */
@@ -4414,7 +4453,8 @@ select.filter-active {
     padding: 0 10px;
   }
   .hname {
-    font-size: 11.5px;
+    /* UX Fase 3: 11.5→13px — el título caía bajo el límite de legibilidad */
+    font-size: 13px;
   }
   .hico {
     width: 26px;
@@ -4423,6 +4463,26 @@ select.filter-active {
   }
   .hero-val {
     font-size: 18px;
+  }
+}
+
+/* UX Fase 3 (2026-06-11): breakpoint para iPhone SE / Android compactos —
+   antes la app "caía" al de 420px y la tabla no cabía. */
+@media (max-width: 375px) {
+  .thd,
+  .tr {
+    /* 4 columnas: ECO, Unidad, Estado, Hallazgos (KM/Fecha vive en el detalle) */
+    --col-tpl: 58px minmax(0, 1fr) 76px 82px;
+  }
+  .thd > :nth-child(8),
+  .tr > :nth-child(8) {
+    display: none;
+  }
+  .hero-row {
+    gap: 6px;
+  }
+  #more-menu {
+    min-width: 180px;
   }
 }
 
