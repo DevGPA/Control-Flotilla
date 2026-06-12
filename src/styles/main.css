@@ -102,6 +102,24 @@
   --r3: 12px;
   --r4: 16px;
   --col-tpl: 36px 96px 148px 110px 92px 1fr 76px 86px;
+
+  /* UX Fase 4 (2026-06-11): tokens para colores que vivían hardcoded fuera de
+     la paleta (chips por ID y pills de taller) — única fuente light+dark. */
+  --indigo: #6366f1;
+  --indigo-d: #eef2ff;
+  --indigo-l: #a5b4fc;
+  --violet: #7c3aed;
+  --violet-d: #f3e8ff;
+  --violet-l: #c4b5fd;
+  --tl-warn-fg: #92400e;
+  --tl-repar-bg: #dbeafe;
+  --tl-repar-fg: #1e40af;
+  --tl-cotiz-bg: #ede9fe;
+  --tl-cotiz-fg: #5b21b6;
+  --tl-porrec-bg: #ffedd5;
+  --tl-porrec-fg: #9a3412;
+  --tl-listo-fg: #065f46;
+  --tl-pend-fg: #991b1b;
 }
 
 /* ═══ GPA Fleet Command — DARK THEME ═══
@@ -149,23 +167,24 @@
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
   --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.35);
-}
 
-/* Overrides de chips/pills con colores hardcoded — versión dark */
-:root[data-theme="dark"] #btn-obs.chip-on {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: rgba(129, 140, 248, 0.28);
-  color: #a5b4fc;
-}
-:root[data-theme="dark"] #btn-taller.chip-on {
-  background: rgba(167, 139, 250, 0.1);
-  border-color: rgba(196, 181, 253, 0.28);
-  color: #c4b5fd;
-}
-:root[data-theme="dark"] #btn-svcvencido.chip-on {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(248, 113, 113, 0.28);
-  color: #fca5a5;
+  /* UX Fase 4: overrides dark de los tokens nuevos. Antes las pills de taller
+     repar/cotiz/porrec NO tenían versión dark (fondos pastel light en oscuro). */
+  --indigo: #a5b4fc;
+  --indigo-d: rgba(99, 102, 241, 0.1);
+  --indigo-l: rgba(129, 140, 248, 0.28);
+  --violet: #c4b5fd;
+  --violet-d: rgba(167, 139, 250, 0.1);
+  --violet-l: rgba(196, 181, 253, 0.28);
+  --tl-warn-fg: #e8b86b;
+  --tl-repar-bg: rgba(59, 130, 246, 0.14);
+  --tl-repar-fg: #93c5fd;
+  --tl-cotiz-bg: rgba(139, 92, 246, 0.14);
+  --tl-cotiz-fg: #c4b5fd;
+  --tl-porrec-bg: rgba(249, 115, 22, 0.14);
+  --tl-porrec-fg: #fdba74;
+  --tl-listo-fg: #6ee7b7;
+  --tl-pend-fg: #fca5a5;
 }
 :root[data-theme="dark"] .taller-badge-row {
   background: rgba(167, 139, 250, 0.1);
@@ -1057,20 +1076,21 @@ select.filter-active {
   border-color: var(--Gl);
   color: var(--G);
 }
+/* UX Fase 4: tokens en vez de hex sueltos — dark mode automático vía :root */
 #btn-obs.chip-on {
-  background: #eef2ff;
-  border-color: #a5b4fc;
-  color: #6366f1;
+  background: var(--indigo-d);
+  border-color: var(--indigo-l);
+  color: var(--indigo);
 }
 #btn-taller.chip-on {
-  background: #f3e8ff;
-  border-color: #c4b5fd;
-  color: #7c3aed;
+  background: var(--violet-d);
+  border-color: var(--violet-l);
+  color: var(--violet);
 }
 #btn-svcvencido.chip-on {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #ef4444;
+  background: var(--Rd);
+  border-color: var(--Rl);
+  color: var(--R);
 }
 .taller-badge-row {
   display: inline-flex;
@@ -3586,30 +3606,32 @@ select.filter-active {
   background: var(--bg3);
   color: var(--s2);
 }
+/* UX Fase 4: tokens --tl-* (light+dark en :root) — antes repar/cotiz/porrec
+   eran pastel hardcoded SIN versión dark. */
 .tl-pill.revision,
 .tl-pill.diag {
   background: var(--Ad);
-  color: #92400e;
+  color: var(--tl-warn-fg);
 }
 .tl-pill.repar {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--tl-repar-bg);
+  color: var(--tl-repar-fg);
 }
 .tl-pill.cotiz {
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--tl-cotiz-bg);
+  color: var(--tl-cotiz-fg);
 }
 .tl-pill.porrec {
-  background: #ffedd5;
-  color: #9a3412;
+  background: var(--tl-porrec-bg);
+  color: var(--tl-porrec-fg);
 }
 .tl-pill.listo {
   background: var(--Gd);
-  color: #065f46;
+  color: var(--tl-listo-fg);
 }
 .tl-pill.pendiente {
   background: var(--Rd);
-  color: #991b1b;
+  color: var(--tl-pend-fg);
 }
 .tl-tipo {
   display: inline-block;

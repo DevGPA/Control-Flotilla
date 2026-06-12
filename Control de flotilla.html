@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-u1fv2OY4IzM19BRPI5RfFyoWWqcuvqPPA2t59Gf4JHg='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-vtowPtKCs18o/0kAphK3/EZcN4tLUoI609ZFe4dtXRs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3482,7 +3482,9 @@ function renderChecklist(u,body){
       const changeStyle=(isNew||changed)?` style="box-shadow:inset 0 0 0 1.5px var(--O)"`:"";
       // arg2 = key estable (clave de persistencia) · arg3 = texto display (alias
       // legacy para el dual-read del toggle) · arg4 = nuevo estado deseado.
-      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1"`;
+      // UX Fase 4: role=checkbox + aria-checked — el lector de pantalla ahora
+      // anuncia el estado atendido/pendiente.
+      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1" role="checkbox" aria-checked="${done?"true":"false"}"`;
       const bodyAttr=`data-action="openMnPhotoForFinding" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"`;
       if(done){
         html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
@@ -3929,6 +3931,15 @@ document.addEventListener("click",e=>{
   if(!wrap)toggleMoreMenu(false);
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape")toggleMoreMenu(false);});
+// UX Fase 4 (2026-06-11): Enter/Espacio activan los div[role=button] (hero
+// cards, etc.) — antes Tab llegaba pero solo el click los abría (WCAG 2.1.1).
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"&&e.key!==" ")return;
+  const el=e.target;
+  if(el&&el.getAttribute&&el.getAttribute("role")==="button"&&el.tagName!=="BUTTON"){
+    e.preventDefault();el.click();
+  }
+});
 
 // UX Fase 3 (2026-06-11): instalación de la PWA visible — antes el prompt del
 // navegador se perdía y los operadores no sabían que podían instalarla.
@@ -4098,8 +4109,38 @@ function escHtml(s){
 function escAttr(s){
   return String(s||"").replace(/&/g,"&amp;").replace(/'/g,"&#39;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
-function openModal(id){const el=document.getElementById(id);if(el)el.classList.add("open");}
-function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove("open");}
+// UX Fase 4 (2026-06-11): a11y de modales — role/aria + foco al abrir + focus
+// trap (antes el Tab se escapaba al fondo, WCAG 2.4.3) + restaurar foco al cerrar.
+let _modalPrevFocus=null;
+function _trapFocus(e){
+  if(e.key!=="Tab")return;
+  const modal=e.currentTarget;
+  const focusables=modal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  const vis=[...focusables].filter(el=>el.offsetParent!==null);
+  if(!vis.length)return;
+  const first=vis[0],last=vis[vis.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+}
+function openModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.add("open");
+  el.setAttribute("role","dialog");
+  el.setAttribute("aria-modal","true");
+  _modalPrevFocus=document.activeElement;
+  el.addEventListener("keydown",_trapFocus);
+  const f=el.querySelector('input,select,textarea,button:not([aria-label^="Cerrar"])');
+  if(f)setTimeout(()=>f.focus(),30);
+}
+function closeModal(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.remove("open");
+  el.removeEventListener("keydown",_trapFocus);
+  if(_modalPrevFocus&&_modalPrevFocus.focus){try{_modalPrevFocus.focus();}catch(e){}}
+  _modalPrevFocus=null;
+}
 
 // ════════════════════════════════════════════════════════════
 // PDF EXPORT  (jsPDF — generado 100% en el navegador)
