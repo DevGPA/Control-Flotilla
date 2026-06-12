@@ -26,6 +26,9 @@ const internalVars = new RegExp('^(' + [
   // pre-rendered HTML chunks (deben estar escapados en su construcción aguas arriba)
   'obsCards','weeklyCard','manThumbs','thumbs','tabs','chips','pills','kpis',
   'rowsHtml','summaryHtml','filterBar','itemsHtml','kpiBar','endpoints',
+  // sw-pill del panel semanal: enums fijos derivados de effRisk (ok/rev/urg) +
+  // icono/label literales — no llevan input de usuario (revisado 2026-06-11).
+  'pillCls','pillIco','pillLbl',
 ].join('|') + ')$', 'i');
 
 const susp = [];
