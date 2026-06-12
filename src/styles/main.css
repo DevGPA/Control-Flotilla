@@ -61,7 +61,9 @@
   --s1: #475569;
   --s2: #64748b;
   --s3: #6b7280;
-  --s4: #9ca3af;
+  /* UX Fase 1: #9ca3af daba ~3.8:1 sobre blanco (falla WCAG AA); #75808e ≈4.5:1
+     conservando la jerarquía s3 > s4. */
+  --s4: #75808e;
 
   /* Semantic colors — Tremor palette (rose/amber/emerald/blue/orange-600) */
   --R: #e11d48;
@@ -678,17 +680,19 @@ select {
   letter-spacing: -0.5px;
   color: var(--w1);
 }
+/* UX Fase 1 (2026-06-11): piso de legibilidad 10.5px — antes 9px con
+   letter-spacing 1px era ilegible en móvil/exterior (operadores de campo). */
 .hero-lbl {
-  font-size: 9px;
-  color: var(--s2);
+  font-size: 10.5px;
+  color: var(--s1);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   font-weight: 600;
   margin-top: 2px;
 }
 .hero-sub {
-  font-size: 9px;
-  color: var(--s3);
+  font-size: 10.5px;
+  color: var(--s2);
   margin-top: 1px;
   font-weight: 500;
   white-space: nowrap;
@@ -878,6 +882,109 @@ select {
   flex-wrap: wrap;
   align-items: center;
 }
+/* UX Fase 1: presets de rango de fechas (Hoy/Semana/Mes/30 días) */
+.rango-presets {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+}
+.rp-btn {
+  padding: 3px 9px;
+  border: 1px solid var(--ln);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--s1);
+  background: var(--bg2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.rp-btn:hover {
+  background: var(--acd);
+  border-color: var(--acl);
+  color: var(--ac);
+}
+/* UX Fase 1: botón limpiar filtros — visible solo con filtros activos */
+.clear-filters {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px dashed var(--s3);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--s1);
+  background: none;
+  cursor: pointer;
+}
+.clear-filters:hover {
+  border-color: var(--R);
+  color: var(--R);
+}
+.clear-filters.visible {
+  display: inline-flex;
+}
+/* UX Fase 1: select de sucursal resaltado cuando filtra (≠ "Todas") */
+select.filter-active {
+  border-color: var(--acl) !important;
+  background: var(--acd) !important;
+  color: var(--ac) !important;
+  font-weight: 600;
+}
+/* UX Fase 1: menú "⋯" del header */
+.more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+#more-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 500;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--ln);
+  border-radius: var(--r2);
+  box-shadow: var(--shadow-lg);
+}
+#more-menu.open {
+  display: flex;
+}
+#more-menu .ubtn {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 11.5px;
+  border: none;
+  background: none;
+  color: var(--w2);
+  border-radius: var(--r1);
+}
+#more-menu .ubtn:hover {
+  background: var(--bg3);
+}
+#more-menu .more-sep {
+  height: 1px;
+  background: var(--ln);
+  margin: 4px 2px;
+}
+#more-menu #user-email {
+  font-size: 10.5px;
+  color: var(--s2);
+  padding: 4px 12px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* UX Fase 1: font 10.5→11.5px y padding vertical 4→6px (altura efectiva ~30px;
+   en móvil sube a 36px vía media query — tap target). */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -885,8 +992,8 @@ select {
   background: var(--bg);
   border: 1px solid var(--ln);
   border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 10.5px;
+  padding: 6px 12px;
+  font-size: 11.5px;
   color: var(--s1);
   cursor: pointer;
   transition: all 0.15s;
@@ -904,10 +1011,11 @@ select {
   border-radius: 50%;
   flex-shrink: 0;
 }
+/* UX Fase 1: contador legible — antes 9.5px con opacity .7 daba contraste
+   efectivo ~2.7:1 (falla WCAG AA); ahora 10.5px a color pleno. */
 .chip-n {
   font-weight: 700;
-  opacity: 0.7;
-  font-size: 9.5px;
+  font-size: 10.5px;
 }
 #btn-all.chip-on {
   background: var(--acd);
