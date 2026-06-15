@@ -37,7 +37,18 @@ import {
   deleteTaller,
   findCloudTallerByFolio,
   upsertCheckDone,
+  adminCreateUser,
+  adminUpdateUser,
+  adminSetEnabled,
+  adminDeleteUser,
+  adminResetPassword,
+  adminSetRole,
+  adminListUsers,
+  listAuditEvents,
+  type AdminResult,
+  type AdminCreateInput,
 } from "./client";
+import { isAdmin, forceRefreshSession } from "./auth";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
 import { getCloudPhotoUrl, indexCloudPhotos } from "./photoFetch";
@@ -88,6 +99,25 @@ declare global {
     notify?: (msg: string, kind?: string, ms?: number) => void;
     /** Muestra el drop zone si NO hay datos (lo define el HTML; fix drop-zone 2026-06-09). */
     __showEmptyState?: () => void;
+    /** Módulo Admin Usuarios (2026-06-12): API admin expuesta al HTML legacy.
+     *  Todas requieren sesión + grupo admin (AppSync lo valida server-side). */
+    __admin?: {
+      isAdmin: () => Promise<boolean>;
+      refreshSession: () => Promise<void>;
+      listUsers: () => Promise<AdminResult>;
+      createUser: (input: AdminCreateInput) => Promise<AdminResult>;
+      updateUser: (input: {
+        cognitoSub: string;
+        nombre?: string;
+        telefono?: string;
+        sucursal?: string;
+      }) => Promise<AdminResult>;
+      setEnabled: (cognitoSub: string, enabled: boolean) => Promise<AdminResult>;
+      deleteUser: (cognitoSub: string) => Promise<AdminResult>;
+      resetPassword: (cognitoSub: string) => Promise<AdminResult>;
+      setRole: (cognitoSub: string, rol: string) => Promise<AdminResult>;
+      listAudit: () => Promise<unknown[]>;
+    };
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
   }
@@ -273,6 +303,46 @@ export function setupCloud(): void {
     }
     if (viejas.length)
       console.info(`[cloudReplaceTaller] re-key: ${viejas.length} fila(s) viejas borradas`);
+  };
+
+  // ── Módulo de Administración de Usuarios (2026-06-12) ──────────────────────
+  // El gate de ROL real es server-side (AppSync exige grupo 'admin'); isAdmin()
+  // es solo para mostrar/ocultar la vista. ensureSession garantiza login.
+  window.__admin = {
+    isAdmin: () => isAdmin(),
+    refreshSession: () => forceRefreshSession(),
+    listUsers: async () => {
+      await ensureSession();
+      return adminListUsers();
+    },
+    createUser: async (input) => {
+      await ensureSession();
+      return adminCreateUser(input);
+    },
+    updateUser: async (input) => {
+      await ensureSession();
+      return adminUpdateUser(input);
+    },
+    setEnabled: async (cognitoSub, enabled) => {
+      await ensureSession();
+      return adminSetEnabled(cognitoSub, enabled);
+    },
+    deleteUser: async (cognitoSub) => {
+      await ensureSession();
+      return adminDeleteUser(cognitoSub);
+    },
+    resetPassword: async (cognitoSub) => {
+      await ensureSession();
+      return adminResetPassword(cognitoSub);
+    },
+    setRole: async (cognitoSub, rol) => {
+      await ensureSession();
+      return adminSetRole(cognitoSub, rol);
+    },
+    listAudit: async () => {
+      const s = await ensureSession();
+      return listAuditEvents(s.tenantId);
+    },
   };
 
   window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {

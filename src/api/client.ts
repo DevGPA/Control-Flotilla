@@ -435,3 +435,99 @@ export async function listCheckDone(tenantId: string): Promise<Schema["CheckDone
     "listCheckDone",
   );
 }
+
+// ───────────────────────── Administración de Usuarios (2026-06-12) ─────────────
+// PRIMER uso de client.mutations/queries (custom ops). Cada op devuelve a.json()
+// con forma { ok, message?, error?, data? }. La autorización (grupo admin) la
+// hace AppSync; aquí solo se envuelve la llamada y se normaliza el resultado.
+
+export type AdminResult = { ok: boolean; message?: string; error?: string; data?: unknown };
+
+function asAdminResult(raw: unknown): AdminResult {
+  const v = typeof raw === "string" ? safeJson(raw) : raw;
+  if (v && typeof v === "object") return v as AdminResult;
+  return { ok: false, error: "Respuesta del servidor no reconocida." };
+}
+function safeJson(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+export type AdminCreateInput = {
+  email: string;
+  nombre: string;
+  telefono?: string;
+  rol: string;
+  sucursal?: string;
+};
+
+export async function adminCreateUser(input: AdminCreateInput): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminCreateUser(input);
+  throwOnErrors("adminCreateUser", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminUpdateUser(input: {
+  cognitoSub: string;
+  nombre?: string;
+  telefono?: string;
+  sucursal?: string;
+}): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminUpdateUser(input);
+  throwOnErrors("adminUpdateUser", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminSetEnabled(cognitoSub: string, enabled: boolean): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminSetEnabled({ cognitoSub, enabled });
+  throwOnErrors("adminSetEnabled", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminDeleteUser(cognitoSub: string): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminDeleteUser({ cognitoSub });
+  throwOnErrors("adminDeleteUser", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminResetPassword(cognitoSub: string): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminResetPassword({ cognitoSub });
+  throwOnErrors("adminResetPassword", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminSetRole(cognitoSub: string, rol: string): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.mutations.adminSetRole({ cognitoSub, rol });
+  throwOnErrors("adminSetRole", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+export async function adminListUsers(): Promise<AdminResult> {
+  const c = getClient();
+  const r = await c.queries.adminListUsers();
+  throwOnErrors("adminListUsers", r.errors as readonly GraphQLError[] | undefined);
+  return asAdminResult(r.data);
+}
+
+/** Bitácora: lee AuditEvent directamente del modelo (solo admin, paginado). */
+export async function listAuditEvents(tenantId: string): Promise<Schema["AuditEvent"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["AuditEvent"]["type"]>(
+    (token) =>
+      c.models.AuditEvent.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listAuditEvents",
+  );
+}

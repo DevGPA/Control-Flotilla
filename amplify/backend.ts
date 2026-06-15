@@ -4,10 +4,12 @@ import {
   HttpMethod,
   Function as LambdaFunction,
 } from "aws-cdk-lib/aws-lambda";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { auth } from "./auth/resource";
 import { data } from "./data/resource";
 import { storage } from "./storage/resource";
 import { moreappWebhook } from "./functions/moreapp-webhook/resource";
+import { adminUsers } from "./functions/admin-users/resource";
 
 /**
  * Amplify Gen 2 backend entrypoint.
@@ -29,6 +31,7 @@ const backend = defineBackend({
   data,
   storage,
   moreappWebhook,
+  adminUsers,
 });
 
 // ── MoreApp webhook (FASE 1 captura) ──────────────────────────
@@ -46,3 +49,29 @@ bucket.grantReadWrite(webhookFn);
 (webhookFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
 
 backend.addOutput({ custom: { moreappWebhookUrl: webhookUrl.url } });
+
+// ── Módulo de Administración de Usuarios (2026-06-12) ─────────────────────────
+// La Lambda admin-users opera la Cognito Admin API. Permisos ACOTADOS al ARN del
+// User Pool del proyecto (no '*'); + env USER_POOL_ID. AppSync ya restringe la
+// invocación al grupo 'admin' (ver data/resource.ts).
+const adminFn = backend.adminUsers.resources.lambda;
+const userPool = backend.auth.resources.userPool;
+(adminFn as LambdaFunction).addEnvironment("USER_POOL_ID", userPool.userPoolId);
+adminFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: [
+      "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:AdminEnableUser",
+      "cognito-idp:AdminDisableUser",
+      "cognito-idp:AdminDeleteUser",
+      "cognito-idp:AdminResetUserPassword",
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminAddUserToGroup",
+      "cognito-idp:AdminRemoveUserFromGroup",
+      "cognito-idp:AdminListGroupsForUser",
+      "cognito-idp:ListUsers",
+    ],
+    resources: [userPool.userPoolArn],
+  }),
+);

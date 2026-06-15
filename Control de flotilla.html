@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-vtowPtKCs18o/0kAphK3/EZcN4tLUoI609ZFe4dtXRs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ThmWlIXvcvrUOPbTg1x5svqfYUnNW/Oxe6f2fZkrUBQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -194,6 +194,12 @@ g.inflateBytes=async function(src){
     <button class="mnav" id="mn-analytics" onclick="showView('analytics')">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Análisis
+    </button>
+    <!-- Módulo Admin Usuarios (2026-06-12): visible SOLO para grupo admin
+         (initAdminNav lo muestra tras verificar la sesión). -->
+    <button class="mnav" id="mn-usuarios" onclick="showView('usuarios')" style="display:none">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Usuarios
     </button>
   </div>
   <div class="hstat">
@@ -639,6 +645,82 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- ═══ MÓDULO SEMANALES ══════════════════════════════════ -->
+<!-- ═══ MÓDULO ADMINISTRACIÓN DE USUARIOS (2026-06-12) ═══════════════════ -->
+<div id="usuarios-view" style="display:none">
+  <div class="uv-bar">
+    <div class="uv-tabs">
+      <button class="uv-tab on" id="uv-tab-lista" onclick="uvSwitch('lista')">Usuarios</button>
+      <button class="uv-tab" id="uv-tab-audit" onclick="uvSwitch('audit')">Bitácora</button>
+    </div>
+    <div class="sw" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="uv-srch" placeholder="Buscar por nombre, correo, sucursal…" oninput="renderUsuarios()" aria-label="Buscar usuario"/>
+    </div>
+    <button class="ubtn ubtn-x" id="uv-new" onclick="openUsuarioModal()" style="margin-left:auto">
+      <i data-lucide="user-plus" style="width:13px;height:13px"></i> <span>Nuevo usuario</span>
+    </button>
+  </div>
+  <div id="uv-lista-wrap" class="uv-table-wrap">
+    <table class="uv-table"><thead><tr>
+      <th>Nombre</th><th>Correo</th><th>Rol</th><th>Sucursal</th><th>Estado</th><th>Acciones</th>
+    </tr></thead><tbody id="uv-tbody"></tbody></table>
+    <div id="uv-empty" class="uv-empty" style="display:none"></div>
+  </div>
+  <div id="uv-audit-wrap" class="uv-table-wrap" style="display:none">
+    <table class="uv-table"><thead><tr>
+      <th>Fecha</th><th>Quién</th><th>Acción</th><th>Sobre</th><th>Detalle</th>
+    </tr></thead><tbody id="uv-audit-tbody"></tbody></table>
+    <div id="uv-audit-empty" class="uv-empty" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Modal alta/edición de usuario -->
+<div id="usuario-modal" onclick="if(event.target.id==='usuario-modal')closeUsuarioModal()">
+  <div class="tl-mcard" style="max-width:520px">
+    <div class="tl-mhdr">
+      <div class="tl-mttl" id="uf-mttl">Nuevo usuario</div>
+      <button class="dcls" onclick="closeUsuarioModal()" aria-label="Cerrar modal de usuario" style="position:static">✕</button>
+    </div>
+    <div class="tl-mbody">
+      <div class="tl-sec">Datos del usuario</div>
+      <div class="tl-field full">
+        <label for="uf-email">Correo <span style="color:var(--R)">*</span></label>
+        <input id="uf-email" type="email" placeholder="usuario@gpa.com.mx" autocomplete="off"/>
+      </div>
+      <div class="tl-field full">
+        <label for="uf-nombre">Nombre completo <span style="color:var(--R)">*</span></label>
+        <input id="uf-nombre" type="text" placeholder="Ej: Juan Pérez"/>
+      </div>
+      <div class="tl-field">
+        <label for="uf-telefono">Teléfono</label>
+        <input id="uf-telefono" type="tel" placeholder="+52..."/>
+      </div>
+      <div class="tl-field">
+        <label for="uf-sucursal">Sucursal</label>
+        <input id="uf-sucursal" type="text" placeholder="GDL, MTY, CDMX…" list="uf-suc-list"/>
+        <datalist id="uf-suc-list">
+          <option value="GDL"></option><option value="MTY"></option><option value="CDMX"></option>
+          <option value="Cancún"></option><option value="Vallarta"></option><option value="Cabos"></option>
+        </datalist>
+      </div>
+      <div class="tl-field full">
+        <label for="uf-rol">Rol <span style="color:var(--R)">*</span></label>
+        <select id="uf-rol">
+          <option value="">— Selecciona —</option>
+          <option value="admin">Administrador</option>
+          <option value="operativo">Operativo</option>
+          <option value="viewer">Viewer (consulta)</option>
+        </select>
+      </div>
+      <div id="uf-hint" style="font-size:10.5px;color:var(--s2);margin-top:4px"></div>
+    </div>
+    <div class="tl-mftr">
+      <button class="tl-cancel" onclick="closeUsuarioModal()">Cancelar</button>
+      <button class="tl-save" id="uf-save" onclick="saveUsuario()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div id="view-semanales">
   <!-- Selector de períodos semanales -->
   <div id="sw-periodo-bar">
@@ -1961,6 +2043,8 @@ window.__onCloudSession = function(){
   const lo = document.getElementById("btn-logout");
   if(el){ el.textContent = email || ""; el.style.display = email ? "inline-block" : "none"; }
   if(lo) lo.style.display = email ? "inline-flex" : "none";
+  // Módulo Admin Usuarios: mostrar el botón "Usuarios" solo si la sesión es admin.
+  if(typeof window.initAdminNav === "function") window.initAdminNav();
 };
 
 function showLoader(t="Procesando…"){
@@ -5622,11 +5706,207 @@ function tlSwitch(v){
 }
 
 // ── Cambiar vista principal ───────────────────────────────
+// ════════════════════════════════════════════════════════════
+// MÓDULO ADMINISTRACIÓN DE USUARIOS (2026-06-12)
+// ════════════════════════════════════════════════════════════
+// El gate de rol REAL es server-side (AppSync exige grupo 'admin' en cada op);
+// initAdminNav solo decide si se MUESTRA el botón/vista. Datos vía window.__admin.
+let _uvUsers = [], _uvAudit = [], _uvTab = "lista", _uvEditSub = null;
+const ROL_LABEL = { admin:"Administrador", operativo:"Operativo", viewer:"Viewer" };
+const EST_LABEL = { activo:"Activo", desactivado:"Desactivado", eliminado:"Eliminado" };
+
+// Muestra el botón "Usuarios" solo a administradores. Lo llama el boot cloud.
+async function initAdminNav(){
+  try{
+    if(!window.__admin) return;
+    const ok = await window.__admin.isAdmin();
+    const btn = document.getElementById("mn-usuarios");
+    if(btn) btn.style.display = ok ? "" : "none";
+  }catch(e){ /* sin sesión → oculto */ }
+}
+window.initAdminNav = initAdminNav;
+
+async function initUsuarios(){
+  uvSwitch(_uvTab);
+  await refreshUsuarios();
+}
+function uvSwitch(tab){
+  _uvTab = tab;
+  document.getElementById("uv-tab-lista").classList.toggle("on", tab==="lista");
+  document.getElementById("uv-tab-audit").classList.toggle("on", tab==="audit");
+  document.getElementById("uv-lista-wrap").style.display = tab==="lista" ? "block" : "none";
+  document.getElementById("uv-audit-wrap").style.display = tab==="audit" ? "block" : "none";
+  if(tab==="audit") refreshAudit();
+}
+window.uvSwitch = uvSwitch;
+
+async function refreshUsuarios(){
+  try{
+    const res = await window.__admin.listUsers();
+    if(!res || !res.ok){ window.notify && window.notify((res&&res.error)||"No se pudo cargar la lista.","error",5000); return; }
+    _uvUsers = Array.isArray(res.data) ? res.data : [];
+    renderUsuarios();
+  }catch(e){ window.notify && window.notify("Error al cargar usuarios.","error",5000); console.error("[usuarios]",e); }
+}
+function renderUsuarios(){
+  const q = (document.getElementById("uv-srch").value||"").trim().toLowerCase();
+  const tb = document.getElementById("uv-tbody");
+  const empty = document.getElementById("uv-empty");
+  const rows = _uvUsers
+    .filter(u => (u.estatus||"")!=="eliminado")
+    .filter(u => !q || [u.nombre,u.email,u.sucursal].some(v=>String(v||"").toLowerCase().includes(q)));
+  if(!rows.length){
+    tb.innerHTML=""; empty.style.display="block";
+    empty.textContent = _uvUsers.length ? "Sin resultados para la búsqueda." : "No hay usuarios registrados todavía.";
+    return;
+  }
+  empty.style.display="none";
+  tb.innerHTML = rows.map(u=>{
+    const sub = escAttr(u.cognitoSub);
+    const est = u.estatus||"activo";
+    const estCls = est==="activo" ? "po" : "pu";
+    const desactivar = est==="activo";
+    return `<tr>
+      <td>${escHtml(u.nombre||"—")}</td>
+      <td>${escHtml(u.email||"—")}</td>
+      <td>${escHtml(ROL_LABEL[u.rol]||u.rol||"—")}</td>
+      <td>${escHtml(u.sucursal||"—")}</td>
+      <td><span class="pill ${estCls}"><span class="pd"></span>${escHtml(EST_LABEL[est]||est)}</span></td>
+      <td class="uv-actions">
+        <button class="uv-act" title="Editar" data-action="openUsuarioModal" data-arg1="${sub}"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
+        <button class="uv-act" title="Cambiar rol" data-action="uvPromptRol" data-arg1="${sub}"><i data-lucide="shield" style="width:13px;height:13px"></i></button>
+        <button class="uv-act" title="${desactivar?"Desactivar":"Reactivar"}" data-action="uvToggleEnabled" data-arg1="${sub}" data-arg2="${desactivar?"0":"1"}"><i data-lucide="${desactivar?"user-x":"user-check"}" style="width:13px;height:13px"></i></button>
+        <button class="uv-act" title="Restablecer contraseña" data-action="uvReset" data-arg1="${sub}"><i data-lucide="key-round" style="width:13px;height:13px"></i></button>
+        <button class="uv-act uv-act-del" title="Eliminar" data-action="uvDelete" data-arg1="${sub}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+      </td>
+    </tr>`;
+  }).join("");
+  if(window.refreshIcons) window.refreshIcons();
+}
+window.renderUsuarios = renderUsuarios;
+
+async function refreshAudit(){
+  try{
+    _uvAudit = await window.__admin.listAudit();
+    const tb = document.getElementById("uv-audit-tbody");
+    const empty = document.getElementById("uv-audit-empty");
+    const rows = (Array.isArray(_uvAudit)?_uvAudit:[])
+      .slice().sort((a,b)=>String(b.timestamp||"").localeCompare(String(a.timestamp||"")));
+    if(!rows.length){ tb.innerHTML=""; empty.style.display="block"; empty.textContent="Sin eventos registrados."; return; }
+    empty.style.display="none";
+    tb.innerHTML = rows.map(ev=>{
+      let det="";
+      try{ det = ev.detalleCambios ? JSON.stringify(typeof ev.detalleCambios==="string"?JSON.parse(ev.detalleCambios):ev.detalleCambios) : ""; }catch(e){ det=String(ev.detalleCambios||""); }
+      const fecha = ev.timestamp ? new Date(ev.timestamp).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+      return `<tr>
+        <td>${escHtml(fecha)}</td>
+        <td>${escHtml(ev.actor||"—")}</td>
+        <td>${escHtml(ev.accion||"—")}</td>
+        <td>${escHtml(ev.targetUser||"—")}</td>
+        <td style="font-family:var(--fm);font-size:10px;color:var(--s1);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(det)}">${escHtml(det)}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){ window.notify && window.notify("Error al cargar la bitácora.","error",5000); console.error("[audit]",e); }
+}
+
+// ── Modal alta/edición ──
+function openUsuarioModal(sub){
+  _uvEditSub = sub || null;
+  const u = sub ? _uvUsers.find(x=>x.cognitoSub===sub) : null;
+  document.getElementById("uf-mttl").textContent = u ? "Editar usuario" : "Nuevo usuario";
+  document.getElementById("uf-email").value = u ? (u.email||"") : "";
+  document.getElementById("uf-email").disabled = !!u; // el correo no se edita
+  document.getElementById("uf-nombre").value = u ? (u.nombre||"") : "";
+  document.getElementById("uf-telefono").value = u ? (u.telefono||"") : "";
+  document.getElementById("uf-sucursal").value = u ? (u.sucursal||"") : "";
+  document.getElementById("uf-rol").value = u ? (u.rol||"") : "";
+  document.getElementById("uf-rol").disabled = !!u; // el rol se cambia con su acción dedicada
+  document.getElementById("uf-hint").textContent = u
+    ? "El correo y el rol no se editan aquí (usa la acción de rol para cambiarlo)."
+    : "Se enviará una invitación por correo. El correo debe ser @gpa.com.mx.";
+  openModal("usuario-modal");
+}
+window.openUsuarioModal = openUsuarioModal;
+function closeUsuarioModal(){ closeModal("usuario-modal"); _uvEditSub=null; }
+window.closeUsuarioModal = closeUsuarioModal;
+
+async function saveUsuario(){
+  const email = document.getElementById("uf-email").value.trim();
+  const nombre = document.getElementById("uf-nombre").value.trim();
+  const telefono = document.getElementById("uf-telefono").value.trim();
+  const sucursal = document.getElementById("uf-sucursal").value.trim();
+  const rol = document.getElementById("uf-rol").value;
+  const btn = document.getElementById("uf-save");
+  if(_uvEditSub){
+    if(!nombre){ window.notify("El nombre es obligatorio.","warn",3500); _markInvalid("uf-nombre"); return; }
+    btn.disabled=true;
+    try{
+      const r = await window.__admin.updateUser({ cognitoSub:_uvEditSub, nombre, telefono, sucursal });
+      if(r.ok){ window.notify(r.message||"Usuario actualizado.","ok",4000); closeUsuarioModal(); await refreshUsuarios(); }
+      else window.notify(r.error||"No se pudo actualizar.","error",5000);
+    }catch(e){ window.notify("Error al guardar.","error",5000); }
+    finally{ btn.disabled=false; }
+    return;
+  }
+  // Alta
+  if(!email){ window.notify("El correo es obligatorio.","warn",3500); _markInvalid("uf-email"); return; }
+  if(!/@gpa\.com\.mx$/i.test(email)){ window.notify("El correo debe ser @gpa.com.mx.","warn",4000); _markInvalid("uf-email"); return; }
+  if(!nombre){ window.notify("El nombre es obligatorio.","warn",3500); _markInvalid("uf-nombre"); return; }
+  if(!rol){ window.notify("Selecciona un rol.","warn",3500); _markInvalid("uf-rol"); return; }
+  btn.disabled=true;
+  try{
+    const r = await window.__admin.createUser({ email, nombre, telefono, rol, sucursal });
+    if(r.ok){ window.notify(r.message||"Usuario creado.","ok",4500); closeUsuarioModal(); await refreshUsuarios(); }
+    else window.notify(r.error||"No se pudo crear el usuario.","error",6000);
+  }catch(e){ window.notify("Error al crear el usuario.","error",5000); }
+  finally{ btn.disabled=false; }
+}
+window.saveUsuario = saveUsuario;
+
+// ── Acciones de fila ──
+async function uvToggleEnabled(sub, want){
+  const enabled = want==="1";
+  const u=_uvUsers.find(x=>x.cognitoSub===sub);
+  if(!confirm(`¿${enabled?"Reactivar":"Desactivar"} a ${u?u.email:"este usuario"}?`)) return;
+  try{ const r=await window.__admin.setEnabled(sub, enabled);
+    if(r.ok){ window.notify(r.message||"Listo.","ok",4000); await refreshUsuarios(); } else window.notify(r.error||"Error.","error",5000);
+  }catch(e){ window.notify("Error.","error",4000); }
+}
+window.uvToggleEnabled = uvToggleEnabled;
+async function uvDelete(sub){
+  const u=_uvUsers.find(x=>x.cognitoSub===sub);
+  if(!confirm(`¿Eliminar a ${u?u.email:"este usuario"}? Esta acción borra su acceso (se conserva en la bitácora).`)) return;
+  try{ const r=await window.__admin.deleteUser(sub);
+    if(r.ok){ window.notify(r.message||"Usuario eliminado.","ok",4000); await refreshUsuarios(); } else window.notify(r.error||"Error.","error",5000);
+  }catch(e){ window.notify("Error.","error",4000); }
+}
+window.uvDelete = uvDelete;
+async function uvReset(sub){
+  const u=_uvUsers.find(x=>x.cognitoSub===sub);
+  if(!confirm(`¿Enviar correo de restablecimiento de contraseña a ${u?u.email:"este usuario"}?`)) return;
+  try{ const r=await window.__admin.resetPassword(sub);
+    window.notify(r.ok?(r.message||"Correo enviado."):(r.error||"Error."), r.ok?"ok":"error", 5000);
+  }catch(e){ window.notify("Error.","error",4000); }
+}
+window.uvReset = uvReset;
+async function uvPromptRol(sub){
+  const u=_uvUsers.find(x=>x.cognitoSub===sub);
+  const nuevo = prompt(`Nuevo rol para ${u?u.email:"el usuario"} (admin / operativo / viewer):`, u?u.rol:"");
+  if(!nuevo) return;
+  const rol = nuevo.trim().toLowerCase();
+  if(!["admin","operativo","viewer"].includes(rol)){ window.notify("Rol inválido.","warn",3500); return; }
+  try{ const r=await window.__admin.setRole(sub, rol);
+    if(r.ok){ window.notify(r.message||"Rol actualizado.","ok",4500); await refreshUsuarios(); } else window.notify(r.error||"Error.","error",5000);
+  }catch(e){ window.notify("Error.","error",4000); }
+}
+window.uvPromptRol = uvPromptRol;
+
 function showView(view){
   const isInsp     = view==="inspecciones";
   const isTaller   = view==="taller";
   const isSem      = view==="semanales";
   const isAnalytics= view==="analytics";
+  const isUsuarios = view==="usuarios";
 
   // Activar botón de nav correcto
   document.getElementById("mn-insp").classList.toggle("on",      isInsp);
@@ -5635,6 +5915,8 @@ function showView(view){
   if(mnSem) mnSem.classList.toggle("on", isSem);
   const mnAna=document.getElementById("mn-analytics");
   if(mnAna) mnAna.classList.toggle("on", isAnalytics);
+  const mnUsr=document.getElementById("mn-usuarios");
+  if(mnUsr) mnUsr.classList.toggle("on", isUsuarios);
 
   // Contenedor principal de Inspecciones
   const main = document.getElementById("main");
@@ -5680,6 +5962,10 @@ function showView(view){
   const av = document.getElementById("analytics-panel");
   if(av) av.style.display = isAnalytics ? "block" : "none";
 
+  // Vista Usuarios (módulo admin)
+  const uv = document.getElementById("usuarios-view");
+  if(uv) uv.style.display = isUsuarios ? "flex" : "none";
+
   // Inicializar vista correspondiente
   if(isTaller){
     buildTallerSucOptions();
@@ -5691,6 +5977,9 @@ function showView(view){
   }
   if(isAnalytics){
     buildAnalytics();
+  }
+  if(isUsuarios){
+    initUsuarios();
   }
 
   closeNav(); // cierra el menú hamburguesa móvil tras elegir vista (no-op en escritorio)
