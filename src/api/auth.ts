@@ -10,6 +10,7 @@ import {
   signOut,
   getCurrentUser,
   fetchUserAttributes,
+  fetchAuthSession,
   confirmSignIn,
   type SignInInput,
 } from "aws-amplify/auth";
@@ -20,6 +21,8 @@ export interface AuthSession {
   email: string;
   tenantId: string;
   groups: string[];
+  /** Sucursal del atributo custom:sucursal (filtro de UI del rol viewer). */
+  sucursal?: string;
 }
 
 export type LoginResult =
@@ -100,17 +103,44 @@ export async function getSession(): Promise<AuthSession | null> {
         "Usuario sin custom:tenantId. Configúralo en Cognito Console → User attributes.",
       );
     }
-    // Groups vienen del JWT — no en fetchUserAttributes directamente. Sin embargo,
-    // el client GraphQL usa el JWT raw (groups incluidos) para authorization rules.
-    // Aquí los exponemos como array vacío (no críticos para el wire). Si necesitamos
-    // verificar groups en cliente, leer JWT via fetchAuthSession().tokens.idToken.payload['cognito:groups'].
+    // Módulo Admin Usuarios (2026-06-12): los grupos (roles) viven en el JWT.
+    // Se leen de cognito:groups del idToken para que el front pueda mostrar la
+    // vista admin solo a quien corresponde. La autorización REAL la sigue
+    // haciendo AppSync por grupo; esto es solo para la UI.
+    let groups: string[] = [];
+    try {
+      const s = await fetchAuthSession();
+      const raw = s.tokens?.idToken?.payload["cognito:groups"];
+      if (Array.isArray(raw)) groups = raw.map(String);
+    } catch {
+      /* sin token todavía → grupos vacíos */
+    }
     return {
       username: user.username,
       email: attrs.email ?? "",
       tenantId,
-      groups: [],
+      groups,
+      sucursal: attrs["custom:sucursal"] ?? undefined,
     };
   } catch {
     return null;
+  }
+}
+
+/** True si la sesión actual pertenece al grupo 'admin' (gate de UI). */
+export async function isAdmin(): Promise<boolean> {
+  const s = await getSession();
+  return !!s && s.groups.includes("admin");
+}
+
+/**
+ * Fuerza la renovación del idToken para que un cambio de rol/grupo recién hecho
+ * sea efectivo sin esperar el ciclo natural (~1 h). Módulo Admin Usuarios.
+ */
+export async function forceRefreshSession(): Promise<void> {
+  try {
+    await fetchAuthSession({ forceRefresh: true });
+  } catch {
+    /* best-effort */
   }
 }

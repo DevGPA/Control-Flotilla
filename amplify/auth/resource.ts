@@ -13,9 +13,19 @@ export const auth = defineAuth({
   loginWith: {
     email: true,
   },
-  groups: ["admin"],
+  // Modulo de Administracion de Usuarios (2026-06-12): roles como Cognito groups.
+  // 'admin' = super-usuario (gestiona usuarios, acceso cross-tenant). 'operativo'
+  // y 'viewer' = roles operativos. El grupo de TENANT ('gpa') es aparte: un
+  // usuario pertenece a su tenant + su rol.
+  groups: ["admin", "operativo", "viewer"],
   userAttributes: {
     "custom:tenantId": {
+      dataType: "String",
+      mutable: true,
+    },
+    // Sucursal asignada (GDL/MTY/CDMX/Cancun/Vallarta/Cabos). La usa el filtro de
+    // UI del rol viewer (restriccion a nivel de interfaz, no de fila — MVP).
+    "custom:sucursal": {
       dataType: "String",
       mutable: true,
     },

@@ -29,6 +29,7 @@
     "amplify:generate": "npx ampx generate outputs"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1068.0",
     "aws-amplify": "^6.17.0",
     "echarts": "6.0.0",
     "jspdf": "4.2.1",

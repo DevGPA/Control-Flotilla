@@ -951,6 +951,115 @@ select.filter-active {
   color: var(--ac) !important;
   font-weight: 600;
 }
+/* ═══ Módulo Administración de Usuarios (2026-06-12) ═══ */
+#usuarios-view {
+  flex-direction: column;
+  padding: 14px 16px;
+  gap: 12px;
+}
+.uv-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.uv-tabs {
+  display: inline-flex;
+  gap: 4px;
+}
+.uv-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--ln);
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--s1);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.uv-tab.on {
+  background: var(--acd);
+  border-color: var(--acl);
+  color: var(--ac);
+}
+.uv-bar .sw {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+.uv-bar .sw input {
+  border: none;
+  background: none;
+  color: var(--w1);
+  font-size: 12px;
+  width: 100%;
+  outline: none;
+}
+.uv-table-wrap {
+  border: 1px solid var(--ln);
+  border-radius: var(--r2);
+  overflow: auto;
+  background: var(--bg);
+}
+.uv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.uv-table th {
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--bg2);
+  color: var(--s1);
+  font-weight: 700;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--ln);
+  position: sticky;
+  top: 0;
+}
+.uv-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--ln2);
+  color: var(--w2);
+}
+.uv-table tr:hover td {
+  background: var(--bg2);
+}
+.uv-actions {
+  display: flex;
+  gap: 4px;
+}
+.uv-act {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ln);
+  border-radius: var(--r1);
+  background: var(--bg);
+  color: var(--s1);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.uv-act:hover {
+  background: var(--bg3);
+  color: var(--ac);
+  border-color: var(--acl);
+}
+.uv-act-del:hover {
+  color: var(--R);
+  border-color: var(--Rl);
+}
+.uv-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--s2);
+  font-size: 12px;
+}
+
 /* UX Fase 3: títulos de sección del modal de taller */
 .tl-sec {
   grid-column: 1 / -1;

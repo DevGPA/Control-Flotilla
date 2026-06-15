@@ -1,5 +1,6 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { moreappWebhook } from "../functions/moreapp-webhook/resource";
+import { adminUsers } from "../functions/admin-users/resource";
 
 /**
  * Schema replica 1:1 las 6 entidades de shared/types/entities.ts.
@@ -128,11 +129,120 @@ const schema = a
       })
       .identifier(["tenantId", "unitUid", "itemKey"])
       .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+
+    // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
+    // Espejo local del usuario Cognito para listados eficientes y soft-delete.
+    // Identidad = (tenantId, cognitoSub) — sub inmutable de Cognito.
+    // Lo escribe SOLO la Lambda admin-users (allow.resource); 'admin' CRUD;
+    // los demas miembros del tenant pueden LEER (la lista; viewer filtra en UI).
+    UserProfile: a
+      .model({
+        tenantId: a.string().required(),
+        cognitoSub: a.string().required(),
+        email: a.string().required(),
+        nombre: a.string(),
+        telefono: a.string(),
+        sucursal: a.string(),
+        rol: a.string(), // 'admin' | 'operativo' | 'viewer'
+        estatus: a.enum(["activo", "desactivado", "eliminado"]),
+        createdAt: a.string(),
+        updatedAt: a.string(),
+      })
+      .identifier(["tenantId", "cognitoSub"])
+      .authorization((allow) => [
+        allow.group("admin"),
+        allow.groupDefinedIn("tenantId").to(["read"]),
+      ]),
+
+    // Bitacora de auditoria de acciones administrativas. La escribe SOLO la
+    // Lambda admin-users (el cliente NO puede crear/editar); 'admin' solo LEE.
+    // id = ts + sufijo aleatorio (lo genera la Lambda). detalleCambios = diff JSON.
+    AuditEvent: a
+      .model({
+        tenantId: a.string().required(),
+        id: a.string().required(),
+        actor: a.string().required(),
+        accion: a.string().required(),
+        targetUser: a.string(),
+        detalleCambios: a.json(),
+        ip: a.string(),
+        timestamp: a.string().required(),
+      })
+      .identifier(["tenantId", "id"])
+      .authorization((allow) => [allow.group("admin").to(["read"])]),
+
+    // ── Custom operations del módulo de Administración de Usuarios ──────────
+    // PRIMER uso de a.mutation/a.query en el proyecto. Cada una está restringida
+    // a allow.group("admin"): AppSync valida la membresía ANTES de invocar la
+    // Lambda (el "middleware de permisos" lo da la plataforma). Retornan a.json()
+    // con la forma { ok, message?, error?, data? }.
+    adminCreateUser: a
+      .mutation()
+      .arguments({
+        email: a.string().required(),
+        nombre: a.string().required(),
+        telefono: a.string(),
+        rol: a.string().required(),
+        sucursal: a.string(),
+      })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminUpdateUser: a
+      .mutation()
+      .arguments({
+        cognitoSub: a.string().required(),
+        nombre: a.string(),
+        telefono: a.string(),
+        sucursal: a.string(),
+      })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminSetEnabled: a
+      .mutation()
+      .arguments({ cognitoSub: a.string().required(), enabled: a.boolean().required() })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminDeleteUser: a
+      .mutation()
+      .arguments({ cognitoSub: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminResetPassword: a
+      .mutation()
+      .arguments({ cognitoSub: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminSetRole: a
+      .mutation()
+      .arguments({ cognitoSub: a.string().required(), rol: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
+
+    adminListUsers: a
+      .query()
+      .returns(a.json())
+      .handler(a.handler.function(adminUsers))
+      .authorization((allow) => [allow.group("admin")]),
   })
   // Acceso IAM para el Lambda moreapp-webhook (FASE 2): ingiere envíos de MoreApp
   // y escribe Unit/Checklist (mensual) + Unit/Semanal (semanal). El grant resource
   // es a nivel schema (la API no lo soporta por-modelo).
-  .authorization((allow) => [allow.resource(moreappWebhook).to(["query", "mutate"])]);
+  .authorization((allow) => [
+    allow.resource(moreappWebhook).to(["query", "mutate"]),
+    // admin-users escribe UserProfile/AuditEvent y lee UserProfile vía IAM.
+    allow.resource(adminUsers).to(["query", "mutate"]),
+  ]);
 
 export type Schema = ClientSchema<typeof schema>;
 
