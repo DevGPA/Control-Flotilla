@@ -3788,7 +3788,11 @@ select.filter-active {
 }
 
 /* ════ TALLER MODAL ══════════════════════════════════════════ */
-#taller-modal {
+/* Módulo Admin Usuarios (fix 2026-06-15): #usuario-modal comparte el patrón de
+   overlay de #taller-modal. SIN esta regla el modal se renderizaba SIEMPRE
+   (faltaba el display:none por defecto) → aparecía solo al cargar la app. */
+#taller-modal,
+#usuario-modal {
   position: fixed;
   inset: 0;
   background: #00000055;
@@ -3798,7 +3802,8 @@ select.filter-active {
   justify-content: center;
   padding: 16px;
 }
-#taller-modal.open {
+#taller-modal.open,
+#usuario-modal.open {
   display: flex;
 }
 .tl-mcard {
