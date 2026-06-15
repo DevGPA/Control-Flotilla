@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ThmWlIXvcvrUOPbTg1x5svqfYUnNW/Oxe6f2fZkrUBQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ThmWlIXvcvrUOPbTg1x5svqfYUnNW/Oxe6f2fZkrUBQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -26,6 +26,54 @@
         }
       }catch(_){}
     }
+  })();
+</script>
+<script>
+  // ── Self-healing del app-shell (anti Service-Worker stale, 2026-06-15) ──────
+  // Causa raíz: navegadores que cargaron la app ANTES del fix de cache de sw.js
+  // (2026-06-09) tienen un Service Worker viejo que sirve un HTML desactualizado
+  // apuntando a un bundle CSS con hash que ya no existe → la app carga SIN estilos
+  // y antes solo se recuperaba con Ctrl+Shift+F5 manual. Este guard lo automatiza:
+  // si el CSS principal (main.css define la variable --bg en :root) NO aplicó,
+  // desregistra los SW + borra los caches y recarga UNA sola vez (flag en
+  // sessionStorage evita bucles). Corre inline para poder repararse a sí mismo
+  // sin depender del bundle que está roto.
+  (function(){
+    function recover(){
+      // En dev/local Vite inyecta el CSS vía JS (HMR), no como <link> que bloquea
+      // 'load' → --bg podría no estar listo y daría falso positivo. El SW stale solo
+      // ocurre en producción, así que el guard no aplica en localhost.
+      var h = location.hostname;
+      if(h === "localhost" || h === "127.0.0.1" || h === "") return;
+      var bg = "";
+      try{ bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim(); }catch(e){}
+      if(bg) return; // CSS aplicado → shell sano, no hacer nada
+      try{
+        if(sessionStorage.getItem("__shellRecover")){
+          console.error("[shell] CSS no cargo tras recuperacion — posible problema de red/servidor");
+          return; // ya se intento esta sesion → no recargar en bucle
+        }
+        sessionStorage.setItem("__shellRecover","1");
+      }catch(e){}
+      console.warn("[shell] CSS no aplicado — limpiando Service Workers/caches y recargando");
+      var reload = function(){ location.reload(); };
+      var jobs = [];
+      if("serviceWorker" in navigator){
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+          return Promise.all(rs.map(function(r){ return r.unregister(); }));
+        }).catch(function(){}));
+      }
+      if(window.caches && caches.keys){
+        jobs.push(caches.keys().then(function(ks){
+          return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+        }).catch(function(){}));
+      }
+      (jobs.length ? Promise.all(jobs) : Promise.resolve()).then(reload).catch(reload);
+    }
+    // En 'load' los <link rel=stylesheet> ya resolvieron (cargaron o fallaron).
+    // Margen corto extra por robustez ante aplicación async del CSSOM.
+    if(document.readyState === "complete") setTimeout(recover, 600);
+    else window.addEventListener("load", function(){ setTimeout(recover, 600); });
   })();
 </script>
 <!--

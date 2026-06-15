@@ -101,6 +101,9 @@ export default defineConfig(({ mode }) => ({
         // Recarga las pestañas con app shell viejo al activarse un SW de UPDATE
         // (ver public/sw-force-reload.js — incidente PWA stale 2026-06-09).
         importScripts: ["sw-force-reload.js"],
+        // Al activarse un SW nuevo, purga los precaches de versiones anteriores
+        // (evita servir bundles viejos tras un deploy). Refuerza el self-healing.
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
