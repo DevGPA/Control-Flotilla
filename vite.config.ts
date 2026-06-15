@@ -96,13 +96,31 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        // Fuentes self-hosted en vendor/fonts/ (P1.8). globPatterns las precache al build.
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // ── Fix de RAÍZ del stale-shell (2026-06-15): el HTML NO se precachea ──
+        // Causa de fondo de la clase "app sin estilos / shell viejo": el SW servía
+        // el HTML del precache (cache-first), y un HTML viejo apunta a bundles con
+        // hash que ya no existen. Solución: el app-shell va por NetworkFirst →
+        // siempre intenta la red primero (HTML fresco con internet, que es el 99%
+        // del tiempo) y cae a caché solo offline. Los assets con hash (js/css/svg/
+        // woff2) SÍ se precachean (son inmutables por hash). Se conserva la PWA
+        // instalable y la carga offline del último shell visto.
+        globPatterns: ["**/*.{js,css,svg,png,woff2}"], // sin html → shell no precacheado
+        navigateFallback: null, // no servir un index precacheado en navegación
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "html-shell",
+              networkTimeoutSeconds: 4, // red lenta/caída → cae a caché tras 4s
+              expiration: { maxEntries: 8 },
+            },
+          },
+        ],
         // Recarga las pestañas con app shell viejo al activarse un SW de UPDATE
         // (ver public/sw-force-reload.js — incidente PWA stale 2026-06-09).
         importScripts: ["sw-force-reload.js"],
-        // Al activarse un SW nuevo, purga los precaches de versiones anteriores
-        // (evita servir bundles viejos tras un deploy). Refuerza el self-healing.
+        // Al activarse un SW nuevo, purga los precaches de versiones anteriores.
         cleanupOutdatedCaches: true,
       },
     }),
