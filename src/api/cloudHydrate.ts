@@ -13,12 +13,7 @@
 
 import type { Schema } from "./amplifyClient";
 import { listUnits, listChecklists, listSemanales, listTaller, listCheckDone } from "./client";
-import {
-  batchGetCloudPhotoUrls,
-  indexCloudPhotos,
-  refreshPhotoUrls,
-  type PhotoUrlEntry,
-} from "./photoFetch";
+import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import { mergeCheckDones } from "./mergeCheckDones";
@@ -485,12 +480,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       }
     }
   }
-  // FIRMA DE URLS DE FOTOS. Dos costos distintos:
-  //  - indexCloudPhotos = list S3 → CARO (red). Solo si hay fotos NUEVAS.
-  //  - firmar (getUrl) = LOCAL/barato. Lo usamos para re-firmar las que ya vencen.
-  // Las URLs firmadas de S3 expiran ≈15min (acotadas por la credencial Cognito); si no
-  // se re-firman, "de la nada" todas las fotos dan 403 → "No disponible" hasta un hard
-  // refresh. El auto-refresh (poll 4min) re-firma las próximas a vencer SIN re-listar.
+  // FIRMA DE URLS DE FOTOS — por-demanda, sin listar el bucket (fix de raíz 2026-06-15).
+  // firmar (getUrl) = LOCAL/barato; se firma cada fname del rango directamente. ANTES se
+  // listaba todo S3 (indexCloudPhotos) para "verificar existencia" antes de firmar; ese
+  // listado de ~22k fotos fallaba al crecer el bucket y dejaba el mapa VACÍO → "Sin fotos
+  // disponibles". Ya no: firmamos directo (el path aísla por tenant; el onerror del <img>
+  // cubre las inexistentes). Las URLs expiran ≈15min (acotadas por la credencial Cognito);
+  // el auto-refresh (poll 4min) re-firma las próximas a vencer.
   window.__cloudPhotoUrlMap = window.__cloudPhotoUrlMap ?? new Map<string, PhotoUrlEntry>();
   const existingMap = window.__cloudPhotoUrlMap;
   const allFnamesArr = [...allPhotoFnames];
@@ -504,9 +500,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (newFnames.length > 0 || staleFnames.length > 0) {
     try {
       if (newFnames.length > 0) {
-        // CRÍTICO: indexar S3 ANTES de batchGetCloudPhotoUrls. batchGet usa
-        // hasCloudPhoto (index cache). Sin index → todas null (race multi-user).
-        await indexCloudPhotos(tenantId);
+        // Firma directa, sin index previo (getUrl no lista ni valida existencia).
         const urlMap = await batchGetCloudPhotoUrls(tenantId, newFnames);
         let count = 0;
         for (const [fname, entry] of urlMap) {
@@ -518,7 +512,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         console.info(`[cloudHydrate] ${count}/${newFnames.length} URLs de fotos nuevas firmadas`);
       }
       if (staleFnames.length > 0) {
-        // Reusa el índice ya cacheado (no re-lista). Firmado local → barato.
+        // Re-firma local (force:true) → barato, sin red de listado.
         const fresh = await refreshPhotoUrls(tenantId, staleFnames);
         let resigned = 0;
         for (const [fname, entry] of fresh) {

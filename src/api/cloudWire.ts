@@ -51,7 +51,7 @@ import {
 import { isAdmin, forceRefreshSession } from "./auth";
 import { hydrateFromCloud } from "./cloudHydrate";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
-import { getCloudPhotoUrl, indexCloudPhotos } from "./photoFetch";
+import { getCloudPhotoUrl } from "./photoFetch";
 import type { LoadedZip } from "../io/zipLoader";
 
 declare global {
@@ -391,10 +391,10 @@ export function setupCloud(): void {
     } else {
       window.notify?.(summary, "ok", 3000);
     }
-    // Refresca índice cloud + URLs pre-fetched para que imgUrl encuentre las nuevas.
+    // Re-hidrata para firmar las URLs de las fotos recién subidas (firma directa
+    // por-demanda; ya no se re-lista S3 — ver photoFetch.getCloudPhotoUrl).
     if (res.uploaded > 0) {
       try {
-        await indexCloudPhotos(session.tenantId);
         await hydrateSerialized(session.tenantId);
       } catch (err) {
         console.warn("[cloudSyncPhotos] post-upload refresh falló:", err);
@@ -495,8 +495,7 @@ export function setupCloud(): void {
       }
     }
     // Hidrata desde cloud — multi-usuario ve mismos datos.
-    // hydrateFromCloud ya hace indexCloudPhotos internamente antes de
-    // batchGetCloudPhotoUrls para evitar race con URL map.
+    // hydrateFromCloud firma las URLs de fotos del rango por-demanda (sin listar S3).
     if (session) {
       try {
         const result = await hydrateSerialized(session.tenantId);
