@@ -67,10 +67,16 @@ function getIdentity(event: AppSyncResolverEvent<Record<string, unknown>>): Iden
   const claims = id.claims ?? {};
   const groupsRaw = claims["cognito:groups"];
   const groups = Array.isArray(groupsRaw) ? (groupsRaw as string[]) : [];
+  // tenant = custom:tenantId del token; si no viaja en el idToken (depende de la
+  // config del app client), se deriva del grupo que NO es un rol — el tenant del
+  // proyecto ES el nombre del grupo Cognito (allow.groupDefinedIn("tenantId")).
+  const roleSet = new Set<string>(ROLES as readonly string[]);
+  const tenantFromClaim = String(claims["custom:tenantId"] ?? "");
+  const tenantFromGroup = groups.find((g) => !roleSet.has(g)) ?? "";
   return {
     sub: String(claims.sub ?? ""),
     email: String(claims.email ?? ""),
-    tenantId: String(claims["custom:tenantId"] ?? ""),
+    tenantId: tenantFromClaim || tenantFromGroup,
     ip: Array.isArray(id.sourceIp) ? (id.sourceIp[0] ?? "") : "",
     groups,
   };
@@ -362,7 +368,14 @@ export const handler = async (
 ): Promise<Ok | Err> => {
   const who = getIdentity(event);
   if (!who.tenantId) return { ok: false, error: "Sesión sin tenant; no se puede operar." };
-  const field = event.info?.fieldName ?? "";
+  // El nombre de la operación puede venir en distintos lugares según cómo AppSync
+  // invoque la función. Probamos las ubicaciones conocidas.
+  const ev = event as unknown as {
+    info?: { fieldName?: string };
+    fieldName?: string;
+    typeName?: string;
+  };
+  const field = event.info?.fieldName ?? ev.fieldName ?? "";
   const args = (event.arguments ?? {}) as Record<string, unknown>;
   switch (field) {
     case "adminCreateUser":
