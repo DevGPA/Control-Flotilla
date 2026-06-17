@@ -31,6 +31,26 @@ export type LoginResult =
   | { status: "error"; message: string };
 
 /**
+ * Re-canjea las credenciales del Identity Pool usando el idToken recién emitido.
+ *
+ * CRÍTICO (incidente fotos 2026-06-17): Amplify Storage (`getUrl`/`uploadData`) NO
+ * firma con el JWT — firma SigV4 con credenciales temporales del Identity Pool. Con
+ * `unauthenticated_identities_enabled=true`, Amplify v6 cachea credenciales GUEST
+ * (rol unauth, SIN s3:GetObject) y las REUSA para firmar aunque el usuario ya inició
+ * sesión: `fetchAuthSession` no re-canjea solo porque aparecieron tokens. Resultado:
+ * las URLs de fotos se firmaban con el rol guest → S3 devolvía 403 ("No disponible").
+ * `forceRefresh:true` descarta las guest cacheadas y canjea credenciales del rol
+ * AUTENTICADO (con s3:GetObject) → las fotos cargan. Llamar tras CADA login exitoso.
+ */
+async function refreshIdentityPoolCreds(): Promise<void> {
+  try {
+    await fetchAuthSession({ forceRefresh: true });
+  } catch {
+    /* best-effort: si falla, el hydrate vuelve a intentar el refresh */
+  }
+}
+
+/**
  * Login con email + password. Maneja flow de NEW_PASSWORD_REQUIRED
  * (Cognito fuerza cambio al primer login con temp password).
  *
@@ -40,7 +60,10 @@ export async function login(email: string, password: string): Promise<LoginResul
   const input: SignInInput = { username: email, password };
   try {
     const result = await signIn(input);
-    if (result.isSignedIn) return { status: "success" };
+    if (result.isSignedIn) {
+      await refreshIdentityPoolCreds();
+      return { status: "success" };
+    }
     if (result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED") {
       return { status: "requireNewPassword" };
     }
@@ -60,7 +83,10 @@ export async function login(email: string, password: string): Promise<LoginResul
 export async function confirmNewPassword(newPassword: string): Promise<LoginResult> {
   try {
     const result = await confirmSignIn({ challengeResponse: newPassword });
-    if (result.isSignedIn) return { status: "success" };
+    if (result.isSignedIn) {
+      await refreshIdentityPoolCreds();
+      return { status: "success" };
+    }
     return {
       status: "error",
       message: `Confirm falló. Next step: ${result.nextStep.signInStep}`,

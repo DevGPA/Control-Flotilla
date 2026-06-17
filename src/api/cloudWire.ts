@@ -498,6 +498,11 @@ export function setupCloud(): void {
     // hydrateFromCloud firma las URLs de fotos del rango por-demanda (sin listar S3).
     if (session) {
       try {
+        // Garantiza credenciales AUTENTICADAS del Identity Pool ANTES del primer
+        // getUrl del hydrate. Cubre la rama de sesión activa al boot (isLoggedIn=true,
+        // sin pasar por login()): sin esto Amplify firma las fotos con credenciales
+        // GUEST cacheadas → 403. Ver auth.refreshIdentityPoolCreds (incidente 2026-06-17).
+        await forceRefreshSession();
         const result = await hydrateSerialized(session.tenantId);
         if (result.source === "cloud" && result.units > 0) {
           window.notify?.(`☁ ${result.units} unidades cargadas del servidor`, "ok", 3000);
