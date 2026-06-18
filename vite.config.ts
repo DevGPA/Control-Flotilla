@@ -72,6 +72,15 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     verifyPwaIcons,
     VitePWA({
+      // ── Desmantelamiento del Service Worker (2026-06-18) ──────────────────
+      // selfDestroying genera un sw.js mínimo que, al activarse, se DESREGISTRA
+      // solo y borra los caches en CUALQUIER cliente que lo descargue. El registro
+      // manual de src/main.ts (updateViaCache:'none' + update por hora/visibilidad)
+      // hace que los clientes existentes re-bajen este sw.js y se auto-limpien →
+      // quedan SIN Service Worker, así un reload normal siempre trae lo último
+      // (fin del Ctrl+Shift+R tras deploy). La app es online; no se necesita la PWA.
+      // Tras la ventana de transición se retira todo el andamiaje PWA (Fase B).
+      selfDestroying: true,
       registerType: "autoUpdate",
       // Registro MANUAL en src/main.ts (updateViaCache:'none' + update periódico).
       // El registerSW.js autogenerado era un register() pelón sin mecanismo de
