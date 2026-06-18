@@ -71,6 +71,7 @@ adminFn.addToRolePolicy(
       "cognito-idp:AdminRemoveUserFromGroup",
       "cognito-idp:AdminListGroupsForUser",
       "cognito-idp:ListUsers",
+      "cognito-idp:ListUsersInGroup",
     ],
     resources: [userPool.userPoolArn],
   }),

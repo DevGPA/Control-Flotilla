@@ -38,7 +38,16 @@ const schema = a
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "placa"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
       .secondaryIndexes((index) => [
         index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),
       ]),
@@ -59,7 +68,16 @@ const schema = a
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "unitUid", "fechaEntrada"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
 
     Nota: a
       .model({
@@ -70,7 +88,16 @@ const schema = a
         timestamp: a.string().required(),
       })
       .identifier(["tenantId", "unitUid", "timestamp"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
 
     Checklist: a
       .model({
@@ -83,7 +110,16 @@ const schema = a
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "unitUid", "fecha"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
 
     Periodo: a
       .model({
@@ -97,7 +133,16 @@ const schema = a
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "tipo", "fechaInicio"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
 
     Semanal: a
       .model({
@@ -109,7 +154,16 @@ const schema = a
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "periodoId", "unitUid"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
       .secondaryIndexes((index) => [
         index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),
         index("tenantId").sortKeys(["unitUid"]).name("byTenantAndUnit"),
@@ -128,7 +182,16 @@ const schema = a
         ts: a.string(),
       })
       .identifier(["tenantId", "unitUid", "itemKey"])
-      .authorization((allow) => [allow.groupDefinedIn("tenantId"), allow.group("admin")]),
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
+        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema, más abajo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
 
     // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
     // Espejo local del usuario Cognito para listados eficientes y soft-delete.

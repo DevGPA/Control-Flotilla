@@ -11,7 +11,23 @@ import { defineAuth } from "@aws-amplify/backend";
  */
 export const auth = defineAuth({
   loginWith: {
-    email: true,
+    // Personalización del correo de INVITACIÓN (alta de usuario por el admin).
+    // Antes usaba el template por defecto de Cognito (asunto "Your temporary
+    // password", sin contexto ni URL) → parecía spam. Ahora lleva asunto claro,
+    // contexto y la URL de la app. Los placeholders username()/code() son
+    // obligatorios (Cognito exige el de contraseña temporal en el cuerpo).
+    email: {
+      userInvitation: {
+        emailSubject: "Acceso a Control de Flotilla GPA",
+        emailBody: (username, code) =>
+          `Hola, se creó tu cuenta en Control de Flotilla GPA.\n\n` +
+          `Usuario: ${username()}\n` +
+          `Contraseña temporal: ${code()}\n\n` +
+          `Ingresa aquí: https://main.d3tud8dzuub7bj.amplifyapp.com\n\n` +
+          `Se te pedirá cambiar la contraseña en el primer inicio de sesión.\n` +
+          `Si no esperabas este correo, ignóralo.`,
+      },
+    },
   },
   // Modulo de Administracion de Usuarios (2026-06-12): roles como Cognito groups.
   // 'admin' = super-usuario (gestiona usuarios, acceso cross-tenant). 'operativo'
