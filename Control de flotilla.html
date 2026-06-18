@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-ThmWlIXvcvrUOPbTg1x5svqfYUnNW/Oxe6f2fZkrUBQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-rMeX/xFUl+O41Dee9cxVjBJVqdfZeKN9qtRIW5vyEjQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -745,11 +745,9 @@ g.inflateBytes=async function(src){
       </div>
       <div class="tl-field">
         <label for="uf-sucursal">Sucursal</label>
-        <input id="uf-sucursal" type="text" placeholder="GDL, MTY, CDMX…" list="uf-suc-list"/>
-        <datalist id="uf-suc-list">
-          <option value="GDL"></option><option value="MTY"></option><option value="CDMX"></option>
-          <option value="Cancún"></option><option value="Vallarta"></option><option value="Cabos"></option>
-        </datalist>
+        <select id="uf-sucursal">
+          <option value="">Todas las sucursales (ve toda la flota)</option>
+        </select>
       </div>
       <div class="tl-field full">
         <label for="uf-rol">Rol <span style="color:var(--R)">*</span></label>
@@ -951,7 +949,7 @@ g.inflateBytes=async function(src){
       <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
       <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
-      <button class="tl-save" onclick="saveTallerEntry()">Guardar</button>
+      <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
 </div>
@@ -2084,6 +2082,44 @@ async function doLogout(){
   try{ await window.__cloudLogout?.(); }catch(e){ console.error("logout:", e); }
   location.reload();
 }
+// ── Permisos de la sesión (gating de UI) ───────────────────────────────────
+// OJO: esto es solo UX. El enforcement REAL de escritura está en AppSync
+// (data/resource.ts): viewer = solo lectura. Aquí evitamos que el viewer choque
+// con errores de "Unauthorized" y reflejamos el estado "solo lectura".
+function sessionGroups(){ return (window.__cloudSession && window.__cloudSession.groups) || []; }
+function canWrite(){ const g=sessionGroups(); return g.includes("admin")||g.includes("operativo"); }
+function isViewer(){ const g=sessionGroups(); return g.includes("viewer") && !g.includes("admin") && !g.includes("operativo"); }
+window.canWrite=canWrite; window.isViewer=isViewer;
+// Sucursal a la que queda FIJADO el usuario (null = ve todas): admin, sin sucursal,
+// o sucursal "Todas"/"all" → sin bloqueo.
+function lockedSucursal(){
+  const s=((window.__cloudSession && window.__cloudSession.sucursal) || "").trim();
+  if(!s || /^(todas|all)$/i.test(s)) return null;
+  if(sessionGroups().includes("admin")) return null; // admin siempre ve todas
+  return s;
+}
+window.lockedSucursal=lockedSucursal;
+// Aplica el estado de rol a la UI: clase body.ro-viewer (CSS oculta .needs-write),
+// badge "Solo lectura", y re-aplica el bloqueo de sucursal en el dropdown.
+function applyRolePermissions(){
+  if(!document.getElementById("ro-style")){
+    const st=document.createElement("style"); st.id="ro-style";
+    st.textContent="body.ro-viewer .needs-write{display:none !important}";
+    document.head.appendChild(st);
+  }
+  const ro=isViewer();
+  document.body.classList.toggle("ro-viewer", ro);
+  const host=document.getElementById("user-email");
+  let badge=document.getElementById("ro-badge");
+  if(ro && host && host.parentElement && !badge){
+    badge=document.createElement("span"); badge.id="ro-badge"; badge.textContent="Solo lectura";
+    badge.style.cssText="margin-left:6px;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:var(--bg3);color:var(--s2);border:1px solid var(--ln)";
+    host.parentElement.insertBefore(badge, host.nextSibling);
+  } else if(!ro && badge){ badge.remove(); }
+  if(typeof buildBranches==="function") buildBranches(); // re-aplica lock de sucursal
+}
+window.applyRolePermissions=applyRolePermissions;
+
 // Lo invoca cloudWire al cambiar la sesión (login / sesión activa / logout).
 window.__onCloudSession = function(){
   const email = window.__cloudSession && window.__cloudSession.email;
@@ -2093,6 +2129,8 @@ window.__onCloudSession = function(){
   if(lo) lo.style.display = email ? "inline-flex" : "none";
   // Módulo Admin Usuarios: mostrar el botón "Usuarios" solo si la sesión es admin.
   if(typeof window.initAdminNav === "function") window.initAdminNav();
+  // Permisos: viewer = solo lectura; usuario con sucursal asignada queda fijado.
+  applyRolePermissions();
 };
 
 function showLoader(t="Procesando…"){
@@ -2908,9 +2946,19 @@ function buildBranches(){
   // Antes solo usaba `units` (rango) y cloudHydrate no llamaba a esta función → el
   // dropdown salía vacío ("Todas") en sesiones cloud.
   const src=(window.__fleetUnits && window.__fleetUnits.length)?window.__fleetUnits:units;
-  const bs=[...new Set((src||[]).map(u=>u.branch).filter(Boolean))].sort();
+  let bs=[...new Set((src||[]).map(u=>u.branch).filter(Boolean))].sort();
   const s=document.getElementById("bsel");
   if(!s)return;
+  // Usuario FIJADO a su sucursal: el dropdown solo ofrece la suya y queda bloqueado
+  // (su sucursal se incluye aunque aún no haya unidades de su rango cargadas).
+  const suc=(typeof lockedSucursal==="function")?lockedSucursal():null;
+  if(suc){
+    s.innerHTML=`<option value="${escAttr(suc)}">${escHtml(suc)}</option>`;
+    s.value=suc; s.disabled=true; s.title="Tu cuenta está limitada a la sucursal "+suc;
+    if(curB!==suc) curB=suc;
+    return;
+  }
+  s.disabled=false; s.removeAttribute("title");
   const cur=s.value;
   s.innerHTML=`<option value="all">Todas las sucursales</option>`+bs.map(b=>`<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
   if(cur && [...s.options].some(o=>o.value===cur)) s.value=cur; // preserva selección
@@ -3616,7 +3664,8 @@ function renderChecklist(u,body){
       // legacy para el dual-read del toggle) · arg4 = nuevo estado deseado.
       // UX Fase 4: role=checkbox + aria-checked — el lector de pantalla ahora
       // anuncia el estado atendido/pendiente.
-      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1" role="checkbox" aria-checked="${done?"true":"false"}"`;
+      const _ro=(typeof canWrite==="function")&&!canWrite();
+      const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1" role="checkbox" aria-checked="${done?"true":"false"}"${_ro?' disabled aria-disabled="true" title="Solo lectura"':''}`;
       const bodyAttr=`data-action="openMnPhotoForFinding" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"`;
       if(done){
         html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
@@ -3667,6 +3716,7 @@ function recalcAllRisks(){
 // lookup directo). Escribe SIEMPRE bajo la key estable; fan-out local a todas
 // las filas de la misma placa; cloud por PLACA (no uid de fila).
 async function toggleCheckItem(uid,itemKey,aliasText,want){
+  if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura: no puedes marcar hallazgos.","warn",3500); return; }
   const u=units.find(x=>x.uid===uid);
   if(!u){ console.warn("[toggleCheckItem] uid no existe en units:",uid); return; }
   const ts=new Date().toISOString();
@@ -3755,6 +3805,7 @@ const MANUAL_PHOTO_MAX_BYTES = 10 * 1024 * 1024; // 10MB por foto
 const MANUAL_PHOTO_MAX_FILES = 20; // Por operación upload
 
 async function addManualPhoto(uid){
+  if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura.","warn",3500); return; }
   const input=document.createElement("input");
   input.type="file";input.accept="image/jpeg,image/png,image/gif,image/webp";input.multiple=true;
   input.addEventListener("change", async () => {
@@ -3846,7 +3897,7 @@ function renderPhotos(u,body){
       <div style="font-size:11px;color:var(--s3);line-height:1.8;margin-bottom:16px">
         Puedes cargar el ZIP de MoreApp o agregar fotos manualmente.
       </div>
-      <button data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="padding:8px 16px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i data-lucide="camera" style="width:13px;height:13px"></i> Agregar fotos</button>
+      <button class="needs-write" data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="padding:8px 16px;background:var(--ac);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i data-lucide="camera" style="width:13px;height:13px"></i> Agregar fotos</button>
       <div style="margin-top:14px;background:var(--bg3);border:1px solid var(--ln);border-radius:8px;padding:12px;text-align:left;font-size:11px;color:var(--s2)">
         <div style="margin-bottom:5px"><b style="color:var(--s1)">O desde MoreApp:</b></div>
         <div style="margin-bottom:3px">1. Ve a tu formulario → Exportar</div>
@@ -3859,7 +3910,7 @@ function renderPhotos(u,body){
   const photos=u.photos;
   if(!photos.length&&!manualPhotos.length){
     body.innerHTML=`<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Sin fotos registradas para esta unidad.
-      <br><button data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="margin-top:8px;padding:5px 12px;background:none;border:1px dashed var(--ln);border-radius:6px;font-size:10px;color:var(--s1);cursor:pointer">+ Agregar foto manual</button></div>`;
+      <br><button class="needs-write" data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="margin-top:8px;padding:5px 12px;background:none;border:1px dashed var(--ln);border-radius:6px;font-size:10px;color:var(--s1);cursor:pointer">+ Agregar foto manual</button></div>`;
     return;
   }
 
@@ -3867,7 +3918,7 @@ function renderPhotos(u,body){
   lbImgs=[];
   const totalPhotos=photos.length+manualPhotos.length;
   let html=`<div class="pg-header"><span class="pg-count">${totalPhotos} foto${totalPhotos!==1?"s":""}</span><span class="pg-hint">← clic para ampliar</span>
-    <button data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="margin-left:auto;padding:3px 8px;border:1px dashed var(--ln);border-radius:5px;font-size:9px;color:var(--s1);background:none;cursor:pointer">+ Agregar foto</button>
+    <button class="needs-write" data-action="addManualPhoto" data-arg1="${escAttr(u.uid)}" style="margin-left:auto;padding:3px 8px;border:1px dashed var(--ln);border-radius:5px;font-size:9px;color:var(--s1);background:none;cursor:pointer">+ Agregar foto</button>
   </div><div class="pg-cats">`;
 
   // Group photos
@@ -4027,7 +4078,7 @@ function setF(f){
   updateFilterIndicators();
   renderTable();
 }
-function setB(b){curB=b;updateFilterIndicators();renderTable()}
+function setB(b){const suc=(typeof lockedSucursal==="function")?lockedSucursal():null;if(suc)b=suc;curB=b;updateFilterIndicators();renderTable()}
 function setSrch(s){curS=s;updateFilterIndicators();renderTable()}
 
 // UX Fase 1 (2026-06-11): visibilidad de filtros activos + limpiar en 1 click.
@@ -4205,7 +4256,7 @@ function renderNotes(u, body){
       <textarea class="note-ta" id="note-input" placeholder="Escribe una observación, acción tomada, fecha de cita en taller…" aria-label="Nueva nota de seguimiento" rows="3"></textarea>
       <div class="note-row">
         <select class="note-type" id="note-type" aria-label="Tipo de nota">${typeOpts}</select>
-        <button class="note-save" data-action="addNote" data-arg1="${escAttr(u.uid)}">+ Guardar nota</button>
+        <button class="note-save needs-write" data-action="addNote" data-arg1="${escAttr(u.uid)}">+ Guardar nota</button>
       </div>
     </div>
     <div id="note-list">${noteItems}</div>
@@ -4214,6 +4265,7 @@ function renderNotes(u, body){
 }
 
 async function addNote(uid){
+  if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura.","warn",3500); return; }
   const ta=document.getElementById("note-input");
   const ts=document.getElementById("note-type");
   if(!ta||!ta.value.trim()) return;
@@ -5857,6 +5909,20 @@ async function refreshAudit(){
   }catch(e){ window.notify && window.notify("Error al cargar la bitácora.","error",5000); console.error("[audit]",e); }
 }
 
+// Llena el <select> de sucursal con "Todas" + las sucursales reales de la flota
+// (los mismos valores que u.branch, para que el bloqueo por sucursal coincida).
+// "Todas" (value vacío) = el usuario ve toda la flota (sin bloqueo).
+function populateSucursalOptions(selected){
+  const sel=document.getElementById("uf-sucursal");
+  if(!sel)return;
+  const src=(window.__fleetUnits && window.__fleetUnits.length)?window.__fleetUnits:(typeof units!=="undefined"?units:[]);
+  let bs=[...new Set((src||[]).map(u=>u.branch).filter(Boolean))].sort();
+  if(selected && !bs.includes(selected)) bs=[selected,...bs]; // conserva valor previo fuera de catálogo
+  sel.innerHTML=`<option value="">Todas las sucursales (ve toda la flota)</option>`
+    +bs.map(b=>`<option value="${escAttr(b)}">${escHtml(b)}</option>`).join("");
+  sel.value=selected||"";
+}
+
 // ── Modal alta/edición ──
 function openUsuarioModal(sub){
   _uvEditSub = sub || null;
@@ -5866,7 +5932,7 @@ function openUsuarioModal(sub){
   document.getElementById("uf-email").disabled = !!u; // el correo no se edita
   document.getElementById("uf-nombre").value = u ? (u.nombre||"") : "";
   document.getElementById("uf-telefono").value = u ? (u.telefono||"") : "";
-  document.getElementById("uf-sucursal").value = u ? (u.sucursal||"") : "";
+  populateSucursalOptions(u ? (u.sucursal||"") : "");
   document.getElementById("uf-rol").value = u ? (u.rol||"") : "";
   document.getElementById("uf-rol").disabled = !!u; // el rol se cambia con su acción dedicada
   document.getElementById("uf-hint").textContent = u
@@ -6013,6 +6079,15 @@ function showView(view){
   // Vista Usuarios (módulo admin)
   const uv = document.getElementById("usuarios-view");
   if(uv) uv.style.display = isUsuarios ? "flex" : "none";
+
+  // "ALERTAS DE FLOTA" pertenece al dashboard de Inspecciones — ocultarla en las
+  // demás vistas (no debe aparecer en Usuarios/Taller/Semanales/Análisis). Al
+  // volver a Inspecciones se reconstruye con las alertas vigentes.
+  const ap = document.getElementById("alerts-panel");
+  if(ap){
+    if(isInsp){ if(typeof buildAlertsSummary==="function") buildAlertsSummary(); }
+    else ap.style.display="none";
+  }
 
   // Inicializar vista correspondiente
   if(isTaller){
@@ -7850,6 +7925,7 @@ function _markInvalid(id){
   el.focus();
 }
 async function saveTallerEntry(){
+  if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura: no puedes guardar registros de taller.","warn",4000); return; }
   const eco  = document.getElementById("tf-eco").value.trim();
   const plate= document.getElementById("tf-plate").value.trim();
   if(!eco && !plate){ window.notify("Ingresa al menos el No. de Unidad o las Placas.","warn",4000); _markInvalid("tf-eco"); return; }

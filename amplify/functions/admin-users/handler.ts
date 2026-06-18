@@ -22,6 +22,7 @@ import {
   AdminResetUserPasswordCommand,
   AdminAddUserToGroupCommand,
   AdminRemoveUserFromGroupCommand,
+  ListUsersInGroupCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import type { Schema } from "../../data/resource";
 import {
@@ -230,9 +231,10 @@ async function handleUpdate(args: Record<string, unknown>, who: Identity): Promi
       new AdminUpdateUserAttributesCommand({
         UserPoolId: USER_POOL_ID,
         Username: username,
-        UserAttributes: [
-          ...(next.sucursal ? [{ Name: "custom:sucursal", Value: next.sucursal }] : []),
-        ],
+        // Siempre se envía custom:sucursal. Valor vacío = "Todas las sucursales":
+        // LIMPIA la restricción para que el usuario vea toda la flota (la edición
+        // debe poder quitar una sucursal previa, no solo cambiarla).
+        UserAttributes: [{ Name: "custom:sucursal", Value: next.sucursal || "" }],
       }),
     );
     const now = new Date().toISOString();
@@ -350,14 +352,94 @@ async function handleSetRole(args: Record<string, unknown>, who: Identity): Prom
   }
 }
 
+type CognitoUser = {
+  Username?: string;
+  Enabled?: boolean;
+  UserStatus?: string;
+  Attributes?: { Name?: string; Value?: string }[];
+};
+// Lista (paginada) los usuarios de un grupo Cognito.
+async function listUsersInGroup(group: string): Promise<CognitoUser[]> {
+  const out: CognitoUser[] = [];
+  let token: string | undefined;
+  do {
+    const r = await cognito.send(
+      new ListUsersInGroupCommand({
+        UserPoolId: USER_POOL_ID,
+        GroupName: group,
+        Limit: 60,
+        ...(token ? { NextToken: token } : {}),
+      }),
+    );
+    for (const u of r.Users ?? []) out.push(u as CognitoUser);
+    token = r.NextToken;
+  } while (token);
+  return out;
+}
+
+// Lista los usuarios del tenant tomando COGNITO como fuente de verdad (no solo el
+// espejo UserProfile, que únicamente tenía a los creados desde el panel → los
+// usuarios legacy creados en la consola de Cognito no aparecían). Para cada usuario
+// del grupo-tenant deriva rol (de su grupo de rol), sucursal y estatus desde Cognito,
+// y AUTO-CREA el espejo UserProfile si falta (self-heal) para que sea gestionable.
 async function handleList(who: Identity): Promise<Ok | Err> {
   try {
     const client = await getDataClient();
-    const r = await client.models.UserProfile.list({
+    const profRes = await client.models.UserProfile.list({
       filter: { tenantId: { eq: who.tenantId } },
       limit: 1000,
     });
-    return { ok: true, data: r.data ?? [] };
+    const profBySub = new Map((profRes.data ?? []).map((p) => [p.cognitoSub, p]));
+    const tenantUsers = await listUsersInGroup(who.tenantId);
+    const roleByUsername = new Map<string, string>();
+    for (const rol of ROLE_GROUPS) {
+      for (const u of await listUsersInGroup(rol)) {
+        if (u.Username) roleByUsername.set(u.Username, rol);
+      }
+    }
+    const now = new Date().toISOString();
+    const rows: Record<string, unknown>[] = [];
+    for (const cu of tenantUsers) {
+      const attrs = cu.Attributes ?? [];
+      const getA = (n: string) => attrs.find((a) => a.Name === n)?.Value ?? "";
+      const sub = getA("sub") || cu.Username || "";
+      const email = getA("email");
+      const sucursal = getA("custom:sucursal");
+      const rol = (cu.Username && roleByUsername.get(cu.Username)) || "";
+      const estatus = cu.Enabled === false ? "desactivado" : "activo";
+      let prof = profBySub.get(sub);
+      if (!prof) {
+        try {
+          const created = await client.models.UserProfile.create({
+            tenantId: who.tenantId,
+            cognitoSub: sub,
+            email,
+            nombre: "",
+            telefono: "",
+            sucursal,
+            rol,
+            estatus,
+            createdAt: now,
+            updatedAt: now,
+          });
+          prof = created.data ?? undefined;
+        } catch {
+          /* si el self-heal falla, igual devolvemos la fila desde Cognito */
+        }
+      }
+      rows.push({
+        tenantId: who.tenantId,
+        cognitoSub: sub,
+        email,
+        nombre: prof?.nombre ?? "",
+        telefono: prof?.telefono ?? "",
+        sucursal: prof?.sucursal ?? sucursal,
+        // El ROL mostrado refleja el grupo Cognito (fuente de verdad), con respaldo al espejo.
+        rol: rol || (prof?.rol ?? ""),
+        estatus,
+      });
+    }
+    return { ok: true, data: rows };
   } catch (e) {
     return { ok: false, error: mapCognitoError(e) };
   }
