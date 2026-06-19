@@ -83,10 +83,11 @@
   --Ol: rgba(234, 88, 12, 0.16);
 
   /* Primary accent — Blue-600 / Blue-700 (hover/pressed) */
-  --ac: #2563eb;
-  --ac2: #1d4ed8;
-  --acd: rgba(37, 99, 235, 0.06);
-  --acl: rgba(37, 99, 235, 0.18);
+  --ac: #1e4fa3;
+  --ac2: #15397a;
+  --acd: rgba(30, 79, 163, 0.06);
+  --acl: rgba(30, 79, 163, 0.18);
+  --cyan: #29abe2;
 
   /* Shadows — Tremor shadow-xs / shadow-sm / shadow / shadow-md / shadow-xl */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -154,10 +155,11 @@
   --Bl: rgba(168, 154, 218, 0.22);
 
   /* Dark accent — Blue-500 / Blue-400 (lighter for contrast on dark bg) */
-  --ac: #3b82f6;
-  --ac2: #60a5fa;
-  --acd: rgba(59, 130, 246, 0.08);
-  --acl: rgba(59, 130, 246, 0.28);
+  --ac: #3d8fd6;
+  --ac2: #5aa6e4;
+  --acd: rgba(61, 143, 214, 0.08);
+  --acl: rgba(61, 143, 214, 0.28);
+  --cyan: #5bb6e8;
   /* --O semantic (orange-400 pastel for dark). Secondary R/A/G/B/Bd/Bl conservan
      calibración muted legacy — cambian solo si auditoría visual lo pide. */
   --O: #fb923c;
@@ -470,12 +472,19 @@ select {
   height: 30px;
   border-radius: 8px;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #0f766e, #14b8a6);
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3);
+  box-shadow: 0 2px 6px rgba(30, 79, 163, 0.3);
+  overflow: hidden;
+}
+.hico img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 3px;
 }
 .hname {
   font-size: 13px;
@@ -3520,7 +3529,10 @@ select.filter-active {
 .mnav.on {
   background: var(--bg);
   color: var(--w1);
-  box-shadow: 0 1px 3px #0001;
+  /* Subrayado cian GPA en la pestaña activa (acento de marca) */
+  box-shadow:
+    inset 0 -2px 0 var(--cyan),
+    0 1px 3px #0001;
 }
 .mnav:not(.on):hover {
   background: var(--bg2);
