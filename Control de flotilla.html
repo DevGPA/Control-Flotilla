@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-rMeX/xFUl+O41Dee9cxVjBJVqdfZeKN9qtRIW5vyEjQ='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-GwzIzuvMS3Aewcj5Vp4BTKZNxfyyOKmyTds/mOQptoI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2099,6 +2099,19 @@ function lockedSucursal(){
   return s;
 }
 window.lockedSucursal=lockedSucursal;
+// Scope por sucursal del usuario fijado. NO-OP para admin/sin-sucursal (devuelven el
+// array intacto). Usado por TODAS las agregaciones (KPIs, dona, alertas, gasto, Taller,
+// Semanales, Análisis) para que un usuario fijado no vea datos de otras sucursales.
+// Match exacto-trimeado, igual que el filtro de la tabla (curB vs u.branch).
+function scopeUnits(arr){
+  const loc=lockedSucursal(); if(!loc) return arr||[];
+  return (arr||[]).filter(u=>String(u && u.branch||"").trim()===loc);
+}
+function scopeBySucursal(arr){
+  const loc=lockedSucursal(); if(!loc) return arr||[];
+  return (arr||[]).filter(x=>String(x && x.sucursal||"").trim()===loc);
+}
+window.scopeUnits=scopeUnits; window.scopeBySucursal=scopeBySucursal;
 // Aplica el estado de rol a la UI: clase body.ro-viewer (CSS oculta .needs-write),
 // badge "Solo lectura", y re-aplica el bloqueo de sucursal en el dropdown.
 function applyRolePermissions(){
@@ -2841,7 +2854,11 @@ function svcStatus(u){
 function buildKPIs(){
   // ── Hero cards + dona: FLOTA = unidades distintas (catálogo) con su última
   // inspección. Estado actual, INDEPENDIENTE del rango de fechas. ──
-  const fleet = (Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || [];
+  // Scope por sucursal del usuario fijado (no-op para admin/sin-sucursal): la flota y
+  // las inspecciones del rango se acotan a su sucursal para que tarjetas/dona no
+  // muestren datos de otras sucursales.
+  const fleet = scopeUnits((Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || []);
+  const sUnits = scopeUnits(units);
   // FLOTA + EN TALLER + dona = estado operativo de la flota COMPLETA (no depende del rango).
   let enTaller=0,operativaDonut=0,tallerDonut=0;
   for(const x of fleet){
@@ -2850,7 +2867,7 @@ function buildKPIs(){
   }
   // LLANTAS CRÍTICAS + SERVICIO = sobre las inspecciones del RANGO (units), igual que la tabla.
   let ct=0,nSvcVencido=0,nSvcProximo=0;
-  for(const x of units){
+  for(const x of sUnits){
     if(x.minT!==null && x.minT<=TCRIT) ct++;
     const ss=svcStatus(x);
     if(ss==="vencido") nSvcVencido++; else if(ss==="proximo") nSvcProximo++;
@@ -2873,10 +2890,10 @@ function buildKPIs(){
 
   // ── Chips de filtro: sobre las INSPECCIONES del rango (units), que es lo que
   // muestra la tabla. ──
-  const t=units.length;
+  const t=sUnits.length;
   const d30=new Date();d30.setHours(0,0,0,0);d30.setDate(d30.getDate()+30);
   let u=0,r=0,withObs=0,nSvcRange=0;
-  for(const x of units){
+  for(const x of sUnits){
     const dm=checklistDB[x.uid]||{};
     const pend=x.F.filter(f=>!isFindingDone(dm,f,x.fecha));
     if(pend.some(f=>f.lv==="Urgente")) u++;
@@ -2895,9 +2912,9 @@ function buildKPIs(){
   // Solo con catálogo cloud; abre el modal (no es filtro de tabla, esas unidades no están en units).
   const btnSinM=document.getElementById("btn-sinmensual");
   if(btnSinM){
-    const fleetRoster=window.__fleetUnits;
-    if(Array.isArray(fleetRoster) && fleetRoster.length){
-      const pres=new Set(units.map(x=>x.plate||x.uid));
+    const fleetRoster=scopeUnits(window.__fleetUnits);
+    if(fleetRoster.length){
+      const pres=new Set(sUnits.map(x=>x.plate||x.uid));
       const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
       // Siempre visible con catálogo cloud (aunque sea 0) para que el usuario lo encuentre.
       btnSinM.style.display="inline-flex";
@@ -2973,8 +2990,10 @@ function buildAnalytics(){
   if(!units || !units.length) return;
 
   // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
+  // scope sucursal del usuario fijado (no-op admin): solo computa su sucursal.
+  const sUnits = scopeUnits(units);
   const branchMap = new Map();
-  for(const x of units){
+  for(const x of sUnits){
     const branch = x.branch || "(Sin sucursal)";
     let stat = branchMap.get(branch);
     if(!stat){ stat = { branch, urgente:0, revisar:0, operativa:0 }; branchMap.set(branch, stat); }
@@ -2991,7 +3010,7 @@ function buildAnalytics(){
   // ─── Categorías: por hallazgo (no por unidad), counter por cat × nivel
   const catOrder = ["Llantas", "Checklist", "Documentos", "Fluidos", "Mantenimiento"];
   const catMap = new Map(catOrder.map(c => [c, { cat:c, urgente:0, revisar:0, completar:0 }]));
-  for(const x of units){
+  for(const x of sUnits){
     const dm = checklistDB[x.uid] || {};
     for(const f of x.F){
       if(isFindingDone(dm, f, x.fecha)) continue; // skip atendidos
@@ -3038,7 +3057,7 @@ function buildAnalytics(){
       trendEl.style.display = "";
       if(trendEmpty) trendEmpty.hidden = true;
       const trendData = allPeriodos.map(p => {
-        const us = Array.isArray(p.units) ? p.units : [];
+        const us = scopeUnits(Array.isArray(p.units) ? p.units : []);
         let pu=0, pr=0, po=0;
         for(const u of us){
           if(u.risk === "Urgente") pu++;
@@ -3131,11 +3150,14 @@ function buildAlertsSummary(){
   const alerts=[];
   const today=new Date();today.setHours(0,0,0,0);
   const d30=new Date(today);d30.setDate(d30.getDate()+30);
+  // Scope por sucursal del usuario fijado (no-op para admin): las alertas reflejan
+  // solo su sucursal, igual que las tarjetas y la tabla.
+  const sUnits=scopeUnits(units), sTaller=scopeBySucursal(tallerEntries);
 
   // 1. Servicio vencido o próximo — km-autoritativo vía svcStatus (review
   // 2026-06-11: antes solo-fecha → la alerta contradecía al checklist).
-  const svcVencido=units.filter(u=>svcStatus(u)==="vencido");
-  const svcProximo=units.filter(u=>svcStatus(u)==="proximo");
+  const svcVencido=sUnits.filter(u=>svcStatus(u)==="vencido");
+  const svcProximo=sUnits.filter(u=>svcStatus(u)==="proximo");
   if(svcVencido.length)
     alerts.push({sev:"r",icon:"alert-circle",count:svcVencido.length,short:"Servicio vencido",
       detail:svcVencido.slice(0,8).map(u=>`${u.eco||u.plate} (${u.nextSvc})`).join(", ")+(svcVencido.length>8?` y ${svcVencido.length-8} más`:""),
@@ -3146,21 +3168,21 @@ function buildAlertsSummary(){
       action:"svcvencido"});
 
   // 2. Unidades urgentes (= chip Urgente: u.risk==="Urgente")
-  const urgentes=units.filter(u=>u.risk==="Urgente");
+  const urgentes=sUnits.filter(u=>u.risk==="Urgente");
   if(urgentes.length)
     alerts.push({sev:"r",icon:"siren",count:urgentes.length,short:"Urgente",
       detail:urgentes.slice(0,8).map(u=>{const n=u.F.filter(f=>f.lv==="Urgente").length;return `${u.eco||u.plate} (${n} hallazgo${n!==1?"s":""})`;}).join(", ")+(urgentes.length>8?` y ${urgentes.length-8} más`:""),
       action:"Urgente"});
 
   // 3. Llantas críticas
-  const llantasCrit=units.filter(u=>u.minT!==null&&u.minT<=TCRIT);
+  const llantasCrit=sUnits.filter(u=>u.minT!==null&&u.minT<=TCRIT);
   if(llantasCrit.length)
     alerts.push({sev:"o",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
       detail:llantasCrit.slice(0,8).map(u=>`${u.eco||u.plate}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>8?` y ${llantasCrit.length-8} más`:"")});
 
   // 4. Taller: unidades >7 días
   const isClosed=e=>e.estado==="Finalizado";
-  const tallerActivas=tallerEntries.filter(e=>!isClosed(e)&&e.fentrada);
+  const tallerActivas=sTaller.filter(e=>!isClosed(e)&&e.fentrada);
   const tallerLargo=tallerActivas.filter(e=>{
     const dias=Math.round((Date.now()-new Date(e.fentrada))/86400000);
     return dias>7;
@@ -3177,7 +3199,7 @@ function buildAlertsSummary(){
   // descuenta atendidos vía isFindingDone (igual que los chips fc0/fc_rev) —
   // con la matriz nueva el universo Completar creció (estéticos + svc próximo)
   // y sin el descuento el chip contaba casi toda la flota.
-  const completar=units.filter(u=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv==="Completar"&&!isFindingDone(dm,f,u.fecha));});
+  const completar=sUnits.filter(u=>{const dm=checklistDB[u.uid]||{};return u.F.some(f=>f.lv==="Completar"&&!isFindingDone(dm,f,u.fecha));});
   if(completar.length)
     alerts.push({sev:"n",icon:"clipboard-list",count:completar.length,short:"Pendientes",
       action:"Completar"});
@@ -5710,14 +5732,15 @@ function _fmtMon(v){ return "$"+Number(v||0).toLocaleString("es-MX",{maximumFrac
 function buildGastoKPI(){
   const card=document.getElementById("hero-gasto");
   if(!card) return;
-  if(!Array.isArray(tallerEntries)||!tallerEntries.length){ card.style.display="none"; return; }
+  const tE=scopeBySucursal(tallerEntries); // scope por sucursal del usuario fijado (no-op admin)
+  if(!Array.isArray(tE)||!tE.length){ card.style.display="none"; return; }
   const now=new Date();
   const mesAct=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
   const pv=new Date(now.getFullYear(),now.getMonth()-1,1);
   const mesPrev=`${pv.getFullYear()}-${String(pv.getMonth()+1).padStart(2,"0")}`;
-  const delMes=tallerEntries.filter(e=>_mesDe(e)===mesAct);
+  const delMes=tE.filter(e=>_mesDe(e)===mesAct);
   const gAct=delMes.reduce((s,e)=>s+_gastoDe(e),0);
-  const gPrev=tallerEntries.filter(e=>_mesDe(e)===mesPrev).reduce((s,e)=>s+_gastoDe(e),0);
+  const gPrev=tE.filter(e=>_mesDe(e)===mesPrev).reduce((s,e)=>s+_gastoDe(e),0);
   card.style.display="flex";
   const kv=document.getElementById("kv_gasto"); if(kv) kv.textContent=_fmtMon(gAct);
   const ks=document.getElementById("ks_gasto");
@@ -5737,10 +5760,11 @@ function openGastoModal(){
     meses.push({key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,
                 lbl:d.toLocaleDateString("es-MX",{month:"short"}).replace(".","")});
   }
-  const porMes=meses.map(m=>({...m,total:tallerEntries.filter(e=>_mesDe(e)===m.key).reduce((s,e)=>s+_gastoDe(e),0)}));
+  const tE=scopeBySucursal(tallerEntries); // scope por sucursal del usuario fijado (no-op admin)
+  const porMes=meses.map(m=>({...m,total:tE.filter(e=>_mesDe(e)===m.key).reduce((s,e)=>s+_gastoDe(e),0)}));
   const maxMes=Math.max(...porMes.map(m=>m.total),1);
   const mesAct=meses[meses.length-1].key;
-  const delMes=tallerEntries.filter(e=>_mesDe(e)===mesAct);
+  const delMes=tE.filter(e=>_mesDe(e)===mesAct);
   // Desglose por sucursal del mes actual
   const porSuc=new Map();
   for(const e of delMes){
@@ -6115,8 +6139,16 @@ function buildTallerSucOptions(){
     ...units.map(u=>u.branch).filter(Boolean)
   ])].sort();
 
+  const loc=lockedSucursal(); // usuario fijado a su sucursal → select bloqueado
   function fillSelect(el){
     if(!el) return;
+    if(loc){
+      el.innerHTML="";
+      const o=document.createElement("option");o.value=loc;o.textContent=loc;o.selected=true;el.appendChild(o);
+      el.value=loc; el.disabled=true; el.title="Tu cuenta está limitada a la sucursal "+loc;
+      return;
+    }
+    el.disabled=false; el.removeAttribute("title");
     const cur=el.value;
     el.innerHTML="";
     const def=document.createElement("option");def.value="all";def.textContent="Todas las sucursales";el.appendChild(def);
@@ -6219,11 +6251,13 @@ function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal";
 // Fuente del catálogo: flota cloud si está, si no las units cargadas (offline/xlsx).
 // Mismo fallback que buildKPIs/tlAcSearch — sin esto el modal sale vacío sin cloud.
 function _fleetSource(){
+  // scope sucursal del usuario fijado (no-op admin): el modal de flota (que abren las
+  // tarjetas KPI y "sin check") solo lista las unidades de su sucursal.
   // tiresCrit/svc = inspecciones del RANGO (units), igual que el KPI y la tabla → el
   // conteo del modal cuadra con el número de la card.
-  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return units || [];
+  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return scopeUnits(units || []);
   // all/taller/missing* = flota completa (catálogo); fallback a units sin cloud.
-  return (window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []);
+  return scopeUnits((window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []));
 }
 function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
@@ -6427,15 +6461,16 @@ function renderWeeklyPeriodoBar(){
 function buildKPIsSemanales(){
   const kpisEl = document.getElementById("sw-kpis");
   if(!kpisEl) return;
-  const entries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (no por inspección/semana)
+  // scope sucursal del usuario fijado (entries semanales usan .branch; no-op admin)
+  const entries = scopeUnits(getSwUnitsInRange());
   if(!entries.length){
     kpisEl.innerHTML="";
     return;
   }
   // "Sin check" semanal = catálogo (flota) − placas con entry semanal en el rango.
-  const fleetRosterS = window.__fleetUnits;
+  const fleetRosterS = scopeUnits(window.__fleetUnits);
   let faltanS = 0;
-  if(Array.isArray(fleetRosterS) && fleetRosterS.length){
+  if(fleetRosterS.length){
     const presS = new Set(entries.map(e=>e.plate||e.uid));
     faltanS = fleetRosterS.filter(x=>!presS.has(x.plate||x.uid)).length;
   }
@@ -6520,7 +6555,8 @@ function buildKPIsSemanales(){
 }
 
 function renderTableSemanales(){
-  const allEntries = getSwUnitsInRange(); // audit 2026-06-05: 1 fila por unidad (la inspección más reciente del rango)
+  // scope sucursal del usuario fijado (entries usan .branch; no-op admin)
+  const allEntries = scopeUnits(getSwUnitsInRange());
   const empty  = document.getElementById("sw-empty");
   const table  = document.getElementById("sw-table");
   const tbody  = document.getElementById("sw-tbody");
@@ -6528,7 +6564,11 @@ function renderTableSemanales(){
 
   // Poblar select de sucursal (usando entries del rango).
   const selSuc = document.getElementById("sw-filt-suc");
-  if(selSuc){
+  const _locS=lockedSucursal();
+  if(selSuc && _locS){ // usuario fijado: solo su sucursal, bloqueado
+    selSuc.innerHTML=`<option value="${escAttr(_locS)}" selected>${escHtml(_locS)}</option>`;
+    selSuc.value=_locS; selSuc.disabled=true;
+  } else if(selSuc){
     const sucs=[...new Set(allEntries.map(e=>e.branch).filter(Boolean))].sort();
     const curSuc=selSuc.value;
     selSuc.innerHTML=`<option value="all">Todas las sucursales</option>`
@@ -6959,10 +6999,11 @@ function renderActivas(){
   const filtQ    = ((document.getElementById("tl-filt-q")||{}).value||"").trim().toLowerCase();
   const isClosed = e => e.estado==="Finalizado";
 
-  // Agrupar por unitKey: latest entry por unidad + conteo total
+  // Agrupar por unitKey: latest entry por unidad + conteo total.
+  // scopeBySucursal acota a la sucursal del usuario fijado (no-op admin).
   const latestMap = new Map();
   const countMap  = new Map();
-  tallerEntries.forEach(e=>{
+  scopeBySucursal(tallerEntries).forEach(e=>{
     const key = e.unitKey||e.id;
     countMap.set(key,(countMap.get(key)||0)+1);
     const cur=latestMap.get(key);
@@ -7206,15 +7247,20 @@ function renderHistorial(){
 
   // Poblar select sucursal
   const selHist = document.getElementById("tl-hist-suc");
-  if(selHist&&selHist.options.length<=1){
+  const _locH=lockedSucursal();
+  if(selHist && _locH){ // usuario fijado: solo su sucursal, bloqueado (no re-poblar con todas)
+    selHist.innerHTML=`<option value="${escAttr(_locH)}" selected>${escHtml(_locH)}</option>`;
+    selHist.value=_locH; selHist.disabled=true;
+  } else if(selHist&&selHist.options.length<=1){
     const sucs=[...new Set(tallerEntries.map(e=>e.sucursal).filter(Boolean))].sort();
     selHist.innerHTML=`<option value="all">Todas las sucursales</option>`
       +sucs.map(s=>`<option value="${escAttr(s)}"${s===filtSuc?" selected":""}>${escHtml(s)}</option>`).join("");
   }
 
-  // Agrupar por unitKey — solo unidades con al menos un registro cerrado
+  // Agrupar por unitKey — solo unidades con al menos un registro cerrado.
+  // scopeBySucursal acota a la sucursal del usuario fijado (no-op admin).
   const unitMap = new Map();
-  tallerEntries.forEach(e=>{
+  scopeBySucursal(tallerEntries).forEach(e=>{
     const key = e.unitKey||e.id;
     if(!unitMap.has(key)) unitMap.set(key,{entries:[],latestClosed:null,totalGasto:0,totalGastoRef:0,totalGastoMO:0,closedCount:0,latest:null});
     const u = unitMap.get(key);
