@@ -694,7 +694,7 @@ g.inflateBytes=async function(src){
       <button class="uv-tab on" id="uv-tab-lista" onclick="uvSwitch('lista')">Usuarios</button>
       <button class="uv-tab" id="uv-tab-audit" onclick="uvSwitch('audit')">Bitácora</button>
     </div>
-    <div class="sw" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="uv-srch" placeholder="Buscar por nombre, correo, sucursal…" oninput="renderUsuarios()" aria-label="Buscar usuario"/>
     </div>
@@ -791,7 +791,7 @@ g.inflateBytes=async function(src){
       style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
       <option value="all">Todas las sucursales</option>
     </select>
-    <div class="sw" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="sw-srch" type="text" placeholder="ECO, placa, modelo…"
         aria-label="Buscar en semanal por ECO, placa o modelo"
