@@ -91,7 +91,7 @@ export default defineConfig(({ mode }) => ({
         name: "Control de Flotilla GPA",
         short_name: "Flotilla",
         description: "Control de checklist, taller e historial de flotilla GPA",
-        theme_color: "#0F172A",
+        theme_color: "#1E4FA3",
         background_color: "#F8FAFC",
         display: "standalone",
         start_url: "./",
