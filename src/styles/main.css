@@ -131,6 +131,28 @@
   --r4: 16px;
   --col-tpl: 36px 96px 148px 110px 92px 1fr 76px 86px;
 
+  /* ── Escala tipográfica (UX 2026-06-19) ─────────────────────────────────────
+     Antes había ~367 font-size mágicos dispersos (CSS + inline) sin escala y con
+     pasos de 0.5px. Adoptar var(--text-*) en componentes nuevos y al tocar los
+     existentes. Piso = --text-2xs (9px) por legibilidad en campo/móvil (antes
+     había labels de 7–7.5px ilegibles). */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-base: 13px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  /* ── Escala de espaciado base 4/8 — usar var(--space-*) en gap/padding/margin. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
   /* UX Fase 4 (2026-06-11): tokens para colores que vivían hardcoded fuera de
      la paleta (chips por ID y pills de taller) — única fuente light+dark. */
   --indigo: #6366f1;
@@ -805,7 +827,7 @@ select {
   font-variant-numeric: tabular-nums;
 }
 .dtag {
-  font-size: 7.5px;
+  font-size: var(--text-2xs); /* 7.5px → 9px: piso de legibilidad */
   letter-spacing: 0.6px;
   text-transform: uppercase;
   font-weight: 700;
@@ -891,7 +913,7 @@ select {
   border-radius: var(--r2) var(--r2) 0 0;
 }
 .klbl {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 700;
@@ -1248,7 +1270,7 @@ select.filter-active {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 7px;
+  font-size: var(--text-2xs); /* 7px → 9px: piso de legibilidad */
   font-weight: 700;
   color: var(--violet);
   background: var(--violet-d);
@@ -4769,13 +4791,13 @@ select.filter-active {
   margin-bottom: 8px;
 }
 .chart-title {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--w2);
   letter-spacing: 0.1px;
 }
 .chart-hint {
-  font-size: 9.5px;
+  font-size: var(--text-xs); /* 9.5px → 10px */
   font-weight: 500;
   color: var(--s3);
   text-transform: uppercase;
