@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-iTcGKCQ86gv9wGK7PlYCheKF0HTNBzz2cKg+njWkwmo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-NRapDBlCh/aT4HlXiArOC2XeWRNh06rdHlGDM4a1yBo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -215,21 +215,22 @@ g.inflateBytes=async function(src){
 <link rel="stylesheet" href="./src/styles/main.css"/>
 </head>
 <body>
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <div id="app">
 
 <!-- HEADER -->
-<div id="hdr">
+<div id="hdr" role="banner">
   <div class="hbrand">
     <div class="hico"><img src="./gpa-logo.png" alt="GPA Fleet Command"/></div>
     <div>
-      <div class="hname">GPA FLEET COMMAND</div>
+      <div class="hname" role="heading" aria-level="1">GPA FLEET COMMAND</div>
       <div class="hsub">Control Vehicular · MoreApp</div>
     </div>
   </div>
   <button id="nav-toggle" class="nav-toggle" onclick="toggleNav()" aria-label="Menú de navegación" aria-expanded="false" title="Menú">
     <i data-lucide="menu" style="width:20px;height:20px"></i>
   </button>
-  <div id="mainnav">
+  <div id="mainnav" role="navigation" aria-label="Navegación principal">
     <button class="mnav on" id="mn-insp" onclick="showView('inspecciones')">Inspecciones</button>
     <button class="mnav" id="mn-taller" onclick="showView('taller')">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
@@ -388,7 +389,7 @@ g.inflateBytes=async function(src){
       </div>
     </div>
     <div class="hero-donut">
-      <div id="kpi-donut" style="width:88px;height:88px;flex-shrink:0"></div>
+      <div id="kpi-donut" role="img" aria-label="Distribución operativa de la flota (operativas vs. en taller)" style="width:88px;height:88px;flex-shrink:0"></div>
       <div class="dleg" id="dleg"></div>
     </div>
   </div>
@@ -397,7 +398,7 @@ g.inflateBytes=async function(src){
 <!-- ALERTS SUMMARY -->
 <div id="alerts-panel" style="display:none;margin:0 12px 6px;padding:10px 14px;background:var(--bg2);border:1px solid var(--ln);border-radius:8px;font-size:12px;line-height:1.55">
   <div id="alerts-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;cursor:pointer;user-select:none" title="Mostrar/ocultar alertas">
-    <span style="font-weight:700;color:var(--A);font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota<span id="alerts-count" style="display:none;font-weight:600;letter-spacing:0;text-transform:none"></span></span>
+    <span role="heading" aria-level="2" style="font-weight:700;color:var(--A);font-size:11px;text-transform:uppercase;letter-spacing:.8px;display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i>Alertas de Flota<span id="alerts-count" style="display:none;font-weight:600;letter-spacing:0;text-transform:none"></span></span>
     <span id="alerts-chevron" style="display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--A)"></i></span>
   </div>
   <div id="alerts-list"></div>
@@ -409,24 +410,24 @@ g.inflateBytes=async function(src){
     <div class="analytics-grid">
       <div class="chart-card">
         <div class="chart-card-header">
-          <div class="chart-title">Sucursales por riesgo</div>
+          <div class="chart-title" role="heading" aria-level="2">Sucursales por riesgo</div>
           <div class="chart-hint">Click barra → filtrar</div>
         </div>
-        <div id="chart-branches" class="chart-canvas"></div>
+        <div id="chart-branches" class="chart-canvas" role="img" aria-label="Gráfica de barras: inspecciones por sucursal según nivel de riesgo (urgente, revisar, operativa)"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-header">
-          <div class="chart-title">Hallazgos por categoría</div>
+          <div class="chart-title" role="heading" aria-level="2">Hallazgos por categoría</div>
           <div class="chart-hint">5 categorías · 3 niveles</div>
         </div>
-        <div id="chart-categories" class="chart-canvas"></div>
+        <div id="chart-categories" class="chart-canvas" role="img" aria-label="Gráfica de barras: hallazgos por categoría (llantas, checklist, documentos, fluidos, mantenimiento) y nivel"></div>
       </div>
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
-          <div class="chart-title">Tendencia por período</div>
+          <div class="chart-title" role="heading" aria-level="2">Tendencia por período</div>
           <div class="chart-hint">% Urgente · Revisar · Operativa</div>
         </div>
-        <div id="chart-trend" class="chart-canvas"></div>
+        <div id="chart-trend" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia del porcentaje urgente, revisar y operativa por período"></div>
         <div id="chart-trend-empty" class="chart-empty" hidden>
           <i data-lucide="trending-up" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin tendencia histórica</div>
@@ -436,10 +437,10 @@ g.inflateBytes=async function(src){
       </div>
       <div class="chart-card" id="chart-card-heatmap">
         <div class="chart-card-header">
-          <div class="chart-title">Taller · ingresos por día</div>
+          <div class="chart-title" role="heading" aria-level="2">Taller · ingresos por día</div>
           <div class="chart-hint">90 días · hover ver count</div>
         </div>
-        <div id="chart-heatmap" class="chart-canvas"></div>
+        <div id="chart-heatmap" class="chart-canvas" role="img" aria-label="Mapa de calor: cantidad de ingresos a taller por día en los últimos 90 días"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>
           <i data-lucide="wrench" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin ingresos a taller</div>
@@ -449,10 +450,10 @@ g.inflateBytes=async function(src){
       </div>
       <div class="chart-card chart-card-wide" id="chart-card-km">
         <div class="chart-card-header">
-          <div class="chart-title">Km actual vs servicio programado</div>
+          <div class="chart-title" role="heading" aria-level="2">Km actual vs servicio programado</div>
           <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
         </div>
-        <div id="chart-km" class="chart-canvas"></div>
+        <div id="chart-km" class="chart-canvas" role="img" aria-label="Gráfica de dispersión: kilometraje actual vs. kilometraje del siguiente servicio por unidad"></div>
         <div id="chart-km-empty" class="chart-empty" hidden>
           <i data-lucide="gauge" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin datos de kilometraje</div>
@@ -484,7 +485,7 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- MAIN -->
-<div id="main">
+<div id="main" role="main">
   <!-- DROP ZONE -->
   <div id="dz">
     <div class="dcard" id="dcard">
@@ -3996,6 +3997,7 @@ function lbUpdate(){
   
   const _img=document.getElementById("lbimg");
   _img.src=item.url || "";
+  _img.alt=item.label || "Foto de inspección";  // a11y WCAG 1.1.1: antes alt="" fijo
   // Firmas (fondo transparente, trazo oscuro) → fondo blanco para que se vean. Las
   // fotos normales son opacas, la clase no las afecta.
   const _isSig=/firma|signature/i.test(String(item.label||""))||/firma|signature/i.test(String(item.fname||""));

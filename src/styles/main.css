@@ -43,6 +43,27 @@
   margin: 0;
   padding: 0;
 }
+
+/* Skip-link de accesibilidad (WCAG 2.4.1): primer elemento focusable del documento,
+   oculto fuera de viewport hasta recibir foco por teclado; salta a #main. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 9999;
+  background: var(--ac);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: var(--r1, 6px);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
 :root {
   /* ═══ GPA Fleet Command — ADN Industrial Tremor ═══
      Paleta alineada a Tremor (shadcn-family) — HSL refinados, shadow-xs.
