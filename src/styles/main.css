@@ -69,12 +69,16 @@
   --R: #e11d48;
   --Rd: rgba(225, 29, 72, 0.05);
   --Rl: rgba(225, 29, 72, 0.16);
-  --A: #d97706;
-  --Ad: rgba(217, 119, 6, 0.05);
-  --Al: rgba(217, 119, 6, 0.16);
-  --G: #059669;
-  --Gd: rgba(5, 150, 105, 0.05);
-  --Gl: rgba(5, 150, 105, 0.16);
+  /* Ámbar/verde elevados a amber-700/emerald-700 para alcanzar WCAG AA (4.5:1)
+     como TEXTO sobre blanco: antes #d97706 daba 3.19:1 y #059669 3.77:1 (fallaban),
+     y el semáforo es el lenguaje central de la app. El dark ya cumplía → sin cambio.
+     Bonus: el ámbar más profundo se distingue mejor del naranja --O de 'Llantas'. */
+  --A: #b45309;
+  --Ad: rgba(180, 83, 9, 0.05);
+  --Al: rgba(180, 83, 9, 0.16);
+  --G: #047857;
+  --Gd: rgba(4, 120, 87, 0.05);
+  --Gl: rgba(4, 120, 87, 0.16);
   --B: #1d4ed8;
   --Bd: rgba(29, 78, 216, 0.05);
   --Bl: rgba(29, 78, 216, 0.16);
@@ -652,6 +656,15 @@ select {
 }
 .theme-toggle:active {
   transform: scale(0.94);
+}
+/* Dimensiona el SVG del icono de tema de forma determinista. Lucide reemplaza el
+   <i data-lucide="moon"> por un <svg> leyendo los ATRIBUTOS width/height del <i>
+   (no su style inline), que aquí no existen → el svg salía a su default 24px y en
+   móvil no se dibujaba (caja vacía). Fijarlo por CSS lo arregla en ambos tamaños. */
+.theme-toggle > svg,
+.theme-toggle > i {
+  width: 15px;
+  height: 15px;
 }
 /* Icons dentro de botones: los clicks pasan siempre al botón padre. */
 .ubtn > svg,
@@ -1254,6 +1267,12 @@ select.filter-active {
   left: 8px;
   pointer-events: none;
   color: var(--s2);
+}
+/* Buscadores tipo "pill" (#uv-srch, #sw-srch) que maquetan icono+input como flex
+   con gap: el icono va EN FLUJO, no absoluto. Sin esto la regla global .sw svg lo
+   superponía sobre el placeholder ('⌕CO, placa…' con la E tapada). */
+.sw-inline svg {
+  position: static;
 }
 #srch {
   background: var(--bg);
@@ -3677,6 +3696,8 @@ select.filter-active {
 .tl-table-wrap {
   flex: 1;
   overflow-y: auto;
+  overflow-x: auto; /* 11 columnas con th nowrap → scroll horizontal local en móvil
+                       en vez de desbordar y empujar el ancho de toda la página */
   padding: 0 14px 14px;
 }
 .tl-table {
@@ -4203,6 +4224,7 @@ select.filter-active {
 #sw-table-wrap {
   flex: 1;
   overflow-y: auto;
+  overflow-x: auto; /* 13 columnas con th nowrap → scroll horizontal local en móvil */
 }
 .sw-table {
   width: 100%;
@@ -4423,12 +4445,19 @@ select.filter-active {
     font-size: 10px;
   }
   .hacts {
-    width: 100%;
+    /* Antes width:100% + flex-start empujaba tema/⋯ a una 2ª fila completa,
+       pegados a la izquierda como cajitas huérfanas (se veía como overflow no
+       resuelto). margin-left:auto + flex-end los agrupa a la DERECHA, leyéndose
+       como un cluster de acciones intencional independientemente de si envuelven. */
+    margin-left: auto;
     padding: 6px 10px;
-    justify-content: flex-start;
+    justify-content: flex-end;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
+  }
+  .hfile {
+    display: none; /* placeholder vacío (carga legacy oculta) — no aporta y presiona el wrap */
   }
   .hacts::-webkit-scrollbar {
     height: 3px;
@@ -4683,8 +4712,12 @@ select.filter-active {
   gap: 12px;
 }
 .chart-card {
-  background: var(--bg2);
-  border: 1px solid var(--ln2);
+  /* Superficie alineada al resto de tarjetas (.kc/.hero-card): var(--bg) sobre el
+     body var(--bg2) + borde var(--ln). Antes usaba --bg2/--ln2, que en tema CLARO
+     quedaban del mismo color que la página (delta de luminancia ~nulo) → la tarjeta
+     se veía invisible y los títulos flotaban sueltos. En dark sigue contrastando. */
+  background: var(--bg);
+  border: 1px solid var(--ln);
   border-radius: var(--r2);
   padding: 12px 14px 10px;
   min-width: 0;
