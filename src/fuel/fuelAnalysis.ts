@@ -73,7 +73,18 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
   const byUnit = groupByUnit(cargas);
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
-    const sorted = [...arr].sort((a, b) => toTime(a) - toTime(b));
+    const sorted = [...arr].sort((a, b) => {
+      const dt = toTime(a) - toTime(b);
+      if (dt !== 0) return dt;
+      // Mismo timestamp (típico cuando MoreApp manda solo fecha sin hora): ordena por
+      // odómetro ascendente para no inventar un "retroceso" entre dos cargas del mismo
+      // día, y desempata estable por loadId. Sin esto el orden quedaba a merced del
+      // orden de listado de DynamoDB → falso km-retrocede + km/l mal repartido.
+      const ka = typeof a.km === "number" ? a.km : 0;
+      const kb = typeof b.km === "number" ? b.km : 0;
+      if (ka !== kb) return ka - kb;
+      return a.loadId.localeCompare(b.loadId);
+    });
     let prev: FuelEntry | null = null;
     for (const e of sorted) {
       const km = typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
@@ -87,9 +98,20 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
         diasDesdeAnterior = dt > 0 ? dt / 86400000 : 0;
         // Montacargas Gas LP: su `km` es horómetro (horas), no odómetro → NO se computa
         // km recorrido ni km/l (sería ruido que contamina baseline/ranking/anomalías).
-        if (typeof prev.km === "number" && km != null && !e.esMontacargas) {
+        // Se revisa también `prev` por defensa en profundidad (montacargas mal etiquetado).
+        if (typeof prev.km === "number" && km != null && !e.esMontacargas && !prev.esMontacargas) {
           kmDesdeAnterior = km - prev.km;
-          if (litros != null && kmDesdeAnterior > 0) kmPorLitro = kmDesdeAnterior / litros;
+          // km/l solo si el tramo es plausible: >0 y por debajo del salto improbable.
+          // Un salto > MAX_KM_JUMP casi siempre significa cargas intermedias no
+          // registradas → ese km/l estaría inflado (km de varios tanques ÷ litros de uno)
+          // y, si no se excluyera del baseline, podría empujar la unidad a "mejores".
+          // Dejamos kmDesdeAnterior poblado para que la alerta km-salto siga disparando.
+          if (
+            litros != null &&
+            kmDesdeAnterior > 0 &&
+            kmDesdeAnterior <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+          )
+            kmPorLitro = kmDesdeAnterior / litros;
         }
       }
       const precioPorLitro =

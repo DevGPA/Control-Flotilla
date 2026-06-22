@@ -23,10 +23,13 @@ export type UnitRank = { eco: string; kmpl: number; n: number };
 
 /**
  * Ranking de unidades por km/l (de baseline.porUnidad). Desc (mejor primero).
- * minN=3: una unidad necesita ≥3 lecturas de km/l para entrar al ranking — con 1-2
- * cargas el promedio es ruido (un error de captura lo dispara) y distorsiona el orden.
+ * minN=4: una unidad necesita ≥4 lecturas de km/l para entrar al ranking. El umbral es 4
+ * (no 3) a propósito: `clampOutliers` (IQR) solo recorta con ≥4 valores, así que con 3 el
+ * promedio entra SIN protección contra outliers y un solo llenado parcial define su posición
+ * en mejores/peores. Con ≥4 toda unidad clasificada queda recortada por IQR. (Implica ≥5
+ * cargas, porque la 1ª carga de cada unidad no produce km/l.)
  */
-export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 3): UnitRank[] {
+export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 4): UnitRank[] {
   const out: UnitRank[] = [];
   for (const [eco, s] of baseline.porUnidad) {
     if (s.n >= minN && Number.isFinite(s.mean) && s.mean > 0)

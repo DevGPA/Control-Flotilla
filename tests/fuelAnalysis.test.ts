@@ -73,6 +73,44 @@ describe("computeFuelMetrics", () => {
   });
 });
 
+describe("computeFuelMetrics — exclusiones que protegen el ranking", () => {
+  it("salto de odómetro improbable (> MAX_KM_JUMP) → km/l null pero alerta viva", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-20", 10500, 50), // salto 9500 km > 8000
+    ]);
+    expect(m[1]!.kmDesdeAnterior).toBe(9500);
+    expect(m[1]!.kmPorLitro).toBeNull(); // excluido de baseline/ranking (no infla)
+    // la alerta km-salto sigue disparando (usa kmDesdeAnterior, no kmPorLitro)
+    const f = detectFuelAnomalies(m, buildFleetBaseline(m, []));
+    expect(f.some((x) => x.key.startsWith("Fuel:km-salto:"))).toBe(true);
+  });
+
+  it("si la carga ANTERIOR es montacargas, no computa km/l (guard sobre prev)", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 100, 50, undefined, { esMontacargas: true }),
+      carga("U1", "2026-01-10", 600, 50),
+    ]);
+    expect(m[1]!.kmPorLitro).toBeNull();
+  });
+
+  it("dos cargas el mismo día sin hora → orden por odómetro, sin falso retroceso", () => {
+    const hi = carga("U1", "2026-01-01", 1500, 50, undefined, {
+      fechaHora: "2026-01-01",
+      loadId: "U1|carga|hi",
+    });
+    const lo = carga("U1", "2026-01-01", 1000, 50, undefined, {
+      fechaHora: "2026-01-01",
+      loadId: "U1|carga|lo",
+    });
+    const m = computeFuelMetrics([hi, lo]); // entra desordenada (mayor km primero)
+    expect(m[0]!.km).toBe(1000); // se reordena por km asc
+    expect(m[1]!.km).toBe(1500);
+    expect(m[1]!.kmDesdeAnterior).toBe(500); // +500, no -500
+    expect(m[1]!.kmPorLitro).toBe(10);
+  });
+});
+
 describe("buildFleetBaseline", () => {
   it("calcula media por unidad y media de flota", () => {
     const entries = [
