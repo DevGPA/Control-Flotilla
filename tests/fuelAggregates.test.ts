@@ -58,18 +58,30 @@ function carga(
 }
 
 describe("rankUnitsByKmpl", () => {
-  it("ordena desc por km/l y respeta minN", () => {
+  it("ordena desc por km/l y respeta minN=4", () => {
     const base: FleetBaseline = {
       porUnidad: new Map([
         ["A", { mean: 8, sd: 1, n: 5 }],
-        ["B", { mean: 12, sd: 1, n: 4 }],
-        ["C", { mean: 20, sd: 0, n: 1 }], // n<2 → excluido
+        ["B", { mean: 12, sd: 1, n: 4 }], // n=4 → entra (IQR ya recorta)
+        ["C", { mean: 20, sd: 0, n: 1 }], // n<4 → excluido
       ]),
       porTipo: new Map(),
       flotaMean: 10,
     };
     const r = rankUnitsByKmpl(base);
     expect(r.map((x) => x.eco)).toEqual(["B", "A"]);
+  });
+
+  it("excluye unidades con 3 lecturas (n<4 entra al ranking sin recorte IQR)", () => {
+    const base: FleetBaseline = {
+      porUnidad: new Map([
+        ["A", { mean: 8, sd: 1, n: 4 }], // entra
+        ["B", { mean: 30, sd: 9, n: 3 }], // excluida pese a km/l alto: muestra sin IQR
+      ]),
+      porTipo: new Map(),
+      flotaMean: 10,
+    };
+    expect(rankUnitsByKmpl(base).map((x) => x.eco)).toEqual(["A"]);
   });
 });
 
