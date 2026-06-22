@@ -7,7 +7,7 @@
  * Importado una vez desde src/main.ts. Toda la lógica pesada vive en módulos puros
  * (fuelAnalysis, renderTableCombustible, renderKpis); aquí solo cableado de DOM.
  */
-import type { FuelEntry, FuelMetrics } from "./types";
+import type { FuelEntry, FuelMetrics, FuelEvidenceKind, FuelVerdict } from "./types";
 import { computeFuelMetrics, buildFleetBaseline, detectFuelAnomalies } from "./fuelAnalysis";
 import {
   renderTableCombustible,
@@ -19,6 +19,8 @@ import {
   type FuelVerdictFilter,
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
+import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
+import { upsertValidacionCarga } from "../api/client";
 
 declare global {
   interface Window {
@@ -29,6 +31,7 @@ declare global {
     openFuelDetail?: (loadId: string, order?: string[]) => void;
     scopeBySucursal?: <T extends { sucursal?: string }>(rows: T[]) => T[];
     lockedSucursal?: () => string | null;
+    canWrite?: () => boolean;
     notify?: (msg: string, kind?: string, ms?: number) => void;
   }
 }
@@ -46,6 +49,10 @@ const filter: FuelTableFilter = {
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+// Detalle/validación
+let lastMetricsByLoad = new Map<string, FuelMetrics>();
+let detailOrder: string[] = [];
+let detailIndex = -1;
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -72,6 +79,7 @@ function renderCombustible(): void {
   // carga usa la carga anterior aunque caiga fuera del rango visible).
   const allMetrics = computeFuelMetrics(all);
   const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
+  lastMetricsByLoad = metricsByLoad;
   const baseline = buildFleetBaseline(allMetrics, all);
   const anomalies = detectFuelAnomalies(allMetrics, baseline);
 
@@ -211,12 +219,119 @@ function mountControls(): void {
     }
     renderCombustible();
   });
+  // Controles del drawer de detalle.
+  $("fuel-det-close")?.addEventListener("click", closeFuelDetail);
+  $("fuel-det-prev")?.addEventListener("click", () => navDetail(-1));
+  $("fuel-det-next")?.addEventListener("click", () => navDetail(1));
+  document.addEventListener("keydown", (ev) => {
+    const det = $("fuel-det");
+    if (!det || !det.classList.contains("open")) return;
+    const k = (ev as KeyboardEvent).key;
+    if (k === "Escape") closeFuelDetail();
+    else if (k === "ArrowLeft") navDetail(-1);
+    else if (k === "ArrowRight") navDetail(1);
+  });
+}
+
+// ── Drawer de detalle / validación de evidencias ──────────────
+function resolveUrl(fname: string): string | null {
+  const map = (window as unknown as { __cloudPhotoUrlMap?: Map<string, { url: string }> })
+    .__cloudPhotoUrlMap;
+  return map?.get(fname.toLowerCase())?.url ?? null;
+}
+
+function canWrite(): boolean {
+  return typeof window.canWrite === "function" ? window.canWrite() : true;
+}
+
+function loadById(loadId: string): FuelEntry | undefined {
+  return (window.fuelEntries ?? []).find((e) => e.loadId === loadId);
+}
+
+function renderCurrentDetail(): void {
+  const loadId = detailOrder[detailIndex];
+  if (!loadId) return;
+  const load = loadById(loadId);
+  const body = $("fuel-det-body");
+  if (!load || !body) return;
+  const pos = $("fuel-det-pos");
+  if (pos) pos.textContent = `${detailIndex + 1} / ${detailOrder.length}`;
+  renderDetalleCarga({
+    body,
+    titleEl: $("fuel-det-title"),
+    metaEl: $("fuel-det-meta"),
+    load,
+    metrics: lastMetricsByLoad.get(loadId),
+    resolveUrl,
+    canWrite: canWrite(),
+    onValidate: handleValidate,
+  });
+}
+
+function openFuelDetail(loadId: string, order?: string[]): void {
+  detailOrder = order && order.length ? order : [loadId];
+  detailIndex = Math.max(0, detailOrder.indexOf(loadId));
+  const det = $("fuel-det");
+  if (det) det.classList.add("open");
+  renderCurrentDetail();
+}
+
+function closeFuelDetail(): void {
+  $("fuel-det")?.classList.remove("open");
+}
+
+function navDetail(delta: number): void {
+  if (detailOrder.length === 0) return;
+  detailIndex = (detailIndex + delta + detailOrder.length) % detailOrder.length;
+  renderCurrentDetail();
+}
+
+/** Aplica un veredicto (por evidencia o global) y persiste en ValidacionCarga. */
+function handleValidate(
+  loadId: string,
+  kind: FuelEvidenceKind | "all",
+  verdict: FuelVerdict,
+  nota?: string,
+): void {
+  const load = loadById(loadId);
+  if (!load) return;
+  const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
+  const por: Partial<Record<FuelEvidenceKind, FuelVerdict>> = { ...review.porEvidencia };
+  if (kind === "all") {
+    // Marca OK todas las evidencias presentes (odometro/medidor/ticket).
+    for (const k of ["odometro", "medidor", "ticket"] as FuelEvidenceKind[]) por[k] = "ok";
+  } else {
+    por[kind] = verdict;
+  }
+  const verdictGlobal = deriveGlobalVerdict(por);
+  load.review = {
+    ...review,
+    porEvidencia: por,
+    verdictGlobal,
+    nota: nota ?? review.nota,
+    fuenteDeteccion: "manual",
+  };
+  // Persistencia best-effort (no bloquea la UI).
+  void upsertValidacionCarga({
+    tenantId: "gpa",
+    loadId,
+    verdictGlobal,
+    porEvidencia: por,
+    nota: nota ?? review.nota,
+    revisadoPor: "ui",
+  }).catch((e) => {
+    console.warn("[fuel] upsertValidacionCarga falló:", e);
+    window.notify?.("No se pudo guardar la validación.", "error", 4000);
+  });
+  renderCurrentDetail();
+  renderCombustible();
 }
 
 // Exponer al HTML/cloudHydrate.
 window.renderCombustible = renderCombustible;
 window.initRangoFuel = initRangoFuel;
 window.updateFuelNavBadge = updateFuelNavBadge;
+window.openFuelDetail = openFuelDetail;
 
 // Montar listeners cuando el DOM esté listo.
 if (document.readyState === "loading") {

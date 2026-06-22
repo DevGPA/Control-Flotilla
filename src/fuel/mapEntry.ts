@@ -75,9 +75,10 @@ const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 /** Clasifica una foto (por su dataName/col de MoreApp) a un tipo de evidencia. */
 export function evidenceKindOf(col: string): FuelEvidenceKind {
   const c = col.toLowerCase();
-  if (c.includes("horometro") || c.includes("odometro") || c.includes("medidorantes"))
-    return "odometro";
-  if (c.includes("medidordecombustible") || c.includes("medidor")) return "medidor";
+  // Horómetro (montacargas) = lectura de horas/odómetro de la solicitud.
+  if (c.includes("horometro") || c.includes("odometro")) return "odometro";
+  // fotoMedidorDeCombustible y fotoDelMedidorAntesDeCargar = nivel de combustible.
+  if (c.includes("medidor")) return "medidor";
   if (c.includes("ticket")) return "ticket";
   if (c.includes("bomba")) return "bomba";
   if (c.includes("signature") || c.includes("firma")) return "firma";
