@@ -1,6 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { rankUnitsByKmpl, aggByGroup, aggByMonth } from "../src/fuel/fuelAggregates";
+import {
+  rankUnitsByKmpl,
+  splitRanking,
+  aggByGroup,
+  aggByMonth,
+  type UnitRank,
+} from "../src/fuel/fuelAggregates";
 import type { FuelEntry, FleetBaseline } from "../src/fuel/types";
+
+const rk = (eco: string, kmpl: number): UnitRank => ({ eco, kmpl, n: 5 });
+
+describe("splitRanking (mejores/peores disjuntos)", () => {
+  it("NO solapa cuando hay <20 unidades (el bug reportado)", () => {
+    // 14 unidades DESC → antes slice(0,10) y slice(-10) compartían 6.
+    const ranks = Array.from({ length: 14 }, (_, i) => rk(`u${i}`, 14 - i));
+    const { mejores, peores } = splitRanking(ranks, 10);
+    expect(mejores).toHaveLength(7); // k = floor(14/2)
+    expect(peores).toHaveLength(7);
+    const m = new Set(mejores.map((x) => x.eco));
+    expect(peores.filter((p) => m.has(p.eco))).toHaveLength(0); // disjuntos
+    expect(mejores[0]!.kmpl).toBe(14); // mejor primero
+    expect(peores[0]!.kmpl).toBe(1); // peor primero
+  });
+  it("con ≥20 unidades respeta el tope de 10 por lado, disjuntos", () => {
+    const ranks = Array.from({ length: 24 }, (_, i) => rk(`u${i}`, 24 - i));
+    const { mejores, peores } = splitRanking(ranks, 10);
+    expect(mejores).toHaveLength(10);
+    expect(peores).toHaveLength(10);
+    const m = new Set(mejores.map((x) => x.eco));
+    expect(peores.some((p) => m.has(p.eco))).toBe(false);
+  });
+  it("0/1 unidad → vacío (no se puede rankear)", () => {
+    expect(splitRanking([], 10)).toEqual({ mejores: [], peores: [] });
+    expect(splitRanking([rk("a", 5)], 10)).toEqual({ mejores: [], peores: [] });
+  });
+});
 
 function carga(
   eco: string,

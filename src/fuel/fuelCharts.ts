@@ -70,7 +70,9 @@ function hbar(
         textStyle: { color: p.text },
         formatter: (ps: unknown) => {
           const a = (ps as { name: string; value: number }[])[0]!;
-          return `Unidad ${a.name}<br/><b>${a.value.toFixed(2)} km/l</b>`;
+          const item = data.find((d) => d.eco === a.name);
+          const n = item ? item.n : 0;
+          return `Unidad ${a.name}<br/><b>${a.value.toFixed(2)} km/l</b><br/><span style="opacity:.7">${n} carga${n === 1 ? "" : "s"} en el período</span>`;
         },
       },
       xAxis: { type: "value", ...axisCommon(p) },
