@@ -69,6 +69,26 @@ export function loadIdOf(eco: string, tipo: string, eventoId: string): string {
   return `${eco}|${tipo}|${eventoId}`;
 }
 
+/**
+ * Deriva la categoría de unidad desde `producto` (fiable) y `combustible` (no fiable:
+ * los montacargas Gas LP traen combustible="Gasolina"). "GAS LP" en el producto ⇒
+ * montacargas (su kilometraje es horómetro, no odómetro → sin km/l).
+ */
+export function deriveTipo(
+  producto: string,
+  combustible: string,
+): { tipoUnidad: string; esMontacargas: boolean } {
+  const p = producto.toLowerCase();
+  const c = combustible.toLowerCase();
+  if (p.includes("gas lp") || c.includes("gas lp"))
+    return { tipoUnidad: "Gas LP (montacargas)", esMontacargas: true };
+  if (p.includes("diesel") || c.includes("diesel"))
+    return { tipoUnidad: "Diesel", esMontacargas: false };
+  if (p.includes("premium")) return { tipoUnidad: "Gasolina Premium", esMontacargas: false };
+  if (p.includes("magna")) return { tipoUnidad: "Gasolina Magna", esMontacargas: false };
+  return { tipoUnidad: combustible || "(sin tipo)", esMontacargas: false };
+}
+
 const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>(["ok", "discrepancia", "pendiente"]);
 const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 
@@ -126,6 +146,9 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
     .filter((p) => p.fname);
   const ubic = safeObj(datos.ubicacionDeCarga);
   const ubicacion = typeof ubic.formattedValue === "string" ? ubic.formattedValue : undefined;
+  const producto = typeof datos.producto === "string" ? datos.producto : "";
+  const combustible = typeof datos.combustible === "string" ? datos.combustible : "";
+  const { tipoUnidad, esMontacargas } = deriveTipo(producto, combustible);
 
   return {
     loadId: loadIdOf(row.economicoId, tipo, row.eventoId),
@@ -139,9 +162,10 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
     fechaHora: row.fechaHora ?? undefined,
     responsable: row.responsable ?? undefined,
     km: num(row.kmCapturado),
-    tipoUnidad: typeof datos.combustible === "string" ? datos.combustible : undefined,
-    combustible: typeof datos.combustible === "string" ? datos.combustible : undefined,
-    producto: typeof datos.producto === "string" ? datos.producto : undefined,
+    tipoUnidad,
+    combustible: combustible || undefined,
+    producto: producto || undefined,
+    esMontacargas,
     nivelAntes: row.nivelAntes ?? undefined,
     nivelDeseado: row.nivelDeseado ?? undefined,
     montoEstimado: num(row.montoEstimado),

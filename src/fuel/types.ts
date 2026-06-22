@@ -50,8 +50,14 @@ export type FuelEntry = {
   fechaHora?: string;
   responsable?: string;
   km?: number;
-  tipoUnidad?: string; // combustible (Diesel / Gas LP) — agrupación "unidades similares"
+  tipoUnidad?: string; // categoría derivada de producto (Diesel / Gas LP / Premium…)
   combustible?: string;
+  /**
+   * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no
+   * aplica. Se detecta por `producto` con "GAS LP". Se excluye de métricas km/l,
+   * baseline, rankings y anomalías de km (pero sí cuenta en consumo/litros).
+   */
+  esMontacargas?: boolean;
   producto?: string;
   // Solicitud
   nivelAntes?: string;

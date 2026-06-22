@@ -72,11 +72,15 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       let kmDesdeAnterior: number | null = null;
       let kmPorLitro: number | null = null;
       let diasDesdeAnterior: number | null = null;
-      if (prev && typeof prev.km === "number" && km != null) {
-        kmDesdeAnterior = km - prev.km;
-        if (litros != null && kmDesdeAnterior > 0) kmPorLitro = kmDesdeAnterior / litros;
+      if (prev) {
         const dt = toTime(e) - toTime(prev);
         diasDesdeAnterior = dt > 0 ? dt / 86400000 : 0;
+        // Montacargas Gas LP: su `km` es horómetro (horas), no odómetro → NO se computa
+        // km recorrido ni km/l (sería ruido que contamina baseline/ranking/anomalías).
+        if (typeof prev.km === "number" && km != null && !e.esMontacargas) {
+          kmDesdeAnterior = km - prev.km;
+          if (litros != null && kmDesdeAnterior > 0) kmPorLitro = kmDesdeAnterior / litros;
+        }
       }
       const precioPorLitro =
         monto != null && litros != null
