@@ -4119,6 +4119,21 @@ select.filter-active {
   margin-bottom: 2px;
 }
 
+/* Blindaje del tablero de Inspecciones: SOLO visible en su vista. cloudHydrate y
+   otros caminos (showDash/buildAlertsSummary/initRangoBar) re-muestran estos
+   elementos al terminar la hidratación sin saber la vista activa; este !important
+   los oculta en cualquier vista != inspecciones, gobernado por body[data-view] que
+   fija showView. Arregla "se trae el tablero de inspecciones" en Usuarios/Análisis/
+   Combustible/Taller/Semanales (2026-06-22). */
+body:not([data-view="inspecciones"]) #main,
+body:not([data-view="inspecciones"]) #kpi,
+body:not([data-view="inspecciones"]) #tb,
+body:not([data-view="inspecciones"]) #periodo-bar,
+body:not([data-view="inspecciones"]) #tw,
+body:not([data-view="inspecciones"]) #alerts-panel {
+  display: none !important;
+}
+
 /* ════ MÓDULO SEMANALES ══════════════════════════════════ */
 #view-semanales,
 #view-combustible {

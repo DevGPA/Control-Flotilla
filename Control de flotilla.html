@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-CB77nkcrwmko1GW7KMMf9DiYIl/zhATCtiAww2iACho='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-L0Vr/VwutlwbRSLX6BwTLvlZkZiWFkW2qOdfsZCH10o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -214,7 +214,7 @@ g.inflateBytes=async function(src){
      Cualquier edición de estilos se hace allí, no inline aquí. -->
 <link rel="stylesheet" href="./src/styles/main.css"/>
 </head>
-<body>
+<body data-view="inspecciones">
 <a class="skip-link" href="#main">Saltar al contenido</a>
 <div id="app">
 
@@ -6156,6 +6156,11 @@ async function uvPromptRol(sub){
 window.uvPromptRol = uvPromptRol;
 
 function showView(view){
+  // data-view gobierna la regla CSS que FUERZA ocultar el tablero de Inspecciones
+  // (#kpi/#tb/#periodo-bar/#tw/#alerts-panel) en cualquier vista que no sea Inspecciones.
+  // Blindaje contra re-shows tardíos (cloudHydrate→showDash/buildAlertsSummary/initRangoBar
+  // corren al terminar la hidratación sin importar la vista activa). Bug 2026-06-22.
+  document.body.dataset.view = view;
   const isInsp     = view==="inspecciones";
   const isTaller   = view==="taller";
   const isSem      = view==="semanales";
