@@ -848,6 +848,11 @@ g.inflateBytes=async function(src){
   <div id="fuel-kpis"></div>
   <!-- Barra de filtros -->
   <div id="fuel-bar">
+    <div class="fuel-seg" role="tablist" aria-label="Vista de combustible">
+      <button class="fuel-seg-btn on" id="fuel-seg-lista" role="tab" aria-selected="true">📋 Lista</button>
+      <button class="fuel-seg-btn" id="fuel-seg-dash" role="tab" aria-selected="false">📊 Dashboard</button>
+    </div>
+    <span class="fuel-seg-divdr"></span>
     <select id="fuel-filt-tipo" aria-label="Filtrar por tipo"
       style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
       <option value="all">Cargas y solicitudes</option>
@@ -875,8 +880,7 @@ g.inflateBytes=async function(src){
         aria-label="Buscar combustible por ID de unidad, placa o responsable"
         style="border:none;background:transparent;font-size:11px;color:var(--w1);width:160px;outline:none"/>
     </div>
-    <button class="sw-filter-btn" id="fuel-view-toggle" style="margin-left:auto">📊 Dashboard</button>
-    <span id="fuel-rcnt" style="font-size:10px;color:var(--s2)"></span>
+    <span id="fuel-rcnt" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Tabla -->
   <div id="fuel-table-wrap">

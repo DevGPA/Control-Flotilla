@@ -126,6 +126,22 @@ function renderCombustible(): void {
   updateFuelNavBadge();
 }
 
+/** Alterna entre Lista y Dashboard (control segmentado). */
+function setDashView(show: boolean): void {
+  dashShown = show;
+  const tw = $("fuel-table-wrap");
+  const dash = $("fuel-dash");
+  if (tw) tw.style.display = show ? "none" : "";
+  if (dash) dash.style.display = show ? "block" : "none";
+  const bl = $("fuel-seg-lista");
+  const bd = $("fuel-seg-dash");
+  bl?.classList.toggle("on", !show);
+  bl?.setAttribute("aria-selected", String(!show));
+  bd?.classList.toggle("on", show);
+  bd?.setAttribute("aria-selected", String(show));
+  if (show) void renderFuelDash();
+}
+
 /** Render del dashboard ejecutivo (carga echarts dinámicamente al primer uso). */
 async function renderFuelDash(): Promise<void> {
   const dash = $("fuel-dash");
@@ -256,17 +272,9 @@ function mountControls(): void {
     }
     renderCombustible();
   });
-  // Toggle Lista ↔ Dashboard.
-  $("fuel-view-toggle")?.addEventListener("click", () => {
-    dashShown = !dashShown;
-    const tw = $("fuel-table-wrap");
-    const dash = $("fuel-dash");
-    const btn = $("fuel-view-toggle");
-    if (tw) tw.style.display = dashShown ? "none" : "";
-    if (dash) dash.style.display = dashShown ? "block" : "none";
-    if (btn) btn.textContent = dashShown ? "📋 Lista" : "📊 Dashboard";
-    if (dashShown) void renderFuelDash();
-  });
+  // Toggle segmentado Lista | Dashboard.
+  $("fuel-seg-lista")?.addEventListener("click", () => setDashView(false));
+  $("fuel-seg-dash")?.addEventListener("click", () => setDashView(true));
   // Controles del drawer de detalle.
   $("fuel-det-close")?.addEventListener("click", closeFuelDetail);
   $("fuel-det-prev")?.addEventListener("click", () => navDetail(-1));
