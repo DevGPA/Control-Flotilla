@@ -139,6 +139,16 @@ function tendencia(container: HTMLElement, meses: MonthConsumo[]): void {
       backgroundColor: p.bg2,
       borderColor: p.ln,
       textStyle: { color: p.text },
+      formatter: (ps: unknown) => {
+        const arr = ps as { axisValue: string; seriesName: string; value: number }[];
+        if (!arr.length) return "";
+        const lines = arr.map((a) =>
+          a.seriesName === "Gasto"
+            ? `Gasto: <b>${PESO.format(a.value)}</b>`
+            : `Litros: <b>${NUM.format(a.value)} L</b>`,
+        );
+        return `${arr[0]!.axisValue}<br/>${lines.join("<br/>")}`;
+      },
     },
     xAxis: { type: "category", data: meses.map((m) => m.mes), ...axisCommon(p) },
     yAxis: [

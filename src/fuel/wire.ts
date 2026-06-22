@@ -291,9 +291,15 @@ function mountControls(): void {
 
 // ── Drawer de detalle / validación de evidencias ──────────────
 function resolveUrl(fname: string): string | null {
-  const map = (window as unknown as { __cloudPhotoUrlMap?: Map<string, { url: string }> })
-    .__cloudPhotoUrlMap;
-  return map?.get(fname.toLowerCase())?.url ?? null;
+  const map = (
+    window as unknown as { __cloudPhotoUrlMap?: Map<string, { url: string; expires?: number }> }
+  ).__cloudPhotoUrlMap;
+  const e = map?.get(fname.toLowerCase());
+  if (!e) return null;
+  // Descartar URLs firmadas vencidas (el auto-refresh de 4 min las re-firma). Igual
+  // que el legacy imgUrl; sin esto, el drawer muestra imágenes rotas tras el TTL.
+  if (typeof e.expires === "number" && e.expires <= Date.now()) return null;
+  return e.url ?? null;
 }
 
 function canWrite(): boolean {
@@ -351,6 +357,7 @@ function handleValidate(
 ): void {
   const load = loadById(loadId);
   if (!load) return;
+  const prevReview = load.review; // para rollback si falla la persistencia
   const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
   const por: Partial<Record<FuelEvidenceKind, FuelVerdict>> = { ...review.porEvidencia };
   if (kind === "all") {
@@ -360,27 +367,51 @@ function handleValidate(
     por[kind] = verdict;
   }
   const verdictGlobal = deriveGlobalVerdict(por);
+  // tenant y revisor de la sesión real (no literales): trazabilidad correcta y
+  // sin escritura cross-tenant si algún día hay un 2º tenant.
+  const sess = window.__cloudSession;
+  const tenantId = (sess && sess.tenantId) || "gpa";
+  const revisadoPor = (sess && sess.email) || "ui";
   load.review = {
     ...review,
     porEvidencia: por,
     verdictGlobal,
     nota: nota ?? review.nota,
+    revisadoPor,
     fuenteDeteccion: "manual",
   };
-  // Persistencia best-effort (no bloquea la UI).
   void upsertValidacionCarga({
-    tenantId: "gpa",
+    tenantId,
     loadId,
     verdictGlobal,
     porEvidencia: por,
     nota: nota ?? review.nota,
-    revisadoPor: "ui",
+    revisadoPor,
   }).catch((e) => {
     console.warn("[fuel] upsertValidacionCarga falló:", e);
+    // Rollback del update optimista: si no se guardó, revierte el estado en UI.
+    load.review = prevReview;
+    renderCurrentDetail();
+    renderCombustible();
     window.notify?.("No se pudo guardar la validación.", "error", 4000);
   });
   renderCurrentDetail();
   renderCombustible();
+  // La fila validada pudo salir del filtro (p.ej. "Pendiente"); re-sincroniza el
+  // orden de navegación del drawer con lo realmente visible en la tabla.
+  syncDetailOrderFromDOM(loadId);
+}
+
+/** Re-sincroniza detailOrder/detailIndex con las filas visibles tras un re-render. */
+function syncDetailOrderFromDOM(currentLoadId: string): void {
+  const ids = Array.from(document.querySelectorAll("#fuel-tbody tr"))
+    .map((tr) => (tr as HTMLElement).dataset.loadId)
+    .filter((x): x is string => !!x);
+  if (!ids.length) return;
+  detailOrder = ids;
+  const idx = ids.indexOf(currentLoadId);
+  if (idx >= 0) detailIndex = idx;
+  else if (detailIndex >= ids.length) detailIndex = ids.length - 1;
 }
 
 // Exponer al HTML/cloudHydrate.

@@ -3,6 +3,22 @@
  */
 import type { FuelEntry, FleetBaseline } from "./types";
 
+/**
+ * Monto efectivo de una carga: el `monto` capturado, o reconstruido litros×precio
+ * cuando el ticket llegó sin total (montoTotal vacío pero litros+precio presentes).
+ * Sin esto, el KPI de Gasto y el desglose por sucursal/mes subestiman (suman $0).
+ */
+export function montoEfectivo(e: {
+  monto?: number;
+  litros?: number;
+  precioPorLitro?: number;
+}): number {
+  if (typeof e.monto === "number" && Number.isFinite(e.monto)) return e.monto;
+  if (typeof e.litros === "number" && typeof e.precioPorLitro === "number")
+    return e.litros * e.precioPorLitro;
+  return 0;
+}
+
 export type UnitRank = { eco: string; kmpl: number; n: number };
 
 /** Ranking de unidades por km/l (de baseline.porUnidad). Desc (mejor primero). */
@@ -32,7 +48,7 @@ export function aggByGroup(
       m.set(key, g);
     }
     g.litros += e.litros ?? 0;
-    g.gasto += e.monto ?? 0;
+    g.gasto += montoEfectivo(e);
     g.cargas += 1;
   }
   return [...m.values()].sort((a, b) => b.gasto - a.gasto);
@@ -53,7 +69,7 @@ export function aggByMonth(entries: readonly FuelEntry[]): MonthConsumo[] {
       m.set(mes, g);
     }
     g.litros += e.litros ?? 0;
-    g.gasto += e.monto ?? 0;
+    g.gasto += montoEfectivo(e);
     g.cargas += 1;
   }
   return [...m.values()].sort((a, b) => a.mes.localeCompare(b.mes));

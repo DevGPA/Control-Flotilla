@@ -33,11 +33,21 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   MIN_BASELINE_N: 3,
 };
 
-/** Timestamp para ordenar cronológicamente (fechaHora si existe, si no fecha). */
+/**
+ * Timestamp para ordenar cronológicamente (fechaHora si existe, si no fecha).
+ * Construye la fecha por COMPONENTES en hora local para que "YYYY-MM-DD" (solo
+ * fecha) y "YYYY-MM-DD HH:MM" usen el MISMO huso. Antes se usaba Date.parse, que
+ * interpreta la solo-fecha como UTC y la fecha+hora como local → en UTC-6 invertía
+ * el orden de cargas de la misma unidad y corrompía km/l + disparaba falsas anomalías.
+ */
 function toTime(e: Pick<FuelEntry, "fecha" | "fechaHora">): number {
-  const s = (e.fechaHora || e.fecha || "").replace(" ", "T");
-  const t = Date.parse(s);
-  return Number.isFinite(t) ? t : 0;
+  const raw = String(e.fechaHora || e.fecha || "").trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) {
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+  }
+  return new Date(+m[1]!, +m[2]! - 1, +m[3]!, m[4] ? +m[4] : 0, m[5] ? +m[5] : 0).getTime();
 }
 
 /** Agrupa entradas por unidad (economicoId), preservando el array por clave. */

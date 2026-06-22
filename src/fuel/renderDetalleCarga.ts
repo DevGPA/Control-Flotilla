@@ -13,6 +13,7 @@ const PESO = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 2,
 });
 const NUM = new Intl.NumberFormat("es-MX");
+const NUM1 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1 }); // litros: 1 decimal, igual que la tabla
 
 export type RenderDetalleCargaDeps = {
   body: HTMLElement;
@@ -69,11 +70,11 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
       label: "Combustible cargado",
       value:
         load.litros != null
-          ? `${NUM.format(load.litros)} L${load.seLlenoTanque ? ` · tanque ${load.seLlenoTanque}` : ""}`
+          ? `${NUM1.format(load.litros)} L${load.seLlenoTanque ? ` · tanque ${load.seLlenoTanque}` : ""}`
           : "—",
       detected:
         load.review?.litrosDetectado != null
-          ? `${NUM.format(load.review.litrosDetectado)} L`
+          ? `${NUM1.format(load.review.litrosDetectado)} L`
           : undefined,
     });
     const dollarL =
