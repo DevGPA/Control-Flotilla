@@ -202,6 +202,17 @@ function updateFuelNavBadge(): void {
 
 /** Inicializa el rango de fechas a partir de los datos (default: últimos 3 meses). */
 function initRangoFuel(): void {
+  const dEl = $("fuel-rango-desde") as HTMLInputElement | null;
+  const hEl = $("fuel-rango-hasta") as HTMLInputElement | null;
+  // Preservar la selección del usuario: si los inputs YA tienen rango, sincroniza el
+  // filtro desde ellos y NO resetea al default. El auto-refresh (poll 4min / focus)
+  // re-llama initRango* en cada re-hidratación y antes borraba la fecha elegida
+  // ("se cambia sola"). El default solo se calcula en la 1ª inicialización (inputs vacíos).
+  if (dEl && hEl && dEl.value && hEl.value) {
+    filter.desde = dEl.value;
+    filter.hasta = hEl.value;
+    return;
+  }
   const all = scoped();
   const fechas = all
     .map((e) => e.fecha)
@@ -220,8 +231,6 @@ function initRangoFuel(): void {
   const desde = `${yy}-${String(mm).padStart(2, "0")}-01`;
   filter.desde = desde < fechas[0]! ? fechas[0]! : desde;
   filter.hasta = max;
-  const dEl = $("fuel-rango-desde") as HTMLInputElement | null;
-  const hEl = $("fuel-rango-hasta") as HTMLInputElement | null;
   if (dEl) dEl.value = filter.desde;
   if (hEl) hEl.value = filter.hasta;
 }
