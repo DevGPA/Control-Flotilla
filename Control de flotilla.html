@@ -907,6 +907,21 @@ g.inflateBytes=async function(src){
   </div>
 </div>
 
+<!-- DRAWER DETALLE / VALIDACIÓN DE EVIDENCIAS (Fase C) -->
+<div id="fuel-det" role="dialog" aria-modal="true" aria-label="Detalle y validación de carga de combustible">
+  <div class="dtop">
+    <button class="dcls" id="fuel-det-close" aria-label="Cerrar detalle" style="position:static">✕</button>
+    <div class="fv-detnav">
+      <button id="fuel-det-prev" aria-label="Carga anterior">←</button>
+      <span id="fuel-det-pos"></span>
+      <button id="fuel-det-next" aria-label="Carga siguiente">→</button>
+    </div>
+    <div class="dpr" id="fuel-det-title"></div>
+    <div class="dmeta" id="fuel-det-meta"></div>
+  </div>
+  <div class="dbody" id="fuel-det-body"></div>
+</div>
+
 <!-- TALLER MODAL -->
 <div id="taller-modal" onclick="if(event.target.id==='taller-modal')closeTallerModal()">
   <div class="tl-mcard">
