@@ -21,7 +21,11 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   DROP_SD: 1.5,
   DROP_PCT: 0.75,
   LITERS_SD: 2,
-  MAX_KM_JUMP: 1500,
+  // Salto de odómetro entre cargas consecutivas. Una unidad recorre fácilmente >1500 km
+  // entre llenadas (sobre todo con cargas no consecutivas en el histórico), así que el
+  // umbral marca solo saltos genuinamente improbables (probable error de captura / cargas
+  // intermedias sin registrar).
+  MAX_KM_JUMP: 8000,
   MIN_DAYS: 1,
   PRICE_MIN: 18,
   PRICE_MAX: 35,

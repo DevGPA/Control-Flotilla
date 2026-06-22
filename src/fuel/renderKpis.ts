@@ -4,7 +4,7 @@
  */
 import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding } from "./types";
 import { verdictOf } from "./renderTableCombustible";
-import { mean } from "../analyzer/statistics";
+import { mean, clampOutliers } from "../analyzer/statistics";
 
 export type FuelKpiCard = {
   key: string;
@@ -34,7 +34,9 @@ export function buildKpisFuel(
   const litros = cargas.reduce((a, e) => a + (e.litros ?? 0), 0);
   const gasto = cargas.reduce((a, e) => a + (e.monto ?? 0), 0);
   const kmplVals = metrics.map((m) => m.kmPorLitro).filter((x): x is number => x != null && x > 0);
-  const kmplProm = kmplVals.length ? mean(kmplVals) : NaN;
+  // Media ROBUSTA (recorte IQR): cargas con huecos grandes (datos esparcidos) producen
+  // km/l atípicos que disparan la media cruda; el recorte la mantiene realista.
+  const kmplProm = kmplVals.length ? mean(clampOutliers(kmplVals)) : NaN;
   const discrepancias = entries.filter((e) => verdictOf(e) === "discrepancia").length;
   const pendientes = entries.filter((e) => verdictOf(e) === "pendiente").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
