@@ -288,6 +288,7 @@ const schema = a
         telefono: a.string(),
         sucursal: a.string(),
         rol: a.string(), // 'admin' | 'operativo' | 'viewer'
+        modulos: a.string(), // CSV de módulos permitidos (espejo de custom:modulos). Vacío = todos.
         estatus: a.enum(["activo", "desactivado", "eliminado"]),
         createdAt: a.string(),
         updatedAt: a.string(),
@@ -328,6 +329,7 @@ const schema = a
         telefono: a.string(),
         rol: a.string().required(),
         sucursal: a.string(),
+        modulos: a.string(), // CSV de módulos permitidos (vacío = todos)
       })
       .returns(a.json())
       .handler(a.handler.function(adminUsers))
@@ -340,6 +342,7 @@ const schema = a
         nombre: a.string(),
         telefono: a.string(),
         sucursal: a.string(),
+        modulos: a.string(),
       })
       .returns(a.json())
       .handler(a.handler.function(adminUsers))

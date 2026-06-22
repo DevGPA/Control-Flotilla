@@ -15,6 +15,7 @@
 
 import { configureAmplify } from "./amplifyClient";
 import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
+import { gatingPlan, MODULE_NAV } from "./moduleAccess";
 import { showAuthModal } from "../ui/authModal";
 import {
   uploadZipToCloud,
@@ -111,6 +112,7 @@ declare global {
         nombre?: string;
         telefono?: string;
         sucursal?: string;
+        modulos?: string;
       }) => Promise<AdminResult>;
       setEnabled: (cognitoSub: string, enabled: boolean) => Promise<AdminResult>;
       deleteUser: (cognitoSub: string) => Promise<AdminResult>;
@@ -120,6 +122,11 @@ declare global {
     };
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
+    /** Gating de módulos (lógica pura testeable) para el applyModuleGating inline. */
+    __moduleGating?: {
+      plan: typeof gatingPlan;
+      allNavIds: string[];
+    };
   }
 }
 
@@ -308,6 +315,7 @@ export function setupCloud(): void {
   // ── Módulo de Administración de Usuarios (2026-06-12) ──────────────────────
   // El gate de ROL real es server-side (AppSync exige grupo 'admin'); isAdmin()
   // es solo para mostrar/ocultar la vista. ensureSession garantiza login.
+  window.__moduleGating = { plan: gatingPlan, allNavIds: Object.values(MODULE_NAV) };
   window.__admin = {
     isAdmin: () => isAdmin(),
     refreshSession: () => forceRefreshSession(),

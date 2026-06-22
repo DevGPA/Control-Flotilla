@@ -86,7 +86,7 @@ export function buildAuditEvent(opts: {
 }
 
 /** Campos del perfil que se auditan en una edición. */
-const PROFILE_FIELDS = ["nombre", "telefono", "sucursal", "rol", "estatus"] as const;
+const PROFILE_FIELDS = ["nombre", "telefono", "sucursal", "rol", "modulos", "estatus"] as const;
 
 /** Diff de perfil para la bitácora: { campo: { de, a } } solo de lo que cambió. */
 export function diffUserProfile(

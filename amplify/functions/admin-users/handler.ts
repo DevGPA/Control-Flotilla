@@ -146,6 +146,7 @@ async function handleCreate(args: Record<string, unknown>, who: Identity): Promi
   const nombre = String(args.nombre ?? "").trim();
   const telefono = String(args.telefono ?? "").trim();
   const sucursal = String(args.sucursal ?? "").trim();
+  const modulos = String(args.modulos ?? "").trim();
   try {
     const created = await cognito.send(
       new AdminCreateUserCommand({
@@ -157,6 +158,7 @@ async function handleCreate(args: Record<string, unknown>, who: Identity): Promi
           { Name: "email_verified", Value: "true" },
           { Name: "custom:tenantId", Value: who.tenantId },
           ...(sucursal ? [{ Name: "custom:sucursal", Value: sucursal }] : []),
+          ...(modulos ? [{ Name: "custom:modulos", Value: modulos }] : []),
         ],
       }),
     );
@@ -175,6 +177,7 @@ async function handleCreate(args: Record<string, unknown>, who: Identity): Promi
       telefono,
       sucursal,
       rol,
+      modulos,
       estatus: "activo",
       createdAt: now,
       updatedAt: now,
@@ -183,7 +186,7 @@ async function handleCreate(args: Record<string, unknown>, who: Identity): Promi
       who,
       "crear",
       email,
-      diffUserProfile(null, { nombre, telefono, sucursal, rol }),
+      diffUserProfile(null, { nombre, telefono, sucursal, rol, modulos }),
     );
     return {
       ok: true,
@@ -224,6 +227,7 @@ async function handleUpdate(args: Record<string, unknown>, who: Identity): Promi
     nombre: args.nombre !== undefined ? String(args.nombre).trim() : prev.nombre,
     telefono: args.telefono !== undefined ? String(args.telefono).trim() : prev.telefono,
     sucursal: args.sucursal !== undefined ? String(args.sucursal).trim() : prev.sucursal,
+    modulos: args.modulos !== undefined ? String(args.modulos).trim() : (prev.modulos ?? ""),
   };
   try {
     const username = prev.email;
@@ -231,10 +235,13 @@ async function handleUpdate(args: Record<string, unknown>, who: Identity): Promi
       new AdminUpdateUserAttributesCommand({
         UserPoolId: USER_POOL_ID,
         Username: username,
-        // Siempre se envía custom:sucursal. Valor vacío = "Todas las sucursales":
-        // LIMPIA la restricción para que el usuario vea toda la flota (la edición
-        // debe poder quitar una sucursal previa, no solo cambiarla).
-        UserAttributes: [{ Name: "custom:sucursal", Value: next.sucursal || "" }],
+        // Siempre se envían custom:sucursal y custom:modulos. Valor vacío = sin
+        // restricción (sucursal: "Todas"; modulos: todos los módulos). La edición
+        // debe poder QUITAR una restricción previa, no solo cambiarla.
+        UserAttributes: [
+          { Name: "custom:sucursal", Value: next.sucursal || "" },
+          { Name: "custom:modulos", Value: next.modulos || "" },
+        ],
       }),
     );
     const now = new Date().toISOString();
@@ -436,6 +443,7 @@ async function handleList(who: Identity): Promise<Ok | Err> {
         sucursal: prof?.sucursal ?? sucursal,
         // El ROL mostrado refleja el grupo Cognito (fuente de verdad), con respaldo al espejo.
         rol: rol || (prof?.rol ?? ""),
+        modulos: prof?.modulos ?? "",
         estatus,
       });
     }

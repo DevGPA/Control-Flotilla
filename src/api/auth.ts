@@ -15,6 +15,7 @@ import {
   type SignInInput,
 } from "aws-amplify/auth";
 import { clearPhotoCache } from "./photoFetch";
+import { parseModulos } from "./moduleAccess";
 
 export interface AuthSession {
   username: string;
@@ -23,6 +24,11 @@ export interface AuthSession {
   groups: string[];
   /** Sucursal del atributo custom:sucursal (filtro de UI del rol viewer). */
   sucursal?: string;
+  /**
+   * Módulos permitidos (de custom:modulos). `undefined`/`null` = todos (sin
+   * asignación). Gating de UI; el dato sigue protegido por tenant+rol+sucursal.
+   */
+  modulos?: import("./moduleAccess").ModuleKey[] | null;
 }
 
 export type LoginResult =
@@ -147,6 +153,7 @@ export async function getSession(): Promise<AuthSession | null> {
       tenantId,
       groups,
       sucursal: attrs["custom:sucursal"] ?? undefined,
+      modulos: parseModulos(attrs["custom:modulos"]),
     };
   } catch {
     return null;
