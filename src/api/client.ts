@@ -534,6 +534,8 @@ export type AdminCreateInput = {
   telefono?: string;
   rol: string;
   sucursal?: string;
+  /** CSV de módulos permitidos (custom:modulos). Vacío = todos. */
+  modulos?: string;
 };
 
 export async function adminCreateUser(input: AdminCreateInput): Promise<AdminResult> {
@@ -548,6 +550,7 @@ export async function adminUpdateUser(input: {
   nombre?: string;
   telefono?: string;
   sucursal?: string;
+  modulos?: string;
 }): Promise<AdminResult> {
   const c = getClient();
   const r = await c.mutations.adminUpdateUser(input);

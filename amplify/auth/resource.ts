@@ -45,5 +45,12 @@ export const auth = defineAuth({
       dataType: "String",
       mutable: true,
     },
+    // Módulos permitidos por usuario (CSV: "inspecciones,combustible,..."). Gating
+    // de UI: el admin asigna qué pestañas ve cada usuario. Vacío = todos. NO es
+    // frontera de seguridad dura (el dato sigue por tenant+rol+sucursal en AppSync).
+    "custom:modulos": {
+      dataType: "String",
+      mutable: true,
+    },
   },
 });

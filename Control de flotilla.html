@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-B98dtHR3AuFuU+/vgzx1awFgkImabGtTssZtghK/KUo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-CB77nkcrwmko1GW7KMMf9DiYIl/zhATCtiAww2iACho='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -756,6 +756,17 @@ g.inflateBytes=async function(src){
           <option value="operativo">Operativo</option>
           <option value="viewer">Viewer (consulta)</option>
         </select>
+      </div>
+      <div class="tl-field full" id="uf-modulos-field">
+        <label>Módulos permitidos</label>
+        <div id="uf-modulos" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="inspecciones"/> Inspecciones</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="taller"/> Taller</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="semanales"/> Semanales</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="analytics"/> Análisis</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="combustible"/> Combustible</label>
+        </div>
+        <div style="font-size:10.5px;color:var(--s2);margin-top:4px">Sin marcar nada = acceso a todos los módulos. (El admin siempre ve todo.)</div>
       </div>
       <div id="uf-hint" style="font-size:10.5px;color:var(--s2);margin-top:4px"></div>
     </div>
@@ -2229,6 +2240,26 @@ function applyRolePermissions(){
 }
 window.applyRolePermissions=applyRolePermissions;
 
+// Acceso por módulo (gating de UI): oculta del nav los módulos no asignados al
+// usuario y, si la vista activa no está permitida, lo manda a su primer módulo.
+// admin o sin asignación (custom:modulos vacío) → ve todo (no-op). La decisión la
+// hace gatingPlan (lógica pura testeada, expuesta en window.__moduleGating).
+const NAV_TO_MOD = {"mn-insp":"inspecciones","mn-taller":"taller","mn-semanales":"semanales","mn-analytics":"analytics","mn-combustible":"combustible"};
+function applyModuleGating(){
+  const mg = window.__moduleGating, sess = window.__cloudSession;
+  if(!mg || !sess) return;
+  const isAdmin = sessionGroups().includes("admin");
+  const modulos = Array.isArray(sess.modulos) ? sess.modulos : null; // null = todos
+  const activeBtn = document.querySelector(".mnav.on");
+  const curView = (activeBtn && NAV_TO_MOD[activeBtn.id]) || "inspecciones";
+  const plan = mg.plan(modulos, isAdmin, curView);
+  // Reset (vuelve a mostrar todos) y luego oculta los del plan.
+  mg.allNavIds.forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display=""; });
+  plan.hidden.forEach(id=>{ const b=document.getElementById(id); if(b) b.style.display="none"; });
+  if(plan.redirectTo) showView(plan.redirectTo);
+}
+window.applyModuleGating=applyModuleGating;
+
 // Lo invoca cloudWire al cambiar la sesión (login / sesión activa / logout).
 window.__onCloudSession = function(){
   const email = window.__cloudSession && window.__cloudSession.email;
@@ -2240,6 +2271,8 @@ window.__onCloudSession = function(){
   if(typeof window.initAdminNav === "function") window.initAdminNav();
   // Permisos: viewer = solo lectura; usuario con sucursal asignada queda fijado.
   applyRolePermissions();
+  // Acceso por módulo: oculta tabs no asignados + landing en el primer módulo permitido.
+  applyModuleGating();
 };
 
 function showLoader(t="Procesando…"){
@@ -6038,6 +6071,9 @@ function openUsuarioModal(sub){
   populateSucursalOptions(u ? (u.sucursal||"") : "");
   document.getElementById("uf-rol").value = u ? (u.rol||"") : "";
   document.getElementById("uf-rol").disabled = !!u; // el rol se cambia con su acción dedicada
+  // Módulos permitidos (CSV en u.modulos). Sin marcar = todos.
+  const modSet = new Set(String((u && u.modulos) || "").split(",").map(s=>s.trim()).filter(Boolean));
+  document.querySelectorAll(".uf-mod").forEach(cb=>{ cb.checked = modSet.has(cb.value); });
   document.getElementById("uf-hint").textContent = u
     ? "El correo y el rol no se editan aquí (usa la acción de rol para cambiarlo)."
     : "Se enviará una invitación por correo. El correo debe ser @gpa.com.mx.";
@@ -6053,12 +6089,13 @@ async function saveUsuario(){
   const telefono = document.getElementById("uf-telefono").value.trim();
   const sucursal = document.getElementById("uf-sucursal").value.trim();
   const rol = document.getElementById("uf-rol").value;
+  const modulos = Array.from(document.querySelectorAll(".uf-mod:checked")).map(cb=>cb.value).join(",");
   const btn = document.getElementById("uf-save");
   if(_uvEditSub){
     if(!nombre){ window.notify("El nombre es obligatorio.","warn",3500); _markInvalid("uf-nombre"); return; }
     btn.disabled=true;
     try{
-      const r = await window.__admin.updateUser({ cognitoSub:_uvEditSub, nombre, telefono, sucursal });
+      const r = await window.__admin.updateUser({ cognitoSub:_uvEditSub, nombre, telefono, sucursal, modulos });
       if(r.ok){ window.notify(r.message||"Usuario actualizado.","ok",4000); closeUsuarioModal(); await refreshUsuarios(); }
       else window.notify(r.error||"No se pudo actualizar.","error",5000);
     }catch(e){ window.notify("Error al guardar.","error",5000); }
@@ -6072,7 +6109,7 @@ async function saveUsuario(){
   if(!rol){ window.notify("Selecciona un rol.","warn",3500); _markInvalid("uf-rol"); return; }
   btn.disabled=true;
   try{
-    const r = await window.__admin.createUser({ email, nombre, telefono, rol, sucursal });
+    const r = await window.__admin.createUser({ email, nombre, telefono, rol, sucursal, modulos });
     if(r.ok){ window.notify(r.message||"Usuario creado.","ok",4500); closeUsuarioModal(); await refreshUsuarios(); }
     else window.notify(r.error||"No se pudo crear el usuario.","error",6000);
   }catch(e){ window.notify("Error al crear el usuario.","error",5000); }
