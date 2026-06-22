@@ -4129,6 +4129,21 @@ select.filter-active {
   animation: up 0.25s ease;
 }
 
+/* Dashboard ejecutivo de combustible (Fase D) */
+.fuel-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.fuel-dash-grid .chart-card-wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 760px) {
+  .fuel-dash-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Drawer de detalle / validación de evidencias de combustible (Fase C) ── */
 #fuel-det {
   display: none;
