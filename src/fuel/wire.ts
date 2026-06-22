@@ -7,10 +7,18 @@
  * Importado una vez desde src/main.ts. Toda la lógica pesada vive en módulos puros
  * (fuelAnalysis, renderTableCombustible, renderKpis); aquí solo cableado de DOM.
  */
-import type { FuelEntry, FuelMetrics, FuelEvidenceKind, FuelVerdict } from "./types";
+import type {
+  FuelEntry,
+  FuelMetrics,
+  FuelEvidenceKind,
+  FuelVerdict,
+  FleetBaseline,
+  FuelFinding,
+} from "./types";
 import { computeFuelMetrics, buildFleetBaseline, detectFuelAnomalies } from "./fuelAnalysis";
 import {
   renderTableCombustible,
+  filterAndSortFuel,
   populateFuelSelects,
   verdictOf,
   type FuelTableFilter,
@@ -67,42 +75,57 @@ function scoped(): FuelEntry[] {
   return typeof window.scopeBySucursal === "function" ? window.scopeBySucursal(all) : all;
 }
 
-function inRange(e: FuelEntry): boolean {
-  if (filter.desde && e.fecha < filter.desde) return false;
-  if (filter.hasta && e.fecha > filter.hasta) return false;
-  return true;
+type FuelCtx = {
+  filtered: FuelEntry[];
+  filteredMetrics: FuelMetrics[];
+  baseline: FleetBaseline;
+  anomalies: FuelFinding[];
+  metricsByLoad: Map<string, FuelMetrics>;
+};
+let lastCtx: FuelCtx | null = null;
+
+/**
+ * Contexto FILTRADO único que alimenta KPIs, tabla y dashboard de forma consistente.
+ * El km/l se calcula sobre el histórico COMPLETO scopeado (el delta de odómetro usa
+ * la carga anterior aunque caiga fuera del filtro) y luego se SELECCIONA el subconjunto
+ * que pasa TODOS los filtros (lock sucursal + tipo + validación + sucursal-dropdown +
+ * responsable + búsqueda + período) — los MISMOS que la tabla. Antes KPIs/gráficas
+ * usaban solo período y los rankings el histórico total → no respetaban los filtros.
+ */
+function computeCtx(): FuelCtx {
+  const all = scoped();
+  const allMetrics = computeFuelMetrics(all);
+  const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
+  const filtered = filterAndSortFuel(all, filter, "_idx", -1); // orden irrelevante aquí
+  const ids = new Set(filtered.map((e) => e.loadId));
+  const filteredMetrics = allMetrics.filter((m) => ids.has(m.loadId));
+  const baseline = buildFleetBaseline(filteredMetrics, filtered);
+  const anomalies = detectFuelAnomalies(filteredMetrics, baseline);
+  const ctx: FuelCtx = { filtered, filteredMetrics, baseline, anomalies, metricsByLoad };
+  lastCtx = ctx;
+  lastMetricsByLoad = metricsByLoad;
+  return ctx;
 }
 
 function renderCombustible(): void {
   const tbody = $("fuel-tbody");
   if (!tbody) return; // vista no montada aún
   const all = scoped();
-
-  // Métricas/baseline/anomalías sobre TODO el histórico scopeado (el km/l de una
-  // carga usa la carga anterior aunque caiga fuera del rango visible).
-  const allMetrics = computeFuelMetrics(all);
-  const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
-  lastMetricsByLoad = metricsByLoad;
-  const baseline = buildFleetBaseline(allMetrics, all);
-  const anomalies = detectFuelAnomalies(allMetrics, baseline);
-
-  // Subconjunto del rango para KPIs (la tabla aplica el rango vía filtro).
-  const ranged = all.filter(inRange);
-  const rangedIds = new Set(ranged.map((e) => e.loadId));
-  const rangedMetrics = allMetrics.filter((m) => rangedIds.has(m.loadId));
-  const rangedAnomalies = anomalies.filter((a) => a.loadId && rangedIds.has(a.loadId));
+  const ctx = computeCtx();
 
   const kpisEl = $("fuel-kpis");
   if (kpisEl)
-    renderKpisFuel(kpisEl, buildKpisFuel(ranged, rangedMetrics, baseline, rangedAnomalies), (f) => {
-      if (f === "discrepancia") setVerdictFilter("discrepancia");
-      else if (f === "pendiente") setVerdictFilter("pendiente");
-      else if (f === "anomalia") {
-        // Sin filtro propio de anomalía en la tabla: enfocar discrepancias + pendientes.
-        setVerdictFilter("pendiente");
-      }
-    });
+    renderKpisFuel(
+      kpisEl,
+      buildKpisFuel(ctx.filtered, ctx.filteredMetrics, ctx.baseline, ctx.anomalies),
+      (f) => {
+        if (f === "discrepancia") setVerdictFilter("discrepancia");
+        else if (f === "pendiente") setVerdictFilter("pendiente");
+        else if (f === "anomalia") setVerdictFilter("pendiente");
+      },
+    );
 
+  // Los selects se pueblan del set COMPLETO (no del filtrado) para no perder opciones.
   populateFuelSelects(
     $("fuel-filt-suc") as HTMLSelectElement | null,
     $("fuel-filt-resp") as HTMLSelectElement | null,
@@ -118,7 +141,7 @@ function renderCombustible(): void {
     filter,
     sortCol,
     sortDir,
-    metricsByLoad,
+    metricsByLoad: ctx.metricsByLoad,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
   });
 
@@ -146,18 +169,17 @@ function setDashView(show: boolean): void {
 async function renderFuelDash(): Promise<void> {
   const dash = $("fuel-dash");
   if (!dash) return;
-  const all = scoped();
-  const ranged = all.filter(inRange);
-  const allMetrics = computeFuelMetrics(all);
-  const baseline = buildFleetBaseline(allMetrics, all);
-  const ranks = rankUnitsByKmpl(baseline);
+  // MISMO contexto filtrado que los KPIs/tabla (rankings, consumos y tendencia
+  // respetan TODOS los filtros, no solo el período). Reutiliza el último cómputo.
+  const ctx = lastCtx ?? computeCtx();
+  const ranks = rankUnitsByKmpl(ctx.baseline);
   const data = {
     peores: ranks.slice(-10),
     mejores: ranks.slice(0, 10),
-    porSucursal: aggByGroup(ranged, (e) => e.sucursal),
-    porResponsable: aggByGroup(ranged, (e) => e.responsable ?? "").slice(0, 12),
-    porTipo: aggByGroup(ranged, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
-    meses: aggByMonth(ranged),
+    porSucursal: aggByGroup(ctx.filtered, (e) => e.sucursal),
+    porResponsable: aggByGroup(ctx.filtered, (e) => e.responsable ?? "").slice(0, 12),
+    porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
+    meses: aggByMonth(ctx.filtered),
   };
   const els = {
     peores: $("fchart-peores"),
