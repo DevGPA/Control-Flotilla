@@ -28,7 +28,7 @@ import {
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
-import { rankUnitsByKmpl, aggByGroup, aggByMonth } from "./fuelAggregates";
+import { rankUnitsByKmpl, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
 import { upsertValidacionCarga } from "../api/client";
 
 declare global {
@@ -173,9 +173,10 @@ async function renderFuelDash(): Promise<void> {
   // respetan TODOS los filtros, no solo el período). Reutiliza el último cómputo.
   const ctx = lastCtx ?? computeCtx();
   const ranks = rankUnitsByKmpl(ctx.baseline);
+  const { mejores, peores } = splitRanking(ranks, 10); // disjuntos (sin solape best/worst)
   const data = {
-    peores: ranks.slice(-10),
-    mejores: ranks.slice(0, 10),
+    peores,
+    mejores,
     porSucursal: aggByGroup(ctx.filtered, (e) => e.sucursal),
     porResponsable: aggByGroup(ctx.filtered, (e) => e.responsable ?? "").slice(0, 12),
     porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),

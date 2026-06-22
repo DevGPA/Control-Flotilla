@@ -21,14 +21,34 @@ export function montoEfectivo(e: {
 
 export type UnitRank = { eco: string; kmpl: number; n: number };
 
-/** Ranking de unidades por km/l (de baseline.porUnidad). Desc (mejor primero). */
-export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 2): UnitRank[] {
+/**
+ * Ranking de unidades por km/l (de baseline.porUnidad). Desc (mejor primero).
+ * minN=3: una unidad necesita ≥3 lecturas de km/l para entrar al ranking — con 1-2
+ * cargas el promedio es ruido (un error de captura lo dispara) y distorsiona el orden.
+ */
+export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 3): UnitRank[] {
   const out: UnitRank[] = [];
   for (const [eco, s] of baseline.porUnidad) {
     if (s.n >= minN && Number.isFinite(s.mean) && s.mean > 0)
       out.push({ eco, kmpl: s.mean, n: s.n });
   }
   return out.sort((a, b) => b.kmpl - a.kmpl);
+}
+
+/**
+ * Parte el ranking en mejores y peores DISJUNTOS. `ranks` viene DESC (mejor→peor).
+ * Toma como máximo floor(n/2) por lado para que NINGUNA unidad aparezca en ambas listas
+ * (antes slice(0,10) y slice(-10) se solapaban cuando había <20 unidades). `peores` se
+ * devuelve con el PEOR primero (para que el gráfico lo muestre arriba).
+ */
+export function splitRanking(
+  ranks: readonly UnitRank[],
+  n = 10,
+): { mejores: UnitRank[]; peores: UnitRank[] } {
+  const k = Math.min(n, Math.floor(ranks.length / 2));
+  const mejores = ranks.slice(0, k); // mejor primero (desc)
+  const peores = ranks.slice(ranks.length - k).reverse(); // peor primero (asc)
+  return { mejores, peores };
 }
 
 export type GroupConsumo = { group: string; litros: number; gasto: number; cargas: number };
