@@ -4120,7 +4120,8 @@ select.filter-active {
 }
 
 /* ════ MÓDULO SEMANALES ══════════════════════════════════ */
-#view-semanales {
+#view-semanales,
+#view-combustible {
   display: none;
   flex-direction: column;
   flex: 1;
@@ -4128,7 +4129,8 @@ select.filter-active {
   animation: up 0.25s ease;
 }
 /* Barra de períodos semanales */
-#sw-periodo-bar {
+#sw-periodo-bar,
+#fuel-periodo-bar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4223,7 +4225,8 @@ select.filter-active {
   padding: 10px 16px 6px;
 }
 /* Toolbar semanales */
-#sw-bar {
+#sw-bar,
+#fuel-bar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -4265,7 +4268,8 @@ select.filter-active {
   color: var(--G);
 }
 /* Tabla semanales */
-#sw-table-wrap {
+#sw-table-wrap,
+#fuel-table-wrap {
   flex: 1;
   overflow-y: auto;
   overflow-x: auto; /* 13 columnas con th nowrap → scroll horizontal local en móvil */

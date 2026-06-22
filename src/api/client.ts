@@ -436,6 +436,78 @@ export async function listCheckDone(tenantId: string): Promise<Schema["CheckDone
   );
 }
 
+// ───────────────────────── Combustible (Solicitudes/Cargas) ─────────────────────────
+// Solo LECTURA desde el front (lo ingiere el webhook de MoreApp). El estado de
+// revisión humana se persiste aparte en ValidacionCarga (upsert idempotente).
+
+export async function listCombustible(
+  tenantId: string,
+): Promise<Schema["CargaCombustible"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["CargaCombustible"]["type"]>(
+    (token) =>
+      c.models.CargaCombustible.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listCombustible",
+  );
+}
+
+export type ValidacionCargaInput = {
+  tenantId: string;
+  loadId: string;
+  verdictGlobal?: string;
+  porEvidencia?: unknown;
+  revisadoPor?: string;
+  nota?: string;
+  ts?: string;
+};
+
+export async function upsertValidacionCarga(
+  input: ValidacionCargaInput,
+): Promise<Schema["ValidacionCarga"]["type"]> {
+  const c = getClient();
+  // porEvidencia es a.json() → AWSJSON requiere STRING.
+  const inputStringified = {
+    ...input,
+    porEvidencia:
+      typeof input.porEvidencia === "string"
+        ? input.porEvidencia
+        : JSON.stringify(input.porEvidencia ?? {}),
+  };
+  const payload = inputStringified as unknown as Parameters<
+    typeof c.models.ValidacionCarga.create
+  >[0];
+  const created = await c.models.ValidacionCarga.create(payload);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.ValidacionCarga.update(payload);
+    throwOnErrors("upsertValidacionCarga(update)", updated.errors);
+    if (!updated.data)
+      throw new Error(`upsertValidacionCarga(update) null data ${input.loadId} — auth filtering?`);
+    return updated.data;
+  }
+  throwOnErrors("upsertValidacionCarga(create)", created.errors);
+  throw new Error(`upsertValidacionCarga(create) null data ${input.loadId} — auth filtering?`);
+}
+
+export async function listValidaciones(
+  tenantId: string,
+): Promise<Schema["ValidacionCarga"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["ValidacionCarga"]["type"]>(
+    (token) =>
+      c.models.ValidacionCarga.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listValidaciones",
+  );
+}
+
 // ───────────────────────── Administración de Usuarios (2026-06-12) ─────────────
 // PRIMER uso de client.mutations/queries (custom ops). Cada op devuelve a.json()
 // con forma { ok, message?, error?, data? }. La autorización (grupo admin) la

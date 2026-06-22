@@ -12,7 +12,17 @@
 // Triggers re-render de la UI legacy llamando window.renderTable / buildKPIs.
 
 import type { Schema } from "./amplifyClient";
-import { listUnits, listChecklists, listSemanales, listTaller, listCheckDone } from "./client";
+import {
+  listUnits,
+  listChecklists,
+  listSemanales,
+  listTaller,
+  listCheckDone,
+  listCombustible,
+  listValidaciones,
+} from "./client";
+import { buildFuelEntries } from "../fuel/mapEntry";
+import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
@@ -84,6 +94,11 @@ declare global {
     recalcAllRisks?: () => void;
     initRangoSemanal?: () => void;
     renderSemanales?: () => void;
+    // Módulo de combustible (Fase B).
+    fuelEntries?: FuelEntry[];
+    renderCombustible?: () => void;
+    updateFuelNavBadge?: () => void;
+    initRangoFuel?: () => void;
   }
 }
 
@@ -189,20 +204,35 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   units: number;
   source: "cloud" | "empty";
 }> {
-  const [units, checklists, semanales, tallerCloud, checkDones] = await Promise.all([
-    listUnits(tenantId),
-    listChecklists(tenantId),
-    listSemanales(tenantId),
-    listTaller(tenantId),
-    // No-fatal: si CheckDone aún no está desplegado o falla, no debe tumbar toda la
-    // hidratación de datos (units/checklists). Las completaciones son una mejora encima.
-    listCheckDone(tenantId).catch((e) => {
-      console.warn("[cloudHydrate] listCheckDone falló (no-fatal):", e);
-      return [] as Schema["CheckDone"]["type"][];
-    }),
-  ]);
+  const [units, checklists, semanales, tallerCloud, checkDones, combustible, validaciones] =
+    await Promise.all([
+      listUnits(tenantId),
+      listChecklists(tenantId),
+      listSemanales(tenantId),
+      listTaller(tenantId),
+      // No-fatal: si CheckDone aún no está desplegado o falla, no debe tumbar toda la
+      // hidratación de datos (units/checklists). Las completaciones son una mejora encima.
+      listCheckDone(tenantId).catch((e) => {
+        console.warn("[cloudHydrate] listCheckDone falló (no-fatal):", e);
+        return [] as Schema["CheckDone"]["type"][];
+      }),
+      // No-fatal: el módulo de combustible es independiente; si falla no tumba el resto.
+      listCombustible(tenantId).catch((e) => {
+        console.warn("[cloudHydrate] listCombustible falló (no-fatal):", e);
+        return [] as Schema["CargaCombustible"]["type"][];
+      }),
+      listValidaciones(tenantId).catch((e) => {
+        console.warn("[cloudHydrate] listValidaciones falló (no-fatal):", e);
+        return [] as Schema["ValidacionCarga"]["type"][];
+      }),
+    ]);
 
-  if (units.length === 0 && semanales.length === 0 && tallerCloud.length === 0) {
+  if (
+    units.length === 0 &&
+    semanales.length === 0 &&
+    tallerCloud.length === 0 &&
+    combustible.length === 0
+  ) {
     console.info("[cloudHydrate] cloud vacío, nada que hidratar");
     return { units: 0, source: "empty" };
   }
@@ -380,6 +410,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     console.info(`[cloudHydrate] ${weeklyPeriodos.length} períodos semanales hidratados`);
   }
 
+  // ── Hydrate combustible → window.fuelEntries ──────────────────
+  // CargaCombustible (solicitudes + cargas) + ValidacionCarga (revisión) → FuelEntry[].
+  // Las fotos de evidencia se pre-firman junto con las demás (más abajo).
+  {
+    const fuelEntries = buildFuelEntries(combustible, validaciones);
+    window.fuelEntries = fuelEntries;
+    if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
+    if (typeof window.initRangoFuel === "function") window.initRangoFuel();
+    if (typeof window.renderCombustible === "function") window.renderCombustible();
+    console.info(`[cloudHydrate] ${fuelEntries.length} registros de combustible hidratados`);
+  }
+
   // No early-exit aquí. Aunque units.length === 0, semanales puede tener
   // fotos que necesitan pre-fetch. Continuamos con un legacyUnits vacío.
 
@@ -478,6 +520,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       for (const fn of entry.photos ?? []) {
         if (fn) allPhotoFnames.add(String(fn).toLowerCase());
       }
+    }
+  }
+  // Combustible: cada FuelEntry tiene fotos {fname,col,group} (evidencias).
+  for (const fe of window.fuelEntries ?? []) {
+    for (const p of fe.photos ?? []) {
+      if (p.fname) allPhotoFnames.add(p.fname.toLowerCase());
     }
   }
   // FIRMA DE URLS DE FOTOS — por-demanda, sin listar el bucket (fix de raíz 2026-06-15).

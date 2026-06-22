@@ -22,6 +22,9 @@
 // no ve esos accesos).
 import { setupCloud } from "./api/cloudWire";
 setupCloud();
+// Módulo de combustible (Fase B): monta window.renderCombustible / initRangoFuel /
+// updateFuelNavBadge y cablea los controles de la vista. Side-effect import.
+import "./fuel/wire";
 
 // ── Registro del Service Worker (PWA) ────────────────────────────────────────
 // Manual (injectRegister:null en vite.config) — el registerSW.js autogenerado
