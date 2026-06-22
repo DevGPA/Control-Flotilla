@@ -103,6 +103,11 @@ export function renderKpisFuel(
   onFilter?: (f: NonNullable<FuelKpiCard["filter"]>) => void,
 ): void {
   container.replaceChildren();
+  // .kc usa flex:1 → DEBE ir dentro de un contenedor flex .kpi-row (igual que Semanales),
+  // si no, cada tarjeta se apila a ancho completo y empuja la tabla fuera del viewport.
+  const row = document.createElement("div");
+  row.className = "kpi-row";
+  container.appendChild(row);
   for (const c of cards) {
     const kc = document.createElement("div");
     kc.className = "kc";
@@ -137,6 +142,6 @@ export function renderKpisFuel(
       ksub.textContent = c.sub;
       kc.appendChild(ksub);
     }
-    container.appendChild(kc);
+    row.appendChild(kc);
   }
 }
