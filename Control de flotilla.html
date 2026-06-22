@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-NRapDBlCh/aT4HlXiArOC2XeWRNh06rdHlGDM4a1yBo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-B98dtHR3AuFuU+/vgzx1awFgkImabGtTssZtghK/KUo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -243,6 +243,10 @@ g.inflateBytes=async function(src){
     <button class="mnav" id="mn-analytics" onclick="showView('analytics')">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Análisis
+    </button>
+    <button class="mnav" id="mn-combustible" onclick="showView('combustible')">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg>
+      Combustible <span id="fuel-nav-badge" style="display:none;background:var(--R);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;margin-left:2px"></span>
     </button>
     <!-- Módulo Admin Usuarios (2026-06-12): visible SOLO para grupo admin
          (initAdminNav lo muestra tras verificar la sesión). -->
@@ -827,6 +831,78 @@ g.inflateBytes=async function(src){
         </tr>
       </thead>
       <tbody id="sw-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- VISTA COMBUSTIBLE (Fase B) — cargas/solicitudes de gasolina ingeridas de MoreApp -->
+<div id="view-combustible">
+  <!-- Rango de fechas -->
+  <div id="fuel-periodo-bar">
+    <span class="sw-periodo-label">Período:</span>
+    <label>Desde <input type="date" id="fuel-rango-desde"/></label>
+    <label>Hasta <input type="date" id="fuel-rango-hasta"/></label>
+    <span id="fuel-rango-count" class="sw-rango-count"></span>
+  </div>
+  <!-- KPIs -->
+  <div id="fuel-kpis"></div>
+  <!-- Barra de filtros -->
+  <div id="fuel-bar">
+    <select id="fuel-filt-tipo" aria-label="Filtrar por tipo"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="all">Cargas y solicitudes</option>
+      <option value="carga">Solo cargas</option>
+      <option value="solicitud">Solo solicitudes</option>
+    </select>
+    <select id="fuel-filt-verdict" aria-label="Filtrar por estado de validación"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="all">Toda validación</option>
+      <option value="ok">Validado</option>
+      <option value="discrepancia">Discrepancia</option>
+      <option value="pendiente">Pendiente</option>
+    </select>
+    <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="">Todas las sucursales</option>
+    </select>
+    <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="">Todos los responsables</option>
+    </select>
+    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
+        aria-label="Buscar combustible por ID de unidad, placa o responsable"
+        style="border:none;background:transparent;font-size:11px;color:var(--w1);width:160px;outline:none"/>
+    </div>
+    <span id="fuel-rcnt" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
+  </div>
+  <!-- Tabla -->
+  <div id="fuel-table-wrap">
+    <div id="fuel-empty" class="sw-empty" style="display:none">
+      <div class="sw-empty-ico"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg></div>
+      <div style="font-weight:700;color:var(--s1);margin-bottom:6px">Sin cargas en el período</div>
+      <div style="font-size:11px">Ajusta el rango de fechas o los filtros.<br>Las cargas se ingieren automáticamente desde MoreApp.</div>
+    </div>
+    <table class="sw-table" id="fuel-table" style="display:none">
+      <thead>
+        <tr id="fuel-thead-row">
+          <th style="width:36px">#</th>
+          <th data-sort="tipo">Tipo</th>
+          <th data-sort="eco">ID Unidad / ECO</th>
+          <th data-sort="plate">Placa</th>
+          <th data-sort="fecha">Fecha</th>
+          <th data-sort="branch">Sucursal</th>
+          <th data-sort="driver">Responsable</th>
+          <th data-sort="km">KM</th>
+          <th data-sort="litros">Litros</th>
+          <th data-sort="monto">Monto</th>
+          <th data-sort="kmpl">km/l</th>
+          <th data-sort="verdict">Validación</th>
+          <th>Evidencias</th>
+        </tr>
+      </thead>
+      <tbody id="fuel-tbody"></tbody>
     </table>
   </div>
 </div>
@@ -6017,6 +6093,7 @@ function showView(view){
   const isSem      = view==="semanales";
   const isAnalytics= view==="analytics";
   const isUsuarios = view==="usuarios";
+  const isComb     = view==="combustible";
 
   // Activar botón de nav correcto
   document.getElementById("mn-insp").classList.toggle("on",      isInsp);
@@ -6027,6 +6104,8 @@ function showView(view){
   if(mnAna) mnAna.classList.toggle("on", isAnalytics);
   const mnUsr=document.getElementById("mn-usuarios");
   if(mnUsr) mnUsr.classList.toggle("on", isUsuarios);
+  const mnComb=document.getElementById("mn-combustible");
+  if(mnComb) mnComb.classList.toggle("on", isComb);
 
   // Contenedor principal de Inspecciones
   const main = document.getElementById("main");
@@ -6076,6 +6155,10 @@ function showView(view){
   const uv = document.getElementById("usuarios-view");
   if(uv) uv.style.display = isUsuarios ? "flex" : "none";
 
+  // Vista Combustible (módulo de cargas — Fase B)
+  const cv = document.getElementById("view-combustible");
+  if(cv) cv.style.display = isComb ? "flex" : "none";
+
   // "ALERTAS DE FLOTA" pertenece al dashboard de Inspecciones — ocultarla en las
   // demás vistas (no debe aparecer en Usuarios/Taller/Semanales/Análisis). Al
   // volver a Inspecciones se reconstruye con las alertas vigentes.
@@ -6099,6 +6182,10 @@ function showView(view){
   }
   if(isUsuarios){
     initUsuarios();
+  }
+  if(isComb){
+    if(typeof window.initRangoFuel==="function") window.initRangoFuel();
+    if(typeof window.renderCombustible==="function") window.renderCombustible();
   }
 
   closeNav(); // cierra el menú hamburguesa móvil tras elegir vista (no-op en escritorio)
