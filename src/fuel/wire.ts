@@ -20,6 +20,7 @@ import {
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
+import { rankUnitsByKmpl, aggByGroup, aggByMonth } from "./fuelAggregates";
 import { upsertValidacionCarga } from "../api/client";
 
 declare global {
@@ -53,6 +54,8 @@ let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 let lastMetricsByLoad = new Map<string, FuelMetrics>();
 let detailOrder: string[] = [];
 let detailIndex = -1;
+// Dashboard
+let dashShown = false;
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -119,7 +122,41 @@ function renderCombustible(): void {
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
   });
 
+  if (dashShown) void renderFuelDash();
   updateFuelNavBadge();
+}
+
+/** Render del dashboard ejecutivo (carga echarts dinámicamente al primer uso). */
+async function renderFuelDash(): Promise<void> {
+  const dash = $("fuel-dash");
+  if (!dash) return;
+  const all = scoped();
+  const ranged = all.filter(inRange);
+  const allMetrics = computeFuelMetrics(all);
+  const baseline = buildFleetBaseline(allMetrics, all);
+  const ranks = rankUnitsByKmpl(baseline);
+  const data = {
+    peores: ranks.slice(-10),
+    mejores: ranks.slice(0, 10),
+    porSucursal: aggByGroup(ranged, (e) => e.sucursal),
+    porResponsable: aggByGroup(ranged, (e) => e.responsable ?? "").slice(0, 12),
+    porTipo: aggByGroup(ranged, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
+    meses: aggByMonth(ranged),
+  };
+  const els = {
+    peores: $("fchart-peores"),
+    mejores: $("fchart-mejores"),
+    sucursal: $("fchart-sucursal"),
+    responsable: $("fchart-responsable"),
+    tipo: $("fchart-tipo"),
+    tendencia: $("fchart-tendencia"),
+  };
+  try {
+    const { renderFuelDashboard } = await import("./fuelCharts");
+    renderFuelDashboard(els, data);
+  } catch (e) {
+    console.warn("[fuel] no se pudo cargar el dashboard:", e);
+  }
 }
 
 function setVerdictFilter(v: FuelVerdictFilter): void {
@@ -218,6 +255,17 @@ function mountControls(): void {
       sortDir = 1;
     }
     renderCombustible();
+  });
+  // Toggle Lista ↔ Dashboard.
+  $("fuel-view-toggle")?.addEventListener("click", () => {
+    dashShown = !dashShown;
+    const tw = $("fuel-table-wrap");
+    const dash = $("fuel-dash");
+    const btn = $("fuel-view-toggle");
+    if (tw) tw.style.display = dashShown ? "none" : "";
+    if (dash) dash.style.display = dashShown ? "block" : "none";
+    if (btn) btn.textContent = dashShown ? "📋 Lista" : "📊 Dashboard";
+    if (dashShown) void renderFuelDash();
   });
   // Controles del drawer de detalle.
   $("fuel-det-close")?.addEventListener("click", closeFuelDetail);
