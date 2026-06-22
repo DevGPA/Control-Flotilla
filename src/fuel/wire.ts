@@ -135,7 +135,7 @@ function updateFuelNavBadge(): void {
     const v = verdictOf(e);
     return v === "pendiente" || v === "discrepancia";
   }).length;
-  badge.textContent = pend > 0 ? String(pend) : "";
+  badge.textContent = pend > 99 ? "99+" : pend > 0 ? String(pend) : "";
   badge.style.display = pend > 0 ? "" : "none";
 }
 
