@@ -169,6 +169,87 @@ const schema = a
         index("tenantId").sortKeys(["unitUid"]).name("byTenantAndUnit"),
       ]),
 
+    // ── Módulo de Cargas de Combustible (2026-06-22) ───────────────────────
+    // Ingiere los 2 formularios de MoreApp: "Solicitud Gasolina ROF v2" y
+    // "Carga Gasolina ROF v2". UN modelo discriminado por `tipo`, igual patrón
+    // que Semanal/Taller (columnas tipadas filtrables + blob `datos` JSON).
+    // IDENTIDAD POR ID DE UNIDAD (economicoId), no por placa: el ID es estable
+    // ante cambios de placa/errores de captura (decisión de producto 2026-06-22).
+    // `eventoId` = meta.serialNumber (folio MoreApp) → dedup nativa / idempotencia.
+    // La revisión humana vive en ValidacionCarga (separada) para que un
+    // re-ingest/re-backfill del webhook NUNCA pise el veredicto del revisor.
+    CargaCombustible: a
+      .model({
+        tenantId: a.string().required(),
+        economicoId: a.string().required(),
+        // 'solicitud' | 'carga' — string, no enum (Gen 2 no permite enum en identifier, ver Periodo.tipo).
+        tipo: a.string().required(),
+        eventoId: a.string().required(),
+        placa: a.string(),
+        sucursal: a.string().required(),
+        tanque: a.string(),
+        fecha: a.string().required(), // YYYY-MM-DD
+        fechaHora: a.string(),
+        responsable: a.string(),
+        kmCapturado: a.integer(),
+        // Solicitud (lo planeado/estimado)
+        nivelAntes: a.string(),
+        nivelDeseado: a.string(),
+        montoEstimado: a.float(),
+        maxLitros: a.float(),
+        // Carga (lo real)
+        litrosCargados: a.float(),
+        precioPorLitro: a.float(),
+        montoTotal: a.float(),
+        seLlenoTanque: a.string(),
+        // photos[] ({group,col,fname}), ubicacionDeCarga, producto/combustible/precio,
+        // porcentaje/precioEstimado/observaciones/email, moreappFormId/FormVersionId,
+        // sucursalRaw, economicoIdFaltante? — JSON arbitrary para no migrar schema.
+        datos: a.json(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "economicoId", "tipo", "eventoId"])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin.
+        // El webhook (IAM) conserva escritura vía el grant a nivel de schema.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),
+        index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
+      ]),
+
+    // Revisión humana de una carga (1 por carga). loadId = "economicoId|tipo|eventoId".
+    // Separada de CargaCombustible: el webhook escribe los datos, el revisor escribe
+    // aquí, sin que un upsert pise al otro. Espejo de CheckDone. Los campos *Detectado
+    // los llena la Lambda de visión (Fase E); fuenteDeteccion distingue manual vs ia.
+    ValidacionCarga: a
+      .model({
+        tenantId: a.string().required(),
+        loadId: a.string().required(),
+        // 'ok' | 'discrepancia' | 'pendiente'
+        verdictGlobal: a.string(),
+        porEvidencia: a.json(), // { odometro:'ok', medidor:'discrepancia', ... }
+        revisadoPor: a.string(),
+        nota: a.string(),
+        ts: a.string(),
+        // Lectura IA (Fase E) — asesora, el humano confirma.
+        kmDetectado: a.integer(),
+        nivelDetectado: a.string(),
+        litrosDetectado: a.float(),
+        confianzaVision: a.float(),
+        fuenteDeteccion: a.string(), // 'manual' | 'ia'
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "loadId"])
+      .authorization((allow) => [
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ]),
+
     // Completación de hallazgos del checklist, COMPARTIDA entre usuarios del tenant.
     // Antes el "atendido/done" vivía solo en IndexedDB local → no se veía multi-user.
     // 1 record por (unidad, itemKey=texto del hallazgo). Marcar = upsert; desmarcar = delete.
