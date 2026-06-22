@@ -14,11 +14,20 @@ import { env } from "$amplify/env/moreapp-webhook";
 import { analyzeRow } from "../../../src/analyzer/analyzeRow";
 import type { ExcelRow } from "../../../src/types";
 import type { Schema } from "../../data/resource";
+import {
+  parseNum,
+  parseKm,
+  pickEco,
+  pickResponsable,
+  pickEconomicoId,
+  normSucursal,
+} from "../../../src/fuel/parse";
 
-// FASE 2 — mapper. POST: rutea por formId; el mensual ROF se mapea a Unit+Checklist
-// (reusando analyzeRow, el clasificador canónico) y se escribe en DynamoDB vía IAM.
-// Otros forms (gasolina/semanal) se ignoran (200). Sigue guardando crudo en S3 (auditoría).
-// GET ?all=1 / ?key= sigue para inspección.
+// FASE 2 — mapper. POST: rutea por formId. Mensual ROF → Unit+Checklist (reusando
+// analyzeRow, el clasificador canónico); Semanal → Unit+Semanal. Combustible:
+// Solicitud/Carga Gasolina ROF v2 → CargaCombustible (keyed por economicoId).
+// Otros forms y los eventos de pipeline (`type:submission.pipeline.*`, sin info.formId)
+// se ignoran (200). Sigue guardando crudo en S3 (auditoría). GET ?all=/?key= para inspección.
 
 const s3 = new S3Client({});
 const BUCKET = process.env.CAPTURE_BUCKET ?? "";
@@ -28,6 +37,8 @@ const SIGNING_SECRET = process.env.MOREAPP_SIGNING_SECRET ?? "";
 const PREFIX = "moreapp-capture/";
 const MENSUAL_FORM_ID = "687aa9b5a443e15d45370dfc";
 const SEMANAL_FORM_ID = "687aa9caa4ea6a369e62fe05";
+const SOLICITUD_FORM_ID = "676321d8525d17624242e789"; // Solicitud Gasolina ROF v2
+const CARGA_FORM_ID = "67634c96b962aa62d22a068a"; // Carga Gasolina ROF v2
 
 // API MoreApp para descargar fotos. La key se inyecta como secret (env MOREAPP_API_KEY).
 // Si está vacía, las fotos se saltan (la data igual se ingiere).
@@ -176,11 +187,13 @@ type PhotoRec = { group: string; col: string; fname: string };
  * Descarga las fotos (`gridfs://registrationFiles/<uuid>`) de las respuestas vía
  * la API de MoreApp y las sube a S3 `photos/{tenantId}/`. Devuelve los registros
  * {group, col, fname} para el render legacy. Si no hay API key, salta (devuelve []).
+ * `idUnidad` = identificador de la unidad para el nombre del archivo: placa en
+ * mensual/semanal, economicoId en combustible (se sanitiza igual, sin colisión).
  */
 async function downloadPhotos(
   customerId: string,
   answers: Record<string, unknown>,
-  placa: string,
+  idUnidad: string,
   tenantId: string,
   group = "Inspección Mensual",
 ): Promise<PhotoRec[]> {
@@ -204,7 +217,7 @@ async function downloadPhotos(
           .replace(/[^a-z0-9]/gi, "")
           .slice(0, 8)
           .toLowerCase();
-        const baseName = `moreapp_${placa}_${uuid8}_${safeDn}`
+        const baseName = `moreapp_${idUnidad}_${uuid8}_${safeDn}`
           .toLowerCase()
           .replace(/[^a-z0-9._-]/g, "_");
         const key = `photos/${tenantId}/${baseName}`;
@@ -244,7 +257,7 @@ async function downloadPhotos(
     }),
   );
   const photos = settled.filter((p): p is PhotoRec => p !== null);
-  console.info(`[moreapp-webhook] ${photos.length} fotos subidas para ${placa}`);
+  console.info(`[moreapp-webhook] ${photos.length} fotos subidas para ${idUnidad}`);
   return photos;
 }
 
@@ -698,6 +711,209 @@ async function runBackfillSemanal(
   };
 }
 
+// ─── Combustible: Solicitud/Carga Gasolina ROF v2 → CargaCombustible ──────────
+// Identidad por economicoId (no placa). Upsert idempotente create→update por
+// (tenantId, economicoId, tipo, eventoId). NO escribe ValidacionCarga (revisión
+// humana, modelo aparte). NO escribe Unit (combustible carga su propio lookup).
+type CombustibleTipo = "solicitud" | "carga";
+
+/** Campos comunes a ambos formularios de combustible. */
+function extractCombustibleCommon(envelope: Record<string, unknown>) {
+  const answers = (envelope.data ?? {}) as Record<string, unknown>;
+  const eco = pickEco(answers);
+  const { economicoId, faltante } = pickEconomicoId(eco);
+  const eventoId =
+    pickStr(((envelope.meta ?? {}) as Record<string, unknown>).serialNumber) ||
+    pickStr(envelope.id);
+  const fechaRaw = pickStr(answers.dateAndTime);
+  const fecha = fechaRaw.split(/[ T]/)[0] || new Date().toISOString().split("T")[0]!;
+  const formVersionId = pickStr(((envelope.info ?? {}) as Record<string, unknown>).formVersionId);
+  return {
+    answers,
+    eco,
+    economicoId,
+    economicoIdFaltante: faltante,
+    eventoId,
+    fechaRaw,
+    fecha,
+    sucursal: normSucursal(eco.SUCURSAL),
+    responsable: pickResponsable(answers),
+    formVersionId,
+  };
+}
+
+/** Procesa un envío del form SOLICITUD → upsert CargaCombustible (tipo=solicitud). */
+async function processSolicitud(
+  envelope: Record<string, unknown>,
+  customerId: string,
+): Promise<{ economicoId: string }> {
+  const c = extractCombustibleCommon(envelope);
+  if (!c.economicoId) throw new Error("Sin economicoId ni placa — solicitud combustible");
+  if (!c.eventoId) throw new Error("Sin eventoId (meta.serialNumber/id) — solicitud combustible");
+  const { answers, eco } = c;
+
+  const photos = await downloadPhotos(
+    customerId,
+    answers,
+    c.economicoId,
+    TENANT_ID,
+    "Solicitud Combustible",
+  );
+
+  const datos = {
+    photos,
+    porcentajeDelTanqueALlenar: answers.porcentajeDelTanqueALlenar ?? null,
+    precioEstimadoXLitros: pickStr(answers.precioEstimadoXLitros),
+    producto: pickStr(eco.PRODUCTO),
+    combustible: pickStr(eco.combustible),
+    precioCatalogo: pickStr(eco.precio),
+    observaciones: pickStr(answers.observaciones),
+    email: pickStr(answers.email),
+    moreappFormId: SOLICITUD_FORM_ID,
+    moreappFormVersionId: c.formVersionId,
+    sucursalRaw: pickStr(eco.SUCURSAL),
+    economicoIdFaltante: c.economicoIdFaltante || undefined,
+  };
+
+  const input = {
+    tenantId: TENANT_ID,
+    economicoId: c.economicoId,
+    tipo: "solicitud",
+    eventoId: c.eventoId,
+    placa: pickStr(eco.PLACAS) || undefined,
+    sucursal: c.sucursal,
+    tanque: pickStr(eco.TANQUE) || undefined,
+    fecha: c.fecha,
+    fechaHora: c.fechaRaw || undefined,
+    responsable: c.responsable || undefined,
+    kmCapturado: parseKm(answers.kilometraje),
+    nivelAntes: pickStr(answers.nivelDelTanqueAntesDeCargarMasCercano) || undefined,
+    nivelDeseado: pickStr(answers.nivelDelTanqueDeseado) || undefined,
+    montoEstimado: parseNum(answers.montoACargar),
+    maxLitros: parseNum(answers.maximoLitrosACargar),
+    datos: JSON.stringify(datos),
+  };
+
+  const client = await getDataClient();
+  const created = await client.models.CargaCombustible.create(input);
+  if (created.errors) {
+    if (isConditionalCheckFailed(created.errors)) {
+      const upd = await client.models.CargaCombustible.update(input);
+      if (upd.errors) throw new Error(`CargaCombustible.update: ${JSON.stringify(upd.errors)}`);
+    } else {
+      throw new Error(`CargaCombustible.create: ${JSON.stringify(created.errors)}`);
+    }
+  }
+  return { economicoId: c.economicoId };
+}
+
+/** Procesa un envío del form CARGA → upsert CargaCombustible (tipo=carga). */
+async function processCarga(
+  envelope: Record<string, unknown>,
+  customerId: string,
+): Promise<{ economicoId: string }> {
+  const c = extractCombustibleCommon(envelope);
+  if (!c.economicoId) throw new Error("Sin economicoId ni placa — carga combustible");
+  if (!c.eventoId) throw new Error("Sin eventoId (meta.serialNumber/id) — carga combustible");
+  const { answers, eco } = c;
+
+  const photos = await downloadPhotos(
+    customerId,
+    answers,
+    c.economicoId,
+    TENANT_ID,
+    "Carga Combustible",
+  );
+
+  const datos = {
+    photos,
+    ubicacionDeCarga: answers.ubicacionDeCarga ?? null,
+    producto: pickStr(eco.PRODUCTO),
+    combustible: pickStr(eco.combustible),
+    precioCatalogo: pickStr(eco.precio),
+    observaciones: pickStr(answers.observaciones),
+    email: pickStr(answers.email),
+    moreappFormId: CARGA_FORM_ID,
+    moreappFormVersionId: c.formVersionId,
+    sucursalRaw: pickStr(eco.SUCURSAL),
+    economicoIdFaltante: c.economicoIdFaltante || undefined,
+  };
+
+  const input = {
+    tenantId: TENANT_ID,
+    economicoId: c.economicoId,
+    tipo: "carga",
+    eventoId: c.eventoId,
+    placa: pickStr(eco.PLACAS) || undefined,
+    sucursal: c.sucursal,
+    tanque: pickStr(eco.TANQUE) || undefined,
+    fecha: c.fecha,
+    fechaHora: c.fechaRaw || undefined,
+    responsable: c.responsable || undefined,
+    kmCapturado: parseKm(answers.kilometraje),
+    litrosCargados: parseNum(answers.litrosCargados),
+    precioPorLitro: parseNum(answers.precioPorLitro1),
+    montoTotal: parseNum(answers.montoTotalDeCarga),
+    seLlenoTanque: pickStr(answers.seLlenoElTanque) || undefined,
+    datos: JSON.stringify(datos),
+  };
+
+  const client = await getDataClient();
+  const created = await client.models.CargaCombustible.create(input);
+  if (created.errors) {
+    if (isConditionalCheckFailed(created.errors)) {
+      const upd = await client.models.CargaCombustible.update(input);
+      if (upd.errors) throw new Error(`CargaCombustible.update: ${JSON.stringify(upd.errors)}`);
+    } else {
+      throw new Error(`CargaCombustible.create: ${JSON.stringify(created.errors)}`);
+    }
+  }
+  return { economicoId: c.economicoId };
+}
+
+/** Backfill por lotes de combustible (ene-2026 → hoy). Reusa fetchFormPage. */
+async function runBackfillCombustible(
+  tipo: CombustibleTipo,
+  cursor: number,
+  count: number,
+): Promise<{
+  cursor: number;
+  processed: number;
+  results: { economicoId?: string; error?: string }[];
+  totalSize: number;
+  nextCursor: number;
+  done: boolean;
+}> {
+  if (!API_KEY) throw new Error("sin MOREAPP_API_KEY");
+  const formId = tipo === "solicitud" ? SOLICITUD_FORM_ID : CARGA_FORM_ID;
+  const processFn = tipo === "solicitud" ? processSolicitud : processCarga;
+  const fromMs = Date.parse("2026-01-01T00:00:00Z");
+  const toMs = Date.now();
+  const page = Math.floor(cursor / 50);
+  const within = cursor % 50;
+  const data = await fetchFormPage(formId, page, fromMs, toMs);
+  const elements = data.elements ?? [];
+  const slice = elements.slice(within, within + count);
+  const results: { economicoId?: string; error?: string }[] = [];
+  for (const el of slice) {
+    try {
+      const { economicoId } = await processFn(el, "14922");
+      results.push({ economicoId });
+    } catch (e) {
+      results.push({ error: (e as Error).message });
+    }
+  }
+  const nextCursor = cursor + slice.length;
+  return {
+    cursor,
+    processed: slice.length,
+    results,
+    totalSize: data.totalSize ?? 0,
+    nextCursor,
+    done: slice.length === 0 || nextCursor >= (data.totalSize ?? 0),
+  };
+}
+
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const method = event.requestContext?.http?.method ?? "POST";
   const token = event.queryStringParameters?.t ?? "";
@@ -732,6 +948,85 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
         dataKeys: Object.keys((el.data ?? {}) as Record<string, unknown>),
         data: el.data,
       })),
+    });
+  }
+
+  if (
+    method === "GET" &&
+    event.queryStringParameters?.diag === "1" &&
+    (event.queryStringParameters?.form === "solicitud" ||
+      event.queryStringParameters?.form === "carga")
+  ) {
+    // Diagnóstico read-only de combustible: cuenta submissions de MoreApp por mes,
+    // detecta economicoId vacío y colisiones (economicoId,tipo,eventoId), y compara
+    // contra CargaCombustible en DynamoDB (faltantes). SIN escribir.
+    if (!API_KEY) return res(200, { error: "sin MOREAPP_API_KEY" });
+    const tipo = event.queryStringParameters.form as CombustibleTipo;
+    const formId = tipo === "solicitud" ? SOLICITUD_FORM_ID : CARGA_FORM_ID;
+    const from = event.queryStringParameters?.from ?? "2026-01-01";
+    const to = event.queryStringParameters?.to ?? new Date().toISOString().slice(0, 10);
+    const fromMs = Date.parse(`${from}T00:00:00Z`);
+    const toMs = Date.parse(`${to}T23:59:59Z`);
+    const keys = new Set<string>();
+    const dupCount = new Map<string, number>();
+    const porMes = new Map<string, number>();
+    let total = 0;
+    let sinEco = 0;
+    let page = 0;
+    while (page < 100) {
+      const data = await fetchFormPage(formId, page, fromMs, toMs);
+      const els = data.elements ?? [];
+      if (!els.length) break;
+      for (const el of els) {
+        total++;
+        const answers = (el.data ?? {}) as Record<string, unknown>;
+        const eco = pickEco(answers);
+        const picked = pickEconomicoId(eco);
+        if (picked.faltante) sinEco++;
+        const eventoId =
+          pickStr(((el.meta ?? {}) as Record<string, unknown>).serialNumber) || pickStr(el.id);
+        const fechaRaw = pickStr(answers.dateAndTime);
+        const fecha = fechaRaw.split(/[ T]/)[0] || "(sin fecha)";
+        porMes.set(fecha.slice(0, 7), (porMes.get(fecha.slice(0, 7)) ?? 0) + 1);
+        const k = `${picked.economicoId}|${tipo}|${eventoId}`;
+        keys.add(k);
+        dupCount.set(k, (dupCount.get(k) ?? 0) + 1);
+      }
+      if ((page + 1) * 50 >= (data.totalSize ?? 0)) break;
+      page++;
+    }
+    const client = await getDataClient();
+    const enDynamo = new Set<string>();
+    let nextToken: string | null | undefined = undefined;
+    let dpages = 0;
+    do {
+      const list: {
+        data?: { economicoId?: string; tipo?: string; eventoId?: string }[];
+        nextToken?: string | null;
+      } = await client.models.CargaCombustible.list({
+        filter: { tipo: { eq: tipo }, fecha: { between: [from, to] } },
+        limit: 1000,
+        nextToken: nextToken ?? undefined,
+      });
+      for (const c of list.data ?? [])
+        enDynamo.add(`${c.economicoId ?? ""}|${c.tipo ?? ""}|${c.eventoId ?? ""}`);
+      nextToken = list.nextToken;
+      dpages++;
+    } while (nextToken && dpages < 50);
+    const faltantes = [...keys].filter((k) => !enDynamo.has(k));
+    const colisiones = [...dupCount.entries()].filter(([, n]) => n > 1).map(([k, n]) => ({ k, n }));
+    return res(200, {
+      tipo,
+      from,
+      to,
+      total,
+      sinEco,
+      distinctEventos: keys.size,
+      enDynamo: enDynamo.size,
+      faltan: faltantes.length,
+      faltantes: faltantes.slice(0, 200),
+      colisiones,
+      porMes: [...porMes.entries()].sort().map(([mes, n]) => ({ mes, n })),
     });
   }
 
@@ -889,15 +1184,16 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   }
 
   if (method === "GET" && event.queryStringParameters?.backfill === "1") {
-    // Backfill por lotes (ene-2026 → hoy). ?form=mensual|semanal&cursor=K&count=C
+    // Backfill por lotes (ene-2026 → hoy). ?form=mensual|semanal|solicitud|carga&cursor=K&count=C
     const cursor = parseInt(event.queryStringParameters?.cursor ?? "0", 10) || 0;
     const count = parseInt(event.queryStringParameters?.count ?? "3", 10) || 3;
     const form = event.queryStringParameters?.form ?? "mensual";
     try {
-      const out =
-        form === "semanal"
-          ? await runBackfillSemanal(cursor, count)
-          : await runBackfill(cursor, count);
+      let out;
+      if (form === "semanal") out = await runBackfillSemanal(cursor, count);
+      else if (form === "solicitud" || form === "carga")
+        out = await runBackfillCombustible(form, cursor, count);
+      else out = await runBackfill(cursor, count);
       return res(200, { form, ...out });
     } catch (e) {
       return res(200, { ok: false, error: (e as Error).message });
@@ -991,6 +1287,17 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       console.info(`[moreapp-webhook] semanal ingerido placa=${placa}`);
       return res(200, { ok: true, ingested: placa, tipo: "semanal" });
     }
+    if (formId === SOLICITUD_FORM_ID) {
+      const { economicoId } = await processSolicitud(envelope, customerId);
+      console.info(`[moreapp-webhook] solicitud combustible ingerida eco=${economicoId}`);
+      return res(200, { ok: true, ingested: economicoId, tipo: "solicitud" });
+    }
+    if (formId === CARGA_FORM_ID) {
+      const { economicoId } = await processCarga(envelope, customerId);
+      console.info(`[moreapp-webhook] carga combustible ingerida eco=${economicoId}`);
+      return res(200, { ok: true, ingested: economicoId, tipo: "carga" });
+    }
+    // Otros forms y eventos de pipeline (submission.pipeline.*, sin info.formId) → ignorar.
     console.info(`[moreapp-webhook] ignorado formId=${formId}`);
     return res(200, { ok: true, ignored: formId });
   } catch (e) {
