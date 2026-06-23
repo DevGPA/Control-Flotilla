@@ -44,13 +44,13 @@ const schema = a
       })
       .identifier(["tenantId", "placa"])
       .authorization((allow) => [
-        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
-        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
-        // conserva escritura vía el grant a nivel de schema, más abajo.
-        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
-        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        // Catálogo ADMINISTRATIVO (2026-06-23): lectura aislada por tenant (incluye viewer);
+        // ESCRITURA SOLO admin — el Producto Toka que manda en el layout de carga masiva lo
+        // gestiona el admin, y operativo ya NO debe alterarlo por AppSync. El webhook (IAM)
+        // conserva escritura vía el grant a nivel de schema (allow.resource), más abajo, así
+        // que la ingesta de MoreApp NO se ve afectada. Nota: la carga legacy de unidades por
+        // Excel/ZIP queda restringida a admin (los datos hoy llegan por webhook).
         allow.groupDefinedIn("tenantId").to(["read"]),
-        allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
       ])
       .secondaryIndexes((index) => [
