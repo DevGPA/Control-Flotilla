@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-gaov1zsiwFbykorVMzwJletJ7F1R7KTdeFvaN+SZrpc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-B8j6QvJkbfNAZ+8queJsYd+7xaSCbcrehLjnTVP2FF8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -793,7 +793,12 @@ g.inflateBytes=async function(src){
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="cv-srch" placeholder="Buscar por económico, placa, producto…" oninput="renderUnidades()" aria-label="Buscar unidad"/>
     </div>
-    <button class="ubtn ubtn-x" id="cv-new" onclick="openUnidadModal()" style="margin-left:auto">
+    <input type="file" id="cv-toka-file" accept=".xlsx,.xls" style="display:none" onchange="importTokaProductos(this.files[0]);this.value=''"/>
+    <button class="ubtn" id="cv-import" onclick="document.getElementById('cv-toka-file').click()" style="margin-left:auto"
+      title="Sube el 'Layout de carga masiva para Toka' para asignar el producto a cada unidad MoreApp por nómina">
+      <i data-lucide="upload" style="width:13px;height:13px"></i> <span>Importar productos Toka</span>
+    </button>
+    <button class="ubtn ubtn-x" id="cv-new" onclick="openUnidadModal()">
       <i data-lucide="plus" style="width:13px;height:13px"></i> <span>Nueva unidad</span>
     </button>
   </div>
@@ -6399,6 +6404,56 @@ async function cvDelete(placa){
   }catch(e){ window.notify("Error al eliminar.","error",5000); console.error("[unidades] delete",e); }
 }
 window.cvDelete = cvDelete;
+
+// Clave canónica de económico (espejo de ecoKey en tokaLayout.ts): "06"→"6".
+function _cvEcoKey(e){ const t=String(e==null?"":e).trim(); return /^\d+$/.test(t)?String(parseInt(t,10)):t.toUpperCase(); }
+
+// Importa el "Layout de carga masiva para Toka": asigna a cada unidad MoreApp su Producto
+// Toka por nómina. El producto sale del archivo de Toka (no de MoreApp). Solo toca unidades
+// que usan MoreApp (con cargas/solicitudes en window.fuelEntries). Escribe vía AppSync (admin).
+async function importTokaProductos(file){
+  if(!file) return;
+  if(!window.XLSX){ window.notify("Componente XLSX no disponible; recarga la página.","error",5000); return; }
+  if(!window.__units){ window.notify("Sin sesión activa.","error",4000); return; }
+  const fe = Array.isArray(window.fuelEntries) ? window.fuelEntries : [];
+  if(!fe.length){ window.notify("Aún no hay datos de combustible cargados para identificar las unidades MoreApp.","warn",6000); return; }
+  let wb;
+  try{
+    const buf = await file.arrayBuffer();
+    wb = window.XLSX.read(buf, { type:"array" });
+  }catch(e){ window.notify("No se pudo leer el archivo (¿es un .xlsx válido?).","error",5000); console.error("[toka import]",e); return; }
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = window.XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
+  const hdr = (rows[0]||[]).map(h=>String(h).trim().toLowerCase());
+  const iNom = hdr.findIndex(h=>h.includes("nómina")||h.includes("nomina"));
+  const iProd = hdr.findIndex(h=>h.includes("producto"));
+  if(iNom<0 || iProd<0){ window.notify("El archivo no tiene las columnas 'Nómina' y 'Producto' del layout Toka.","error",6000); return; }
+  // nómina(clave) → producto del archivo Toka
+  const tok = new Map();
+  for(const r of rows.slice(1)){ const k=_cvEcoKey(r[iNom]); const p=String(r[iProd]||"").trim(); if(k&&p) tok.set(k,p); }
+  if(!tok.size){ window.notify("El archivo no trae filas de nómina→producto.","warn",5000); return; }
+  // unidades MoreApp (con combustible): clave → {eco, placa}; placa preferida del catálogo existente
+  const exist = new Map(); for(const u of _cvUnits){ const k=_cvEcoKey(u.economicoId); if(k && !exist.has(k)) exist.set(k, { placa:u.placa, eco:u.economicoId }); }
+  const moreapp = new Map();
+  for(const e of fe){ const k=_cvEcoKey(e.eco); if(!k || moreapp.has(k)) continue; moreapp.set(k, { eco:e.eco, placa:(exist.get(k)&&exist.get(k).placa) || e.placa || "" }); }
+
+  const btn=document.getElementById("cv-import"); if(btn) btn.disabled=true;
+  window.notify("Importando productos Toka…","info",2000);
+  let ok=0, skipNoToka=0, skipNoPlaca=0, errc=0;
+  for(const [k, info] of moreapp){
+    const prod = tok.get(k);
+    if(!prod){ skipNoToka++; continue; }
+    if(!info.placa){ skipNoPlaca++; continue; }
+    const economicoId = (exist.get(k)&&exist.get(k).eco) || info.eco;
+    try{ await window.__units.upsert({ placa:info.placa, economicoId, productoToka:prod }); ok++; }
+    catch(e){ errc++; console.error("[toka import] eco="+info.eco, e); }
+  }
+  if(btn) btn.disabled=false;
+  const extra=[]; if(skipNoToka) extra.push(`${skipNoToka} MoreApp sin producto en el archivo`); if(skipNoPlaca) extra.push(`${skipNoPlaca} sin placa`); if(errc) extra.push(`${errc} errores`);
+  window.notify(`Importación Toka: ${ok} unidad${ok===1?"":"es"} con producto asignado`+(extra.length?` · ${extra.join(", ")}`:"")+".", errc?"warn":"ok", 8000);
+  await refreshUnidades();
+}
+window.importTokaProductos = importTokaProductos;
 
 function showView(view){
   // data-view gobierna la regla CSS que FUERZA ocultar el tablero de Inspecciones
