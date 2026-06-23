@@ -52,16 +52,24 @@ const axisCommon = (p: TremorPalette) => ({
   splitLine: { lineStyle: { color: p.ln, opacity: 0.4 } },
 });
 
-/** Barra horizontal de ranking km/l (los peores arriba si color=R). */
+const pct1 = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(1)}%`;
+
+/**
+ * Barra horizontal de ranking (los peores arriba si color=R). Si los items traen
+ * `desviacion` (ranking vs su tipo), la barra mide la magnitud de la desviación % y la
+ * etiqueta la muestra con signo; el km/l absoluto y el baseline del tipo van en el tooltip.
+ * Si no, muestra el km/l directo (modo histórico).
+ */
 function hbar(
   container: HTMLElement,
   items: UnitRank[],
   color: (p: TremorPalette) => string,
 ): void {
+  const esDesv = items.some((d) => typeof d.desviacion === "number");
   makeChart(container, (p) => {
     const data = [...items].reverse(); // ECharts pinta de abajo→arriba
     return {
-      grid: { left: 8, right: 40, top: 8, bottom: 8, containLabel: true },
+      grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
@@ -72,22 +80,38 @@ function hbar(
           const a = (ps as { name: string; value: number }[])[0]!;
           const item = data.find((d) => d.eco === a.name);
           const n = item ? item.n : 0;
-          return `Unidad ${a.name}<br/><b>${a.value.toFixed(2)} km/l</b><br/><span style="opacity:.7">${n} carga${n === 1 ? "" : "s"} en el período</span>`;
+          const cargas = `<span style="opacity:.7">${n} carga${n === 1 ? "" : "s"} en el período</span>`;
+          if (esDesv && item) {
+            const dv = (item.desviacion ?? 0) * 100;
+            const base = item.tipoMean ? `${item.tipoMean.toFixed(2)} km/l` : "—";
+            return `Unidad ${a.name}<br/><b>${pct1(dv)} vs ${item.tipo ?? "su tipo"}</b><br/>${item.kmpl.toFixed(2)} km/l · tipo ${base}<br/>${cargas}`;
+          }
+          return `Unidad ${a.name}<br/><b>${a.value.toFixed(2)} km/l</b><br/>${cargas}`;
         },
       },
-      xAxis: { type: "value", ...axisCommon(p) },
+      xAxis: {
+        type: "value",
+        ...axisCommon(p),
+        axisLabel: { color: p.textSub, fontSize: 10, formatter: esDesv ? "{value}%" : "{value}" },
+      },
       yAxis: { type: "category", data: data.map((d) => d.eco), ...axisCommon(p) },
       series: [
         {
           type: "bar",
-          data: data.map((d) => Math.round(d.kmpl * 100) / 100),
+          data: data.map((d) =>
+            esDesv
+              ? Math.round(Math.abs((d.desviacion ?? 0) * 100) * 10) / 10
+              : Math.round(d.kmpl * 100) / 100,
+          ),
           itemStyle: { color: color(p), borderRadius: [0, 4, 4, 0] },
           label: {
             show: true,
             position: "right",
             color: p.textSub,
             fontSize: 10,
-            formatter: "{c}",
+            formatter: esDesv
+              ? (pt: { dataIndex: number }) => pct1((data[pt.dataIndex]!.desviacion ?? 0) * 100)
+              : "{c}",
           },
           barMaxWidth: 18,
         },
