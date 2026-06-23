@@ -1017,13 +1017,17 @@ select.filter-active {
   font-weight: 600;
 }
 /* ═══ Módulo Administración de Usuarios (2026-06-12) ═══ */
-/* Catálogo de Unidades (2026-06-23): comparte EXACTAMENTE el layout de #usuarios-view.
-   SIN esta regla el contenedor quedaba en fila (display:flex sin column) y no scrolleaba. */
+/* Catálogo de Unidades (2026-06-23): comparte el layout de #usuarios-view.
+   flex:1 + min-height:0 = la vista llena el alto bajo el header (#app es flex-column con
+   overflow:hidden, no hay scroll de página) y deja que .uv-table-wrap scrollee dentro.
+   Fix scroll Unidades (no bastaba flex-direction:column; faltaba acotar el alto). */
 #usuarios-view,
 #unidades-view {
   flex-direction: column;
   padding: 14px 16px;
   gap: 12px;
+  flex: 1;
+  min-height: 0;
 }
 .uv-bar {
   display: flex;
@@ -1068,6 +1072,8 @@ select.filter-active {
   border-radius: var(--r2);
   overflow: auto;
   background: var(--bg);
+  flex: 1; /* toma el alto restante de la vista (column) para scrollear dentro */
+  min-height: 0;
 }
 .uv-table {
   width: 100%;
