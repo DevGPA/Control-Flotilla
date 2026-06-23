@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTokaLayout,
   tokaLayoutToAoa,
+  ecoKey,
   TOKA_HEADER,
   TOKA_ID_CLIENTE,
 } from "../src/fuel/tokaLayout";
@@ -48,6 +49,23 @@ function carga(eco: string, producto: string, over: Partial<FuelEntry> = {}): Fu
     ...over,
   };
 }
+
+describe("ecoKey (clave canónica de económico)", () => {
+  it("numérico puro sin ceros a la izquierda", () => {
+    expect(ecoKey("06")).toBe("6");
+    expect(ecoKey("44")).toBe("44");
+    expect(ecoKey(" 02 ")).toBe("2");
+  });
+  it("no numérico → trim + mayúsculas", () => {
+    expect(ecoKey("stock 1")).toBe("STOCK 1");
+    expect(ecoKey("tr_72")).toBe("TR_72");
+  });
+  it("vacío/nulo → cadena vacía", () => {
+    expect(ecoKey("")).toBe("");
+    expect(ecoKey(null)).toBe("");
+    expect(ecoKey(undefined)).toBe("");
+  });
+});
 
 describe("buildTokaLayout — estructura Toka", () => {
   it("header y constante de cliente exactos", () => {
@@ -172,6 +190,22 @@ describe("buildTokaLayout — casos borde", () => {
     });
     expect(r.rows[0]!.producto).toBe("EASYGAS DIESEL CHIP");
     expect(r.rows[0]!.nomina).toBe(44);
+  });
+
+  it("override aplica pese al padding de ceros: carga '06' vs clave '6' (bug 🔴 corregido)", () => {
+    const r = buildTokaLayout([sol("06", 500, DIESEL)], {
+      productoOverride: new Map([["6", "EASYGAS DIESEL CHIP"]]),
+    });
+    expect(r.rows[0]!.producto).toBe("EASYGAS DIESEL CHIP");
+    expect(r.rows[0]!.nomina).toBe(6);
+  });
+
+  it("override fuera del catálogo conocido → se usa pero advierte (no bloquea)", () => {
+    const r = buildTokaLayout([sol("9", 500, DIESEL)], {
+      productoOverride: new Map([["9", "EASYGAS MAGNA"]]), // sin "CHIP" → errata típica
+    });
+    expect(r.rows[0]!.producto).toBe("EASYGAS MAGNA");
+    expect(r.warnings.some((w) => w.tipo === "producto-override-desconocido")).toBe(true);
   });
 
   it("override se usa tal cual aunque NO esté en el catálogo validado (variante nueva)", () => {

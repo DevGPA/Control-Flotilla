@@ -29,7 +29,7 @@ import {
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
 import { rankUnitsByDeviation, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
-import { buildTokaLayout, tokaLayoutToAoa, type TokaSkipMotivo } from "./tokaLayout";
+import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
 import { upsertValidacionCarga } from "../api/client";
 
 declare global {
@@ -218,26 +218,41 @@ const TOKA_SKIP_LABEL: Record<TokaSkipMotivo, string> = {
  * actual (una fila por unidad; MONTO DESEADO = Σ del "monto a cargar" de sus solicitudes).
  * xlsx se carga dinámicamente (fuera del bundle principal). Reporta incluidas/omitidas.
  */
-/** Override economicoId→productoToka del catálogo de Unidades (admin). Vacío si falla. */
-async function fetchProductoOverride(): Promise<Map<string, string>> {
+type OverrideResult = { map: Map<string, string>; failed: boolean; conflicts: string[] };
+
+/**
+ * Override economicoId→productoToka del catálogo de Unidades (admin), normalizado con
+ * `ecoKey` para que case con el eco de las cargas ("06"↔"6"). Si dos unidades comparten
+ * económico con productos distintos NO se inventa un ganador: se omite ese override (manda
+ * MoreApp validado) y se reporta como conflicto. `failed` distingue "catálogo vacío legítimo"
+ * de "no se pudo leer" (sin sesión/red) para que el export no aplique overrides en silencio.
+ */
+async function fetchProductoOverride(): Promise<OverrideResult> {
   const map = new Map<string, string>();
+  if (!window.__units) return { map, failed: true, conflicts: [] };
   try {
-    const units = (await window.__units?.list()) ?? [];
+    const units = (await window.__units.list()) ?? [];
+    const conflicts = new Set<string>();
     for (const u of units) {
-      const eco = (u.economicoId ?? "").trim();
+      const key = ecoKey(u.economicoId);
       const prod = (u.productoToka ?? "").trim();
-      if (eco && prod) map.set(eco, prod);
+      if (!key || !prod) continue;
+      const prev = map.get(key);
+      if (prev && prev !== prod) conflicts.add(key);
+      else if (!conflicts.has(key)) map.set(key, prod);
     }
+    for (const k of conflicts) map.delete(k); // económico duplicado → no se aplica ninguno
+    return { map, failed: false, conflicts: [...conflicts] };
   } catch (e) {
-    console.warn("[fuel] no se pudo leer el catálogo de unidades (se usa producto de MoreApp):", e);
+    console.warn("[fuel] no se pudo leer el catálogo de unidades:", e);
+    return { map: new Map(), failed: true, conflicts: [] };
   }
-  return map;
 }
 
 async function exportTokaLayout(): Promise<void> {
   const ctx = computeCtx();
-  const productoOverride = await fetchProductoOverride();
-  const result = buildTokaLayout(ctx.filtered, { productoOverride });
+  const override = await fetchProductoOverride();
+  const result = buildTokaLayout(ctx.filtered, { productoOverride: override.map });
   if (result.rows.length === 0) {
     const motivo = result.totalUnidades
       ? "ninguna unidad del filtro tiene monto a cargar (>0). Revisa que el filtro incluya solicitudes."
@@ -259,6 +274,15 @@ async function exportTokaLayout(): Promise<void> {
     return;
   }
 
+  // Fallo al leer el catálogo: aviso DEDICADO (no silencioso) — el layout salió con el
+  // producto de MoreApp y los overrides Toka NO se aplicaron.
+  if (override.failed)
+    window.notify?.(
+      "No se pudo leer el catálogo de Unidades: el layout usa el producto de MoreApp y los overrides Toka NO se aplicaron. Verifica tu sesión y reintenta.",
+      "warn",
+      8000,
+    );
+
   // Resumen de incluidas / omitidas / advertencias (nada silencioso).
   const partes = [
     `${result.rows.length} unidad${result.rows.length === 1 ? "" : "es"} incluida${result.rows.length === 1 ? "" : "s"}`,
@@ -271,9 +295,14 @@ async function exportTokaLayout(): Promise<void> {
       `${result.skipped.length} omitida${result.skipped.length === 1 ? "" : "s"} (${detalle})`,
     );
   }
+  if (override.conflicts.length)
+    partes.push(
+      `${override.conflicts.length} económico${override.conflicts.length === 1 ? "" : "s"} duplicado${override.conflicts.length === 1 ? "" : "s"} en catálogo (override ignorado: ${override.conflicts.join(", ")})`,
+    );
   if (result.warnings.length)
     partes.push(`${result.warnings.length} advertencia${result.warnings.length === 1 ? "" : "s"}`);
-  const limpio = result.skipped.length === 0 && result.warnings.length === 0;
+  const limpio =
+    result.skipped.length === 0 && result.warnings.length === 0 && override.conflicts.length === 0;
   window.notify?.(`Layout Toka: ${partes.join(" · ")}.`, limpio ? "ok" : "warn", 7000);
 }
 
