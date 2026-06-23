@@ -29,6 +29,7 @@ import {
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
 import { rankUnitsByDeviation, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
+import { buildTokaLayout, tokaLayoutToAoa, type TokaSkipMotivo } from "./tokaLayout";
 import { upsertValidacionCarga } from "../api/client";
 
 declare global {
@@ -206,6 +207,59 @@ function setVerdictFilter(v: FuelVerdictFilter): void {
   renderCombustible();
 }
 
+const TOKA_SKIP_LABEL: Record<TokaSkipMotivo, string> = {
+  "monto-cero": "sin monto a cargar",
+  "producto-ausente": "sin producto",
+  "producto-desconocido": "producto fuera de catálogo Toka",
+};
+
+/**
+ * Genera y descarga el "Layout de carga masiva para Toka" con las unidades del filtro
+ * actual (una fila por unidad; MONTO DESEADO = Σ del "monto a cargar" de sus solicitudes).
+ * xlsx se carga dinámicamente (fuera del bundle principal). Reporta incluidas/omitidas.
+ */
+async function exportTokaLayout(): Promise<void> {
+  const ctx = computeCtx();
+  const result = buildTokaLayout(ctx.filtered);
+  if (result.rows.length === 0) {
+    const motivo = result.totalUnidades
+      ? "ninguna unidad del filtro tiene monto a cargar (>0). Revisa que el filtro incluya solicitudes."
+      : "no hay registros en el filtro actual.";
+    window.notify?.(`No se generó el layout Toka: ${motivo}`, "warn", 6000);
+    return;
+  }
+  try {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(tokaLayoutToAoa(result));
+    ws["!cols"] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 32 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Hoja1");
+    const fecha = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `layout_carga_toka_${fecha}.xlsx`);
+  } catch (e) {
+    console.warn("[fuel] no se pudo generar el layout Toka:", e);
+    window.notify?.("No se pudo generar el archivo Toka. Intenta de nuevo.", "err", 6000);
+    return;
+  }
+
+  // Resumen de incluidas / omitidas / advertencias (nada silencioso).
+  const partes = [
+    `${result.rows.length} unidad${result.rows.length === 1 ? "" : "es"} incluida${result.rows.length === 1 ? "" : "s"}`,
+  ];
+  if (result.skipped.length) {
+    const porMotivo = new Map<TokaSkipMotivo, number>();
+    for (const s of result.skipped) porMotivo.set(s.motivo, (porMotivo.get(s.motivo) ?? 0) + 1);
+    const detalle = [...porMotivo].map(([m, n]) => `${n} ${TOKA_SKIP_LABEL[m]}`).join(", ");
+    partes.push(
+      `${result.skipped.length} omitida${result.skipped.length === 1 ? "" : "s"} (${detalle})`,
+    );
+  }
+  if (result.warnings.length)
+    partes.push(`${result.warnings.length} advertencia${result.warnings.length === 1 ? "" : "s"}`);
+  const limpio = result.skipped.length === 0 && result.warnings.length === 0;
+  window.notify?.(`Layout Toka: ${partes.join(" · ")}.`, limpio ? "ok" : "warn", 7000);
+}
+
 /** Sincroniza los controles del DOM con el estado del filtro (idempotente). */
 function syncFilterControls(): void {
   const vSel = $("fuel-filt-verdict") as HTMLSelectElement | null;
@@ -309,6 +363,8 @@ function mountControls(): void {
   // Toggle segmentado Lista | Dashboard.
   $("fuel-seg-lista")?.addEventListener("click", () => setDashView(false));
   $("fuel-seg-dash")?.addEventListener("click", () => setDashView(true));
+  // Descargar layout de carga masiva Toka (respeta los filtros activos).
+  $("fuel-export-toka")?.addEventListener("click", () => void exportTokaLayout());
   // Controles del drawer de detalle.
   $("fuel-det-close")?.addEventListener("click", closeFuelDetail);
   $("fuel-det-prev")?.addEventListener("click", () => navDetail(-1));
