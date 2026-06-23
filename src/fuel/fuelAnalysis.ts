@@ -181,7 +181,7 @@ export function buildFleetBaseline(
   const porTipo = new Map<string, FuelStat>();
   for (const [tipo, vals] of kmplByTipo) porTipo.set(tipo, statOf(vals));
 
-  return { porUnidad, porTipo, flotaMean: mean(clampOutliers(allKmpl)) };
+  return { porUnidad, porTipo, tipoDe: tipoOf, flotaMean: mean(clampOutliers(allKmpl)) };
 }
 
 /** Precedencia de RiskLevel para agregar el peor. */

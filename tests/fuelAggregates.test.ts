@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   rankUnitsByKmpl,
+  rankUnitsByDeviation,
   splitRanking,
   aggByGroup,
   aggByMonth,
@@ -66,6 +67,7 @@ describe("rankUnitsByKmpl", () => {
         ["C", { mean: 20, sd: 0, n: 1 }], // n<4 → excluido
       ]),
       porTipo: new Map(),
+      tipoDe: new Map(),
       flotaMean: 10,
     };
     const r = rankUnitsByKmpl(base);
@@ -79,9 +81,59 @@ describe("rankUnitsByKmpl", () => {
         ["B", { mean: 30, sd: 9, n: 3 }], // excluida pese a km/l alto: muestra sin IQR
       ]),
       porTipo: new Map(),
+      tipoDe: new Map(),
       flotaMean: 10,
     };
     expect(rankUnitsByKmpl(base).map((x) => x.eco)).toEqual(["A"]);
+  });
+});
+
+describe("rankUnitsByDeviation (vs su tipo de unidad)", () => {
+  it("clasifica por desviación relativa, no por km/l absoluto", () => {
+    // Un diésel a 7 km/l está POR ENCIMA de su tipo (6) → mejor que una gasolina a 10
+    // que está por debajo de su tipo (12). El ranking absoluto los invertiría.
+    const base: FleetBaseline = {
+      porUnidad: new Map([
+        ["DIESEL1", { mean: 7, sd: 0.5, n: 6 }], // +16.7% vs Diesel(6)
+        ["GAS1", { mean: 10, sd: 0.5, n: 6 }], // −16.7% vs Magna(12)
+      ]),
+      porTipo: new Map([
+        ["Diesel", { mean: 6, sd: 1, n: 10 }],
+        ["Gasolina Magna", { mean: 12, sd: 1, n: 10 }],
+      ]),
+      tipoDe: new Map([
+        ["DIESEL1", "Diesel"],
+        ["GAS1", "Gasolina Magna"],
+      ]),
+      flotaMean: 9,
+    };
+    const r = rankUnitsByDeviation(base);
+    expect(r.map((x) => x.eco)).toEqual(["DIESEL1", "GAS1"]); // diésel primero pese a menor km/l
+    expect(r[0]!.desviacion).toBeCloseTo(1 / 6, 4);
+    expect(r[1]!.desviacion).toBeCloseTo(-1 / 6, 4);
+    expect(r[0]!.tipo).toBe("Diesel");
+  });
+
+  it("tipo sin baseline confiable (minTipoN) → desviación 0 (no penaliza)", () => {
+    const base: FleetBaseline = {
+      porUnidad: new Map([["U1", { mean: 9, sd: 0.5, n: 5 }]]),
+      porTipo: new Map([["Diesel", { mean: 6, sd: 1, n: 2 }]]), // n<4 → no confiable
+      tipoDe: new Map([["U1", "Diesel"]]),
+      flotaMean: 9,
+    };
+    const r = rankUnitsByDeviation(base);
+    expect(r[0]!.desviacion).toBe(0);
+    expect(r[0]!.kmpl).toBe(9); // km/l se conserva para el tooltip
+  });
+
+  it("respeta minN=4 por unidad igual que el ranking absoluto", () => {
+    const base: FleetBaseline = {
+      porUnidad: new Map([["U1", { mean: 9, sd: 0.5, n: 3 }]]), // n<4 → fuera
+      porTipo: new Map([["Diesel", { mean: 6, sd: 1, n: 10 }]]),
+      tipoDe: new Map([["U1", "Diesel"]]),
+      flotaMean: 9,
+    };
+    expect(rankUnitsByDeviation(base)).toHaveLength(0);
   });
 });
 

@@ -28,7 +28,7 @@ import {
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
-import { rankUnitsByKmpl, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
+import { rankUnitsByDeviation, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
 import { upsertValidacionCarga } from "../api/client";
 
 declare global {
@@ -172,8 +172,10 @@ async function renderFuelDash(): Promise<void> {
   // MISMO contexto filtrado que los KPIs/tabla (rankings, consumos y tendencia
   // respetan TODOS los filtros, no solo el período). Reutiliza el último cómputo.
   const ctx = lastCtx ?? computeCtx();
-  const ranks = rankUnitsByKmpl(ctx.baseline);
-  const { mejores, peores } = splitRanking(ranks, 10); // disjuntos (sin solape best/worst)
+  // Ranking por desviación vs el MISMO tipo de unidad (no km/l absoluto): así un diésel
+  // pesado no cae siempre en "peores" por física. mejores/peores disjuntos (splitRanking).
+  const ranks = rankUnitsByDeviation(ctx.baseline);
+  const { mejores, peores } = splitRanking(ranks, 10);
   const data = {
     peores,
     mejores,

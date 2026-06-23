@@ -19,7 +19,17 @@ export function montoEfectivo(e: {
   return 0;
 }
 
-export type UnitRank = { eco: string; kmpl: number; n: number };
+export type UnitRank = {
+  eco: string;
+  kmpl: number;
+  n: number;
+  /** Tipo de la unidad (Diesel / Gasolina Magna / …) cuando se rankea por desviación. */
+  tipo?: string;
+  /** km/l medio del tipo (baseline contra el que se compara). */
+  tipoMean?: number;
+  /** Desviación relativa vs su tipo: (kmpl − tipoMean) / tipoMean. + = mejor que sus pares. */
+  desviacion?: number;
+};
 
 /**
  * Ranking de unidades por km/l (de baseline.porUnidad). Desc (mejor primero).
@@ -36,6 +46,27 @@ export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 4): UnitRank[] {
       out.push({ eco, kmpl: s.mean, n: s.n });
   }
   return out.sort((a, b) => b.kmpl - a.kmpl);
+}
+
+/**
+ * Ranking por DESVIACIÓN del km/l de cada unidad respecto al promedio de su MISMO tipo
+ * (Diesel/Magna/Premium tienen km/l muy distinto por física: comparar en absoluto mete
+ * siempre a los diésel/pesados en "peores" aunque gestionen bien). Desc por desviación
+ * (mejor-que-sus-pares primero). `minN` lecturas por unidad (IQR ya recorta con ≥4);
+ * `minTipoN` lecturas para confiar en el baseline del tipo — si el tipo no es confiable
+ * la unidad entra con desviación 0 (ni premia ni penaliza) en vez de quedar fuera.
+ */
+export function rankUnitsByDeviation(baseline: FleetBaseline, minN = 4, minTipoN = 4): UnitRank[] {
+  const out: UnitRank[] = [];
+  for (const [eco, s] of baseline.porUnidad) {
+    if (!(s.n >= minN && Number.isFinite(s.mean) && s.mean > 0)) continue;
+    const tipo = baseline.tipoDe.get(eco) ?? "(sin tipo)";
+    const ts = baseline.porTipo.get(tipo);
+    const tipoConfiable = !!ts && ts.n >= minTipoN && ts.mean > 0;
+    const desviacion = tipoConfiable ? (s.mean - ts.mean) / ts.mean : 0;
+    out.push({ eco, kmpl: s.mean, n: s.n, tipo, tipoMean: ts?.mean, desviacion });
+  }
+  return out.sort((a, b) => (b.desviacion ?? 0) - (a.desviacion ?? 0));
 }
 
 /**

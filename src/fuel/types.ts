@@ -101,6 +101,7 @@ export type FuelStat = {
 export type FleetBaseline = {
   porUnidad: Map<string, FuelStat>; // km/l por economicoId
   porTipo: Map<string, FuelStat>; // km/l por tipoUnidad
+  tipoDe: Map<string, string>; // economicoId → tipoUnidad (para comparar vs su tipo)
   flotaMean: number; // km/l medio de la flota
 };
 
