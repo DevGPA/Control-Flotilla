@@ -3867,9 +3867,12 @@ select.filter-active {
 /* ════ TALLER MODAL ══════════════════════════════════════════ */
 /* Módulo Admin Usuarios (fix 2026-06-15): #usuario-modal comparte el patrón de
    overlay de #taller-modal. SIN esta regla el modal se renderizaba SIEMPRE
-   (faltaba el display:none por defecto) → aparecía solo al cargar la app. */
+   (faltaba el display:none por defecto) → aparecía solo al cargar la app.
+   Catálogo de Unidades (fix 2026-06-23): #unidad-modal sufría el MISMO bug —
+   sin esta regla aparecía siempre, inline, sobre la vista activa (Inspecciones). */
 #taller-modal,
-#usuario-modal {
+#usuario-modal,
+#unidad-modal {
   position: fixed;
   inset: 0;
   background: #00000055;
@@ -3880,7 +3883,8 @@ select.filter-active {
   padding: 16px;
 }
 #taller-modal.open,
-#usuario-modal.open {
+#usuario-modal.open,
+#unidad-modal.open {
   display: flex;
 }
 .tl-mcard {

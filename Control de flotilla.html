@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-jLWK+3i/M9cp4/pUremgne92pXQgO4ErgSSCZxr4t+Q='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-gaov1zsiwFbykorVMzwJletJ7F1R7KTdeFvaN+SZrpc='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -6340,7 +6340,9 @@ window.closeUnidadModal = closeUnidadModal;
 
 async function saveUnidad(){
   const economicoId = document.getElementById("cf-economico").value.trim();
-  const placa = document.getElementById("cf-placa").value.trim();
+  // Edición: la placa es el PK → se conserva tal cual (_cvEditPlaca), no se renormaliza
+  // (evita crear una fila nueva si el casing difería). Alta: se normaliza.
+  const placa = _cvEditPlaca || document.getElementById("cf-placa").value.trim().toUpperCase().replace(/\s+/g,"");
   const productoToka = document.getElementById("cf-producto").value.trim();
   const sucursal = document.getElementById("cf-sucursal").value.trim();
   const marca = document.getElementById("cf-marca").value.trim();
@@ -6348,16 +6350,37 @@ async function saveUnidad(){
   const anioRaw = document.getElementById("cf-anio").value.trim();
   const anio = anioRaw ? parseInt(anioRaw,10) : undefined;
   const btn = document.getElementById("cf-save");
-  if(!placa){ window.notify("La placa es obligatoria (identifica la unidad).","warn",3500); _markInvalid("cf-placa"); return; }
-  if(!_cvEditPlaca && _cvUnits.some(u=>u.placa===placa)){
-    window.notify("Ya existe una unidad con esa placa. Edítala desde la lista.","warn",4500); _markInvalid("cf-placa"); return;
+  // Placa (solo en alta: el PK ya existe en edición)
+  if(!_cvEditPlaca){
+    if(!placa){ window.notify("La placa es obligatoria (identifica la unidad).","warn",3500); _markInvalid("cf-placa"); return; }
+    if(!/^[A-Z0-9-]{3,12}$/.test(placa)){ window.notify("Placa inválida: 3-12 caracteres (letras, números y guion).","warn",4000); _markInvalid("cf-placa"); return; }
+    if(_cvUnits.some(u=>u.placa===placa)){ window.notify("Ya existe una unidad con esa placa. Edítala desde la lista.","warn",4500); _markInvalid("cf-placa"); return; }
   }
-  if(anioRaw && !Number.isFinite(anio)){ window.notify("Año inválido.","warn",3000); _markInvalid("cf-anio"); return; }
+  // Económico: es la CLAVE del override Toka → numérico y único. Producto sin económico no aplica.
+  if(economicoId && !/^\d+$/.test(economicoId)){ window.notify("El No. económico debe ser numérico (ej. 06, 44).","warn",4000); _markInvalid("cf-economico"); return; }
+  if(productoToka && !economicoId){ window.notify("Pusiste un Producto Toka pero el No. económico está vacío: ese producto NO se aplicará en el layout. Captura el económico.","warn",6500); _markInvalid("cf-economico"); return; }
+  if(economicoId && _cvUnits.some(u=>u.placa!==_cvEditPlaca && String(u.economicoId||"").trim()===economicoId)){
+    window.notify("Ya existe otra unidad con ese económico ("+economicoId+"). Debe ser único para el layout Toka.","warn",5500); _markInvalid("cf-economico"); return;
+  }
+  const _yMax = new Date().getFullYear()+1;
+  if(anioRaw && (!Number.isInteger(anio) || anio<1990 || anio>_yMax)){ window.notify(`Año inválido. Usa entre 1990 y ${_yMax}.`,"warn",3500); _markInvalid("cf-anio"); return; }
+  // Payload: OMITE vacíos para no pisar datos curados por el webhook (misma disciplina que el ingest).
+  const payload = { placa };
+  if(economicoId) payload.economicoId = economicoId;
+  if(productoToka) payload.productoToka = productoToka;
+  if(sucursal) payload.sucursal = sucursal;
+  if(marca) payload.marca = marca;
+  if(modelo) payload.modelo = modelo;
+  if(anio !== undefined) payload.anio = anio;
   btn.disabled=true;
   try{
-    await window.__units.upsert({ placa, economicoId, productoToka, sucursal, marca, modelo, anio });
+    await window.__units.upsert(payload);
+    // Actualización optimista: la tabla queda correcta aun si el refresh de reconciliación falla.
+    const prev = _cvUnits.find(u=>u.placa===placa) || {};
+    _cvUnits = [..._cvUnits.filter(u=>u.placa!==placa), { ...prev, ...payload }];
     window.notify(_cvEditPlaca?"Unidad actualizada.":"Unidad creada.","ok",4000);
     closeUnidadModal();
+    renderUnidades();
     await refreshUnidades();
   }catch(e){ window.notify("Error al guardar la unidad.","error",5000); console.error("[unidades] save",e); }
   finally{ btn.disabled=false; }
@@ -6366,10 +6389,12 @@ window.saveUnidad = saveUnidad;
 
 async function cvDelete(placa){
   const u=_cvUnits.find(x=>x.placa===placa);
-  if(!confirm(`¿Eliminar la unidad ${u?(u.economicoId||u.placa):placa} del catálogo?`)) return;
+  if(!confirm(`¿Eliminar la unidad ${u?(u.economicoId||u.placa):placa} del catálogo? Si tiene un Producto Toka fijado, dejará de aplicarse al layout (sus cargas NO se borran).`)) return;
   try{
     await window.__units.remove(placa);
+    _cvUnits = _cvUnits.filter(x=>x.placa!==placa); // optimista
     window.notify("Unidad eliminada.","ok",4000);
+    renderUnidades();
     await refreshUnidades();
   }catch(e){ window.notify("Error al eliminar.","error",5000); console.error("[unidades] delete",e); }
 }

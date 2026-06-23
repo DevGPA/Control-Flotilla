@@ -56,7 +56,10 @@ export type TokaSkip = {
   motivo: TokaSkipMotivo;
 };
 
-export type TokaWarningTipo = "nomina-no-numerica" | "producto-conflicto";
+export type TokaWarningTipo =
+  | "nomina-no-numerica"
+  | "producto-conflicto"
+  | "producto-override-desconocido";
 
 export type TokaWarning = {
   eco: string;
@@ -86,6 +89,17 @@ export type TokaLayoutOpts = {
 /** Redondeo a 2 decimales (pesos) sin errores binarios groseros. */
 function round2(x: number): number {
   return Math.round((x + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Clave canónica de economicoId para casar el override del catálogo con las cargas de
+ * MoreApp. Numérico puro → sin ceros a la izquierda ("06"→"6"); si no → trim+UPPER.
+ * FUENTE ÚNICA de normalización: la usan el lookup del override y la nómina, para que NO
+ * diverjan (antes el lookup usaba el eco crudo y "06"≠"6" ignoraba el override en silencio).
+ */
+export function ecoKey(eco: string | null | undefined): string {
+  const t = String(eco ?? "").trim();
+  return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t.toUpperCase();
 }
 
 /** economicoId → nómina Toka: entero si es numérico puro ("06"→6); si no, passthrough. */
@@ -127,12 +141,21 @@ export function buildTokaLayout(
     // Producto: 1º el override del catálogo de Unidades (admin, se usa tal cual y no se
     // valida contra TOKA_PRODUCTOS); si no, el `producto` de MoreApp (único del grupo, o
     // el del registro de mayor monto si hay conflicto, y validado contra el catálogo).
-    const override = opts.productoOverride?.get(eco)?.trim();
+    const override = opts.productoOverride?.get(ecoKey(eco))?.trim();
     let producto: string | undefined;
     let desdeOverride = false;
     if (override) {
       producto = override;
       desdeOverride = true;
+      // El override se usa tal cual (admite variantes nuevas tipo EASYGAS), pero si no
+      // coincide con ningún producto Toka conocido avisamos (no bloquea): suele ser errata
+      // de captura (p.ej. falta "CHIP" o mayúsculas) que Toka rechazaría al subir.
+      if (!PRODUCTO_SET.has(producto))
+        warnings.push({
+          eco,
+          tipo: "producto-override-desconocido",
+          detalle: `Producto del catálogo "${producto}" no coincide con un producto Toka conocido; verifica mayúsculas y "CHIP".`,
+        });
     } else {
       const productos = [...new Set(grupo.map((e) => (e.producto ?? "").trim()).filter(Boolean))];
       if (productos.length === 1) {
