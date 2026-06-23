@@ -166,6 +166,29 @@ describe("buildTokaLayout — casos borde", () => {
     expect(r.totalMonto).toBe(0);
   });
 
+  it("override del catálogo manda sobre el producto de MoreApp", () => {
+    const r = buildTokaLayout([sol("44", 500, DIESEL)], {
+      productoOverride: new Map([["44", "EASYGAS DIESEL CHIP"]]),
+    });
+    expect(r.rows[0]!.producto).toBe("EASYGAS DIESEL CHIP");
+    expect(r.rows[0]!.nomina).toBe(44);
+  });
+
+  it("override se usa tal cual aunque NO esté en el catálogo validado (variante nueva)", () => {
+    const r = buildTokaLayout([sol("7", 300, "")], {
+      productoOverride: new Map([["7", "EASYGAS PREMIUM CHIP"]]),
+    });
+    expect(r.rows).toHaveLength(1); // no se omite por producto-desconocido
+    expect(r.rows[0]!.producto).toBe("EASYGAS PREMIUM CHIP");
+  });
+
+  it("override vacío/ausente → cae al producto de MoreApp", () => {
+    const r = buildTokaLayout([sol("8", 300, MAGNA)], {
+      productoOverride: new Map([["8", "   "]]),
+    });
+    expect(r.rows[0]!.producto).toBe(MAGNA);
+  });
+
   it("orden de salida: numéricas por valor, luego strings A-Z", () => {
     const r = buildTokaLayout([
       sol("STOCK 2", 1, MAGNA),

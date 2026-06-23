@@ -23,12 +23,18 @@ export const TOKA_HEADER = [
   "OBSERVACIONES",
 ] as const;
 
-/** Los 4 productos válidos del catálogo Toka. */
+/**
+ * Productos Toka conocidos (para validar el dato derivado de MoreApp y poblar el
+ * desplegable del panel). Toka está migrando algunas tarjetas de "TOKA COMBUSTIBLE"
+ * a "EASYGAS"; el catálogo de Unidades (override del admin) acepta cualquier valor,
+ * así que esta lista NO es un límite — solo valida lo que viene de MoreApp.
+ */
 export const TOKA_PRODUCTOS = [
   "TOKA COMBUSTIBLE DIESEL CHIP",
   "TOKA COMBUSTIBLE GAS LP CHIP",
   "TOKA COMBUSTIBLE MAGNA CHIP",
   "TOKA COMBUSTIBLE PREMIUM CHIP",
+  "EASYGAS DIESEL CHIP",
 ] as const;
 
 const PRODUCTO_SET = new Set<string>(TOKA_PRODUCTOS);
@@ -66,7 +72,16 @@ export type TokaLayoutResult = {
   totalMonto: number; // suma de montoDeseado de las filas emitidas
 };
 
-export type TokaLayoutOpts = { idCliente?: number };
+export type TokaLayoutOpts = {
+  idCliente?: number;
+  /**
+   * Override de producto por unidad (economicoId → producto Toka), del catálogo de
+   * Unidades que mantiene el admin. Tiene PRIORIDAD sobre el `producto` de MoreApp y se
+   * usa tal cual (sin validar contra TOKA_PRODUCTOS, porque el admin puede fijar variantes
+   * nuevas como EASYGAS). Resuelve el caso de unidades migradas de tarjeta.
+   */
+  productoOverride?: ReadonlyMap<string, string>;
+};
 
 /** Redondeo a 2 decimales (pesos) sin errores binarios groseros. */
 function round2(x: number): number {
@@ -109,23 +124,32 @@ export function buildTokaLayout(
   for (const [eco, grupo] of byEco) {
     const montoDeseado = round2(grupo.reduce((s, e) => s + (e.montoEstimado ?? 0), 0));
 
-    // Producto: único del grupo; si hay conflicto elige el del registro de mayor monto.
-    const productos = [...new Set(grupo.map((e) => (e.producto ?? "").trim()).filter(Boolean))];
+    // Producto: 1º el override del catálogo de Unidades (admin, se usa tal cual y no se
+    // valida contra TOKA_PRODUCTOS); si no, el `producto` de MoreApp (único del grupo, o
+    // el del registro de mayor monto si hay conflicto, y validado contra el catálogo).
+    const override = opts.productoOverride?.get(eco)?.trim();
     let producto: string | undefined;
-    if (productos.length === 1) {
-      producto = productos[0];
-    } else if (productos.length > 1) {
-      const ganador = [...grupo]
-        .filter((e) => (e.producto ?? "").trim())
-        .sort(
-          (a, b) => (b.montoEstimado ?? 0) - (a.montoEstimado ?? 0) || ts(b).localeCompare(ts(a)),
-        )[0];
-      producto = (ganador?.producto ?? "").trim();
-      warnings.push({
-        eco,
-        tipo: "producto-conflicto",
-        detalle: `Productos distintos en el período (${productos.join(" / ")}); se usó "${producto}".`,
-      });
+    let desdeOverride = false;
+    if (override) {
+      producto = override;
+      desdeOverride = true;
+    } else {
+      const productos = [...new Set(grupo.map((e) => (e.producto ?? "").trim()).filter(Boolean))];
+      if (productos.length === 1) {
+        producto = productos[0];
+      } else if (productos.length > 1) {
+        const ganador = [...grupo]
+          .filter((e) => (e.producto ?? "").trim())
+          .sort(
+            (a, b) => (b.montoEstimado ?? 0) - (a.montoEstimado ?? 0) || ts(b).localeCompare(ts(a)),
+          )[0];
+        producto = (ganador?.producto ?? "").trim();
+        warnings.push({
+          eco,
+          tipo: "producto-conflicto",
+          detalle: `Productos distintos en el período (${productos.join(" / ")}); se usó "${producto}".`,
+        });
+      }
     }
 
     // Validaciones que excluyen la unidad (se reportan).
@@ -133,7 +157,7 @@ export function buildTokaLayout(
       skipped.push({ eco, montoDeseado, motivo: "producto-ausente" });
       continue;
     }
-    if (!PRODUCTO_SET.has(producto)) {
+    if (!desdeOverride && !PRODUCTO_SET.has(producto)) {
       skipped.push({ eco, montoDeseado, producto, motivo: "producto-desconocido" });
       continue;
     }
