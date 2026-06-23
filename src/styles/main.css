@@ -1017,7 +1017,10 @@ select.filter-active {
   font-weight: 600;
 }
 /* ═══ Módulo Administración de Usuarios (2026-06-12) ═══ */
-#usuarios-view {
+/* Catálogo de Unidades (2026-06-23): comparte EXACTAMENTE el layout de #usuarios-view.
+   SIN esta regla el contenedor quedaba en fila (display:flex sin column) y no scrolleaba. */
+#usuarios-view,
+#unidades-view {
   flex-direction: column;
   padding: 14px 16px;
   gap: 12px;
