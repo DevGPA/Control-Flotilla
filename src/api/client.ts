@@ -77,6 +77,7 @@ export type UnitInput = {
   anio?: number;
   sucursal?: string;
   vin?: string;
+  productoToka?: string;
 };
 
 export async function upsertUnit(input: UnitInput): Promise<Schema["Unit"]["type"]> {
@@ -110,6 +111,13 @@ export async function listUnits(tenantId: string): Promise<Schema["Unit"]["type"
       }),
     "listUnits",
   );
+}
+
+/** Borra una unidad del catálogo (composite id tenantId+placa). */
+export async function deleteUnit(input: { tenantId: string; placa: string }): Promise<void> {
+  const c = getClient();
+  const { errors } = await c.models.Unit.delete(input);
+  throwOnErrors("deleteUnit", errors);
 }
 
 // ───────────────────────── Taller ─────────────────────────

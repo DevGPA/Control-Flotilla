@@ -218,9 +218,26 @@ const TOKA_SKIP_LABEL: Record<TokaSkipMotivo, string> = {
  * actual (una fila por unidad; MONTO DESEADO = Σ del "monto a cargar" de sus solicitudes).
  * xlsx se carga dinámicamente (fuera del bundle principal). Reporta incluidas/omitidas.
  */
+/** Override economicoId→productoToka del catálogo de Unidades (admin). Vacío si falla. */
+async function fetchProductoOverride(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const units = (await window.__units?.list()) ?? [];
+    for (const u of units) {
+      const eco = (u.economicoId ?? "").trim();
+      const prod = (u.productoToka ?? "").trim();
+      if (eco && prod) map.set(eco, prod);
+    }
+  } catch (e) {
+    console.warn("[fuel] no se pudo leer el catálogo de unidades (se usa producto de MoreApp):", e);
+  }
+  return map;
+}
+
 async function exportTokaLayout(): Promise<void> {
   const ctx = computeCtx();
-  const result = buildTokaLayout(ctx.filtered);
+  const productoOverride = await fetchProductoOverride();
+  const result = buildTokaLayout(ctx.filtered, { productoOverride });
   if (result.rows.length === 0) {
     const motivo = result.totalUnidades
       ? "ninguna unidad del filtro tiene monto a cargar (>0). Revisa que el filtro incluya solicitudes."

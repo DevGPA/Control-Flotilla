@@ -35,6 +35,11 @@ const schema = a
         anio: a.integer(),
         sucursal: a.string(),
         vin: a.string(),
+        // Producto Toka asociado a la unidad (catálogo editable por el admin). Es la
+        // fuente de verdad del producto para el layout de carga masiva Toka: tiene
+        // prioridad sobre el eco.PRODUCTO de MoreApp, que puede quedar desactualizado
+        // cuando una unidad migra de tarjeta (p.ej. de TOKA COMBUSTIBLE a EASYGAS).
+        productoToka: a.string(),
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "placa"])

@@ -13,7 +13,7 @@
 // assignments a window.* porque no son leídas desde el bundle TS (solo
 // el HTML legado las invoca, invisible al tree-shaker).
 
-import { configureAmplify } from "./amplifyClient";
+import { configureAmplify, type Schema } from "./amplifyClient";
 import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
 import { gatingPlan, MODULE_NAV } from "./moduleAccess";
 import { showAuthModal } from "../ui/authModal";
@@ -30,6 +30,8 @@ import {
 } from "./batchUpload";
 import {
   listUnits,
+  upsertUnit,
+  deleteUnit,
   listTaller,
   listNotas,
   listChecklists,
@@ -119,6 +121,22 @@ declare global {
       resetPassword: (cognitoSub: string) => Promise<AdminResult>;
       setRole: (cognitoSub: string, rol: string) => Promise<AdminResult>;
       listAudit: () => Promise<unknown[]>;
+    };
+    /** Catálogo de Unidades (2026-06-23): CRUD del modelo Unit para el panel admin.
+     *  El tenantId se inyecta desde la sesión. Escritura gateada a admin/operativo en AppSync. */
+    __units?: {
+      list: () => Promise<Schema["Unit"]["type"][]>;
+      upsert: (input: {
+        placa: string;
+        economicoId?: string;
+        marca?: string;
+        modelo?: string;
+        anio?: number;
+        sucursal?: string;
+        vin?: string;
+        productoToka?: string;
+      }) => Promise<void>;
+      remove: (placa: string) => Promise<void>;
     };
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
@@ -350,6 +368,25 @@ export function setupCloud(): void {
     listAudit: async () => {
       const s = await ensureSession();
       return listAuditEvents(s.tenantId);
+    },
+  };
+
+  // ── Catálogo de Unidades (2026-06-23) ──────────────────────────────────────
+  // CRUD del modelo Unit para el panel admin. tenantId desde la sesión; AppSync
+  // exige grupo admin/operativo para escribir. El producto Toka fijado aquí es la
+  // fuente de verdad del layout de carga masiva (override de eco.PRODUCTO).
+  window.__units = {
+    list: async () => {
+      const s = await ensureSession();
+      return listUnits(s.tenantId);
+    },
+    upsert: async (input) => {
+      const s = await ensureSession();
+      await upsertUnit({ tenantId: s.tenantId, ...input });
+    },
+    remove: async (placa) => {
+      const s = await ensureSession();
+      await deleteUnit({ tenantId: s.tenantId, placa });
     },
   };
 
