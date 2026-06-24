@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-B8j6QvJkbfNAZ+8queJsYd+7xaSCbcrehLjnTVP2FF8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Ll9j9UNmWFpswZL9/A7Z3uR8gcUvzd0gDqxMPod2Zcs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -831,11 +831,10 @@ g.inflateBytes=async function(src){
         <label for="cf-producto">Producto Toka</label>
         <input id="cf-producto" type="text" list="cf-prod-list" placeholder="Selecciona o escribe el producto Toka"/>
         <datalist id="cf-prod-list">
-          <option value="TOKA COMBUSTIBLE DIESEL CHIP"></option>
-          <option value="TOKA COMBUSTIBLE MAGNA CHIP"></option>
-          <option value="TOKA COMBUSTIBLE PREMIUM CHIP"></option>
-          <option value="TOKA COMBUSTIBLE GAS LP CHIP"></option>
-          <option value="EASYGAS DIESEL CHIP"></option>
+          <option value="EASYGAS DISEL CHIP"></option>
+          <option value="EASYGAS MAGNA CHIP"></option>
+          <option value="EASYGAS PREMIUM CHIP"></option>
+          <option value="EASYGAS LP CHIP"></option>
         </datalist>
       </div>
       <div class="tl-field">
@@ -6372,7 +6371,8 @@ async function saveUnidad(){
   // Payload: OMITE vacíos para no pisar datos curados por el webhook (misma disciplina que el ingest).
   const payload = { placa };
   if(economicoId) payload.economicoId = economicoId;
-  if(productoToka) payload.productoToka = productoToka;
+  if(productoToka) payload.productoToka = _cvNormProducto(productoToka); // grafía exacta de Toka
+
   if(sucursal) payload.sucursal = sucursal;
   if(marca) payload.marca = marca;
   if(modelo) payload.modelo = modelo;
@@ -6407,6 +6407,13 @@ window.cvDelete = cvDelete;
 
 // Clave canónica de económico (espejo de ecoKey en tokaLayout.ts): "06"→"6".
 function _cvEcoKey(e){ const t=String(e==null?"":e).trim(); return /^\d+$/.test(t)?String(parseInt(t,10)):t.toUpperCase(); }
+// Espejo de normalizeTokaProducto (tokaLayout.ts): grafía EXACTA que exige Toka (EASYGAS).
+function _cvNormProducto(p){ const u=String(p==null?"":p).toUpperCase();
+  if(u.includes("PREMIUM")) return "EASYGAS PREMIUM CHIP";
+  if(u.includes("MAGNA")) return "EASYGAS MAGNA CHIP";
+  if(u.includes("DIESEL")||u.includes("DISEL")) return "EASYGAS DISEL CHIP";
+  if(u.includes("LP")) return "EASYGAS LP CHIP";
+  return String(p==null?"":p).trim(); }
 
 // Importa el "Layout de carga masiva para Toka": asigna a cada unidad MoreApp su Producto
 // Toka por nómina. El producto sale del archivo de Toka (no de MoreApp). Solo toca unidades
@@ -6445,7 +6452,7 @@ async function importTokaProductos(file){
     if(!prod){ skipNoToka++; continue; }
     if(!info.placa){ skipNoPlaca++; continue; }
     const economicoId = (exist.get(k)&&exist.get(k).eco) || info.eco;
-    try{ await window.__units.upsert({ placa:info.placa, economicoId, productoToka:prod }); ok++; }
+    try{ await window.__units.upsert({ placa:info.placa, economicoId, productoToka:_cvNormProducto(prod) }); ok++; }
     catch(e){ errc++; console.error("[toka import] eco="+info.eco, e); }
   }
   if(btn) btn.disabled=false;

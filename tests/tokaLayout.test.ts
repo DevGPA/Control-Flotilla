@@ -3,14 +3,21 @@ import {
   buildTokaLayout,
   tokaLayoutToAoa,
   ecoKey,
+  normalizeTokaProducto,
   TOKA_HEADER,
   TOKA_ID_CLIENTE,
 } from "../src/fuel/tokaLayout";
 import type { FuelEntry } from "../src/fuel/types";
 
+// Grafías de ENTRADA (viejas, como vienen de MoreApp / archivo previo).
 const DIESEL = "TOKA COMBUSTIBLE DIESEL CHIP";
 const MAGNA = "TOKA COMBUSTIBLE MAGNA CHIP";
 const GASLP = "TOKA COMBUSTIBLE GAS LP CHIP";
+// Grafías de SALIDA exactas que exige Toka (EASYGAS; "DISEL" sin 2ª E, "LP" sin "GAS").
+const E_DISEL = "EASYGAS DISEL CHIP";
+const E_MAGNA = "EASYGAS MAGNA CHIP";
+const E_LP = "EASYGAS LP CHIP";
+const E_PREMIUM = "EASYGAS PREMIUM CHIP";
 
 /** Solicitud mínima con montoEstimado (= "monto a cargar"). */
 function sol(
@@ -50,6 +57,24 @@ function carga(eco: string, producto: string, over: Partial<FuelEntry> = {}): Fu
   };
 }
 
+describe("normalizeTokaProducto (grafía exacta de Toka)", () => {
+  it("convierte las grafías viejas a EASYGAS exacto", () => {
+    expect(normalizeTokaProducto("TOKA COMBUSTIBLE DIESEL CHIP")).toBe("EASYGAS DISEL CHIP");
+    expect(normalizeTokaProducto("EASYGAS DIESEL CHIP")).toBe("EASYGAS DISEL CHIP"); // corrige DIESEL→DISEL
+    expect(normalizeTokaProducto("TOKA COMBUSTIBLE GAS LP CHIP")).toBe("EASYGAS LP CHIP");
+    expect(normalizeTokaProducto("TOKA COMBUSTIBLE MAGNA CHIP")).toBe("EASYGAS MAGNA CHIP");
+    expect(normalizeTokaProducto("TOKA COMBUSTIBLE PREMIUM CHIP")).toBe(E_PREMIUM);
+  });
+  it("idempotente sobre las grafías ya correctas", () => {
+    expect(normalizeTokaProducto("EASYGAS DISEL CHIP")).toBe("EASYGAS DISEL CHIP");
+    expect(normalizeTokaProducto("EASYGAS LP CHIP")).toBe("EASYGAS LP CHIP");
+  });
+  it("tipo no reconocido → passthrough (no rompe)", () => {
+    expect(normalizeTokaProducto("QUEROSENO ESPECIAL")).toBe("QUEROSENO ESPECIAL");
+    expect(normalizeTokaProducto("")).toBe("");
+  });
+});
+
 describe("ecoKey (clave canónica de económico)", () => {
   it("numérico puro sin ceros a la izquierda", () => {
     expect(ecoKey("06")).toBe("6");
@@ -82,7 +107,7 @@ describe("buildTokaLayout — estructura Toka", () => {
       idCliente: 20780,
       nomina: 6,
       montoDeseado: 1000,
-      producto: DIESEL,
+      producto: E_DISEL, // normalizado a la grafía de Toka
       observaciones: "",
     });
   });
@@ -91,7 +116,7 @@ describe("buildTokaLayout — estructura Toka", () => {
     const r = buildTokaLayout([sol("6", 1000, DIESEL)]);
     const aoa = tokaLayoutToAoa(r);
     expect(aoa[0]).toEqual([...TOKA_HEADER]);
-    expect(aoa[1]).toEqual([20780, 6, 1000, DIESEL, ""]);
+    expect(aoa[1]).toEqual([20780, 6, 1000, E_DISEL, ""]);
   });
 });
 
@@ -134,7 +159,7 @@ describe("buildTokaLayout — omisiones (skips)", () => {
     const r = buildTokaLayout([carga("6", DIESEL)]);
     expect(r.rows).toHaveLength(0);
     expect(r.skipped).toEqual([
-      { eco: "6", montoDeseado: 0, producto: DIESEL, motivo: "monto-cero" },
+      { eco: "6", montoDeseado: 0, producto: E_DISEL, motivo: "monto-cero" },
     ]);
     expect(r.totalUnidades).toBe(1);
   });
@@ -158,14 +183,14 @@ describe("buildTokaLayout — casos borde", () => {
       sol("6", 100, MAGNA, { eventoId: "a" }),
       sol("6", 300, DIESEL, { eventoId: "b" }),
     ]);
-    expect(r.rows[0]!.producto).toBe(DIESEL);
+    expect(r.rows[0]!.producto).toBe(E_DISEL); // ganador diésel, normalizado
     expect(r.rows[0]!.montoDeseado).toBe(400);
     expect(r.warnings.some((w) => w.tipo === "producto-conflicto")).toBe(true);
   });
 
   it("montacargas (Gas LP) se incluye", () => {
     const r = buildTokaLayout([sol("52", 700, GASLP, { esMontacargas: true })]);
-    expect(r.rows[0]!.producto).toBe(GASLP);
+    expect(r.rows[0]!.producto).toBe(E_LP); // "GAS LP" → "EASYGAS LP CHIP"
     expect(r.rows[0]!.nomina).toBe(52);
   });
 
@@ -184,11 +209,11 @@ describe("buildTokaLayout — casos borde", () => {
     expect(r.totalMonto).toBe(0);
   });
 
-  it("override del catálogo manda sobre el producto de MoreApp", () => {
+  it("override del catálogo manda sobre el producto de MoreApp (y normaliza)", () => {
     const r = buildTokaLayout([sol("44", 500, DIESEL)], {
-      productoOverride: new Map([["44", "EASYGAS DIESEL CHIP"]]),
+      productoOverride: new Map([["44", "EASYGAS DIESEL CHIP"]]), // entrada con DIESEL
     });
-    expect(r.rows[0]!.producto).toBe("EASYGAS DIESEL CHIP");
+    expect(r.rows[0]!.producto).toBe(E_DISEL); // → DISEL exacto
     expect(r.rows[0]!.nomina).toBe(44);
   });
 
@@ -196,31 +221,23 @@ describe("buildTokaLayout — casos borde", () => {
     const r = buildTokaLayout([sol("06", 500, DIESEL)], {
       productoOverride: new Map([["6", "EASYGAS DIESEL CHIP"]]),
     });
-    expect(r.rows[0]!.producto).toBe("EASYGAS DIESEL CHIP");
+    expect(r.rows[0]!.producto).toBe(E_DISEL);
     expect(r.rows[0]!.nomina).toBe(6);
   });
 
-  it("override fuera del catálogo conocido → se usa pero advierte (no bloquea)", () => {
+  it("override de tipo NO reconocido → se usa pero advierte (no bloquea)", () => {
     const r = buildTokaLayout([sol("9", 500, DIESEL)], {
-      productoOverride: new Map([["9", "EASYGAS MAGNA"]]), // sin "CHIP" → errata típica
+      productoOverride: new Map([["9", "QUEROSENO ESPECIAL"]]), // no es ningún tipo conocido
     });
-    expect(r.rows[0]!.producto).toBe("EASYGAS MAGNA");
+    expect(r.rows[0]!.producto).toBe("QUEROSENO ESPECIAL"); // passthrough
     expect(r.warnings.some((w) => w.tipo === "producto-override-desconocido")).toBe(true);
   });
 
-  it("override se usa tal cual aunque NO esté en el catálogo validado (variante nueva)", () => {
-    const r = buildTokaLayout([sol("7", 300, "")], {
-      productoOverride: new Map([["7", "EASYGAS PREMIUM CHIP"]]),
-    });
-    expect(r.rows).toHaveLength(1); // no se omite por producto-desconocido
-    expect(r.rows[0]!.producto).toBe("EASYGAS PREMIUM CHIP");
-  });
-
-  it("override vacío/ausente → cae al producto de MoreApp", () => {
+  it("override vacío/ausente → cae al producto de MoreApp (normalizado)", () => {
     const r = buildTokaLayout([sol("8", 300, MAGNA)], {
       productoOverride: new Map([["8", "   "]]),
     });
-    expect(r.rows[0]!.producto).toBe(MAGNA);
+    expect(r.rows[0]!.producto).toBe(E_MAGNA);
   });
 
   it("orden de salida: numéricas por valor, luego strings A-Z", () => {
