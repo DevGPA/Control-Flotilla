@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Ll9j9UNmWFpswZL9/A7Z3uR8gcUvzd0gDqxMPod2Zcs='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-k1qf74q6pDI+BCDys0olfQ0Ip+U93iLqvQcXZfhp2MA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2164,13 +2164,24 @@ const isUnitEnTaller = u =>
   unitsEnTaller.has(String(u.eco||"").toLowerCase().trim()) ||
   unitsEnTaller.has(String(u.plate||"").toLowerCase().trim());
 
-// Buscador: query SOLO dígitos → económico EXACTO (evita que "10" matchee "100",
-// placas, etc.). Query con texto → substring en los campos de texto.
+// Buscador MULTI-TÉRMINO: "70 74 67 55" (espacios o comas) → coincide si la fila empata
+// ALGUNO de los términos (OR). Por término: SOLO dígitos → económico EXACTO (evita que "10"
+// matchee "100"/placas); con texto → substring en los campos. Un término = comportamiento de siempre.
 function _qMatch(q, ecoVal, textFields){
   q = String(q||"").trim().toLowerCase();
   if(!q) return true;
-  if(/^\d+$/.test(q)) return String(ecoVal||"").trim().toLowerCase() === q;
-  return [ecoVal, ...(textFields||[])].some(f => String(f||"").toLowerCase().includes(q));
+  const terms = q.split(/[\s,]+/).filter(Boolean);
+  const one = (t) => /^\d+$/.test(t)
+    ? String(ecoVal||"").trim().toLowerCase() === t
+    : [ecoVal, ...(textFields||[])].some(f => String(f||"").toLowerCase().includes(t));
+  return terms.some(one);
+}
+// Búsqueda multi-término genérica (OR substring sobre varios campos; sin económico-exacto).
+function _qAny(q, fields){
+  q = String(q||"").trim().toLowerCase();
+  if(!q) return true;
+  const terms = q.split(/[\s,]+/).filter(Boolean);
+  return terms.some(t => (fields||[]).some(f => String(f||"").toLowerCase().includes(t)));
 }
 
 // Modelo C-mod: filtros por nivel matchean unidades con AL MENOS un pending
@@ -6093,7 +6104,7 @@ function renderUsuarios(){
   const empty = document.getElementById("uv-empty");
   const rows = _uvUsers
     .filter(u => (u.estatus||"")!=="eliminado")
-    .filter(u => !q || [u.nombre,u.email,u.sucursal].some(v=>String(v||"").toLowerCase().includes(q)));
+    .filter(u => _qAny(q, [u.nombre,u.email,u.sucursal]));
   if(!rows.length){
     tb.innerHTML=""; empty.style.display="block";
     empty.textContent = _uvUsers.length ? "Sin resultados para la búsqueda." : "No hay usuarios registrados todavía.";
@@ -6281,7 +6292,7 @@ function renderUnidades(){
   const tb = document.getElementById("cv-tbody");
   const empty = document.getElementById("cv-empty");
   const rows = _cvUnits
-    .filter(u => !q || [u.economicoId,u.placa,u.productoToka,u.sucursal,u.marca,u.modelo].some(v=>String(v||"").toLowerCase().includes(q)))
+    .filter(u => _qAny(q, [u.economicoId,u.placa,u.productoToka,u.sucursal,u.marca,u.modelo]))
     .sort((a,b)=> _ecoNum(a)-_ecoNum(b) || String(a.placa||"").localeCompare(String(b.placa||"")));
   if(!rows.length){
     tb.innerHTML=""; empty.style.display="block";

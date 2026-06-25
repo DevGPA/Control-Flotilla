@@ -84,6 +84,19 @@ describe("filterAndSortFuel", () => {
     expect(filterAndSortFuel(entries, { ...NO_FILTER, search: "bbb" }, "_idx", -1)).toHaveLength(1);
   });
 
+  it("búsqueda MULTI-TÉRMINO (espacios/comas) → OR de unidades", () => {
+    // "10 20" trae ambas unidades: 2 registros de eco 10 + 1 de eco 20 = 3
+    expect(filterAndSortFuel(entries, { ...NO_FILTER, search: "10 20" }, "_idx", -1)).toHaveLength(
+      3,
+    );
+    // la coma también separa; un término inexistente no suma de más
+    expect(
+      filterAndSortFuel(entries, { ...NO_FILTER, search: "20, 999" }, "_idx", -1),
+    ).toHaveLength(1);
+    // un solo término se comporta igual que antes
+    expect(filterAndSortFuel(entries, { ...NO_FILTER, search: "10" }, "_idx", -1)).toHaveLength(2);
+  });
+
   it("filtra por rango de fechas", () => {
     expect(
       filterAndSortFuel(

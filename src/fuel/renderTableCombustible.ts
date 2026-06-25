@@ -39,13 +39,19 @@ export function verdictOf(e: FuelEntry): FuelVerdictGlobal {
 function matchesSearch(e: FuelEntry, q: string): boolean {
   const query = q.trim().toLowerCase();
   if (!query) return true;
-  if (/^\d+$/.test(query)) {
-    // Búsqueda numérica → ID de unidad (identidad principal): exacto o prefijo.
-    return e.eco === query || e.eco.toLowerCase().includes(query);
-  }
-  return [e.eco, e.placa, e.responsable]
-    .filter(Boolean)
-    .some((s) => String(s).toLowerCase().includes(query));
+  // Multi-término: "70 74 67 55" (espacios o comas) → coincide si la fila empata ALGUNO
+  // de los términos (OR). Con un solo término el comportamiento es el de siempre.
+  const terms = query.split(/[\s,]+/).filter(Boolean);
+  const matchTerm = (t: string): boolean => {
+    if (/^\d+$/.test(t)) {
+      // Término numérico → ID de unidad (identidad principal): exacto o prefijo.
+      return e.eco === t || e.eco.toLowerCase().includes(t);
+    }
+    return [e.eco, e.placa, e.responsable]
+      .filter(Boolean)
+      .some((s) => String(s).toLowerCase().includes(t));
+  };
+  return terms.some(matchTerm);
 }
 
 /** Filtra + ordena. Pura. `kmplByLoad` aporta el km/l para ordenar/mostrar. */
