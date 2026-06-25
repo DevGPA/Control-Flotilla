@@ -3,6 +3,7 @@
  * pinta tarjetas `.kc` (mismo look que Semanales/Inspecciones) con la API DOM segura.
  */
 import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding } from "./types";
+import type { RecorridoInfo } from "./fuelAnalysis";
 import { verdictOf } from "./renderTableCombustible";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
@@ -29,9 +30,19 @@ export function buildKpisFuel(
   metrics: readonly FuelMetrics[],
   baseline: FleetBaseline,
   anomalies: readonly FuelFinding[],
+  recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>,
 ): FuelKpiCard[] {
   const cargas = entries.filter((e) => e.tipo === "carga");
   const solicitudes = entries.filter((e) => e.tipo === "solicitud");
+  // Solicitudes con ciclo CERRADO (hay una solicitud posterior) y SIN carga de por medio:
+  // dinero cargado a la tarjeta sin comprobante de consumo. La última solicitud de cada unidad
+  // (ciclo en curso) no cuenta. Si no hay datos de recorrido, la métrica se omite.
+  const sinCarga = recorridosByLoad
+    ? solicitudes.filter((e) => {
+        const r = recorridosByLoad.get(e.loadId);
+        return r != null && r.cerrado && !r.viaCarga;
+      }).length
+    : null;
   const litros = cargas.reduce((a, e) => a + (e.litros ?? 0), 0);
   const gasto = cargas.reduce((a, e) => a + montoEfectivo(e), 0);
   const kmplVals = metrics.map((m) => m.kmPorLitro).filter((x): x is number => x != null && x > 0);
@@ -82,6 +93,17 @@ export function buildKpisFuel(
       tone: pendientes ? "a" : "g",
       filter: "pendiente",
     },
+    ...(sinCarga !== null
+      ? [
+          {
+            key: "sin-carga",
+            label: "Solicitudes sin carga",
+            value: NUM.format(sinCarga),
+            sub: "ciclo cerrado, sin consumo",
+            tone: sinCarga ? "a" : "g",
+          } as FuelKpiCard,
+        ]
+      : []),
     {
       key: "anomalias",
       label: "Anomalías",

@@ -4,6 +4,7 @@ import {
   buildFleetBaseline,
   detectFuelAnomalies,
   worstRisk,
+  computeRecorridos,
 } from "../src/fuel/fuelAnalysis";
 import type { FuelEntry } from "../src/fuel/types";
 
@@ -201,5 +202,69 @@ describe("worstRisk", () => {
   it("devuelve el nivel más severo", () => {
     expect(worstRisk([{ lv: "OK" }, { lv: "Revisar" }, { lv: "Urgente" }])).toBe("Urgente");
     expect(worstRisk([])).toBe("OK");
+  });
+});
+
+function sol(eco: string, fecha: string, km?: number, extra: Partial<FuelEntry> = {}): FuelEntry {
+  return {
+    loadId: `${eco}|solicitud|${fecha}`,
+    tipo: "solicitud",
+    eco,
+    eventoId: fecha,
+    sucursal: "Guadalajara",
+    fecha,
+    fechaHora: `${fecha} 08:00`,
+    km,
+    photos: [],
+    ...extra,
+  } as FuelEntry;
+}
+
+describe("computeRecorridos", () => {
+  it("ciclo solicitud→solicitud SIN carga: mide km, viaCarga=false, cerrado=true", () => {
+    const r = computeRecorridos([sol("U1", "2026-01-01", 0), sol("U1", "2026-01-10", 500)]);
+    const a = r.get("U1|solicitud|2026-01-01")!;
+    expect(a.km).toBe(500);
+    expect(a.viaCarga).toBe(false);
+    expect(a.cerrado).toBe(true);
+  });
+
+  it("ciclo con carga de por medio: viaCarga=true; mide hasta la SIGUIENTE solicitud", () => {
+    const r = computeRecorridos([
+      sol("U1", "2026-01-01", 0),
+      carga("U1", "2026-01-05", 300, 40, 1000),
+      sol("U1", "2026-01-12", 800),
+    ]);
+    const a = r.get("U1|solicitud|2026-01-01")!;
+    expect(a.km).toBe(800); // 800 − 0, ciclo completo (no se corta en la carga)
+    expect(a.viaCarga).toBe(true);
+    expect(a.cerrado).toBe(true);
+  });
+
+  it("última solicitud (sin evento posterior): km=null, cerrado=false (ciclo en curso)", () => {
+    const r = computeRecorridos([sol("U1", "2026-01-01", 0), sol("U1", "2026-01-10", 500)]);
+    const b = r.get("U1|solicitud|2026-01-10")!;
+    expect(b.km).toBeNull();
+    expect(b.cerrado).toBe(false);
+  });
+
+  it("retroceso de odómetro → km=null pero ciclo cerrado", () => {
+    const r = computeRecorridos([sol("U1", "2026-01-01", 900), sol("U1", "2026-01-10", 800)]);
+    const a = r.get("U1|solicitud|2026-01-01")!;
+    expect(a.km).toBeNull();
+    expect(a.cerrado).toBe(true);
+  });
+
+  it("salto improbable (> MAX_KM_JUMP) → km=null", () => {
+    const r = computeRecorridos([sol("U1", "2026-01-01", 0), sol("U1", "2026-01-10", 10000)]);
+    expect(r.get("U1|solicitud|2026-01-01")!.km).toBeNull();
+  });
+
+  it("montacargas (horómetro) → km=null", () => {
+    const r = computeRecorridos([
+      sol("U1", "2026-01-01", 0, { esMontacargas: true }),
+      sol("U1", "2026-01-10", 500, { esMontacargas: true }),
+    ]);
+    expect(r.get("U1|solicitud|2026-01-01")!.km).toBeNull();
   });
 });

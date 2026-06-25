@@ -4393,6 +4393,20 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   color: var(--s2);
   padding: 8px 4px;
 }
+/* Franja contextual del detalle: recorrido del ciclo + quién/cuándo validó. */
+.fv-revinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--bg2);
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  color: var(--s2);
+  font-weight: 600;
+}
 
 /* Barra de períodos semanales */
 #sw-periodo-bar,
@@ -4587,6 +4601,22 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 }
 .sw-table tr.sw-rev:hover td {
   background: #fef3c7;
+}
+/* Celda de Validación: semáforo + quién/cuándo validó en línea chica debajo. */
+.sw-valcell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.sw-valby {
+  font-size: 10px;
+  color: var(--s2);
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Pills de fluido */
 .sw-pill {
