@@ -160,6 +160,17 @@ function safeParseObj(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * ¿La unidad es un montacargas? En la flota GPA el producto Gas LP ⇒ montacargas
+ * (mismo criterio que el módulo de Combustible, `mapEntry.deriveTipo`). Cubre las grafías
+ * "TOKA COMBUSTIBLE GAS LP CHIP" y "EASYGAS LP CHIP" (ambas contienen "gas lp" en minúsculas).
+ */
+export function esMontacargasProducto(productoToka: string | null | undefined): boolean {
+  return String(productoToka ?? "")
+    .toLowerCase()
+    .includes("gas lp");
+}
+
 function mergeUnitWithChecklist(
   unit: Schema["Unit"]["type"],
   checklist: Schema["Checklist"]["type"] | undefined,
@@ -190,6 +201,7 @@ function mergeUnitWithChecklist(
     folio: r.moreappId ?? "",
     photos: Array.isArray(r.photos) ? r.photos : [],
     hasRefaccion: true,
+    esMontacargas: esMontacargasProducto(unit.productoToka),
   };
 }
 

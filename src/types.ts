@@ -75,6 +75,8 @@ export type Unit = {
   kmNextSvc?: number | string;
   /** Folio de registro de la submission de MoreApp (envelope.id). Solo cloud-hidratado. */
   folio?: string;
+  /** Montacargas (producto Gas LP). Solo cloud-hidratado; excluido de la cuenta de flota. */
+  esMontacargas?: boolean;
 };
 
 /** Marks for completed findings per unit, keyed by finding text. */

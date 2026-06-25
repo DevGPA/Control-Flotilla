@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-k1qf74q6pDI+BCDys0olfQ0Ip+U93iLqvQcXZfhp2MA='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-SVTIrQHIld0L8aqWMCA9xgvYdOC1smYsGr5sVZ8ftQo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3084,12 +3084,15 @@ function svcStatus(u){
 }
 
 function buildKPIs(){
-  // ── Hero cards + dona: FLOTA = unidades distintas (catálogo) con su última
-  // inspección. Estado actual, INDEPENDIENTE del rango de fechas. ──
+  // ── Hero cards + dona: FLOTA = unidades del catálogo que HAN hecho checklist
+  // (tienen `fecha` de su última inspección) y NO son montacargas (producto Gas LP).
+  // Estado actual, INDEPENDIENTE del rango de fechas. Antes contaba el catálogo COMPLETO
+  // (incluía unidades sin checklist y montacargas) → la cuenta se infló al poblarse el catálogo.
   // Scope por sucursal del usuario fijado (no-op para admin/sin-sucursal): la flota y
   // las inspecciones del rango se acotan a su sucursal para que tarjetas/dona no
   // muestren datos de otras sucursales.
-  const fleet = scopeUnits((Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || []);
+  const fleet = scopeUnits((Array.isArray(window.__fleetUnits) ? window.__fleetUnits : units) || [])
+    .filter(u=>u.fecha && !u.esMontacargas);
   const sUnits = scopeUnits(units);
   // FLOTA + EN TALLER + dona = estado operativo de la flota COMPLETA (no depende del rango).
   let enTaller=0,operativaDonut=0,tallerDonut=0;
@@ -3144,7 +3147,8 @@ function buildKPIs(){
   // Solo con catálogo cloud; abre el modal (no es filtro de tabla, esas unidades no están en units).
   const btnSinM=document.getElementById("btn-sinmensual");
   if(btnSinM){
-    const fleetRoster=scopeUnits(window.__fleetUnits);
+    // Excluye montacargas: no hacen checklist de vehículo, no deben contar como "sin check".
+    const fleetRoster=scopeUnits(window.__fleetUnits).filter(u=>!u.esMontacargas);
     if(fleetRoster.length){
       const pres=new Set(sUnits.map(x=>x.plate||x.uid));
       const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
@@ -6723,7 +6727,7 @@ function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
   if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
-  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate||u.uid); // falta = no presente en el rango
+  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate||u.uid) && !u.esMontacargas; // falta = no presente en el rango (montacargas excluidos)
   return true;
 }
 // Celda de detalle (6ª columna) según el kind.
