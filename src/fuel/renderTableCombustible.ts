@@ -4,6 +4,24 @@
  * sin innerHTML con datos — regla anti-XSS del proyecto).
  */
 import type { FuelEntry, FuelMetrics, FuelVerdictGlobal } from "./types";
+import { ecoKey } from "./tokaLayout";
+
+/** Valor numérico de un nivel de tanque ("0.25(1/4)" → 0.25). NaN si no parsea. */
+function nivelNum(s: string | undefined): number {
+  const n = parseFloat(String(s ?? ""));
+  return Number.isFinite(n) ? n : NaN;
+}
+/** Etiqueta legible de nivel de tanque (¼ ½ ¾ Lleno/Vacío). */
+function nivelLabel(s: string | undefined): string {
+  const n = nivelNum(s);
+  if (!Number.isFinite(n)) return s ? String(s) : "—";
+  if (n <= 0) return "Vacío";
+  if (n >= 1) return "Lleno";
+  if (Math.abs(n - 0.25) < 0.05) return "¼";
+  if (Math.abs(n - 0.5) < 0.05) return "½";
+  if (Math.abs(n - 0.75) < 0.05) return "¾";
+  return `${Math.round(n * 100)}%`;
+}
 
 export type FuelTipoFilter = "all" | "carga" | "solicitud";
 export type FuelVerdictFilter = "all" | "ok" | "discrepancia" | "pendiente";
@@ -80,6 +98,9 @@ export function filterAndSortFuel(
     return av - bv;
   };
   const VERDICT_RANK: Record<FuelVerdictGlobal, number> = { discrepancia: 3, pendiente: 2, ok: 1 };
+  // En vista Solicitudes las columnas Litros/Monto/km-l muestran Nivel/Monto a cargar/Litros máx,
+  // así que el orden de esas columnas usa el campo de solicitud correspondiente.
+  const esSol = filter.tipo === "solicitud";
 
   if (sortCol !== "_idx") {
     out.sort((a, b) => {
@@ -107,13 +128,15 @@ export function filterAndSortFuel(
           c = cmpNum(a.km, b.km);
           break;
         case "litros":
-          c = cmpNum(a.litros, b.litros);
+          c = esSol
+            ? cmpNum(nivelNum(a.nivelAntes), nivelNum(b.nivelAntes))
+            : cmpNum(a.litros, b.litros);
           break;
         case "monto":
-          c = cmpNum(a.monto, b.monto);
+          c = esSol ? cmpNum(a.montoEstimado, b.montoEstimado) : cmpNum(a.monto, b.monto);
           break;
         case "kmpl":
-          c = cmpNum(kmpl(a), kmpl(b));
+          c = esSol ? cmpNum(a.maxLitros, b.maxLitros) : cmpNum(kmpl(a), kmpl(b));
           break;
         case "verdict":
           c = VERDICT_RANK[verdictOf(a)] - VERDICT_RANK[verdictOf(b)];
@@ -154,6 +177,8 @@ export type RenderTableCombustibleDeps = {
   sortDir: 1 | -1;
   metricsByLoad?: Map<string, FuelMetrics>;
   onRowClick?: (loadId: string, visibleOrder: string[]) => void;
+  /** economicoId (clave canónica) → submarca/marca del catálogo de Unidades (vista Solicitudes). */
+  submarcaByEco?: ReadonlyMap<string, string>;
 };
 
 /** Renderiza las filas. Devuelve conteos. */
@@ -162,12 +187,25 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   filtered: number;
   empty: boolean;
 } {
-  const { tbody, entries, filter, sortCol, sortDir, metricsByLoad } = deps;
+  const { tbody, entries, filter, sortCol, sortDir, metricsByLoad, submarcaByEco } = deps;
   const kmplByLoad = new Map<string, number | null>();
   if (metricsByLoad) for (const [id, m] of metricsByLoad) kmplByLoad.set(id, m.kmPorLitro);
 
   const rows = filterAndSortFuel(entries, filter, sortCol, sortDir, kmplByLoad);
   const order = rows.map((r) => r.loadId);
+
+  // Vista Solicitudes: las columnas de carga (Litros/Monto/km-l) se reusan para datos de la
+  // solicitud (Nivel antes→deseado / Monto a cargar / Litros máx). Encabezado adaptativo.
+  const esSol = filter.tipo === "solicitud";
+  if (deps.tableEl) {
+    const setTh = (sort: string, txt: string) => {
+      const th = deps.tableEl!.querySelector(`[data-sort="${sort}"]`);
+      if (th) th.textContent = txt;
+    };
+    setTh("litros", esSol ? "Nivel (antes→deseado)" : "Litros");
+    setTh("monto", esSol ? "Monto a cargar" : "Monto");
+    setTh("kmpl", esSol ? "Litros máx." : "km/l");
+  }
 
   tbody.replaceChildren();
   for (let i = 0; i < rows.length; i++) {
@@ -180,18 +218,35 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     tr.tabIndex = 0;
 
     const kmpl = kmplByLoad.get(e.loadId);
+    const submarca = esSol ? submarcaByEco?.get(ecoKey(e.eco)) : undefined;
     const cells: (string | HTMLElement)[] = [
       String(i + 1),
       e.tipo === "carga" ? "Carga" : "Solicitud",
-      e.eco,
+      submarca ? `${e.eco} · ${submarca}` : e.eco,
       e.placa ?? "—",
       e.fecha || "—",
       e.sucursal || "—",
       e.responsable || "—",
       e.km != null ? NUM.format(e.km) : "—",
-      e.litros != null ? `${NUM.format(Math.round(e.litros * 10) / 10)} L` : "—",
-      e.monto != null ? PESO.format(e.monto) : "—",
-      kmpl != null ? (Math.round(kmpl * 100) / 100).toFixed(2) : "—",
+      esSol
+        ? `${nivelLabel(e.nivelAntes)} → ${nivelLabel(e.nivelDeseado)}`
+        : e.litros != null
+          ? `${NUM.format(Math.round(e.litros * 10) / 10)} L`
+          : "—",
+      esSol
+        ? e.montoEstimado != null
+          ? PESO.format(e.montoEstimado)
+          : "—"
+        : e.monto != null
+          ? PESO.format(e.monto)
+          : "—",
+      esSol
+        ? e.maxLitros != null
+          ? `${NUM.format(Math.round(e.maxLitros))} L`
+          : "—"
+        : kmpl != null
+          ? (Math.round(kmpl * 100) / 100).toFixed(2)
+          : "—",
       pill(v),
       e.photos.length ? `📷 ${e.photos.length}` : "—",
     ];

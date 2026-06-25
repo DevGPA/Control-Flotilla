@@ -133,6 +133,17 @@ function renderCombustible(): void {
     all,
   );
 
+  // Submarca por económico (del catálogo de Unidades) para la vista Solicitudes.
+  const fleet =
+    (window as unknown as { __fleetUnits?: Array<{ eco?: string; brand?: string }> })
+      .__fleetUnits ?? [];
+  const submarcaByEco = new Map<string, string>();
+  for (const u of fleet) {
+    const k = ecoKey(u.eco);
+    const m = (u.brand ?? "").trim();
+    if (k && m && !submarcaByEco.has(k)) submarcaByEco.set(k, m);
+  }
+
   renderTableCombustible({
     tbody,
     countEl: $("fuel-rcnt"),
@@ -143,6 +154,7 @@ function renderCombustible(): void {
     sortCol,
     sortDir,
     metricsByLoad: ctx.metricsByLoad,
+    submarcaByEco,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
   });
 

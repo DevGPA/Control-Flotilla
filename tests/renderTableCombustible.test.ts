@@ -97,6 +97,15 @@ describe("filterAndSortFuel", () => {
     expect(filterAndSortFuel(entries, { ...NO_FILTER, search: "10" }, "_idx", -1)).toHaveLength(2);
   });
 
+  it("vista Solicitudes: la columna Monto ordena por 'monto a cargar' (montoEstimado)", () => {
+    const sols: FuelEntry[] = [
+      entry({ eco: "1", tipo: "solicitud", montoEstimado: 500 }),
+      entry({ eco: "2", tipo: "solicitud", montoEstimado: 2000 }),
+    ];
+    const r = filterAndSortFuel(sols, { ...NO_FILTER, tipo: "solicitud" }, "monto", -1);
+    expect(r[0]!.eco).toBe("2"); // mayor monto a cargar primero
+  });
+
   it("filtra por rango de fechas", () => {
     expect(
       filterAndSortFuel(
@@ -195,6 +204,45 @@ describe("renderTableCombustible (DOM)", () => {
     (tbody.querySelector("tr") as HTMLElement).click();
     expect(clicked).toBeTruthy();
     expect(order).toHaveLength(2);
+  });
+
+  it("vista Solicitudes: columnas adaptadas (nivel / monto a cargar / litros máx + submarca)", () => {
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    for (const s of ["litros", "monto", "kmpl"]) {
+      const th = document.createElement("th");
+      th.setAttribute("data-sort", s);
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    const sol = entry({
+      eco: "06",
+      tipo: "solicitud",
+      nivelAntes: "0.25(1/4)",
+      nivelDeseado: "1.00",
+      montoEstimado: 1525,
+      maxLitros: 55,
+    });
+    renderTableCombustible({
+      tbody,
+      tableEl: table,
+      entries: [sol],
+      filter: { ...NO_FILTER, tipo: "solicitud" },
+      sortCol: "_idx",
+      sortDir: -1,
+      submarcaByEco: new Map([["6", "Peugeot"]]),
+    });
+    // Encabezado adaptado
+    expect(table.querySelector('[data-sort="monto"]')!.textContent).toBe("Monto a cargar");
+    expect(table.querySelector('[data-sort="litros"]')!.textContent).toBe("Nivel (antes→deseado)");
+    // Celdas con datos de solicitud
+    const tds = [...tbody.querySelectorAll("td")].map((td) => td.textContent ?? "");
+    expect(tds).toContain("06 · Peugeot"); // económico + submarca del catálogo
+    expect(tds.some((t) => t.includes("¼") && t.includes("→"))).toBe(true); // nivel antes→deseado
+    expect(tds.some((t) => t.includes("1,525"))).toBe(true); // monto a cargar
+    expect(tds.some((t) => t.includes("55 L"))).toBe(true); // litros máx
   });
 });
 
