@@ -90,11 +90,18 @@ export type FuelMetrics = {
 
 /** Estadísticas de un grupo (por unidad o por tipo). */
 export type FuelStat = {
-  mean: number;
+  mean: number; // media de los km/l por evento (distribución; la usan las anomalías)
   sd: number;
   n: number;
   p25?: number;
   p75?: number;
+  /**
+   * km/l PONDERADO POR VOLUMEN del grupo: Σ(km recorridos) / Σ(litros) sobre los eventos
+   * dentro de la cerca IQR. Es la métrica de EFICIENCIA que se muestra/ranquea (robusta a
+   * llenados parciales y sin el sesgo del promedio de ratios). Opcional: si falta, los
+   * consumidores caen a `mean` (compatibilidad con literales de test).
+   */
+  kmplVol?: number;
 };
 
 /** Baseline de la flota para comparativos y anomalías. */
@@ -102,7 +109,8 @@ export type FleetBaseline = {
   porUnidad: Map<string, FuelStat>; // km/l por economicoId
   porTipo: Map<string, FuelStat>; // km/l por tipoUnidad
   tipoDe: Map<string, string>; // economicoId → tipoUnidad (para comparar vs su tipo)
-  flotaMean: number; // km/l medio de la flota
+  flotaMean: number; // km/l medio de la flota (media de eventos; la usa la regla "fuga")
+  flotaKmplVol?: number; // km/l ponderado por volumen de la flota (Σkm/Σlitros)
 };
 
 /** Umbrales configurables del detector de anomalías. */

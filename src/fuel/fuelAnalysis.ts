@@ -155,6 +155,36 @@ function statOf(values: number[]): FuelStat {
   };
 }
 
+/** Un evento de rendimiento: km recorridos, litros cargados y su km/l. */
+type KmEvent = { km: number; litros: number; kmpl: number };
+
+/** Cerca IQR (Tukey k) sobre los km/l; [-∞,∞] si hay <4 (no se puede recortar fiable). */
+function iqrBounds(kmpls: readonly number[], k = 1.5): [number, number] {
+  if (kmpls.length < 4) return [-Infinity, Infinity];
+  const q1 = percentile(kmpls as number[], 25);
+  const q3 = percentile(kmpls as number[], 75);
+  const iqr = q3 - q1;
+  return [q1 - k * iqr, q3 + k * iqr];
+}
+
+/**
+ * km/l PONDERADO POR VOLUMEN: Σkm/Σlitros sobre los eventos cuyo km/l cae dentro de la cerca
+ * IQR. La cerca descarta llenados parciales atípicos y dedazos de litros ANTES de sumar (el
+ * ponderado por volumen no recorta solo). NaN si no quedan litros. Esta es la métrica fiel
+ * (sin sesgo de tramos cortos, robusta a tanque no lleno) que se muestra/ranquea.
+ */
+function volWeightedKmpl(events: readonly KmEvent[]): number {
+  const [lo, hi] = iqrBounds(events.map((e) => e.kmpl));
+  let sumKm = 0;
+  let sumLitros = 0;
+  for (const e of events) {
+    if (e.kmpl < lo || e.kmpl > hi) continue;
+    sumKm += e.km;
+    sumLitros += e.litros;
+  }
+  return sumLitros > 0 ? sumKm / sumLitros : NaN;
+}
+
 /**
  * Baseline de la flota a partir de las métricas: km/l por unidad, por tipo de unidad
  * (para "vs unidades similares") y media de flota. Usa recorte IQR para robustez.
@@ -166,22 +196,36 @@ export function buildFleetBaseline(
   const tipoOf = new Map<string, string>();
   for (const e of entries) if (e.tipoUnidad) tipoOf.set(e.eco, e.tipoUnidad);
 
-  const kmplByUnit = new Map<string, number[]>();
-  const kmplByTipo = new Map<string, number[]>();
-  const allKmpl: number[] = [];
+  // Reúne EVENTOS válidos (km recorrido + litros + km/l) por unidad/tipo/flota. El filtro es
+  // el mismo de siempre (km/l finito y >0 ya excluye montacargas/retroceso/salto/litros≤0); el
+  // guard extra de km/litros es para TS (cuando hay km/l, ambos existen y son >0).
+  const evByUnit = new Map<string, KmEvent[]>();
+  const evByTipo = new Map<string, KmEvent[]>();
+  const allEv: KmEvent[] = [];
   for (const m of metrics) {
     if (m.kmPorLitro == null || !(m.kmPorLitro > 0) || !Number.isFinite(m.kmPorLitro)) continue;
-    pushInto(kmplByUnit, m.eco, m.kmPorLitro);
-    pushInto(kmplByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", m.kmPorLitro);
-    allKmpl.push(m.kmPorLitro);
+    if (m.kmDesdeAnterior == null || m.litros == null || !(m.litros > 0)) continue;
+    const ev: KmEvent = { km: m.kmDesdeAnterior, litros: m.litros, kmpl: m.kmPorLitro };
+    pushInto(evByUnit, m.eco, ev);
+    pushInto(evByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", ev);
+    allEv.push(ev);
   }
 
+  // mean/sd/p25/p75 = distribución de km/l por evento (para anomalías). kmplVol = ponderado.
   const porUnidad = new Map<string, FuelStat>();
-  for (const [eco, vals] of kmplByUnit) porUnidad.set(eco, statOf(vals));
+  for (const [eco, evs] of evByUnit)
+    porUnidad.set(eco, { ...statOf(evs.map((e) => e.kmpl)), kmplVol: volWeightedKmpl(evs) });
   const porTipo = new Map<string, FuelStat>();
-  for (const [tipo, vals] of kmplByTipo) porTipo.set(tipo, statOf(vals));
+  for (const [tipo, evs] of evByTipo)
+    porTipo.set(tipo, { ...statOf(evs.map((e) => e.kmpl)), kmplVol: volWeightedKmpl(evs) });
 
-  return { porUnidad, porTipo, tipoDe: tipoOf, flotaMean: mean(clampOutliers(allKmpl)) };
+  return {
+    porUnidad,
+    porTipo,
+    tipoDe: tipoOf,
+    flotaMean: mean(clampOutliers(allEv.map((e) => e.kmpl))),
+    flotaKmplVol: volWeightedKmpl(allEv),
+  };
 }
 
 /** Precedencia de RiskLevel para agregar el peor. */

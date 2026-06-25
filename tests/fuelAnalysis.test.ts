@@ -112,7 +112,7 @@ describe("computeFuelMetrics — exclusiones que protegen el ranking", () => {
 });
 
 describe("buildFleetBaseline", () => {
-  it("calcula media por unidad y media de flota", () => {
+  it("calcula media por unidad, media de flota y ponderado por volumen", () => {
     const entries = [
       carga("U1", "2026-01-01", 0, 50),
       carga("U1", "2026-01-10", 500, 50), // 10 km/l
@@ -120,7 +120,38 @@ describe("buildFleetBaseline", () => {
     ];
     const base = buildFleetBaseline(computeFuelMetrics(entries), entries);
     expect(base.porUnidad.get("U1")!.mean).toBeCloseTo(10, 6);
+    expect(base.porUnidad.get("U1")!.kmplVol!).toBeCloseTo(10, 6); // (500+500)/(50+50)
     expect(base.flotaMean).toBeCloseTo(10, 6);
+    expect(base.flotaKmplVol!).toBeCloseTo(10, 6);
+  });
+
+  it("kmplVol = Σkm/Σlitros (ponderado), NO la media de ratios", () => {
+    // 1ª sin km/l; luego 50 km/10 L = 5 y 500 km/50 L = 10.
+    // Media de ratios = 7.5 (sesgada); ponderado = 550/60 = 9.17 (fiel).
+    const entries = [
+      carga("U1", "2026-01-01", 0, 10),
+      carga("U1", "2026-01-05", 50, 10),
+      carga("U1", "2026-01-10", 550, 50),
+    ];
+    const base = buildFleetBaseline(computeFuelMetrics(entries), entries);
+    const s = base.porUnidad.get("U1")!;
+    expect(s.mean).toBeCloseTo(7.5, 2); // distribución por evento (anomalías)
+    expect(s.kmplVol!).toBeCloseTo(9.17, 2); // eficiencia ponderada (se muestra/ranquea)
+    expect(base.flotaKmplVol!).toBeCloseTo(9.17, 2);
+  });
+
+  it("la cerca IQR excluye un dedazo de litros antes de ponderar", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50),
+      carga("U1", "2026-01-05", 500, 50), // 10
+      carga("U1", "2026-01-09", 1000, 50), // 10
+      carga("U1", "2026-01-13", 1500, 50), // 10
+      carga("U1", "2026-01-17", 2000, 50), // 10
+      carga("U1", "2026-01-21", 2050, 250), // 50 km / 250 L = 0.2 (dedazo) → fuera de cerca
+    ];
+    const base = buildFleetBaseline(computeFuelMetrics(entries), entries);
+    // Sin la cerca el ponderado sería (2000+50)/(200+250)=4.56; con la cerca el dedazo se excluye.
+    expect(base.porUnidad.get("U1")!.kmplVol!).toBeCloseTo(10, 1);
   });
 });
 

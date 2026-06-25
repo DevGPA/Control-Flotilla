@@ -35,9 +35,13 @@ export function buildKpisFuel(
   const litros = cargas.reduce((a, e) => a + (e.litros ?? 0), 0);
   const gasto = cargas.reduce((a, e) => a + montoEfectivo(e), 0);
   const kmplVals = metrics.map((m) => m.kmPorLitro).filter((x): x is number => x != null && x > 0);
-  // Media ROBUSTA (recorte IQR): cargas con huecos grandes (datos esparcidos) producen
-  // km/l atípicos que disparan la media cruda; el recorte la mantiene realista.
+  // Media ROBUSTA por evento (recorte IQR) — fallback si no hay ponderado.
   const kmplProm = kmplVals.length ? mean(clampOutliers(kmplVals)) : NaN;
+  // Rendimiento de flota PONDERADO POR VOLUMEN (Σkm/Σlitros): la métrica fiel (sin sesgo de
+  // tramos cortos, robusta a tanque no lleno). Cae a la media de eventos si no está disponible.
+  const kmplFlota = Number.isFinite(baseline.flotaKmplVol ?? NaN)
+    ? (baseline.flotaKmplVol as number)
+    : kmplProm;
   const discrepancias = entries.filter((e) => verdictOf(e) === "discrepancia").length;
   const pendientes = entries.filter((e) => verdictOf(e) === "pendiente").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
@@ -59,10 +63,8 @@ export function buildKpisFuel(
     {
       key: "kmpl",
       label: "Rendimiento flota",
-      value: Number.isFinite(kmplProm) ? `${kmplProm.toFixed(2)} km/l` : "—",
-      sub: Number.isFinite(baseline.flotaMean)
-        ? `histórico ${baseline.flotaMean.toFixed(2)}`
-        : undefined,
+      value: Number.isFinite(kmplFlota) ? `${kmplFlota.toFixed(2)} km/l` : "—",
+      sub: "ponderado por litros",
       tone: "g",
     },
     { key: "gasto", label: "Gasto", value: PESO.format(gasto), tone: "n" },
