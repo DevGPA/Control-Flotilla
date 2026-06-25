@@ -15,7 +15,13 @@ import type {
   FleetBaseline,
   FuelFinding,
 } from "./types";
-import { computeFuelMetrics, buildFleetBaseline, detectFuelAnomalies } from "./fuelAnalysis";
+import {
+  computeFuelMetrics,
+  buildFleetBaseline,
+  detectFuelAnomalies,
+  computeRecorridos,
+  type RecorridoInfo,
+} from "./fuelAnalysis";
 import {
   renderTableCombustible,
   filterAndSortFuel,
@@ -66,6 +72,39 @@ let detailIndex = -1;
 // Dashboard
 let dashShown = false;
 
+// Cache email→nombre del validador (de la lista de Usuarios). Se llena SIN bloquear el render:
+// la tabla pinta el email y, cuando llega la lista, re-pinta con el nombre real.
+const _nombrePorEmail = new Map<string, string>();
+let _nombresPedidos = false;
+function cargarNombresValidadores(): void {
+  if (_nombresPedidos) return;
+  _nombresPedidos = true;
+  window.__admin
+    ?.listUsers()
+    .then((r) => {
+      const data = (r && r.ok && Array.isArray(r.data) ? r.data : []) as Array<{
+        email?: string;
+        nombre?: string;
+      }>;
+      let added = 0;
+      for (const u of data)
+        if (u.email && u.nombre) {
+          _nombrePorEmail.set(u.email.toLowerCase(), u.nombre);
+          added++;
+        }
+      if (added) renderCombustible(); // re-pinta para enriquecer email→nombre
+    })
+    .catch(() => {
+      /* sin permisos (no admin) → se queda el handle del correo */
+    });
+}
+/** Nombre legible del validador: mapa de Usuarios → nombre; si no, handle del correo; vacío/"ui" → "—". */
+function nombreValidador(email: string | null | undefined): string {
+  const e = (email ?? "").trim();
+  if (!e || e === "ui") return "—";
+  return _nombrePorEmail.get(e.toLowerCase()) ?? e.split("@")[0]!;
+}
+
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
@@ -82,6 +121,7 @@ type FuelCtx = {
   baseline: FleetBaseline;
   anomalies: FuelFinding[];
   metricsByLoad: Map<string, FuelMetrics>;
+  recorridosByLoad: Map<string, RecorridoInfo>;
 };
 let lastCtx: FuelCtx | null = null;
 
@@ -102,7 +142,17 @@ function computeCtx(): FuelCtx {
   const filteredMetrics = allMetrics.filter((m) => ids.has(m.loadId));
   const baseline = buildFleetBaseline(filteredMetrics, filtered);
   const anomalies = detectFuelAnomalies(filteredMetrics, baseline);
-  const ctx: FuelCtx = { filtered, filteredMetrics, baseline, anomalies, metricsByLoad };
+  // Recorrido por ciclo sobre el histórico COMPLETO scopeado (la "siguiente solicitud" puede
+  // caer fuera del filtro); la tabla/KPI consultan por loadId los registros filtrados.
+  const recorridosByLoad = computeRecorridos(all);
+  const ctx: FuelCtx = {
+    filtered,
+    filteredMetrics,
+    baseline,
+    anomalies,
+    metricsByLoad,
+    recorridosByLoad,
+  };
   lastCtx = ctx;
   lastMetricsByLoad = metricsByLoad;
   return ctx;
@@ -113,12 +163,19 @@ function renderCombustible(): void {
   if (!tbody) return; // vista no montada aún
   const all = scoped();
   const ctx = computeCtx();
+  cargarNombresValidadores(); // no bloquea; re-pinta al llegar la lista
 
   const kpisEl = $("fuel-kpis");
   if (kpisEl)
     renderKpisFuel(
       kpisEl,
-      buildKpisFuel(ctx.filtered, ctx.filteredMetrics, ctx.baseline, ctx.anomalies),
+      buildKpisFuel(
+        ctx.filtered,
+        ctx.filteredMetrics,
+        ctx.baseline,
+        ctx.anomalies,
+        ctx.recorridosByLoad,
+      ),
       (f) => {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
         else if (f === "pendiente") setVerdictFilter("pendiente");
@@ -155,6 +212,8 @@ function renderCombustible(): void {
     sortDir,
     metricsByLoad: ctx.metricsByLoad,
     submarcaByEco,
+    recorridosByLoad: ctx.recorridosByLoad,
+    nombreValidador,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
   });
 
@@ -472,6 +531,8 @@ function renderCurrentDetail(): void {
     metaEl: $("fuel-det-meta"),
     load,
     metrics: lastMetricsByLoad.get(loadId),
+    recorrido: lastCtx?.recorridosByLoad.get(loadId),
+    nombreValidador,
     resolveUrl,
     canWrite: canWrite(),
     onValidate: handleValidate,
@@ -519,13 +580,15 @@ function handleValidate(
   // sin escritura cross-tenant si algún día hay un 2º tenant.
   const sess = window.__cloudSession;
   const tenantId = (sess && sess.tenantId) || "gpa";
-  const revisadoPor = (sess && sess.email) || "ui";
+  const revisadoPor = (sess && sess.email) || ""; // email real; vacío → la UI muestra "—"
+  const ts = new Date().toISOString(); // cuándo se validó (antes no se guardaba)
   load.review = {
     ...review,
     porEvidencia: por,
     verdictGlobal,
     nota: nota ?? review.nota,
     revisadoPor,
+    ts,
     fuenteDeteccion: "manual",
   };
   void upsertValidacionCarga({
@@ -535,6 +598,7 @@ function handleValidate(
     porEvidencia: por,
     nota: nota ?? review.nota,
     revisadoPor,
+    ts,
   }).catch((e) => {
     console.warn("[fuel] upsertValidacionCarga falló:", e);
     // Rollback del update optimista: si no se guardó, revierte el estado en UI.

@@ -5,6 +5,7 @@
  * (manual) y Fase 2 (IA pre-llena valorDetectado) con el mismo layout.
  */
 import type { FuelEntry, FuelMetrics, FuelEvidenceKind, FuelVerdict, FuelPhoto } from "./types";
+import type { RecorridoInfo } from "./fuelAnalysis";
 import { evidenceKindOf } from "./mapEntry";
 
 const PESO = new Intl.NumberFormat("es-MX", {
@@ -21,6 +22,10 @@ export type RenderDetalleCargaDeps = {
   metaEl?: HTMLElement | null;
   load: FuelEntry;
   metrics?: FuelMetrics;
+  /** Recorrido del ciclo (solicitud → siguiente solicitud) de esta entrada. */
+  recorrido?: RecorridoInfo;
+  /** email del validador → nombre legible (para "Revisado por …"). */
+  nombreValidador?: (email?: string | null) => string;
   resolveUrl: (fname: string) => string | null;
   canWrite: boolean;
   onValidate: (
@@ -121,6 +126,31 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   }
 
   body.replaceChildren();
+
+  // Info del ciclo + quién validó (línea contextual, antes de las fichas).
+  {
+    const info = document.createElement("div");
+    info.className = "fv-revinfo";
+    const addLine = (txt: string) => {
+      const d = document.createElement("div");
+      d.textContent = txt;
+      info.appendChild(d);
+    };
+    const rec = deps.recorrido;
+    if (load.tipo === "solicitud" && rec) {
+      const sello = rec.viaCarga ? "con carga registrada" : "sin carga registrada";
+      if (rec.km != null) addLine(`🛣 Recorrido del ciclo: ${NUM.format(rec.km)} km (${sello})`);
+      else if (rec.cerrado) addLine(`🛣 Recorrido del ciclo: no medible (${sello})`);
+      else addLine("🛣 Recorrido del ciclo: en curso (aún sin solicitud posterior)");
+    }
+    const rev = load.review?.revisadoPor;
+    if (rev && rev !== "ui") {
+      const nombre = deps.nombreValidador ? deps.nombreValidador(rev) : (rev.split("@")[0] ?? rev);
+      const fecha = /^(\d{4}-\d{2}-\d{2})/.exec(String(load.review?.ts ?? ""))?.[1];
+      addLine(`✓ Revisado por ${nombre}${fecha ? ` · ${fecha}` : ""}`);
+    }
+    if (info.childNodes.length) body.appendChild(info);
+  }
 
   // Acción global (solo escritura)
   if (canWrite) {

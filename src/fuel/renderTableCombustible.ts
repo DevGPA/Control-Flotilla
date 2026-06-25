@@ -4,6 +4,7 @@
  * sin innerHTML con datos — regla anti-XSS del proyecto).
  */
 import type { FuelEntry, FuelMetrics, FuelVerdictGlobal } from "./types";
+import type { RecorridoInfo } from "./fuelAnalysis";
 import { ecoKey } from "./tokaLayout";
 
 /** Valor numérico de un nivel de tanque ("0.25(1/4)" → 0.25). NaN si no parsea. */
@@ -72,13 +73,14 @@ function matchesSearch(e: FuelEntry, q: string): boolean {
   return terms.some(matchTerm);
 }
 
-/** Filtra + ordena. Pura. `kmplByLoad` aporta el km/l para ordenar/mostrar. */
+/** Filtra + ordena. Pura. `kmplByLoad` aporta el km/l y `recorridosByLoad` el recorrido. */
 export function filterAndSortFuel(
   entries: readonly FuelEntry[],
   filter: FuelTableFilter,
   sortCol: FuelSortCol,
   sortDir: 1 | -1,
   kmplByLoad?: Map<string, number | null>,
+  recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>,
 ): FuelEntry[] {
   const out = entries.filter((e) => {
     if (filter.tipo !== "all" && e.tipo !== filter.tipo) return false;
@@ -136,7 +138,9 @@ export function filterAndSortFuel(
           c = esSol ? cmpNum(a.montoEstimado, b.montoEstimado) : cmpNum(a.monto, b.monto);
           break;
         case "kmpl":
-          c = esSol ? cmpNum(a.maxLitros, b.maxLitros) : cmpNum(kmpl(a), kmpl(b));
+          c = esSol
+            ? cmpNum(recorridosByLoad?.get(a.loadId)?.km, recorridosByLoad?.get(b.loadId)?.km)
+            : cmpNum(kmpl(a), kmpl(b));
           break;
         case "verdict":
           c = VERDICT_RANK[verdictOf(a)] - VERDICT_RANK[verdictOf(b)];
@@ -179,7 +183,43 @@ export type RenderTableCombustibleDeps = {
   onRowClick?: (loadId: string, visibleOrder: string[]) => void;
   /** economicoId (clave canónica) → submarca/marca del catálogo de Unidades (vista Solicitudes). */
   submarcaByEco?: ReadonlyMap<string, string>;
+  /** loadId → recorrido del ciclo (vista Solicitudes). */
+  recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>;
+  /** email del validador → nombre legible (para la celda de Validación). */
+  nombreValidador?: (email?: string | null) => string;
 };
+
+/** ISO ("2026-06-25T...") → "25/06/26". "" si no hay fecha. */
+function fechaCorta(iso: string | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]!.slice(2)}` : "";
+}
+
+/** Etiqueta del recorrido del ciclo (vista Solicitudes): "800 km ✓/⚠" o "—". */
+function recLabel(rec: RecorridoInfo | undefined): string {
+  if (!rec || rec.km == null) return "—";
+  return `${NUM.format(rec.km)} km ${rec.viaCarga ? "✓" : "⚠"}`;
+}
+
+/** Celda de Validación: semáforo + (si hay) "{nombre} · {fecha}" en línea chica. */
+function verdictCell(
+  e: FuelEntry,
+  v: FuelVerdictGlobal,
+  nombreFn?: (email?: string | null) => string,
+): HTMLElement {
+  const rev = e.review?.revisadoPor;
+  if (!rev || rev === "ui") return pill(v);
+  const wrap = document.createElement("div");
+  wrap.className = "sw-valcell";
+  wrap.appendChild(pill(v));
+  const sub = document.createElement("small");
+  sub.className = "sw-valby";
+  const nombre = nombreFn ? nombreFn(rev) : (rev.split("@")[0] ?? rev);
+  const fecha = fechaCorta(e.review?.ts);
+  sub.textContent = fecha ? `${nombre} · ${fecha}` : nombre;
+  wrap.appendChild(sub);
+  return wrap;
+}
 
 /** Renderiza las filas. Devuelve conteos. */
 export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
@@ -188,14 +228,16 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   empty: boolean;
 } {
   const { tbody, entries, filter, sortCol, sortDir, metricsByLoad, submarcaByEco } = deps;
+  const recorridosByLoad = deps.recorridosByLoad;
+  const nombreValidador = deps.nombreValidador;
   const kmplByLoad = new Map<string, number | null>();
   if (metricsByLoad) for (const [id, m] of metricsByLoad) kmplByLoad.set(id, m.kmPorLitro);
 
-  const rows = filterAndSortFuel(entries, filter, sortCol, sortDir, kmplByLoad);
+  const rows = filterAndSortFuel(entries, filter, sortCol, sortDir, kmplByLoad, recorridosByLoad);
   const order = rows.map((r) => r.loadId);
 
   // Vista Solicitudes: las columnas de carga (Litros/Monto/km-l) se reusan para datos de la
-  // solicitud (Nivel antes→deseado / Monto a cargar / Litros máx). Encabezado adaptativo.
+  // solicitud (Nivel antes→deseado / Monto a cargar / Recorrido del ciclo). Encabezado adaptativo.
   const esSol = filter.tipo === "solicitud";
   if (deps.tableEl) {
     const setTh = (sort: string, txt: string) => {
@@ -204,7 +246,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     };
     setTh("litros", esSol ? "Nivel (antes→deseado)" : "Litros");
     setTh("monto", esSol ? "Monto a cargar" : "Monto");
-    setTh("kmpl", esSol ? "Litros máx." : "km/l");
+    setTh("kmpl", esSol ? "Recorrido" : "km/l");
   }
 
   tbody.replaceChildren();
@@ -241,13 +283,11 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
           ? PESO.format(e.monto)
           : "—",
       esSol
-        ? e.maxLitros != null
-          ? `${NUM.format(Math.round(e.maxLitros))} L`
-          : "—"
+        ? recLabel(recorridosByLoad?.get(e.loadId))
         : kmpl != null
           ? (Math.round(kmpl * 100) / 100).toFixed(2)
           : "—",
-      pill(v),
+      verdictCell(e, v, nombreValidador),
       e.photos.length ? `📷 ${e.photos.length}` : "—",
     ];
     for (const c of cells) {

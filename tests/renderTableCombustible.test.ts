@@ -11,6 +11,7 @@ import {
   computeFuelMetrics,
   buildFleetBaseline,
   detectFuelAnomalies,
+  computeRecorridos,
 } from "../src/fuel/fuelAnalysis";
 import type { FuelEntry } from "../src/fuel/types";
 
@@ -206,7 +207,7 @@ describe("renderTableCombustible (DOM)", () => {
     expect(order).toHaveLength(2);
   });
 
-  it("vista Solicitudes: columnas adaptadas (nivel / monto a cargar / litros máx + submarca)", () => {
+  it("vista Solicitudes: columnas adaptadas (nivel / monto a cargar / recorrido + submarca)", () => {
     const table = document.createElement("table");
     const thead = document.createElement("thead");
     const trh = document.createElement("tr");
@@ -233,16 +234,61 @@ describe("renderTableCombustible (DOM)", () => {
       sortCol: "_idx",
       sortDir: -1,
       submarcaByEco: new Map([["6", "Peugeot"]]),
+      recorridosByLoad: new Map([[sol.loadId, { km: 800, viaCarga: true, cerrado: true }]]),
     });
     // Encabezado adaptado
     expect(table.querySelector('[data-sort="monto"]')!.textContent).toBe("Monto a cargar");
     expect(table.querySelector('[data-sort="litros"]')!.textContent).toBe("Nivel (antes→deseado)");
+    expect(table.querySelector('[data-sort="kmpl"]')!.textContent).toBe("Recorrido");
     // Celdas con datos de solicitud
     const tds = [...tbody.querySelectorAll("td")].map((td) => td.textContent ?? "");
     expect(tds).toContain("06 · Peugeot"); // económico + submarca del catálogo
     expect(tds.some((t) => t.includes("¼") && t.includes("→"))).toBe(true); // nivel antes→deseado
     expect(tds.some((t) => t.includes("1,525"))).toBe(true); // monto a cargar
-    expect(tds.some((t) => t.includes("55 L"))).toBe(true); // litros máx
+    expect(tds.some((t) => t.includes("800 km") && t.includes("✓"))).toBe(true); // recorrido del ciclo
+  });
+
+  it("celda de Validación: muestra nombre del validador + fecha bajo el semáforo", () => {
+    const e = entry({
+      eco: "10",
+      tipo: "carga",
+      review: {
+        verdictGlobal: "ok",
+        porEvidencia: {},
+        revisadoPor: "navares.oro@gmail.com",
+        ts: "2026-06-25T18:30:00.000Z",
+      },
+    });
+    renderTableCombustible({
+      tbody,
+      entries: [e],
+      filter: NO_FILTER,
+      sortCol: "_idx",
+      sortDir: -1,
+      nombreValidador: (email) => (email === "navares.oro@gmail.com" ? "Navares" : "—"),
+    });
+    const by = tbody.querySelector(".sw-valby");
+    expect(by).toBeTruthy();
+    expect(by!.textContent).toContain("Navares");
+    expect(by!.textContent).toContain("25/06/26");
+  });
+
+  it("vista Solicitudes: ordena por la columna Recorrido (km del ciclo)", () => {
+    const a = entry({ eco: "1", tipo: "solicitud", eventoId: "a" });
+    const b = entry({ eco: "2", tipo: "solicitud", eventoId: "b" });
+    const rec = new Map([
+      [a.loadId, { km: 200, viaCarga: true, cerrado: true }],
+      [b.loadId, { km: 900, viaCarga: false, cerrado: true }],
+    ]);
+    const r = filterAndSortFuel(
+      [a, b],
+      { ...NO_FILTER, tipo: "solicitud" },
+      "kmpl",
+      -1,
+      undefined,
+      rec,
+    );
+    expect(r[0]!.eco).toBe("2"); // mayor recorrido primero
   });
 });
 
@@ -276,5 +322,30 @@ describe("buildKpisFuel", () => {
     expect(byKey.cargas).toBe("2");
     expect(byKey.litros).toBe("100 L");
     expect(byKey.gasto).toContain("2,700");
+  });
+
+  it("KPI 'Solicitudes sin carga' cuenta ciclos cerrados sin carga (no la última solicitud)", () => {
+    // U1: sol→sol SIN carga (ciclo cerrado sin carga = 1); la 2ª solicitud queda en curso.
+    // U2: sol→carga→sol (ciclo cerrado CON carga = no cuenta).
+    const entries = [
+      entry({ eco: "U1", tipo: "solicitud", fecha: "2026-01-01", km: 0 }),
+      entry({ eco: "U1", tipo: "solicitud", fecha: "2026-01-10", km: 500 }),
+      entry({ eco: "U2", tipo: "solicitud", fecha: "2026-01-01", km: 0 }),
+      entry({ eco: "U2", tipo: "carga", fecha: "2026-01-05", km: 300, litros: 40, monto: 1000 }),
+      entry({ eco: "U2", tipo: "solicitud", fecha: "2026-01-12", km: 700 }),
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const baseline = buildFleetBaseline(metrics, entries);
+    const anomalies = detectFuelAnomalies(metrics, baseline);
+    const rec = computeRecorridos(entries);
+    const kpis = buildKpisFuel(entries, metrics, baseline, anomalies, rec);
+    const sin = kpis.find((k) => k.key === "sin-carga");
+    expect(sin).toBeTruthy();
+    expect(sin!.value).toBe("1");
+  });
+
+  it("sin recorridosByLoad NO incluye la tarjeta 'sin-carga'", () => {
+    const kpis = buildKpisFuel([], [], buildFleetBaseline([], []), []);
+    expect(kpis.find((k) => k.key === "sin-carga")).toBeUndefined();
   });
 });

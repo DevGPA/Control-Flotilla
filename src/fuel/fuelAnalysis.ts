@@ -65,6 +65,23 @@ function pushInto<T>(m: Map<string, T[]>, key: string, val: T): void {
 }
 
 /**
+ * Orden cronológico de eventos de una unidad: por fecha/hora; con el mismo timestamp (típico
+ * cuando MoreApp manda solo fecha sin hora) desempata por odómetro ascendente (para no inventar
+ * un retroceso) y luego por loadId (estable, no depende del orden de listado de DynamoDB).
+ */
+function cronoCmp(
+  a: Pick<FuelEntry, "fecha" | "fechaHora" | "km" | "loadId">,
+  b: Pick<FuelEntry, "fecha" | "fechaHora" | "km" | "loadId">,
+): number {
+  const dt = toTime(a) - toTime(b);
+  if (dt !== 0) return dt;
+  const ka = typeof a.km === "number" ? a.km : 0;
+  const kb = typeof b.km === "number" ? b.km : 0;
+  if (ka !== kb) return ka - kb;
+  return a.loadId.localeCompare(b.loadId);
+}
+
+/**
  * Calcula métricas km/l por evento de CARGA. Ignora solicitudes (sin litros reales).
  * La primera carga de cada unidad no tiene km/l (sin carga anterior).
  */
@@ -73,18 +90,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
   const byUnit = groupByUnit(cargas);
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
-    const sorted = [...arr].sort((a, b) => {
-      const dt = toTime(a) - toTime(b);
-      if (dt !== 0) return dt;
-      // Mismo timestamp (típico cuando MoreApp manda solo fecha sin hora): ordena por
-      // odómetro ascendente para no inventar un "retroceso" entre dos cargas del mismo
-      // día, y desempata estable por loadId. Sin esto el orden quedaba a merced del
-      // orden de listado de DynamoDB → falso km-retrocede + km/l mal repartido.
-      const ka = typeof a.km === "number" ? a.km : 0;
-      const kb = typeof b.km === "number" ? b.km : 0;
-      if (ka !== kb) return ka - kb;
-      return a.loadId.localeCompare(b.loadId);
-    });
+    const sorted = [...arr].sort(cronoCmp);
     let prev: FuelEntry | null = null;
     for (const e of sorted) {
       const km = typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
@@ -141,6 +147,60 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
 /** Métricas agrupadas por unidad (para historial y comparativos). */
 export function groupMetricsByUnit(metrics: readonly FuelMetrics[]): Map<string, FuelMetrics[]> {
   return groupByUnit(metrics);
+}
+
+/** Recorrido del ciclo de combustible de una solicitud. */
+export type RecorridoInfo = {
+  /** km del ciclo (solicitud → siguiente solicitud). null si no medible / sin siguiente. */
+  km: number | null;
+  /** ¿hubo al menos una carga registrada entre esta solicitud y la siguiente? */
+  viaCarga: boolean;
+  /**
+   * ¿El ciclo está CERRADO? (existe una solicitud posterior). La última solicitud de cada
+   * unidad tiene el ciclo abierto/en curso (`false`) → no se cuenta como "sin carga" todavía.
+   */
+  cerrado: boolean;
+};
+
+/**
+ * Recorrido por CICLO de combustible, por solicitud. Por unidad ordena TODOS los eventos
+ * (solicitudes + cargas) cronológicamente; para cada SOLICITUD mide los km hasta la SIGUIENTE
+ * solicitud (ciclo completo) y marca si hubo una carga de por medio (`viaCarga`). Se eligió el
+ * ciclo solicitud→solicitud porque la mayoría de solicitudes no tienen carga registrada.
+ * Guardas (como en km/l): km faltante / retroceso (<0) / salto > MAX_KM_JUMP / montacargas
+ * (horómetro) → km null. Última solicitud sin siguiente → km null. Devuelve Map por loadId.
+ */
+export function computeRecorridos(
+  entries: readonly FuelEntry[],
+  cfg: FuelThresholds = DEFAULT_FUEL_THRESHOLDS,
+): Map<string, RecorridoInfo> {
+  const out = new Map<string, RecorridoInfo>();
+  for (const arr of groupByUnit(entries).values()) {
+    const sorted = [...arr].sort(cronoCmp);
+    for (let i = 0; i < sorted.length; i++) {
+      const e = sorted[i]!;
+      if (e.tipo !== "solicitud") continue;
+      // Avanza hasta la siguiente solicitud; marca si hubo carga en medio.
+      let viaCarga = false;
+      let next: FuelEntry | null = null;
+      for (let j = i + 1; j < sorted.length; j++) {
+        const f = sorted[j]!;
+        if (f.tipo === "carga") {
+          viaCarga = true;
+          continue;
+        }
+        next = f;
+        break;
+      }
+      let km: number | null = null;
+      if (next && !e.esMontacargas && typeof e.km === "number" && typeof next.km === "number") {
+        const d = next.km - e.km;
+        if (d > 0 && d <= cfg.MAX_KM_JUMP) km = d;
+      }
+      out.set(e.loadId, { km, viaCarga, cerrado: next !== null });
+    }
+  }
+  return out;
 }
 
 function statOf(values: number[]): FuelStat {
