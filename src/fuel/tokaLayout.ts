@@ -24,20 +24,33 @@ export const TOKA_HEADER = [
 ] as const;
 
 /**
- * Productos Toka conocidos (para validar el dato derivado de MoreApp y poblar el
- * desplegable del panel). Toka está migrando algunas tarjetas de "TOKA COMBUSTIBLE"
- * a "EASYGAS"; el catálogo de Unidades (override del admin) acepta cualquier valor,
- * así que esta lista NO es un límite — solo valida lo que viene de MoreApp.
+ * Nombres EXACTOS que Toka exige en el layout (rebrand a EASYGAS, 2026-06). Grafía literal
+ * de Toka, incluido "DISEL" (sin segunda E) y "LP" (no "GAS LP"). El dato de origen (MoreApp
+ * o catálogo) suele traer las grafías viejas ("TOKA COMBUSTIBLE … CHIP"); `normalizeTokaProducto`
+ * las convierte a estas 4 antes de escribir el layout, así Toka no rechaza el archivo.
  */
 export const TOKA_PRODUCTOS = [
-  "TOKA COMBUSTIBLE DIESEL CHIP",
-  "TOKA COMBUSTIBLE GAS LP CHIP",
-  "TOKA COMBUSTIBLE MAGNA CHIP",
-  "TOKA COMBUSTIBLE PREMIUM CHIP",
-  "EASYGAS DIESEL CHIP",
+  "EASYGAS DISEL CHIP",
+  "EASYGAS LP CHIP",
+  "EASYGAS MAGNA CHIP",
+  "EASYGAS PREMIUM CHIP",
 ] as const;
 
 const PRODUCTO_SET = new Set<string>(TOKA_PRODUCTOS);
+
+/**
+ * Normaliza cualquier grafía de producto (vieja "TOKA COMBUSTIBLE …" o variantes) al nombre
+ * EXACTO que Toka exige hoy, detectando el tipo de combustible. Idempotente. Si no reconoce
+ * el tipo, devuelve el valor tal cual (no rompe productos desconocidos — se reportan aparte).
+ */
+export function normalizeTokaProducto(p: string | null | undefined): string {
+  const u = String(p ?? "").toUpperCase();
+  if (u.includes("PREMIUM")) return "EASYGAS PREMIUM CHIP";
+  if (u.includes("MAGNA")) return "EASYGAS MAGNA CHIP";
+  if (u.includes("DIESEL") || u.includes("DISEL")) return "EASYGAS DISEL CHIP";
+  if (u.includes("LP")) return "EASYGAS LP CHIP"; // cubre "GAS LP" y "LP"
+  return String(p ?? "").trim();
+}
 
 export type TokaRow = {
   idCliente: number; // siempre TOKA_ID_CLIENTE
@@ -138,51 +151,53 @@ export function buildTokaLayout(
   for (const [eco, grupo] of byEco) {
     const montoDeseado = round2(grupo.reduce((s, e) => s + (e.montoEstimado ?? 0), 0));
 
-    // Producto: 1º el override del catálogo de Unidades (admin, se usa tal cual y no se
-    // valida contra TOKA_PRODUCTOS); si no, el `producto` de MoreApp (único del grupo, o
-    // el del registro de mayor monto si hay conflicto, y validado contra el catálogo).
+    // Producto en crudo: 1º el override del catálogo de Unidades; si no, el `producto` de
+    // MoreApp (único del grupo, o el del registro de mayor monto si hay conflicto).
     const override = opts.productoOverride?.get(ecoKey(eco))?.trim();
-    let producto: string | undefined;
+    let raw: string | undefined;
     let desdeOverride = false;
     if (override) {
-      producto = override;
+      raw = override;
       desdeOverride = true;
-      // El override se usa tal cual (admite variantes nuevas tipo EASYGAS), pero si no
-      // coincide con ningún producto Toka conocido avisamos (no bloquea): suele ser errata
-      // de captura (p.ej. falta "CHIP" o mayúsculas) que Toka rechazaría al subir.
-      if (!PRODUCTO_SET.has(producto))
-        warnings.push({
-          eco,
-          tipo: "producto-override-desconocido",
-          detalle: `Producto del catálogo "${producto}" no coincide con un producto Toka conocido; verifica mayúsculas y "CHIP".`,
-        });
     } else {
       const productos = [...new Set(grupo.map((e) => (e.producto ?? "").trim()).filter(Boolean))];
       if (productos.length === 1) {
-        producto = productos[0];
+        raw = productos[0];
       } else if (productos.length > 1) {
         const ganador = [...grupo]
           .filter((e) => (e.producto ?? "").trim())
           .sort(
             (a, b) => (b.montoEstimado ?? 0) - (a.montoEstimado ?? 0) || ts(b).localeCompare(ts(a)),
           )[0];
-        producto = (ganador?.producto ?? "").trim();
+        raw = (ganador?.producto ?? "").trim();
         warnings.push({
           eco,
           tipo: "producto-conflicto",
-          detalle: `Productos distintos en el período (${productos.join(" / ")}); se usó "${producto}".`,
+          detalle: `Productos distintos en el período (${productos.join(" / ")}); se usó "${raw}".`,
         });
       }
     }
 
     // Validaciones que excluyen la unidad (se reportan).
-    if (!producto) {
+    if (!raw) {
       skipped.push({ eco, montoDeseado, motivo: "producto-ausente" });
       continue;
     }
-    if (!desdeOverride && !PRODUCTO_SET.has(producto)) {
-      skipped.push({ eco, montoDeseado, producto, motivo: "producto-desconocido" });
-      continue;
+    // Normaliza a la grafía EXACTA de Toka (EASYGAS …); el origen suele traer la vieja.
+    const producto = normalizeTokaProducto(raw);
+    if (!PRODUCTO_SET.has(producto)) {
+      // Tipo de combustible no reconocido tras normalizar. Override se respeta (passthrough)
+      // con aviso; lo derivado de MoreApp se omite (no arriesgamos un producto inválido).
+      if (desdeOverride)
+        warnings.push({
+          eco,
+          tipo: "producto-override-desconocido",
+          detalle: `Producto del catálogo "${raw}" no corresponde a ningún producto Toka conocido; verifica la captura.`,
+        });
+      else {
+        skipped.push({ eco, montoDeseado, producto, motivo: "producto-desconocido" });
+        continue;
+      }
     }
     if (!(montoDeseado > 0)) {
       skipped.push({ eco, montoDeseado, producto, motivo: "monto-cero" });
