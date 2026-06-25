@@ -1,7 +1,12 @@
 /**
  * Agregadores PUROS para el dashboard ejecutivo de combustible. Sin DOM.
  */
-import type { FuelEntry, FleetBaseline } from "./types";
+import type { FuelEntry, FleetBaseline, FuelStat } from "./types";
+
+/** km/l representativo de un grupo: el ponderado por volumen (kmplVol) si existe; si no, la media. */
+function repKmpl(s: FuelStat): number {
+  return s.kmplVol != null && Number.isFinite(s.kmplVol) ? s.kmplVol : s.mean;
+}
 
 /**
  * Monto efectivo de una carga: el `monto` capturado, o reconstruido litros×precio
@@ -42,8 +47,8 @@ export type UnitRank = {
 export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 4): UnitRank[] {
   const out: UnitRank[] = [];
   for (const [eco, s] of baseline.porUnidad) {
-    if (s.n >= minN && Number.isFinite(s.mean) && s.mean > 0)
-      out.push({ eco, kmpl: s.mean, n: s.n });
+    const k = repKmpl(s); // km/l ponderado por volumen (fallback media)
+    if (s.n >= minN && Number.isFinite(k) && k > 0) out.push({ eco, kmpl: k, n: s.n });
   }
   return out.sort((a, b) => b.kmpl - a.kmpl);
 }
@@ -59,12 +64,14 @@ export function rankUnitsByKmpl(baseline: FleetBaseline, minN = 4): UnitRank[] {
 export function rankUnitsByDeviation(baseline: FleetBaseline, minN = 4, minTipoN = 4): UnitRank[] {
   const out: UnitRank[] = [];
   for (const [eco, s] of baseline.porUnidad) {
-    if (!(s.n >= minN && Number.isFinite(s.mean) && s.mean > 0)) continue;
+    const k = repKmpl(s); // km/l ponderado por volumen de la unidad
+    if (!(s.n >= minN && Number.isFinite(k) && k > 0)) continue;
     const tipo = baseline.tipoDe.get(eco) ?? "(sin tipo)";
     const ts = baseline.porTipo.get(tipo);
-    const tipoConfiable = !!ts && ts.n >= minTipoN && ts.mean > 0;
-    const desviacion = tipoConfiable ? (s.mean - ts.mean) / ts.mean : 0;
-    out.push({ eco, kmpl: s.mean, n: s.n, tipo, tipoMean: ts?.mean, desviacion });
+    const tk = ts ? repKmpl(ts) : NaN; // km/l ponderado del tipo
+    const tipoConfiable = !!ts && ts.n >= minTipoN && Number.isFinite(tk) && tk > 0;
+    const desviacion = tipoConfiable ? (k - tk) / tk : 0;
+    out.push({ eco, kmpl: k, n: s.n, tipo, tipoMean: ts ? tk : undefined, desviacion });
   }
   return out.sort((a, b) => (b.desviacion ?? 0) - (a.desviacion ?? 0));
 }

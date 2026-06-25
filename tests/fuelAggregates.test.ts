@@ -86,6 +86,22 @@ describe("rankUnitsByKmpl", () => {
     };
     expect(rankUnitsByKmpl(base).map((x) => x.eco)).toEqual(["A"]);
   });
+
+  it("usa el km/l PONDERADO (kmplVol) cuando existe, no la media de ratios", () => {
+    const base: FleetBaseline = {
+      porUnidad: new Map([
+        ["A", { mean: 5, sd: 1, n: 5, kmplVol: 12 }], // media baja, ponderado alto
+        ["B", { mean: 9, sd: 1, n: 5, kmplVol: 8 }], // media alta, ponderado bajo
+      ]),
+      porTipo: new Map(),
+      tipoDe: new Map(),
+      flotaMean: 10,
+    };
+    // Por kmplVol: A(12) > B(8). Por media sería B(9) > A(5).
+    const r = rankUnitsByKmpl(base);
+    expect(r.map((x) => x.eco)).toEqual(["A", "B"]);
+    expect(r[0]!.kmpl).toBe(12);
+  });
 });
 
 describe("rankUnitsByDeviation (vs su tipo de unidad)", () => {
