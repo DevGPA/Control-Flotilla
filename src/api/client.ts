@@ -516,6 +516,74 @@ export async function listValidaciones(
   );
 }
 
+// ───────────────────────── Cumplimiento (ComplianceDoc) ─────────────────────────
+// Expediente de cumplimiento por unidad (captura manual operativo/admin). Identidad
+// (tenantId, economicoId, docId). El estado vencido/por-vencer se DERIVA en el front
+// (complianceStatus), no se persiste. Upsert idempotente como el resto de modelos.
+
+export type ComplianceDocInput = {
+  tenantId: string;
+  economicoId: string;
+  docId: string;
+  tipoDoc: string;
+  jurisdiccion?: string;
+  fechaVencimiento?: string;
+  fechaEmision?: string;
+  referencia?: string;
+  monto?: number;
+  fuente?: string;
+  evidenciaFname?: string;
+  operador?: string;
+  nota?: string;
+  ultimaActualizacion?: string;
+};
+
+export async function upsertComplianceDoc(
+  input: ComplianceDocInput,
+): Promise<Schema["ComplianceDoc"]["type"]> {
+  const c = getClient();
+  const created = await c.models.ComplianceDoc.create(input);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.ComplianceDoc.update(input);
+    throwOnErrors("upsertComplianceDoc(update)", updated.errors);
+    if (!updated.data)
+      throw new Error(
+        `upsertComplianceDoc(update) null data ${input.economicoId}/${input.docId} — auth filtering?`,
+      );
+    return updated.data;
+  }
+  throwOnErrors("upsertComplianceDoc(create)", created.errors);
+  throw new Error(
+    `upsertComplianceDoc(create) null data ${input.economicoId}/${input.docId} — auth filtering?`,
+  );
+}
+
+export async function listComplianceDocs(
+  tenantId: string,
+): Promise<Schema["ComplianceDoc"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["ComplianceDoc"]["type"]>(
+    (token) =>
+      c.models.ComplianceDoc.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listComplianceDocs",
+  );
+}
+
+export async function deleteComplianceDoc(input: {
+  tenantId: string;
+  economicoId: string;
+  docId: string;
+}): Promise<void> {
+  const c = getClient();
+  const { errors } = await c.models.ComplianceDoc.delete(input);
+  throwOnErrors("deleteComplianceDoc", errors);
+}
+
 // ───────────────────────── Administración de Usuarios (2026-06-12) ─────────────
 // PRIMER uso de client.mutations/queries (custom ops). Cada op devuelve a.json()
 // con forma { ok, message?, error?, data? }. La autorización (grupo admin) la

@@ -20,8 +20,10 @@ import {
   listCheckDone,
   listCombustible,
   listValidaciones,
+  listComplianceDocs,
 } from "./client";
 import { buildFuelEntries } from "../fuel/mapEntry";
+import { buildComplianceEntries } from "../compliance/mapEntry";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
@@ -216,28 +218,42 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   units: number;
   source: "cloud" | "empty";
 }> {
-  const [units, checklists, semanales, tallerCloud, checkDones, combustible, validaciones] =
-    await Promise.all([
-      listUnits(tenantId),
-      listChecklists(tenantId),
-      listSemanales(tenantId),
-      listTaller(tenantId),
-      // No-fatal: si CheckDone aún no está desplegado o falla, no debe tumbar toda la
-      // hidratación de datos (units/checklists). Las completaciones son una mejora encima.
-      listCheckDone(tenantId).catch((e) => {
-        console.warn("[cloudHydrate] listCheckDone falló (no-fatal):", e);
-        return [] as Schema["CheckDone"]["type"][];
-      }),
-      // No-fatal: el módulo de combustible es independiente; si falla no tumba el resto.
-      listCombustible(tenantId).catch((e) => {
-        console.warn("[cloudHydrate] listCombustible falló (no-fatal):", e);
-        return [] as Schema["CargaCombustible"]["type"][];
-      }),
-      listValidaciones(tenantId).catch((e) => {
-        console.warn("[cloudHydrate] listValidaciones falló (no-fatal):", e);
-        return [] as Schema["ValidacionCarga"]["type"][];
-      }),
-    ]);
+  const [
+    units,
+    checklists,
+    semanales,
+    tallerCloud,
+    checkDones,
+    combustible,
+    validaciones,
+    complianceDocs,
+  ] = await Promise.all([
+    listUnits(tenantId),
+    listChecklists(tenantId),
+    listSemanales(tenantId),
+    listTaller(tenantId),
+    // No-fatal: si CheckDone aún no está desplegado o falla, no debe tumbar toda la
+    // hidratación de datos (units/checklists). Las completaciones son una mejora encima.
+    listCheckDone(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listCheckDone falló (no-fatal):", e);
+      return [] as Schema["CheckDone"]["type"][];
+    }),
+    // No-fatal: el módulo de combustible es independiente; si falla no tumba el resto.
+    listCombustible(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listCombustible falló (no-fatal):", e);
+      return [] as Schema["CargaCombustible"]["type"][];
+    }),
+    listValidaciones(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listValidaciones falló (no-fatal):", e);
+      return [] as Schema["ValidacionCarga"]["type"][];
+    }),
+    // No-fatal: el módulo de cumplimiento es independiente y su modelo puede aún NO
+    // estar desplegado → devolver [] para no tumbar la hidratación del resto.
+    listComplianceDocs(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listComplianceDocs falló (no-fatal):", e);
+      return [] as Schema["ComplianceDoc"]["type"][];
+    }),
+  ]);
 
   if (
     units.length === 0 &&
@@ -463,6 +479,29 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(c.unitUid, c);
   }
   window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
+
+  // ── Hydrate cumplimiento → window.complianceEntries ───────────
+  // ComplianceDoc → ComplianceEntry[] (estado vencido/por-vencer derivado vs hoy). Se
+  // resuelve sucursal/placa por economicoId desde el catálogo de Unit. El merge con la
+  // flota completa (unidades sin docs = 'desconocido') lo hace el wire al renderizar.
+  // Va DESPUÉS de fijar window.__fleetUnits, que renderCumplimiento usa para ese merge.
+  {
+    // "hoy" en la zona de México (no UTC): el estado vencido/por-vencer se ancla aquí y
+    // GPA opera en husos negativos vs UTC; con toISOString() la fecha se adelantaba un día
+    // en la ventana nocturna local (off-by-one en el borde de vencimiento). en-CA emite
+    // YYYY-MM-DD directo. México sin DST desde 2022; Intl resuelve el offset por timeZone.
+    const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+    const unitsByEco = new Map<string, { sucursal?: string; placa?: string }>();
+    for (const u of units) {
+      const eco = String(u.economicoId ?? "").trim();
+      if (eco) unitsByEco.set(eco, { sucursal: u.sucursal ?? undefined, placa: u.placa });
+    }
+    window.complianceEntries = buildComplianceEntries(complianceDocs, hoy, { unitsByEco });
+    if (typeof window.updateCumplimientoNavBadge === "function")
+      window.updateCumplimientoNavBadge();
+    if (typeof window.renderCumplimiento === "function") window.renderCumplimiento();
+    console.info(`[cloudHydrate] ${complianceDocs.length} documentos de cumplimiento hidratados`);
+  }
 
   let legacyUnits: Unit[];
   if (inspections.length > 0) {
