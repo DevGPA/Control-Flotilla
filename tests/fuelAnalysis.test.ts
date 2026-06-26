@@ -112,6 +112,35 @@ describe("computeFuelMetrics — exclusiones que protegen el ranking", () => {
   });
 });
 
+describe("computeFuelMetrics — llenado partido (mismo odómetro)", () => {
+  // Caso real unidad 66: un tanque se registró como 2 cargas con el MISMO km (98796):
+  // 6.3 L y 25 L. Antes la distancia (365 km) se dividía entre una sola transacción → km/l
+  // absurdo (365/6.3 ≈ 58). Debe consolidarse: 365 ÷ (25+6.3) ≈ 11.66, en UNA fila.
+  const split = () => [
+    carga("66", "2026-06-12", 98431, 40, 1000), // llenado anterior (ancla de distancia)
+    carga("66", "2026-06-26", 98796, 6.3, 150, { loadId: "66|carga|A", eventoId: "A" }),
+    carga("66", "2026-06-26", 98796, 25, 600, { loadId: "66|carga|B", eventoId: "B" }),
+  ];
+
+  it("km/l = distancia ÷ Σ litros del llenado, en la fila de MÁS litros", () => {
+    const m = computeFuelMetrics(split());
+    const big = m.find((x) => x.loadId === "66|carga|B")!; // 25 L = representativa
+    const small = m.find((x) => x.loadId === "66|carga|A")!; // 6.3 L
+    expect(big.kmDesdeAnterior).toBe(365);
+    expect(big.litrosFill).toBeCloseTo(31.3, 5);
+    expect(big.kmPorLitro!).toBeCloseTo(365 / 31.3, 4); // ≈ 11.66 (NO 365/25 ni 365/6.3)
+    // La otra transacción del mismo llenado: sin km/l y 0 km recorridos.
+    expect(small.kmPorLitro).toBeNull();
+    expect(small.kmDesdeAnterior).toBe(0);
+  });
+
+  it("el baseline pondera el llenado partido UNA sola vez (no se infla)", () => {
+    const entries = split();
+    const base = buildFleetBaseline(computeFuelMetrics(entries), entries);
+    expect(base.porUnidad.get("66")!.kmplVol!).toBeCloseTo(365 / 31.3, 2); // ≈ 11.66
+  });
+});
+
 describe("buildFleetBaseline", () => {
   it("calcula media por unidad, media de flota y ponderado por volumen", () => {
     const entries = [

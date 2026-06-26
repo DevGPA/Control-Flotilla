@@ -83,7 +83,13 @@ export type FuelMetrics = {
   litros: number | null;
   monto: number | null;
   kmDesdeAnterior: number | null; // km[i] - km[i-1]
-  kmPorLitro: number | null; // kmDesdeAnterior / litros
+  kmPorLitro: number | null; // kmDesdeAnterior / litros (sobre litrosFill si es llenado partido)
+  /**
+   * Litros usados como DENOMINADOR del km/l. Normalmente = `litros`; en un llenado partido en
+   * varias cargas con el mismo odómetro, la fila representativa lleva la SUMA de litros del grupo
+   * (las demás cargas del grupo quedan con kmPorLitro=null). El baseline pondera por este valor.
+   */
+  litrosFill?: number;
   precioPorLitro: number | null; // monto / litros
   diasDesdeAnterior: number | null;
 };

@@ -91,54 +91,100 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
     const sorted = [...arr].sort(cronoCmp);
-    let prev: FuelEntry | null = null;
-    for (const e of sorted) {
-      const km = typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
-      const litros = typeof e.litros === "number" && e.litros > 0 ? e.litros : null;
-      const monto = typeof e.monto === "number" && Number.isFinite(e.monto) ? e.monto : null;
-      let kmDesdeAnterior: number | null = null;
-      let kmPorLitro: number | null = null;
-      let diasDesdeAnterior: number | null = null;
-      if (prev) {
-        const dt = toTime(e) - toTime(prev);
-        diasDesdeAnterior = dt > 0 ? dt / 86400000 : 0;
-        // Montacargas Gas LP: su `km` es horómetro (horas), no odómetro → NO se computa
-        // km recorrido ni km/l (sería ruido que contamina baseline/ranking/anomalías).
-        // Se revisa también `prev` por defensa en profundidad (montacargas mal etiquetado).
-        if (typeof prev.km === "number" && km != null && !e.esMontacargas && !prev.esMontacargas) {
-          kmDesdeAnterior = km - prev.km;
-          // km/l solo si el tramo es plausible: >0 y por debajo del salto improbable.
-          // Un salto > MAX_KM_JUMP casi siempre significa cargas intermedias no
-          // registradas → ese km/l estaría inflado (km de varios tanques ÷ litros de uno)
-          // y, si no se excluyera del baseline, podría empujar la unidad a "mejores".
-          // Dejamos kmDesdeAnterior poblado para que la alerta km-salto siga disparando.
-          if (
-            litros != null &&
-            kmDesdeAnterior > 0 &&
-            kmDesdeAnterior <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
-          )
-            kmPorLitro = kmDesdeAnterior / litros;
-        }
+    // Ancla de distancia = el ÚLTIMO llenado con odómetro distinto.
+    let prevFillKm: number | null = null;
+    let prevFillMonta = false;
+    let prevEmitted: FuelEntry | null = null;
+    let i = 0;
+    while (i < sorted.length) {
+      // LLENADO PARTIDO: cargas CONSECUTIVAS con el MISMO odómetro son un solo llenado
+      // dividido en varias transacciones (mismo km ⇒ no se condujo entre ellas). Se agrupan
+      // para que el km/l use la SUMA de litros del llenado (y no la distancia ÷ una sola
+      // transacción chica, que dispara un km/l absurdo). Sin km → grupo de 1.
+      const head = sorted[i]!;
+      const gKm = typeof head.km === "number" && Number.isFinite(head.km) ? head.km : null;
+      let j = i + 1;
+      if (gKm != null) {
+        while (j < sorted.length && typeof sorted[j]!.km === "number" && sorted[j]!.km === gKm) j++;
       }
-      const precioPorLitro =
-        monto != null && litros != null
-          ? monto / litros
-          : typeof e.precioPorLitro === "number"
-            ? e.precioPorLitro
-            : null;
-      out.push({
-        loadId: e.loadId,
-        eco: e.eco,
-        fecha: e.fecha,
-        km,
-        litros,
-        monto,
-        kmDesdeAnterior,
-        kmPorLitro,
-        precioPorLitro,
-        diasDesdeAnterior,
-      });
-      prev = e;
+      const group = sorted.slice(i, j);
+
+      // Litros del llenado (denominador del km/l) y estado montacargas (consistente por unidad).
+      let litrosGrupo = 0;
+      for (const g of group)
+        if (typeof g.litros === "number" && g.litros > 0) litrosGrupo += g.litros;
+      const grupoMonta = group.some((g) => g.esMontacargas);
+
+      // Distancia y km/l del LLENADO (una sola vez, sobre los litros sumados).
+      // Montacargas Gas LP: su `km` es horómetro → no se computa km/l (ruido para baseline).
+      let fillKmDesde: number | null = null;
+      let fillKmpl: number | null = null;
+      if (prevFillKm != null && gKm != null && !grupoMonta && !prevFillMonta) {
+        fillKmDesde = gKm - prevFillKm;
+        // km/l solo si el tramo es plausible: >0 y por debajo del salto improbable (un salto
+        // > MAX_KM_JUMP suele ser cargas intermedias no registradas → inflaría el km/l).
+        // `kmDesdeAnterior` queda poblado en la fila representativa para que la alerta km-salto
+        // / km-retrocede siga disparando.
+        if (
+          litrosGrupo > 0 &&
+          fillKmDesde > 0 &&
+          fillKmDesde <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+        )
+          fillKmpl = fillKmDesde / litrosGrupo;
+      }
+
+      // Fila representativa = la de MÁS litros (la carga "principal"); muestra el km/l del
+      // llenado. Las demás cargas del grupo van con km/l "—" (son la misma carga física).
+      let repIdx = 0;
+      for (let k = 1; k < group.length; k++) {
+        const lk = typeof group[k]!.litros === "number" ? group[k]!.litros! : -1;
+        const lr = typeof group[repIdx]!.litros === "number" ? group[repIdx]!.litros! : -1;
+        if (lk > lr) repIdx = k;
+      }
+
+      for (let k = 0; k < group.length; k++) {
+        const e = group[k]!;
+        const km = typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
+        const litros = typeof e.litros === "number" && e.litros > 0 ? e.litros : null;
+        const monto = typeof e.monto === "number" && Number.isFinite(e.monto) ? e.monto : null;
+        let diasDesdeAnterior: number | null = null;
+        if (prevEmitted) {
+          const dt = toTime(e) - toTime(prevEmitted);
+          diasDesdeAnterior = dt > 0 ? dt / 86400000 : 0;
+        }
+        const esRep = k === repIdx;
+        const multi = group.length > 1;
+        const precioPorLitro =
+          monto != null && litros != null
+            ? monto / litros
+            : typeof e.precioPorLitro === "number"
+              ? e.precioPorLitro
+              : null;
+        out.push({
+          loadId: e.loadId,
+          eco: e.eco,
+          fecha: e.fecha,
+          km,
+          litros,
+          monto,
+          // El llenado aporta su distancia/km/l a UNA fila (la de más litros). Las demás
+          // cargas del grupo (mismo odómetro) → 0 km y km/l "—".
+          kmDesdeAnterior: esRep ? fillKmDesde : multi ? 0 : fillKmDesde,
+          kmPorLitro: esRep ? fillKmpl : null,
+          // Solo en llenados partidos: la fila representativa carga la SUMA de litros como
+          // denominador del km/l (para que el baseline pondere el llenado una sola vez).
+          litrosFill: esRep && multi ? litrosGrupo : undefined,
+          precioPorLitro,
+          diasDesdeAnterior,
+        });
+        prevEmitted = e;
+      }
+
+      if (gKm != null) {
+        prevFillKm = gKm;
+        prevFillMonta = grupoMonta;
+      }
+      i = j;
     }
   }
   return out;
@@ -264,8 +310,11 @@ export function buildFleetBaseline(
   const allEv: KmEvent[] = [];
   for (const m of metrics) {
     if (m.kmPorLitro == null || !(m.kmPorLitro > 0) || !Number.isFinite(m.kmPorLitro)) continue;
-    if (m.kmDesdeAnterior == null || m.litros == null || !(m.litros > 0)) continue;
-    const ev: KmEvent = { km: m.kmDesdeAnterior, litros: m.litros, kmpl: m.kmPorLitro };
+    // En llenados partidos, el denominador del km/l es la SUMA de litros del llenado
+    // (`litrosFill`), no los de una sola transacción → el ponderado cuenta el llenado una vez.
+    const litrosKmpl = m.litrosFill ?? m.litros;
+    if (m.kmDesdeAnterior == null || litrosKmpl == null || !(litrosKmpl > 0)) continue;
+    const ev: KmEvent = { km: m.kmDesdeAnterior, litros: litrosKmpl, kmpl: m.kmPorLitro };
     pushInto(evByUnit, m.eco, ev);
     pushInto(evByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", ev);
     allEv.push(ev);
