@@ -25,6 +25,9 @@ setupCloud();
 // Módulo de combustible (Fase B): monta window.renderCombustible / initRangoFuel /
 // updateFuelNavBadge y cablea los controles de la vista. Side-effect import.
 import "./fuel/wire";
+// Módulo de cumplimiento vehicular: monta window.renderCumplimiento /
+// updateCumplimientoNavBadge y cablea los controles de la vista. Side-effect import.
+import "./compliance/wire";
 
 // ── Registro del Service Worker (PWA) ────────────────────────────────────────
 // Manual (injectRegister:null en vite.config) — el registerSW.js autogenerado

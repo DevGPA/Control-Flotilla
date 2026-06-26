@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-SVTIrQHIld0L8aqWMCA9xgvYdOC1smYsGr5sVZ8ftQo='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-4EUfyj+j64eCCtk6JG5GWS85jJJS77QfNgX0wKC4epM='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -247,6 +247,10 @@ g.inflateBytes=async function(src){
     <button class="mnav" id="mn-combustible" onclick="showView('combustible')">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg>
       Combustible <span id="fuel-nav-badge" style="display:none;background:var(--R);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;margin-left:2px"></span>
+    </button>
+    <button class="mnav" id="mn-cumplimiento" onclick="showView('cumplimiento')">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      Cumplimiento <span id="cmp-nav-badge" style="display:none;background:var(--R);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;margin-left:2px"></span>
     </button>
     <!-- Módulo Admin Usuarios (2026-06-12): visible SOLO para grupo admin
          (initAdminNav lo muestra tras verificar la sesión). -->
@@ -1039,6 +1043,59 @@ g.inflateBytes=async function(src){
     <div class="dmeta" id="fuel-det-meta"></div>
   </div>
   <div class="dbody" id="fuel-det-body"></div>
+</div>
+
+<!-- VISTA CUMPLIMIENTO — expediente de obligaciones/multas por unidad (módulo dedicado) -->
+<div id="view-cumplimiento" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+  <!-- KPIs -->
+  <div id="cmp-kpis" style="padding:10px 16px 0"></div>
+  <!-- Barra de filtros -->
+  <div id="cmp-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--ln)">
+    <select id="cmp-estado" aria-label="Filtrar por estado de cumplimiento"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="all">Todo el cumplimiento</option>
+      <option value="conIssues">Con pendientes</option>
+      <option value="vencido">Con documentos vencidos</option>
+      <option value="porVencer">Por vencer (30 días)</option>
+      <option value="adeudo">Con multas/adeudos</option>
+    </select>
+    <select id="cmp-sucursal" aria-label="Filtrar cumplimiento por sucursal"
+      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      <option value="">Todas las sucursales</option>
+    </select>
+    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="cmp-search" type="text" placeholder="ID unidad, placa…"
+        aria-label="Buscar cumplimiento por ID de unidad o placa"
+        style="border:none;background:transparent;font-size:11px;color:var(--w1);width:160px;outline:none"/>
+    </div>
+    <span id="cmp-count" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
+  </div>
+  <!-- Tabla consolidada (una fila por unidad) -->
+  <div id="cmp-table-wrap" style="flex:1;overflow:auto">
+    <div id="cmp-empty" class="sw-empty" style="display:none">
+      <div class="sw-empty-ico"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <div style="font-weight:700;color:var(--s1);margin-bottom:6px">Sin unidades en el filtro</div>
+      <div style="font-size:11px">Ajusta los filtros. Captura vencimientos y multas por unidad para verlos aquí.</div>
+    </div>
+    <table class="sw-table" id="cmp-table" style="display:none">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th data-sort="eco">ID Unidad / ECO</th>
+          <th data-sort="placa">Placa</th>
+          <th data-sort="sucursal">Sucursal</th>
+          <th data-sort="estado">Estado</th>
+          <th data-sort="vencidos">Vencidos</th>
+          <th data-sort="porVencer">Por vencer</th>
+          <th data-sort="adeudos">Adeudos</th>
+          <th data-sort="monto">Adeudo $</th>
+          <th>Docs</th>
+        </tr>
+      </thead>
+      <tbody id="cmp-tbody"></tbody>
+    </table>
+  </div>
 </div>
 
 <!-- TALLER MODAL -->
@@ -2347,7 +2404,7 @@ window.applyRolePermissions=applyRolePermissions;
 // usuario y, si la vista activa no está permitida, lo manda a su primer módulo.
 // admin o sin asignación (custom:modulos vacío) → ve todo (no-op). La decisión la
 // hace gatingPlan (lógica pura testeada, expuesta en window.__moduleGating).
-const NAV_TO_MOD = {"mn-insp":"inspecciones","mn-taller":"taller","mn-semanales":"semanales","mn-analytics":"analytics","mn-combustible":"combustible"};
+const NAV_TO_MOD = {"mn-insp":"inspecciones","mn-taller":"taller","mn-semanales":"semanales","mn-analytics":"analytics","mn-combustible":"combustible","mn-cumplimiento":"cumplimiento"};
 function applyModuleGating(){
   const mg = window.__moduleGating, sess = window.__cloudSession;
   if(!mg || !sess) return;
@@ -3440,15 +3497,23 @@ function buildAlertsSummary(){
     alerts.push({sev:"n",icon:"clipboard-list",count:completar.length,short:"Pendientes",
       action:"Completar"});
 
+  // 6. Cumplimiento (documentos vencidos/por vencer, multas) — del módulo dedicado.
+  // Clic → salta a la vista Cumplimiento. Ya viene scopeado por sucursal (computeResumenes).
+  if(typeof window.complianceAlerts==="function"){
+    for(const a of window.complianceAlerts()) alerts.push(a);
+  }
+
   // Render — chips por severidad. XSS-safe: textContent para conteo/etiqueta,
   // detail (lista de unidades) va como title (texto plano, sin parseo HTML).
   if(!alerts.length){panel.style.display="none";return;}
   panel.style.display="block";
   list.replaceChildren();
   for(const a of alerts){
-    const chip=document.createElement(a.action?"button":"span");
-    chip.className="alert-chip sev-"+a.sev+(a.action?"":" no-action");
+    const clickable=a.action||a.view;
+    const chip=document.createElement(clickable?"button":"span");
+    chip.className="alert-chip sev-"+a.sev+(clickable?"":" no-action");
     if(a.action){const act=a.action;chip.type="button";chip.addEventListener("click",()=>setF(act));}
+    else if(a.view){const vw=a.view;chip.type="button";chip.addEventListener("click",()=>showView(vw));}
     if(a.detail)chip.title=a.detail;
     const ico=document.createElement("span");ico.className="ac-ico";
     const i=document.createElement("i");
@@ -3720,12 +3785,15 @@ function renderDet(){
   const photoCount=u.photos.length;
   const noteCount=(notesDB[u.uid]||[]).length;
   const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !isFindingDone(dm,f,u.fecha);}).length;
+  const cmpEntries=(window.complianceEntries||[]).filter(e=>e.economicoId===u.eco);
+  const cmpIssues=cmpEntries.filter(e=>e.estado==="vencido"||e.estado==="porVencer"||e.estado==="adeudo").length;
   const tabs=[
     {id:"c",label:"Checklist",ico:'<i data-lucide="check-square" style="width:11px;height:11px;vertical-align:-2px"></i>',n:pendingFindings||""},
     {id:"t",label:"Llantas",ico:'<i data-lucide="disc-3" style="width:11px;height:11px;vertical-align:-2px"></i>'},
     {id:"p",label:"Fotos",ico:'<i data-lucide="camera" style="width:11px;height:11px;vertical-align:-2px"></i>',n:photoCount||""},
     {id:"n",label:"Notas",ico:'<i data-lucide="pencil" style="width:11px;height:11px;vertical-align:-2px"></i>',n2:noteCount||""},
     {id:"o",label:"Servicio",ico:'<i data-lucide="settings" style="width:11px;height:11px;vertical-align:-2px"></i>'},
+    {id:"cmp",label:"Cumplimiento",ico:'<i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-2px"></i>',n:cmpIssues||""},
   ];
   document.getElementById("dtabs").innerHTML=tabs.map(t=>{
     const on=curTab===t.id?(u.risk==="Urgente"&&t.id==="c"?" onr":" on"):"";
@@ -3779,6 +3847,11 @@ function renderDetBody(u){
 
   else if(curTab==="o"){
     renderService(u, body);
+  }
+
+  else if(curTab==="cmp"){
+    if(typeof window.renderComplianceTab==="function") window.renderComplianceTab(u.eco, u.plate, body);
+    else body.innerHTML='<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Módulo de cumplimiento no disponible.</div>';
   }
 }
 
@@ -6490,6 +6563,7 @@ function showView(view){
   const isUsuarios = view==="usuarios";
   const isUnidades = view==="unidades";
   const isComb     = view==="combustible";
+  const isCumpl    = view==="cumplimiento";
 
   // Activar botón de nav correcto
   document.getElementById("mn-insp").classList.toggle("on",      isInsp);
@@ -6504,6 +6578,8 @@ function showView(view){
   if(mnUni) mnUni.classList.toggle("on", isUnidades);
   const mnComb=document.getElementById("mn-combustible");
   if(mnComb) mnComb.classList.toggle("on", isComb);
+  const mnCmp=document.getElementById("mn-cumplimiento");
+  if(mnCmp) mnCmp.classList.toggle("on", isCumpl);
 
   // Contenedor principal de Inspecciones
   const main = document.getElementById("main");
@@ -6561,6 +6637,10 @@ function showView(view){
   const cv = document.getElementById("view-combustible");
   if(cv) cv.style.display = isComb ? "flex" : "none";
 
+  // Vista Cumplimiento (módulo dedicado — expediente por unidad)
+  const cmpv = document.getElementById("view-cumplimiento");
+  if(cmpv) cmpv.style.display = isCumpl ? "flex" : "none";
+
   // "ALERTAS DE FLOTA" pertenece al dashboard de Inspecciones — ocultarla en las
   // demás vistas (no debe aparecer en Usuarios/Taller/Semanales/Análisis). Al
   // volver a Inspecciones se reconstruye con las alertas vigentes.
@@ -6591,6 +6671,9 @@ function showView(view){
   if(isComb){
     if(typeof window.initRangoFuel==="function") window.initRangoFuel();
     if(typeof window.renderCombustible==="function") window.renderCombustible();
+  }
+  if(isCumpl){
+    if(typeof window.renderCumplimiento==="function") window.renderCumplimiento();
   }
 
   closeNav(); // cierra el menú hamburguesa móvil tras elegir vista (no-op en escritorio)

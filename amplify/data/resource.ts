@@ -279,6 +279,48 @@ const schema = a
         allow.group("admin"),
       ]),
 
+    // ── Módulo de Cumplimiento Vehicular (2026-06-26) ──────────────────────
+    // Expediente por unidad de obligaciones (verificación, tenencia, refrendo,
+    // seguro, tarjeta de circulación, licencias de operadores) y multas.
+    // IDENTIDAD POR economicoId (igual que CargaCombustible). `docId` distingue:
+    //   singletons → docId = tipoDoc (1 por unidad por dimensión, upsert idempotente)
+    //   multas     → docId = "multa#<jurisdiccion>#<folio>" (varias por unidad)
+    // Se guardan datos CRUDOS (fechaVencimiento, monto…); el estado vencido/por-vencer
+    // se DERIVA en el front (complianceStatus) para no quedar obsoleto con el tiempo.
+    // Captura manual hoy (operativo/admin); `fuente` será 'amis'/'repuve' al automatizar.
+    ComplianceDoc: a
+      .model({
+        tenantId: a.string().required(),
+        economicoId: a.string().required(),
+        docId: a.string().required(),
+        // ComplianceTipoDoc: 'verificacion'|'tenencia'|'refrendo'|'seguro'|
+        // 'tarjetaCirculacion'|'licencia'|'multa'. String (no enum) → extensible sin migración.
+        tipoDoc: a.string().required(),
+        jurisdiccion: a.string(), // 'jalisco'|'cdmx'|'edomex'|'nuevoleon'|'federal'|'otra'
+        fechaVencimiento: a.string(), // YYYY-MM-DD
+        fechaEmision: a.string(), // YYYY-MM-DD
+        referencia: a.string(), // nº de póliza / folio / línea de captura
+        monto: a.float(), // adeudo (multas / tenencia / refrendo)
+        fuente: a.string(), // 'manual' | 'amis' | 'repuve' | 'portal'
+        evidenciaFname: a.string(), // foto/escaneo (URL firmada por demanda)
+        operador: a.string(), // titular de la licencia (tipoDoc === 'licencia')
+        nota: a.string(),
+        ultimaActualizacion: a.string(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "economicoId", "docId"])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
+      ]),
+
     // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
     // Espejo local del usuario Cognito para listados eficientes y soft-delete.
     // Identidad = (tenantId, cognitoSub) — sub inmutable de Cognito.
