@@ -50,9 +50,6 @@ declare global {
     renderComplianceTab?: (eco: string, placa: string | undefined, container: HTMLElement) => void;
     /** Alertas de cumplimiento para el panel de Inspecciones (buildAlertsSummary). */
     complianceAlerts?: () => ComplianceAlert[];
-    // Funciones inline del HTML que el módulo invoca (forward-declare para typecheck).
-    showView?: (view: string) => void;
-    selUnit?: (uid: string) => void;
   }
 }
 
@@ -66,15 +63,21 @@ function $(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
-/** Catálogo de flota (legacy window.__fleetUnits) → forma mínima para el merge. */
+/**
+ * Catálogo de flota (legacy window.__fleetUnits) → forma mínima para el merge.
+ * EXCLUYE montacargas (Gas LP): no circulan en vía pública → no tienen placas, verificación,
+ * tenencia ni multas. Mismo criterio `!u.esMontacargas` que Inspecciones/FLOTA.
+ */
 function catalogoFlota(): UnidadCatalogo[] {
   const fleet = (window.__fleetUnits ?? []) as Array<{
     eco?: string;
     plate?: string;
     branch?: string;
+    esMontacargas?: boolean;
   }>;
   const out: UnidadCatalogo[] = [];
   for (const u of fleet) {
+    if (u.esMontacargas) continue;
     const eco = String(u.eco ?? "").trim();
     if (eco) out.push({ eco, sucursal: u.branch, placa: u.plate });
   }
@@ -137,14 +140,18 @@ function updateCumplimientoNavBadge(): void {
 }
 
 function openComplianceDetail(eco: string): void {
-  // Clic en una fila de la vista consolidada: abre la unidad en el panel #det de
-  // Inspecciones (su uid legacy = placa). selUnit + showView viven en el HTML inline.
+  // Clic en una fila de la vista consolidada: abre el expediente de la unidad en un MODAL
+  // dentro de la propia vista de Cumplimiento (reusa renderComplianceTab: expediente +
+  // captura). No salta a Inspecciones (el #det de Inspecciones usa uid sintético distinto).
+  const body = $("cmp-det-body");
+  const modal = $("cmp-modal");
+  if (!body || !modal) return;
   const entry = (window.complianceEntries ?? []).find((e) => e.economicoId === eco);
-  const uid = entry?.placa;
-  if (uid && typeof window.selUnit === "function") {
-    window.showView?.("inspecciones");
-    window.selUnit(uid);
-  }
+  const placa = entry?.placa;
+  const title = $("cmp-modal-title");
+  if (title) title.textContent = `Cumplimiento · ${eco}${placa ? ` · ${placa}` : ""}`;
+  renderComplianceTab(eco, placa, body);
+  modal.style.display = "flex";
 }
 
 function hoyMexicoISO(): string {
