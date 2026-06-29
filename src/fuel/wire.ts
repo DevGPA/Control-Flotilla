@@ -26,7 +26,7 @@ import {
   renderTableCombustible,
   filterAndSortFuel,
   populateFuelSelects,
-  verdictOf,
+  displayVerdictOf,
   type FuelTableFilter,
   type FuelSortCol,
   type FuelTipoFilter,
@@ -179,6 +179,7 @@ function renderCombustible(): void {
       (f) => {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
         else if (f === "pendiente") setVerdictFilter("pendiente");
+        else if (f === "historico") setVerdictFilter("historico");
         else if (f === "anomalia") setVerdictFilter("pendiente");
       },
     );
@@ -389,7 +390,7 @@ function updateFuelNavBadge(): void {
   const badge = $("fuel-nav-badge");
   if (!badge) return;
   const pend = scoped().filter((e) => {
-    const v = verdictOf(e);
+    const v = displayVerdictOf(e);
     return v === "pendiente" || v === "discrepancia";
   }).length;
   badge.textContent = pend > 99 ? "99+" : pend > 0 ? String(pend) : "";

@@ -25,7 +25,7 @@ function nivelLabel(s: string | undefined): string {
 }
 
 export type FuelTipoFilter = "all" | "carga" | "solicitud";
-export type FuelVerdictFilter = "all" | "ok" | "discrepancia" | "pendiente";
+export type FuelVerdictFilter = "all" | "ok" | "discrepancia" | "pendiente" | "historico";
 export type FuelSortCol =
   | "_idx"
   | "tipo"
@@ -53,6 +53,36 @@ export type FuelTableFilter = {
 /** Veredicto efectivo de una entrada (pendiente si no hay revisión). */
 export function verdictOf(e: FuelEntry): FuelVerdictGlobal {
   return e.review?.verdictGlobal ?? "pendiente";
+}
+
+/**
+ * Fecha de corte del control de validación (YYYY-MM-DD, INCLUSIVA): las cargas con
+ * `fecha >= FUEL_VALIDACION_DESDE` entran al flujo de validación normal; las anteriores
+ * son HISTÓRICO (backfill migrado que nadie va a revisar a mano de forma retroactiva).
+ * Mover la fecha hacia atrás "revela" más histórico como pendiente; ponerla en el pasado
+ * lejano desactiva el concepto de histórico. Reversible y sin tocar datos (estado derivado).
+ */
+export const FUEL_VALIDACION_DESDE = "2026-06-01";
+
+/** Veredicto MOSTRADO: añade "historico" al veredicto persistido (derivado, nunca se guarda). */
+export type FuelDisplayVerdict = FuelVerdictGlobal | "historico";
+
+/** ¿La carga es anterior al corte del control? (solo por fecha; no mira la validación). */
+export function esHistorico(e: FuelEntry, desde: string = FUEL_VALIDACION_DESDE): boolean {
+  return (e.fecha || "") < desde;
+}
+
+/**
+ * Veredicto para mostrar/contar. "historico" SOLO reemplaza a "pendiente" en cargas previas
+ * al corte: una validación real ya hecha (ok/discrepancia) se RESPETA aunque sea vieja — no
+ * borramos el trabajo del revisor ni ocultamos una discrepancia auténtica del histórico.
+ */
+export function displayVerdictOf(
+  e: FuelEntry,
+  desde: string = FUEL_VALIDACION_DESDE,
+): FuelDisplayVerdict {
+  const v = verdictOf(e);
+  return v === "pendiente" && esHistorico(e, desde) ? "historico" : v;
 }
 
 function matchesSearch(e: FuelEntry, q: string): boolean {
@@ -84,7 +114,7 @@ export function filterAndSortFuel(
 ): FuelEntry[] {
   const out = entries.filter((e) => {
     if (filter.tipo !== "all" && e.tipo !== filter.tipo) return false;
-    if (filter.verdict !== "all" && verdictOf(e) !== filter.verdict) return false;
+    if (filter.verdict !== "all" && displayVerdictOf(e) !== filter.verdict) return false;
     if (filter.sucursal && e.sucursal !== filter.sucursal) return false;
     if (filter.responsable && (e.responsable ?? "") !== filter.responsable) return false;
     if (filter.desde && e.fecha < filter.desde) return false;
@@ -99,7 +129,12 @@ export function filterAndSortFuel(
     const bv = b == null ? -Infinity : b;
     return av - bv;
   };
-  const VERDICT_RANK: Record<FuelVerdictGlobal, number> = { discrepancia: 3, pendiente: 2, ok: 1 };
+  const VERDICT_RANK: Record<FuelDisplayVerdict, number> = {
+    discrepancia: 3,
+    pendiente: 2,
+    ok: 1,
+    historico: 0,
+  };
   // En vista Solicitudes las columnas Litros/Monto/km-l muestran Nivel/Monto a cargar/Litros máx,
   // así que el orden de esas columnas usa el campo de solicitud correspondiente.
   const esSol = filter.tipo === "solicitud";
@@ -143,7 +178,7 @@ export function filterAndSortFuel(
             : cmpNum(kmpl(a), kmpl(b));
           break;
         case "verdict":
-          c = VERDICT_RANK[verdictOf(a)] - VERDICT_RANK[verdictOf(b)];
+          c = VERDICT_RANK[displayVerdictOf(a)] - VERDICT_RANK[displayVerdictOf(b)];
           break;
       }
       return c * sortDir;
@@ -164,10 +199,11 @@ const PESO = new Intl.NumberFormat("es-MX", {
 });
 const NUM = new Intl.NumberFormat("es-MX");
 
-const VERDICT_PILL: Record<FuelVerdictGlobal, { cls: string; txt: string }> = {
+const VERDICT_PILL: Record<FuelDisplayVerdict, { cls: string; txt: string }> = {
   ok: { cls: "sw-pill-ok", txt: "Validado" },
   discrepancia: { cls: "sw-pill-urg", txt: "Discrepancia" },
   pendiente: { cls: "sw-pill-rev", txt: "Pendiente" },
+  historico: { cls: "sw-pill-hist", txt: "Histórico" },
 };
 
 export type RenderTableCombustibleDeps = {
@@ -204,7 +240,7 @@ function recLabel(rec: RecorridoInfo | undefined): string {
 /** Celda de Validación: semáforo + (si hay) "{nombre} · {fecha}" en línea chica. */
 function verdictCell(
   e: FuelEntry,
-  v: FuelVerdictGlobal,
+  v: FuelDisplayVerdict,
   nombreFn?: (email?: string | null) => string,
 ): HTMLElement {
   const rev = e.review?.revisadoPor;
@@ -252,11 +288,12 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   tbody.replaceChildren();
   for (let i = 0; i < rows.length; i++) {
     const e = rows[i]!;
-    const v = verdictOf(e);
+    const v = displayVerdictOf(e);
     const tr = document.createElement("tr");
     tr.dataset.loadId = e.loadId;
     if (v === "discrepancia") tr.classList.add("sw-urg");
     else if (v === "pendiente") tr.classList.add("sw-rev");
+    // "historico" no resalta la fila: estado neutro, fuera del radar de control.
     tr.tabIndex = 0;
 
     const kmpl = kmplByLoad.get(e.loadId);
@@ -313,7 +350,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   return { total: entries.length, filtered: rows.length, empty };
 }
 
-function pill(v: FuelVerdictGlobal): HTMLElement {
+function pill(v: FuelDisplayVerdict): HTMLElement {
   const span = document.createElement("span");
   const p = VERDICT_PILL[v];
   span.className = `sw-pill ${p.cls}`;

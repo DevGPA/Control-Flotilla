@@ -2,6 +2,9 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   filterAndSortFuel,
   verdictOf,
+  displayVerdictOf,
+  esHistorico,
+  FUEL_VALIDACION_DESDE,
   renderTableCombustible,
   populateFuelSelects,
   type FuelTableFilter,
@@ -144,6 +147,106 @@ describe("filterAndSortFuel", () => {
 describe("verdictOf", () => {
   it("pendiente si no hay revisión", () => {
     expect(verdictOf(entry({ eco: "1", tipo: "carga" }))).toBe("pendiente");
+  });
+});
+
+describe("corte del control de validación → 'Histórico' (backfill previo al corte)", () => {
+  const reciente = "2026-06-15"; // >= corte
+  const viejo = "2026-03-01"; // < corte
+
+  it("el corte por defecto es 2026-06-01", () => {
+    expect(FUEL_VALIDACION_DESDE).toBe("2026-06-01");
+  });
+
+  it("PREVIA al corte sin validar → 'historico'; DESDE el corte → 'pendiente'", () => {
+    const v = entry({ eco: "1", tipo: "carga", fecha: viejo });
+    const r = entry({ eco: "2", tipo: "carga", fecha: reciente });
+    expect(verdictOf(v)).toBe("pendiente"); // veredicto base SIN cambios
+    expect(esHistorico(v)).toBe(true);
+    expect(displayVerdictOf(v)).toBe("historico");
+    expect(esHistorico(r)).toBe(false);
+    expect(displayVerdictOf(r)).toBe("pendiente");
+  });
+
+  it("la fecha de corte es INCLUSIVA (ese mismo día ya NO es histórico)", () => {
+    const e = entry({ eco: "1", tipo: "carga", fecha: FUEL_VALIDACION_DESDE });
+    expect(esHistorico(e)).toBe(false);
+    expect(displayVerdictOf(e)).toBe("pendiente");
+  });
+
+  it("una validación REAL del histórico se RESPETA (no se reclasifica)", () => {
+    const ok = entry({
+      eco: "1",
+      tipo: "carga",
+      fecha: viejo,
+      review: { verdictGlobal: "ok", porEvidencia: {} },
+    });
+    const disc = entry({
+      eco: "2",
+      tipo: "carga",
+      fecha: viejo,
+      review: { verdictGlobal: "discrepancia", porEvidencia: {} },
+    });
+    expect(displayVerdictOf(ok)).toBe("ok");
+    expect(displayVerdictOf(disc)).toBe("discrepancia");
+  });
+
+  it("el corte es parametrizable (mover la fecha al pasado revierte el efecto)", () => {
+    const e = entry({ eco: "1", tipo: "carga", fecha: viejo });
+    expect(displayVerdictOf(e, "2020-01-01")).toBe("pendiente");
+  });
+
+  it("filtro 'historico' vs 'pendiente' respetan el corte", () => {
+    const set: FuelEntry[] = [
+      entry({ eco: "A", tipo: "carga", fecha: "2026-02-01" }), // histórico sin validar
+      entry({ eco: "B", tipo: "carga", fecha: reciente }), // pendiente real
+      entry({
+        eco: "C",
+        tipo: "carga",
+        fecha: "2026-02-15",
+        review: { verdictGlobal: "ok", porEvidencia: {} },
+      }), // histórico ya validado → ni historico ni pendiente
+    ];
+    expect(
+      filterAndSortFuel(set, { ...NO_FILTER, verdict: "historico" }, "_idx", -1).map((e) => e.eco),
+    ).toEqual(["A"]);
+    expect(
+      filterAndSortFuel(set, { ...NO_FILTER, verdict: "pendiente" }, "_idx", -1).map((e) => e.eco),
+    ).toEqual(["B"]);
+  });
+
+  it("KPI: 'Pendientes' excluye histórico; tarjeta 'Histórico' lo cuenta aparte y solo si hay", () => {
+    const mixto = [
+      entry({ eco: "U1", tipo: "carga", fecha: "2026-02-01", km: 0, litros: 40, monto: 1000 }), // histórico
+      entry({ eco: "U2", tipo: "carga", fecha: reciente, km: 100, litros: 40, monto: 1000 }), // pendiente
+    ];
+    const m1 = computeFuelMetrics(mixto);
+    const k1 = buildKpisFuel(mixto, m1, buildFleetBaseline(m1, mixto), []);
+    const by1 = Object.fromEntries(k1.map((k) => [k.key, k.value]));
+    expect(by1.pendientes).toBe("1"); // solo U2 (junio)
+    expect(by1.historico).toBe("1"); // U1 (febrero) clasificado aparte
+
+    const soloReciente = [
+      entry({ eco: "U3", tipo: "carga", fecha: reciente, km: 0, litros: 40, monto: 1000 }),
+    ];
+    const m2 = computeFuelMetrics(soloReciente);
+    const k2 = buildKpisFuel(soloReciente, m2, buildFleetBaseline(m2, soloReciente), []);
+    expect(k2.find((k) => k.key === "historico")).toBeUndefined(); // sin histórico → sin tarjeta
+  });
+
+  it("DOM: carga histórica sin validar pinta píldora 'Histórico' y no resalta la fila", () => {
+    const tb = document.createElement("tbody");
+    renderTableCombustible({
+      tbody: tb,
+      entries: [entry({ eco: "9", tipo: "carga", fecha: "2026-01-20" })],
+      filter: NO_FILTER,
+      sortCol: "_idx",
+      sortDir: -1,
+    });
+    expect(tb.querySelector(".sw-pill-hist")).toBeTruthy();
+    expect(tb.textContent).toContain("Histórico");
+    expect(tb.textContent).not.toContain("Pendiente");
+    expect(tb.querySelector(".sw-rev")).toBeFalsy(); // no resalta como pendiente
   });
 });
 
