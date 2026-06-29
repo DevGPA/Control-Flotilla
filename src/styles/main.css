@@ -4644,6 +4644,13 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   color: var(--R);
   border: 1px solid var(--Rl);
 }
+.sw-pill-hist {
+  /* Histórico (backfill previo al corte): chip gris neutro, deliberadamente apagado para
+     que NO compita visualmente con los estados accionables (validado/pendiente/discrepancia). */
+  background: var(--bg2);
+  color: var(--w2);
+  border: 1px solid var(--ln);
+}
 /* Pills informativos — no afectan estatus global */
 .sw-pill-info {
   background: #e0e7ff;

@@ -4,7 +4,7 @@
  */
 import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
-import { verdictOf } from "./renderTableCombustible";
+import { verdictOf, displayVerdictOf, FUEL_VALIDACION_DESDE } from "./renderTableCombustible";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
 
@@ -14,7 +14,7 @@ export type FuelKpiCard = {
   value: string;
   sub?: string;
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
-  filter?: "discrepancia" | "pendiente" | "anomalia"; // clic → filtro
+  filter?: "discrepancia" | "pendiente" | "anomalia" | "historico"; // clic → filtro
 };
 
 const PESO = new Intl.NumberFormat("es-MX", {
@@ -53,8 +53,11 @@ export function buildKpisFuel(
   const kmplFlota = Number.isFinite(baseline.flotaKmplVol ?? NaN)
     ? (baseline.flotaKmplVol as number)
     : kmplProm;
+  // Las discrepancias siguen contando aunque sean del histórico (hallazgo real, no se oculta).
   const discrepancias = entries.filter((e) => verdictOf(e) === "discrepancia").length;
-  const pendientes = entries.filter((e) => verdictOf(e) === "pendiente").length;
+  // "Pendientes" = lo accionable: el backfill previo al corte cae a "historico", no a pendiente.
+  const pendientes = entries.filter((e) => displayVerdictOf(e) === "pendiente").length;
+  const historicos = entries.filter((e) => displayVerdictOf(e) === "historico").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
 
   return [
@@ -93,6 +96,20 @@ export function buildKpisFuel(
       tone: pendientes ? "a" : "g",
       filter: "pendiente",
     },
+    // Histórico (backfill migrado, previo al corte): se muestra para no esconder los datos,
+    // en tono NEUTRO para que no pese como pendiente. Solo aparece si hay alguno.
+    ...(historicos > 0
+      ? [
+          {
+            key: "historico",
+            label: "Histórico",
+            value: NUM.format(historicos),
+            sub: `sin validar · previo a ${FUEL_VALIDACION_DESDE}`,
+            tone: "n",
+            filter: "historico",
+          } as FuelKpiCard,
+        ]
+      : []),
     ...(sinCarga !== null
       ? [
           {
