@@ -532,6 +532,8 @@ function renderCurrentDetail(): void {
     metaEl: $("fuel-det-meta"),
     load,
     metrics: lastMetricsByLoad.get(loadId),
+    statUnidad: lastCtx?.baseline.porUnidad.get(load.eco),
+    statTipo: lastCtx?.baseline.porTipo.get(lastCtx.baseline.tipoDe.get(load.eco) ?? "(sin tipo)"),
     recorrido: lastCtx?.recorridosByLoad.get(loadId),
     nombreValidador,
     resolveUrl,

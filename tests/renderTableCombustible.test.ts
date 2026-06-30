@@ -451,4 +451,22 @@ describe("buildKpisFuel", () => {
     const kpis = buildKpisFuel([], [], buildFleetBaseline([], []), []);
     expect(kpis.find((k) => k.key === "sin-carga")).toBeUndefined();
   });
+
+  it("KPI 'Sin rendimiento' cuenta cargas sin km/l y separa 'por revisar' de estructurales", () => {
+    // U1: 1ª carga (estructural) + 2ª válida; U2: 1ª carga (estructural) + retroceso (por revisar).
+    const entries = [
+      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-01", km: 1000, litros: 50, monto: 1000 }),
+      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-10", km: 1500, litros: 50, monto: 1000 }),
+      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-01", km: 2000, litros: 50, monto: 1000 }),
+      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-10", km: 1800, litros: 50, monto: 1000 }),
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const baseline = buildFleetBaseline(metrics, entries);
+    const card = buildKpisFuel(entries, metrics, baseline, []).find(
+      (k) => k.key === "sin-rendimiento",
+    );
+    expect(card).toBeTruthy();
+    expect(card!.value).toBe("3"); // 2 primeras cargas + 1 retroceso
+    expect(card!.sub).toContain("1 por revisar"); // solo el retroceso es accionable
+  });
 });

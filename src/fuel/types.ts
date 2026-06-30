@@ -74,6 +74,20 @@ export type FuelEntry = {
   review?: FuelReview;
 };
 
+/**
+ * Por qué una carga NO tiene km/l — para explicar el "—" en vez de dejarlo desnudo.
+ * Estructurales (correctos, nada que hacer): primera_carga, montacargas, llenado_partido.
+ * Por revisar (captura mala): sin_odometro, sin_litros, odometro_retroceso, salto_improbable.
+ */
+export type MotivoSinKmpl =
+  | "primera_carga"
+  | "montacargas"
+  | "sin_odometro"
+  | "sin_litros"
+  | "odometro_retroceso"
+  | "salto_improbable"
+  | "llenado_partido";
+
 /** Métricas de rendimiento de una carga (km/l del evento). Solo aplica a tipo=carga. */
 export type FuelMetrics = {
   loadId: string;
@@ -84,6 +98,8 @@ export type FuelMetrics = {
   monto: number | null;
   kmDesdeAnterior: number | null; // km[i] - km[i-1]
   kmPorLitro: number | null; // kmDesdeAnterior / litros (sobre litrosFill si es llenado partido)
+  /** Si kmPorLitro es null, POR QUÉ (para explicar el "—"). undefined cuando sí hay km/l. */
+  motivoSinKmpl?: MotivoSinKmpl;
   /**
    * Litros usados como DENOMINADOR del km/l. Normalmente = `litros`; en un llenado partido en
    * varias cargas con el mismo odómetro, la fila representativa lleva la SUMA de litros del grupo

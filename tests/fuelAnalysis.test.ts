@@ -141,6 +141,75 @@ describe("computeFuelMetrics — llenado partido (mismo odómetro)", () => {
   });
 });
 
+describe("computeFuelMetrics — motivoSinKmpl (por qué no hay km/l)", () => {
+  it("primera carga de la unidad → 'primera_carga'; la 2ª con km/l no lleva motivo", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-11", 1500, 50),
+    ]);
+    expect(m[0]!.kmPorLitro).toBeNull();
+    expect(m[0]!.motivoSinKmpl).toBe("primera_carga");
+    expect(m[1]!.kmPorLitro).toBe(10);
+    expect(m[1]!.motivoSinKmpl).toBeUndefined();
+  });
+
+  it("odómetro que retrocede → 'odometro_retroceso'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-05", 900, 50),
+    ]);
+    expect(m[1]!.motivoSinKmpl).toBe("odometro_retroceso");
+  });
+
+  it("salto improbable (> MAX_KM_JUMP) → 'salto_improbable'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-20", 10500, 50),
+    ]);
+    expect(m[1]!.motivoSinKmpl).toBe("salto_improbable");
+  });
+
+  it("montacargas → 'montacargas'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 100, 50, undefined, { esMontacargas: true }),
+      carga("U1", "2026-01-10", 600, 50, undefined, { esMontacargas: true }),
+    ]);
+    expect(m[1]!.motivoSinKmpl).toBe("montacargas");
+  });
+
+  it("sin litros → 'sin_litros'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-10", 1500, 0),
+    ]);
+    expect(m[1]!.kmPorLitro).toBeNull();
+    expect(m[1]!.motivoSinKmpl).toBe("sin_litros");
+  });
+
+  it("sin odómetro → 'sin_odometro'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-10", 0, 50, undefined, { km: undefined }),
+    ]);
+    const segunda = m.find((x) => x.loadId === "U1|carga|2026-01-10")!;
+    expect(segunda.motivoSinKmpl).toBe("sin_odometro");
+  });
+
+  it("llenado partido: la fila secundaria → 'llenado_partido' (su km/l vive en la principal)", () => {
+    const m = computeFuelMetrics([
+      carga("66", "2026-06-12", 98431, 40, 1000),
+      carga("66", "2026-06-26", 98796, 6.3, 150, { loadId: "66|carga|A", eventoId: "A" }),
+      carga("66", "2026-06-26", 98796, 25, 600, { loadId: "66|carga|B", eventoId: "B" }),
+    ]);
+    const small = m.find((x) => x.loadId === "66|carga|A")!;
+    const big = m.find((x) => x.loadId === "66|carga|B")!;
+    expect(small.kmPorLitro).toBeNull();
+    expect(small.motivoSinKmpl).toBe("llenado_partido");
+    expect(big.kmPorLitro).not.toBeNull();
+    expect(big.motivoSinKmpl).toBeUndefined();
+  });
+});
+
 describe("buildFleetBaseline", () => {
   it("calcula media por unidad, media de flota y ponderado por volumen", () => {
     const entries = [
@@ -224,6 +293,33 @@ describe("detectFuelAnomalies", () => {
     const metrics = computeFuelMetrics(entries);
     const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
     expect(f.some((x) => x.key.startsWith("Fuel:frecuencia:"))).toBe(true);
+  });
+});
+
+describe("detectFuelAnomalies — litros implausibles (techo por tipo)", () => {
+  it("marca una carga con litros muy por encima del techo derivado de su tipo", () => {
+    const tipo = { tipoUnidad: "Diesel" };
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50, 1000, tipo),
+      carga("U1", "2026-01-05", 500, 50, 1000, tipo),
+      carga("U1", "2026-01-09", 1000, 48, 1000, tipo),
+      carga("U1", "2026-01-13", 1500, 52, 1000, tipo),
+      carga("U1", "2026-01-17", 2000, 50, 1000, tipo),
+      carga("U2", "2026-01-02", 0, 250, 5000, tipo), // dedazo de litros
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
+    expect(f.some((x) => x.key.startsWith("Fuel:litros-implausibles:"))).toBe(true);
+  });
+
+  it("no marca si el tipo tiene menos de 4 cargas (techo no fiable)", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50, 1000, { tipoUnidad: "Diesel" }),
+      carga("U2", "2026-01-02", 0, 250, 5000, { tipoUnidad: "Diesel" }),
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
+    expect(f.some((x) => x.key.startsWith("Fuel:litros-implausibles:"))).toBe(false);
   });
 });
 

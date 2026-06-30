@@ -3,8 +3,9 @@
  * `renderTableCombustible` construye el DOM con la API segura (createElement/textContent,
  * sin innerHTML con datos — regla anti-XSS del proyecto).
  */
-import type { FuelEntry, FuelMetrics, FuelVerdictGlobal } from "./types";
+import type { FuelEntry, FuelMetrics, FuelVerdictGlobal, MotivoSinKmpl } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_LABEL } from "./fuelAnalysis";
 import { ecoKey } from "./tokaLayout";
 
 /** Valor numérico de un nivel de tanque ("0.25(1/4)" → 0.25). NaN si no parsea. */
@@ -237,6 +238,23 @@ function recLabel(rec: RecorridoInfo | undefined): string {
   return `${NUM.format(rec.km)} km ${rec.viaCarga ? "✓" : "⚠"}`;
 }
 
+/** Celda km/l: el número, o "—" con el MOTIVO debajo (chip gris) cuando no hay rendimiento. */
+function kmplCell(kmpl: number | null | undefined, motivo?: MotivoSinKmpl): string | HTMLElement {
+  if (kmpl != null) return (Math.round(kmpl * 100) / 100).toFixed(2);
+  if (!motivo) return "—";
+  const wrap = document.createElement("div");
+  wrap.className = "fuel-kmpl-none";
+  const dash = document.createElement("span");
+  dash.textContent = "—";
+  const tag = document.createElement("small");
+  tag.className = "fuel-kmpl-motivo";
+  tag.textContent = MOTIVO_SIN_KMPL_CORTO[motivo];
+  tag.title = MOTIVO_SIN_KMPL_LABEL[motivo]; // explicación completa al pasar el cursor
+  wrap.appendChild(dash);
+  wrap.appendChild(tag);
+  return wrap;
+}
+
 /** Celda de Validación: semáforo + (si hay) "{nombre} · {fecha}" en línea chica. */
 function verdictCell(
   e: FuelEntry,
@@ -321,9 +339,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
           : "—",
       esSol
         ? recLabel(recorridosByLoad?.get(e.loadId))
-        : kmpl != null
-          ? (Math.round(kmpl * 100) / 100).toFixed(2)
-          : "—",
+        : kmplCell(kmpl, metricsByLoad?.get(e.loadId)?.motivoSinKmpl),
       verdictCell(e, v, nombreValidador),
       e.photos.length ? `📷 ${e.photos.length}` : "—",
     ];
