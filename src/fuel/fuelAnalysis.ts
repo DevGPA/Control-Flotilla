@@ -13,6 +13,7 @@ import type {
   FuelStat,
   FuelThresholds,
   FuelFinding,
+  MotivoSinKmpl,
   RiskLevel,
 } from "./types";
 import { mean, stdDev, percentile, clampOutliers } from "../analyzer/statistics";
@@ -31,6 +32,46 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   PRICE_MAX: 35,
   LEAK_PCT: 0.5,
   MIN_BASELINE_N: 3,
+};
+
+/** Explicación larga del motivo por el que una carga no tiene km/l (para el detalle). */
+export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
+  primera_carga:
+    "Primera carga registrada de la unidad — no hay odómetro anterior con qué medir el recorrido.",
+  montacargas: "Montacargas: mide horas de uso (horómetro), no kilómetros — el km/l no aplica.",
+  sin_odometro: "Falta el kilometraje (odómetro) en esta carga.",
+  sin_litros: "Faltan los litros cargados en esta carga.",
+  odometro_retroceso:
+    "El odómetro es menor que el de la carga anterior — captura por revisar (retroceso).",
+  salto_improbable:
+    "Salto de odómetro improbable entre cargas — probable carga intermedia no registrada.",
+  llenado_partido:
+    "Parte de un llenado partido (mismo odómetro) — el rendimiento se muestra en la carga principal del grupo.",
+};
+
+/** Etiqueta corta (chip/tooltip de la tabla) del motivo sin km/l. */
+export const MOTIVO_SIN_KMPL_CORTO: Record<MotivoSinKmpl, string> = {
+  primera_carga: "1ª carga",
+  montacargas: "Montacargas",
+  sin_odometro: "Sin odómetro",
+  sin_litros: "Sin litros",
+  odometro_retroceso: "Odómetro retrocede",
+  salto_improbable: "Salto de odómetro",
+  llenado_partido: "Llenado partido",
+};
+
+/**
+ * ¿El motivo señala un dato POR REVISAR (captura mala) en vez de un hueco estructural correcto?
+ * Estructurales: primera_carga, montacargas, llenado_partido. El resto es accionable.
+ */
+export const MOTIVO_SIN_KMPL_ACCIONABLE: Record<MotivoSinKmpl, boolean> = {
+  primera_carga: false,
+  montacargas: false,
+  llenado_partido: false,
+  sin_odometro: true,
+  sin_litros: true,
+  odometro_retroceso: true,
+  salto_improbable: true,
 };
 
 /**
@@ -133,6 +174,20 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           fillKmpl = fillKmDesde / litrosGrupo;
       }
 
+      // Motivo del km/l ausente del LLENADO (para explicar el "—"); undefined si sí hay km/l.
+      // Mismo orden que las guardas de arriba: monta → sin odómetro → sin ancla previa →
+      // sin litros → retroceso → salto improbable.
+      let motivoFill: MotivoSinKmpl | undefined;
+      if (fillKmpl == null) {
+        if (grupoMonta || prevFillMonta) motivoFill = "montacargas";
+        else if (gKm == null) motivoFill = "sin_odometro";
+        else if (prevFillKm == null) motivoFill = "primera_carga";
+        else if (litrosGrupo <= 0) motivoFill = "sin_litros";
+        else if (fillKmDesde != null && fillKmDesde <= 0) motivoFill = "odometro_retroceso";
+        else if (fillKmDesde != null && fillKmDesde > DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP)
+          motivoFill = "salto_improbable";
+      }
+
       // Fila representativa = la de MÁS litros (la carga "principal"); muestra el km/l del
       // llenado. Las demás cargas del grupo van con km/l "—" (son la misma carga física).
       let repIdx = 0;
@@ -171,6 +226,9 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           // cargas del grupo (mismo odómetro) → 0 km y km/l "—".
           kmDesdeAnterior: esRep ? fillKmDesde : multi ? 0 : fillKmDesde,
           kmPorLitro: esRep ? fillKmpl : null,
+          // Filas no representativas de un llenado partido → "llenado_partido" (su km/l vive en
+          // la fila principal); el resto hereda el motivo calculado del llenado.
+          motivoSinKmpl: esRep ? motivoFill : multi ? "llenado_partido" : motivoFill,
           // Solo en llenados partidos: la fila representativa carga la SUMA de litros como
           // denominador del km/l (para que el baseline pondere el llenado una sola vez).
           litrosFill: esRep && multi ? litrosGrupo : undefined,
@@ -376,6 +434,21 @@ export function detectFuelAnomalies(
   const litrosStat = new Map<string, FuelStat>();
   for (const [eco, vals] of litrosByUnit) litrosStat.set(eco, statOf(vals));
 
+  // Techo de litros plausible POR TIPO de unidad (derivado de los datos): q3 + 3·IQR. Marca
+  // dedazos claros (p.ej. 210 L donde el tanque ronda 60) sin castigar consumos altos normales.
+  // Requiere ≥4 cargas del tipo para ser fiable.
+  const litrosByTipo = new Map<string, number[]>();
+  for (const m of metrics)
+    if (m.litros != null && m.litros > 0)
+      pushInto(litrosByTipo, baseline.tipoDe.get(m.eco) ?? "(sin tipo)", m.litros);
+  const techoLitrosTipo = new Map<string, number>();
+  for (const [tipo, vals] of litrosByTipo) {
+    if (vals.length < 4) continue;
+    const q1 = percentile(vals, 25);
+    const q3 = percentile(vals, 75);
+    techoLitrosTipo.set(tipo, q3 + 3 * (q3 - q1));
+  }
+
   const byUnit = groupMetricsByUnit(metrics);
   for (const arr of byUnit.values()) {
     // arr ya viene ordenado por computeFuelMetrics (orden de inserción cronológico)
@@ -448,6 +521,16 @@ export function detectFuelAnomalies(
             "Revisar",
           );
       }
+
+      // 7. Litros implausibles (posible dedazo de captura): supera el techo derivado de su tipo.
+      const techoL = techoLitrosTipo.get(baseline.tipoDe.get(m.eco) ?? "(sin tipo)");
+      if (m.litros != null && techoL != null && m.litros > techoL)
+        push(
+          m,
+          "litros-implausibles",
+          `Litros implausibles: ${m.litros.toFixed(1)} L — posible error de captura (máx. usual de su tipo ≈ ${Math.round(techoL)} L)`,
+          "Revisar",
+        );
 
       // 6. Posible fuga / uso indebido (km/l muy bajo vs flota, sostenido 2+ cargas)
       const leakNow =

@@ -2,8 +2,9 @@
  * KPIs del módulo de combustible. `buildKpisFuel` es PURA (testeable); `renderKpisFuel`
  * pinta tarjetas `.kc` (mismo look que Semanales/Inspecciones) con la API DOM segura.
  */
-import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding } from "./types";
+import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding, MotivoSinKmpl } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { verdictOf, displayVerdictOf, FUEL_VALIDACION_DESDE } from "./renderTableCombustible";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
@@ -15,6 +16,7 @@ export type FuelKpiCard = {
   sub?: string;
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
   filter?: "discrepancia" | "pendiente" | "anomalia" | "historico"; // clic → filtro
+  title?: string; // tooltip (p.ej. desglose por motivo)
 };
 
 const PESO = new Intl.NumberFormat("es-MX", {
@@ -60,6 +62,21 @@ export function buildKpisFuel(
   const historicos = entries.filter((e) => displayVerdictOf(e) === "historico").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
 
+  // Cargas sin km/l (las métricas ya son solo de tipo=carga): cuántas y por qué. Separa las
+  // "por revisar" (captura mala, accionables) de los huecos estructurales correctos; el
+  // desglose completo por motivo va en el tooltip de la tarjeta.
+  const sinKmpl = metrics.filter((m) => m.kmPorLitro == null);
+  const porRevisar = sinKmpl.filter(
+    (m) => m.motivoSinKmpl && MOTIVO_SIN_KMPL_ACCIONABLE[m.motivoSinKmpl],
+  ).length;
+  const porMotivo = new Map<MotivoSinKmpl, number>();
+  for (const m of sinKmpl)
+    if (m.motivoSinKmpl) porMotivo.set(m.motivoSinKmpl, (porMotivo.get(m.motivoSinKmpl) ?? 0) + 1);
+  const desgloseSinRend = [...porMotivo.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([mo, n]) => `${MOTIVO_SIN_KMPL_CORTO[mo]}: ${n}`)
+    .join(" · ");
+
   return [
     {
       key: "cargas",
@@ -80,6 +97,17 @@ export function buildKpisFuel(
       value: Number.isFinite(kmplFlota) ? `${kmplFlota.toFixed(2)} km/l` : "—",
       sub: "ponderado por litros",
       tone: "g",
+    },
+    {
+      key: "sin-rendimiento",
+      label: "Sin rendimiento",
+      value: NUM.format(sinKmpl.length),
+      sub:
+        porRevisar > 0
+          ? `${porRevisar} por revisar · ${sinKmpl.length - porRevisar} normales`
+          : "todas explicadas",
+      tone: porRevisar > 0 ? "a" : "n",
+      title: desgloseSinRend || undefined,
     },
     { key: "gasto", label: "Gasto", value: PESO.format(gasto), tone: "n" },
     {
@@ -153,6 +181,7 @@ export function renderKpisFuel(
   for (const c of cards) {
     const kc = document.createElement("div");
     kc.className = "kc";
+    if (c.title) kc.title = c.title;
     if (c.filter && onFilter) {
       kc.style.cursor = "pointer";
       kc.tabIndex = 0;

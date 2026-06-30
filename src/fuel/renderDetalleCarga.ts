@@ -4,8 +4,16 @@
  * validar/discrepancia. DOM API segura (sin innerHTML con datos). Soporta Fase 1
  * (manual) y Fase 2 (IA pre-llena valorDetectado) con el mismo layout.
  */
-import type { FuelEntry, FuelMetrics, FuelEvidenceKind, FuelVerdict, FuelPhoto } from "./types";
+import type {
+  FuelEntry,
+  FuelMetrics,
+  FuelEvidenceKind,
+  FuelVerdict,
+  FuelPhoto,
+  FuelStat,
+} from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import { MOTIVO_SIN_KMPL_LABEL, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { evidenceKindOf } from "./mapEntry";
 
 const PESO = new Intl.NumberFormat("es-MX", {
@@ -22,6 +30,10 @@ export type RenderDetalleCargaDeps = {
   metaEl?: HTMLElement | null;
   load: FuelEntry;
   metrics?: FuelMetrics;
+  /** km/l de referencia de su TIPO de unidad (para comparar el evento en el detalle). */
+  statTipo?: FuelStat;
+  /** km/l de referencia de su propia unidad (histórico). */
+  statUnidad?: FuelStat;
   /** Recorrido del ciclo (solicitud → siguiente solicitud) de esta entrada. */
   recorrido?: RecorridoInfo;
   /** email del validador → nombre legible (para "Revisado por …"). */
@@ -105,6 +117,99 @@ function photosOfKind(load: FuelEntry, kind: FuelEvidenceKind): FuelPhoto[] {
   return load.photos.filter((p) => evidenceKindOf(p.col) === kind);
 }
 
+/**
+ * Tarjeta "Cómo se calcula el rendimiento": la cadena odómetro ant.→actual = km ÷ litros = km/l
+ * (con comparación vs su tipo/unidad), o —si no hay km/l— el motivo explicado. Solo cargas.
+ */
+function buildRendimientoCard(
+  load: FuelEntry,
+  metrics: FuelMetrics | undefined,
+  statTipo: FuelStat | undefined,
+  statUnidad: FuelStat | undefined,
+): HTMLElement | null {
+  if (load.tipo !== "carga") return null; // las solicitudes no tienen km/l
+  const card = document.createElement("div");
+  card.className = "fv-card fv-rend";
+  const head = document.createElement("div");
+  head.className = "fv-cardhead";
+  head.textContent = "Cómo se calcula el rendimiento";
+  card.appendChild(head);
+
+  const kmpl = metrics?.kmPorLitro ?? null;
+  if (kmpl != null && metrics) {
+    const litros = metrics.litrosFill ?? metrics.litros ?? null;
+    const recorrido = metrics.kmDesdeAnterior;
+    const odoActual = metrics.km;
+    const odoAnterior = odoActual != null && recorrido != null ? odoActual - recorrido : null;
+
+    const chain = document.createElement("div");
+    chain.className = "fv-calc";
+    const addRow = (lbl: string, val: string, strong = false) => {
+      const r = document.createElement("div");
+      r.className = strong ? "fv-calc-row fv-calc-total" : "fv-calc-row";
+      const a = document.createElement("span");
+      a.className = "fv-calc-lbl";
+      a.textContent = lbl;
+      const b = document.createElement("span");
+      b.className = "fv-calc-val";
+      b.textContent = val;
+      r.appendChild(a);
+      r.appendChild(b);
+      chain.appendChild(r);
+    };
+    addRow("Odómetro anterior", odoAnterior != null ? `${NUM.format(odoAnterior)} km` : "—");
+    addRow("Odómetro de esta carga", odoActual != null ? `${NUM.format(odoActual)} km` : "—");
+    addRow("Recorrido", recorrido != null ? `${NUM.format(recorrido)} km` : "—");
+    addRow(
+      `Litros${metrics.litrosFill != null ? " (llenado completo)" : ""}`,
+      litros != null ? `${NUM1.format(litros)} L` : "—",
+    );
+    addRow("Rendimiento", `${kmpl.toFixed(2)} km/l`, true);
+    card.appendChild(chain);
+
+    // Comparación con baseline (su unidad / su tipo) — usa el km/l ponderado por volumen.
+    const refs: string[] = [];
+    const uniVol = statUnidad?.kmplVol ?? statUnidad?.mean;
+    const tipoVol = statTipo?.kmplVol ?? statTipo?.mean;
+    if (uniVol != null && Number.isFinite(uniVol))
+      refs.push(`esta unidad ${uniVol.toFixed(2)} km/l`);
+    if (tipoVol != null && Number.isFinite(tipoVol) && tipoVol > 0) {
+      const pct = Math.round(((kmpl - tipoVol) / tipoVol) * 100);
+      refs.push(
+        `su tipo${load.tipoUnidad ? ` (${load.tipoUnidad})` : ""} ${tipoVol.toFixed(2)} km/l · ${pct >= 0 ? "+" : ""}${pct}%`,
+      );
+    }
+    if (refs.length) {
+      const cmp = document.createElement("div");
+      cmp.className = "fv-calc-cmp";
+      cmp.textContent = `Referencia: ${refs.join(" · ")}`;
+      card.appendChild(cmp);
+    }
+  } else {
+    // Sin km/l: explicar el motivo (no dejar el "—" desnudo).
+    const motivo = metrics?.motivoSinKmpl;
+    const box = document.createElement("div");
+    box.className = "fv-calc-none";
+    const t = document.createElement("div");
+    t.className = "fv-calc-none-title";
+    t.textContent = "Sin rendimiento en esta carga";
+    box.appendChild(t);
+    const d = document.createElement("div");
+    d.textContent = motivo
+      ? MOTIVO_SIN_KMPL_LABEL[motivo]
+      : "No se pudo calcular el rendimiento de esta carga.";
+    box.appendChild(d);
+    if (motivo && MOTIVO_SIN_KMPL_ACCIONABLE[motivo]) {
+      const tag = document.createElement("div");
+      tag.className = "fv-calc-action";
+      tag.textContent = "⚠ Dato por revisar (captura)";
+      box.appendChild(tag);
+    }
+    card.appendChild(box);
+  }
+  return card;
+}
+
 export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   const { body, load, metrics, resolveUrl, canWrite, onValidate } = deps;
 
@@ -151,6 +256,10 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     }
     if (info.childNodes.length) body.appendChild(info);
   }
+
+  // Cómo se calcula el rendimiento (cadena de cálculo) o por qué no hay km/l.
+  const rendCard = buildRendimientoCard(load, metrics, deps.statTipo, deps.statUnidad);
+  if (rendCard) body.appendChild(rendCard);
 
   // Acción global (solo escritura)
   if (canWrite) {
