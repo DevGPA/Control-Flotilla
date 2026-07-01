@@ -87,7 +87,8 @@ export type MotivoSinKmpl =
   | "odometro_retroceso"
   | "salto_improbable"
   | "llenado_partido"
-  | "kmpl_implausible";
+  | "kmpl_implausible"
+  | "odometro_no_fiable";
 
 /** Métricas de rendimiento de una carga (km/l del evento). Solo aplica a tipo=carga. */
 export type FuelMetrics = {
@@ -109,6 +110,8 @@ export type FuelMetrics = {
   cargaParcial?: boolean;
   /** true si la carga es de un montacargas (Gas LP): km = horómetro, no odómetro. */
   esMontacargas?: boolean;
+  /** true si la UNIDAD tiene odómetro crónicamente no fiable (placeholder/congelado) — km/l anulado. */
+  odometroNoFiable?: boolean;
   /**
    * Litros usados como DENOMINADOR del km/l. Normalmente = `litros`; en un llenado partido en
    * varias cargas con el mismo odómetro, la fila representativa lleva la SUMA de litros del grupo
@@ -133,6 +136,8 @@ export type FuelStat = {
    * consumidores caen a `mean` (compatibilidad con literales de test).
    */
   kmplVol?: number;
+  /** Mediana de km/l por evento (robusta a outliers). La usa la regla de fuga y su gate FLOOR. */
+  median?: number;
 };
 
 /** Baseline de la flota para comparativos y anomalías. */
@@ -140,7 +145,7 @@ export type FleetBaseline = {
   porUnidad: Map<string, FuelStat>; // km/l por economicoId
   porTipo: Map<string, FuelStat>; // km/l por tipoUnidad
   tipoDe: Map<string, string>; // economicoId → tipoUnidad (para comparar vs su tipo)
-  flotaMean: number; // km/l medio de la flota (media de eventos; la usa la regla "fuga")
+  flotaMean: number; // km/l medio de la flota (media de eventos). Histórico: lo usaba "fuga", que ahora compara contra la mediana propia de cada unidad.
   flotaKmplVol?: number; // km/l ponderado por volumen de la flota (Σkm/Σlitros)
 };
 
@@ -153,7 +158,9 @@ export type FuelThresholds = {
   MIN_DAYS: number; // cargas demasiado frecuentes
   PRICE_MIN: number; // $/l mínimo plausible
   PRICE_MAX: number; // $/l máximo plausible
-  LEAK_PCT: number; // posible fuga: km/l < flotaMean·LEAK_PCT sostenido
+  LEAK_DROP: number; // fuga: km/l < mediana propia · LEAK_DROP (sostenido 2 cargas)
+  LEAK_FLOOR: number; // km/l mínimo para juzgar fuga (exime unidades crónicamente ineficientes)
+  LEAK_MIN_N: number; // n mínimo de eventos fieles para juzgar la caída de una unidad
   MIN_BASELINE_N: number; // n mínimo para confiar en el baseline por unidad
 };
 

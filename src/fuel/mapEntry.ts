@@ -89,6 +89,34 @@ export function deriveTipo(
   return { tipoUnidad: combustible || "(sin tipo)", esMontacargas: false };
 }
 
+/**
+ * Clase de unidad para el comparativo "vs su tipo" y el ranking por desviación: cruza la
+ * CAPACIDAD DE TANQUE (proxy de clase de vehículo — hay un hueco duro real 70↔110 L en la flota,
+ * así que ≤70 = Ligero, ≥110 = Pesado) con el COMBUSTIBLE fiable (el tipoUnidad de deriveTipo).
+ * Reemplaza al tipo-por-producto, que mezclaba pesados con ligeros y hacía que un Premium pesado
+ * sano saliera falsamente "peor de su tipo". Los montacargas conservan su tipo (km = horómetro).
+ * NO se usa para el layout Toka (que lee `producto`), solo para agrupar el rendimiento.
+ */
+export function classByTankAndFuel(
+  tanque: string | null | undefined,
+  tipoUnidad: string,
+  esMontacargas: boolean,
+): string {
+  if (esMontacargas) return tipoUnidad;
+  const n = parseFloat(String(tanque ?? ""));
+  if (!Number.isFinite(n) || n <= 0) return tipoUnidad; // sin capacidad fiable → conserva el tipo por combustible
+  const tamano = n <= 70 ? "Ligero" : "Pesado";
+  const comb =
+    tipoUnidad === "Diesel"
+      ? "Diesel"
+      : tipoUnidad === "Gasolina Premium"
+        ? "Premium"
+        : tipoUnidad === "Gasolina Magna"
+          ? "Magna"
+          : tipoUnidad;
+  return `${tamano} ${comb}`;
+}
+
 const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>(["ok", "discrepancia", "pendiente"]);
 const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 
@@ -149,6 +177,8 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
   const producto = typeof datos.producto === "string" ? datos.producto : "";
   const combustible = typeof datos.combustible === "string" ? datos.combustible : "";
   const { tipoUnidad, esMontacargas } = deriveTipo(producto, combustible);
+  // Clase para el comparativo "vs su tipo": tanque × combustible (ver classByTankAndFuel).
+  const clase = classByTankAndFuel(row.tanque, tipoUnidad, esMontacargas);
 
   return {
     loadId: loadIdOf(row.economicoId, tipo, row.eventoId),
@@ -162,7 +192,7 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
     fechaHora: row.fechaHora ?? undefined,
     responsable: row.responsable ?? undefined,
     km: num(row.kmCapturado),
-    tipoUnidad,
+    tipoUnidad: clase,
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,
