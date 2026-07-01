@@ -8,6 +8,7 @@ import {
   DEFAULT_FUEL_THRESHOLDS,
 } from "../src/fuel/fuelAnalysis";
 import type { FuelEntry } from "../src/fuel/types";
+import { classByTankAndFuel } from "../src/fuel/mapEntry";
 
 function carga(
   eco: string,
@@ -408,6 +409,84 @@ describe("detectFuelAnomalies — litros implausibles (techo por tipo)", () => {
     const metrics = computeFuelMetrics(entries);
     const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
     expect(f.some((x) => x.key.startsWith("Fuel:litros-implausibles:"))).toBe(false);
+  });
+});
+
+describe("classByTankAndFuel — clase tanque × combustible (Paso 3)", () => {
+  it("cruza tamaño (≤70 Ligero / ≥110 Pesado) con el combustible", () => {
+    expect(classByTankAndFuel("58", "Gasolina Premium", false)).toBe("Ligero Premium");
+    expect(classByTankAndFuel("173", "Gasolina Premium", false)).toBe("Pesado Premium");
+    expect(classByTankAndFuel("165", "Diesel", false)).toBe("Pesado Diesel");
+    expect(classByTankAndFuel("55", "Gasolina Magna", false)).toBe("Ligero Magna");
+    expect(classByTankAndFuel("70", "Diesel", false)).toBe("Ligero Diesel"); // 70 = tope ligero
+  });
+  it("los montacargas conservan su tipo (no se reclasifican por tanque)", () => {
+    expect(classByTankAndFuel("41", "Gas LP (montacargas)", true)).toBe("Gas LP (montacargas)");
+  });
+  it("sin capacidad de tanque fiable → conserva el tipo por combustible", () => {
+    expect(classByTankAndFuel(undefined, "Diesel", false)).toBe("Diesel");
+    expect(classByTankAndFuel("", "Gasolina Premium", false)).toBe("Gasolina Premium");
+  });
+});
+
+describe("computeFuelMetrics — Paso 2A: odómetro no fiable (a nivel unidad)", () => {
+  it("marca la unidad con odómetro congelado (mediana de deltas < 40 km)", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 100, 40),
+      carga("U1", "2026-01-05", 110, 40),
+      carga("U1", "2026-01-09", 120, 40),
+      carga("U1", "2026-01-13", 130, 40),
+      carga("U1", "2026-01-17", 140, 40), // deltas 10 → medDelta=10 < 40
+    ];
+    const m = computeFuelMetrics(entries);
+    expect(m.every((x) => x.odometroNoFiable === true)).toBe(true);
+    expect(m.every((x) => x.motivoSinKmpl === "odometro_no_fiable")).toBe(true);
+    expect(m.every((x) => x.kmPorLitro === null)).toBe(true);
+  });
+  it("NO marca una unidad sana (deltas normales)", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50),
+      carga("U1", "2026-01-05", 500, 50),
+      carga("U1", "2026-01-09", 1000, 50),
+      carga("U1", "2026-01-13", 1500, 50),
+      carga("U1", "2026-01-17", 2000, 50),
+    ];
+    expect(computeFuelMetrics(entries).some((x) => x.odometroNoFiable)).toBe(false);
+  });
+  it("NO marca montacargas (excluidos antes de la regla)", () => {
+    const entries: FuelEntry[] = [];
+    for (let i = 1; i <= 6; i++)
+      entries.push(carga("M1", `2026-01-0${i}`, 10 * i, 40, undefined, { esMontacargas: true }));
+    expect(computeFuelMetrics(entries).some((x) => x.odometroNoFiable)).toBe(false);
+  });
+});
+
+describe("detectFuelAnomalies — Paso 2B: fuga vs histórico PROPIO", () => {
+  it("dispara fuga con caída sostenida bajo la mediana propia (≥ FLOOR)", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50),
+      carga("U1", "2026-01-05", 500, 50), // 10
+      carga("U1", "2026-01-09", 1000, 50), // 10
+      carga("U1", "2026-01-13", 1500, 50), // 10
+      carga("U1", "2026-01-17", 1800, 50), // 6  (< 7 = 10·0.7)
+      carga("U1", "2026-01-21", 2100, 50), // 6  (sostenido)
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
+    expect(f.some((x) => x.key.startsWith("Fuel:fuga:"))).toBe(true);
+  });
+  it("NO dispara fuga para una unidad crónicamente ineficiente (mediana propia < FLOOR=4)", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50),
+      carga("U1", "2026-01-05", 150, 50), // 3
+      carga("U1", "2026-01-09", 300, 50), // 3
+      carga("U1", "2026-01-13", 450, 50), // 3
+      carga("U1", "2026-01-17", 550, 50), // 2
+      carga("U1", "2026-01-21", 650, 50), // 2
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
+    expect(f.some((x) => x.key.startsWith("Fuel:fuga:"))).toBe(false); // exime por baja eficiencia crónica
   });
 });
 

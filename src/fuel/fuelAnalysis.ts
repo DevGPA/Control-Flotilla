@@ -29,7 +29,9 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   MIN_DAYS: 1,
   PRICE_MIN: 18,
   PRICE_MAX: 35,
-  LEAK_PCT: 0.5,
+  LEAK_DROP: 0.7,
+  LEAK_FLOOR: 4,
+  LEAK_MIN_N: 4,
   MIN_BASELINE_N: 3,
 };
 
@@ -57,6 +59,8 @@ export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
     "Parte de un llenado partido (mismo odómetro) — el rendimiento se muestra en la carga principal del grupo.",
   kmpl_implausible:
     "Rendimiento fuera del rango físico posible — dato no verídico (odómetro truncado o salto de captura).",
+  odometro_no_fiable:
+    "Odómetro no fiable: la unidad captura el kilometraje crónicamente roto (placeholder o congelado) — su km/l no es confiable.",
 };
 
 /** Etiqueta corta (chip/tooltip de la tabla) del motivo sin km/l. */
@@ -69,6 +73,7 @@ export const MOTIVO_SIN_KMPL_CORTO: Record<MotivoSinKmpl, string> = {
   salto_improbable: "Salto de odómetro",
   llenado_partido: "Llenado partido",
   kmpl_implausible: "Valor implausible",
+  odometro_no_fiable: "Odómetro no fiable",
 };
 
 /**
@@ -84,6 +89,7 @@ export const MOTIVO_SIN_KMPL_ACCIONABLE: Record<MotivoSinKmpl, boolean> = {
   odometro_retroceso: true,
   salto_improbable: true,
   kmpl_implausible: true,
+  odometro_no_fiable: true,
 };
 
 /**
@@ -141,6 +147,33 @@ function cronoCmp(
 export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[] {
   const cargas = entries.filter((e) => e.tipo === "carga");
   const byUnit = groupByUnit(cargas);
+
+  // PASO 2A — Odómetro no fiable a nivel UNIDAD (placeholder km<=1 o congelado). NO recupera;
+  // solo marca para excluir su km/l y avisar "revisar captura". Excluye montacargas (horómetro
+  // legítimo, ya sin km/l) ANTES de la regla. El clamp de deltas a (0,MAX_KM_JUMP] es load-bearing:
+  // sin él, los typos gigantes de odómetro marcarían unidades sanas.
+  const ecosOdometroNoFiable = new Set<string>();
+  for (const [eco, arr] of byUnit) {
+    if (arr.some((c) => c.esMontacargas)) continue;
+    const sorted = [...arr].sort(cronoCmp);
+    const kms: number[] = [];
+    for (const c of sorted) {
+      const km = typeof c.km === "number" && Number.isFinite(c.km) ? c.km : null;
+      if (km == null) continue;
+      if (kms.length && kms[kms.length - 1] === km) continue; // mismo odómetro = llenado partido
+      kms.push(km);
+    }
+    if (kms.length < 5) continue; // muestra mínima para juzgar a la unidad
+    const fracLE1 = kms.filter((k) => k <= 1).length / kms.length;
+    const deltas: number[] = [];
+    for (let k = 1; k < kms.length; k++) {
+      const d = kms[k]! - kms[k - 1]!;
+      if (d > 0 && d <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) deltas.push(d);
+    }
+    const medDelta = deltas.length ? percentile(deltas, 50) : Infinity;
+    if (fracLE1 >= 0.5 || medDelta < 40) ecosOdometroNoFiable.add(eco);
+  }
+
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
     const sorted = [...arr].sort(cronoCmp);
@@ -273,6 +306,19 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       i = j;
     }
   }
+
+  // PASO 2A — aplica la marca de odómetro no fiable: anula el km/l de esas unidades (así sale
+  // de baseline/ranking/alertas automáticamente) y expone el motivo. No toca montacargas.
+  if (ecosOdometroNoFiable.size) {
+    for (const m of out) {
+      if (ecosOdometroNoFiable.has(m.eco) && !m.esMontacargas) {
+        m.kmPorLitro = null;
+        m.cargaParcial = undefined;
+        m.motivoSinKmpl = "odometro_no_fiable";
+        m.odometroNoFiable = true;
+      }
+    }
+  }
   return out;
 }
 
@@ -344,6 +390,7 @@ function statOf(values: number[]): FuelStat {
     n: values.length,
     p25: percentile(base, 25),
     p75: percentile(base, 75),
+    median: percentile(base, 50),
   };
 }
 
@@ -573,17 +620,24 @@ export function detectFuelAnomalies(
           "Revisar",
         );
 
-      // 6. Posible fuga / uso indebido (km/l muy bajo vs flota, sostenido 2+ cargas)
+      // 6. Posible fuga / uso indebido: caída SOSTENIDA vs el HISTÓRICO PROPIO de la unidad
+      // (no vs la flota — eso marcaba falsamente a las unidades de baja eficiencia). Solo eventos
+      // fieles; exime a las crónicamente ineficientes (mediana propia < LEAK_FLOOR). `stat` ya se
+      // leyó en la regla de rendimiento (mismo loop).
+      const leakRef = stat ? (stat.median ?? stat.mean) : null;
       const leakNow =
         m.kmPorLitro != null &&
         !m.cargaParcial &&
-        baseline.flotaMean > 0 &&
-        m.kmPorLitro < baseline.flotaMean * cfg.LEAK_PCT;
+        stat != null &&
+        stat.n >= cfg.LEAK_MIN_N &&
+        leakRef != null &&
+        leakRef >= cfg.LEAK_FLOOR &&
+        m.kmPorLitro < leakRef * cfg.LEAK_DROP;
       if (leakNow && prevLeak)
         push(
           m,
           "fuga",
-          `Posible fuga/uso indebido: km/l muy por debajo de la flota en cargas consecutivas`,
+          `Posible fuga/uso indebido: ${m.kmPorLitro!.toFixed(2)} km/l vs su histórico ${leakRef!.toFixed(2)} km/l en cargas consecutivas`,
           "Urgente",
         );
       prevLeak = !!leakNow;
