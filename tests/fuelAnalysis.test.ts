@@ -5,6 +5,7 @@ import {
   detectFuelAnomalies,
   worstRisk,
   computeRecorridos,
+  DEFAULT_FUEL_THRESHOLDS,
 } from "../src/fuel/fuelAnalysis";
 import type { FuelEntry } from "../src/fuel/types";
 
@@ -27,6 +28,7 @@ function carga(
     km,
     litros,
     monto,
+    seLlenoTanque: "Si", // por defecto tanque lleno (evento fiel); los tests de parcial lo pisan
     photos: [],
     ...extra,
   };
@@ -207,6 +209,92 @@ describe("computeFuelMetrics — motivoSinKmpl (por qué no hay km/l)", () => {
     expect(small.motivoSinKmpl).toBe("llenado_partido");
     expect(big.kmPorLitro).not.toBeNull();
     expect(big.motivoSinKmpl).toBeUndefined();
+  });
+});
+
+describe("computeFuelMetrics — piso físico y fidelidad (compuerta km/l)", () => {
+  it("km/l por debajo del piso físico (1.5) → null + motivo 'kmpl_implausible'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-05", 1050, 50), // 50 km / 50 L = 1.0 km/l (implausible)
+    ]);
+    expect(m[1]!.kmPorLitro).toBeNull();
+    expect(m[1]!.motivoSinKmpl).toBe("kmpl_implausible");
+  });
+
+  it("km/l por encima del techo físico (40) → null + 'kmpl_implausible'", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 30),
+      carga("U1", "2026-01-05", 2600, 30), // 1600 km (<1800) / 30 L = 53.3 km/l (implausible)
+    ]);
+    expect(m[1]!.kmPorLitro).toBeNull();
+    expect(m[1]!.motivoSinKmpl).toBe("kmpl_implausible");
+  });
+
+  it("km/l plausible con tanque lleno en ambos extremos → fiel (cargaParcial falsy)", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-11", 1500, 50), // 10 km/l
+    ]);
+    expect(m[1]!.kmPorLitro).toBe(10);
+    expect(m[1]!.cargaParcial).toBeFalsy();
+  });
+
+  it("carga actual con tanque NO lleno → cargaParcial=true (conserva el número)", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50),
+      carga("U1", "2026-01-11", 1500, 50, undefined, { seLlenoTanque: "No" }),
+    ]);
+    expect(m[1]!.kmPorLitro).toBe(10);
+    expect(m[1]!.cargaParcial).toBe(true);
+  });
+
+  it("ancla con tanque NO lleno → el evento siguiente es parcial aunque él sí llene", () => {
+    const m = computeFuelMetrics([
+      carga("U1", "2026-01-01", 1000, 50, undefined, { seLlenoTanque: "No" }),
+      carga("U1", "2026-01-11", 1500, 50), // llena, pero su ancla no
+    ]);
+    expect(m[1]!.cargaParcial).toBe(true);
+  });
+});
+
+describe("buildFleetBaseline — fidelidad: la flota conserva parciales, la unidad no", () => {
+  it("un evento parcial NO entra al baseline por-unidad pero SÍ pondera la flota", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 1000, 50, undefined, { seLlenoTanque: "No" }),
+      carga("U1", "2026-01-11", 1500, 50, undefined, { seLlenoTanque: "No" }), // 10 km/l, parcial
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const base = buildFleetBaseline(metrics, entries);
+    expect(base.porUnidad.get("U1")).toBeUndefined(); // 0 eventos fieles
+    expect(base.flotaKmplVol!).toBeCloseTo(10, 5); // el parcial sí cuenta en la flota
+  });
+});
+
+describe("detectFuelAnomalies — Paso 1 (fidelidad + montacargas)", () => {
+  it("NO marca 'rendimiento' cuando el evento bajo es una carga parcial", () => {
+    const entries = [
+      carga("U1", "2026-01-01", 0, 50),
+      carga("U1", "2026-01-05", 500, 50), // 10
+      carga("U1", "2026-01-09", 1000, 50), // 10
+      carga("U1", "2026-01-13", 1500, 50), // 10
+      carga("U1", "2026-01-17", 1700, 50, undefined, { seLlenoTanque: "No" }), // 4 km/l, parcial
+    ];
+    const metrics = computeFuelMetrics(entries);
+    const f = detectFuelAnomalies(metrics, buildFleetBaseline(metrics, entries));
+    expect(f.some((x) => x.key.startsWith("Fuel:rendimiento:"))).toBe(false);
+  });
+
+  it("la regla de precio EXIME a los montacargas (Gas LP a ~$10/L)", () => {
+    const m = computeFuelMetrics([
+      carga("M1", "2026-01-01", 100, 40, 400, { esMontacargas: true }), // $10/L, fuera de [18,35]
+    ]);
+    const f = detectFuelAnomalies(m, buildFleetBaseline(m, []));
+    expect(f.some((x) => x.key.startsWith("Fuel:captura-precio:"))).toBe(false);
+  });
+
+  it("MAX_KM_JUMP recalibrado a 1800", () => {
+    expect(DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP).toBe(1800);
   });
 });
 

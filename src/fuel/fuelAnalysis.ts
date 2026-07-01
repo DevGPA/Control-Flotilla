@@ -22,17 +22,25 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   DROP_SD: 1.5,
   DROP_PCT: 0.75,
   LITERS_SD: 2,
-  // Salto de odómetro entre cargas consecutivas. Una unidad recorre fácilmente >1500 km
-  // entre llenadas (sobre todo con cargas no consecutivas en el histórico), así que el
-  // umbral marca solo saltos genuinamente improbables (probable error de captura / cargas
-  // intermedias sin registrar).
-  MAX_KM_JUMP: 8000,
+  // Salto de odómetro entre cargas consecutivas. El máximo delta legítimo observado en la
+  // flota es ~989 km, con un hueco duro hasta ~2633 km; 1800 corta los saltos espurios
+  // (probable error de captura / cargas intermedias sin registrar) sin descartar tramos reales.
+  MAX_KM_JUMP: 1800,
   MIN_DAYS: 1,
   PRICE_MIN: 18,
   PRICE_MAX: 35,
   LEAK_PCT: 0.5,
   MIN_BASELINE_N: 3,
 };
+
+/**
+ * Rango físico plausible de km/l para vehículos de combustión interna de la flota. Un km/l
+ * FUERA de [MIN, MAX] no es rendimiento: es dato no verídico (odómetro truncado que produce
+ * ~0.2 km/l, o un salto que produce ~110). Se anula (motivoSinKmpl='kmpl_implausible') para
+ * que no contamine el baseline ni se muestre como número. Aplica a TODO, incluida la flota.
+ */
+export const KMPL_FISICO_MIN = 1.5;
+export const KMPL_FISICO_MAX = 40;
 
 /** Explicación larga del motivo por el que una carga no tiene km/l (para el detalle). */
 export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
@@ -47,6 +55,8 @@ export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
     "Salto de odómetro improbable entre cargas — probable carga intermedia no registrada.",
   llenado_partido:
     "Parte de un llenado partido (mismo odómetro) — el rendimiento se muestra en la carga principal del grupo.",
+  kmpl_implausible:
+    "Rendimiento fuera del rango físico posible — dato no verídico (odómetro truncado o salto de captura).",
 };
 
 /** Etiqueta corta (chip/tooltip de la tabla) del motivo sin km/l. */
@@ -58,6 +68,7 @@ export const MOTIVO_SIN_KMPL_CORTO: Record<MotivoSinKmpl, string> = {
   odometro_retroceso: "Odómetro retrocede",
   salto_improbable: "Salto de odómetro",
   llenado_partido: "Llenado partido",
+  kmpl_implausible: "Valor implausible",
 };
 
 /**
@@ -72,6 +83,7 @@ export const MOTIVO_SIN_KMPL_ACCIONABLE: Record<MotivoSinKmpl, boolean> = {
   sin_litros: true,
   odometro_retroceso: true,
   salto_improbable: true,
+  kmpl_implausible: true,
 };
 
 /**
@@ -135,6 +147,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
     // Ancla de distancia = el ÚLTIMO llenado con odómetro distinto.
     let prevFillKm: number | null = null;
     let prevFillMonta = false;
+    let prevFillLleno = false;
     let prevEmitted: FuelEntry | null = null;
     let i = 0;
     while (i < sorted.length) {
@@ -155,6 +168,8 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       for (const g of group)
         if (typeof g.litros === "number" && g.litros > 0) litrosGrupo += g.litros;
       const grupoMonta = group.some((g) => g.esMontacargas);
+      // ¿El llenado fue a tanque lleno? (alguna transacción del grupo con seLlenoTanque='Si').
+      const grupoLleno = group.some((g) => g.seLlenoTanque === "Si");
 
       // Distancia y km/l del LLENADO (una sola vez, sobre los litros sumados).
       // Montacargas Gas LP: su `km` es horómetro → no se computa km/l (ruido para baseline).
@@ -174,12 +189,21 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           fillKmpl = fillKmDesde / litrosGrupo;
       }
 
+      // Piso físico de validez: un km/l fuera de [MIN,MAX] es dato NO verídico (odómetro
+      // truncado o salto) — se anula para no contaminar baseline/flota ni mostrarse como número.
+      let kmplImplausible = false;
+      if (fillKmpl != null && (fillKmpl < KMPL_FISICO_MIN || fillKmpl > KMPL_FISICO_MAX)) {
+        fillKmpl = null;
+        kmplImplausible = true;
+      }
+
       // Motivo del km/l ausente del LLENADO (para explicar el "—"); undefined si sí hay km/l.
       // Mismo orden que las guardas de arriba: monta → sin odómetro → sin ancla previa →
       // sin litros → retroceso → salto improbable.
       let motivoFill: MotivoSinKmpl | undefined;
       if (fillKmpl == null) {
-        if (grupoMonta || prevFillMonta) motivoFill = "montacargas";
+        if (kmplImplausible) motivoFill = "kmpl_implausible";
+        else if (grupoMonta || prevFillMonta) motivoFill = "montacargas";
         else if (gKm == null) motivoFill = "sin_odometro";
         else if (prevFillKm == null) motivoFill = "primera_carga";
         else if (litrosGrupo <= 0) motivoFill = "sin_litros";
@@ -229,6 +253,9 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           // Filas no representativas de un llenado partido → "llenado_partido" (su km/l vive en
           // la fila principal); el resto hereda el motivo calculado del llenado.
           motivoSinKmpl: esRep ? motivoFill : multi ? "llenado_partido" : motivoFill,
+          // Fiel = ancla Y llenado actual a tanque lleno. Solo aplica a la fila con km/l real.
+          cargaParcial: esRep && fillKmpl != null ? !(prevFillLleno && grupoLleno) : undefined,
+          esMontacargas: e.esMontacargas,
           // Solo en llenados partidos: la fila representativa carga la SUMA de litros como
           // denominador del km/l (para que el baseline pondere el llenado una sola vez).
           litrosFill: esRep && multi ? litrosGrupo : undefined,
@@ -241,6 +268,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       if (gKm != null) {
         prevFillKm = gKm;
         prevFillMonta = grupoMonta;
+        prevFillLleno = grupoLleno;
       }
       i = j;
     }
@@ -373,9 +401,14 @@ export function buildFleetBaseline(
     const litrosKmpl = m.litrosFill ?? m.litros;
     if (m.kmDesdeAnterior == null || litrosKmpl == null || !(litrosKmpl > 0)) continue;
     const ev: KmEvent = { km: m.kmDesdeAnterior, litros: litrosKmpl, kmpl: m.kmPorLitro };
+    // Flota (KPI de cabecera): incluye eventos parciales — el ponderado por volumen los
+    // sub-pesa y quitarlos daría sesgo de supervivencia (ocultaría la mitad sedienta).
+    allEv.push(ev);
+    // Por unidad / tipo (ranking y comparativo "vs su tipo"): SOLO eventos fieles (tanque
+    // lleno en ambos extremos). Un evento parcial no representa la eficiencia real de la unidad.
+    if (m.cargaParcial) continue;
     pushInto(evByUnit, m.eco, ev);
     pushInto(evByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", ev);
-    allEv.push(ev);
   }
 
   // mean/sd/p25/p75 = distribución de km/l por evento (para anomalías). kmplVol = ponderado.
@@ -461,6 +494,7 @@ export function detectFuelAnomalies(
         push(m, "captura-monto", "Monto inválido o ausente en la captura", "Completar");
       if (m.km == null) push(m, "captura-km", "Kilometraje ausente en la captura", "Completar");
       if (
+        !m.esMontacargas &&
         m.precioPorLitro != null &&
         (m.precioPorLitro < cfg.PRICE_MIN || m.precioPorLitro > cfg.PRICE_MAX)
       )
@@ -496,9 +530,16 @@ export function detectFuelAnomalies(
           "Revisar",
         );
 
-      // 4. Caída de rendimiento (requiere baseline confiable de la unidad)
+      // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Solo eventos FIELES:
+      // un km/l bajo por carga parcial es artefacto de medición, no una caída real.
       const stat = baseline.porUnidad.get(m.eco);
-      if (m.kmPorLitro != null && stat && stat.n >= cfg.MIN_BASELINE_N && stat.mean > 0) {
+      if (
+        m.kmPorLitro != null &&
+        !m.cargaParcial &&
+        stat &&
+        stat.n >= cfg.MIN_BASELINE_N &&
+        stat.mean > 0
+      ) {
         const umbralSd = stat.mean - cfg.DROP_SD * stat.sd;
         const umbralPct = stat.mean * cfg.DROP_PCT;
         if (m.kmPorLitro < umbralSd && m.kmPorLitro < umbralPct)
@@ -535,6 +576,7 @@ export function detectFuelAnomalies(
       // 6. Posible fuga / uso indebido (km/l muy bajo vs flota, sostenido 2+ cargas)
       const leakNow =
         m.kmPorLitro != null &&
+        !m.cargaParcial &&
         baseline.flotaMean > 0 &&
         m.kmPorLitro < baseline.flotaMean * cfg.LEAK_PCT;
       if (leakNow && prevLeak)
