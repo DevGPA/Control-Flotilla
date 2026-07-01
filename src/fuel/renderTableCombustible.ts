@@ -239,8 +239,27 @@ function recLabel(rec: RecorridoInfo | undefined): string {
 }
 
 /** Celda km/l: el número, o "—" con el MOTIVO debajo (chip gris) cuando no hay rendimiento. */
-function kmplCell(kmpl: number | null | undefined, motivo?: MotivoSinKmpl): string | HTMLElement {
-  if (kmpl != null) return (Math.round(kmpl * 100) / 100).toFixed(2);
+function kmplCell(
+  kmpl: number | null | undefined,
+  motivo?: MotivoSinKmpl,
+  parcial?: boolean,
+): string | HTMLElement {
+  if (kmpl != null) {
+    const num = (Math.round(kmpl * 100) / 100).toFixed(2);
+    if (!parcial) return num;
+    // km/l NO fiel (carga parcial): se muestra el número con marca; no cuenta para ranking/alertas.
+    const w = document.createElement("div");
+    w.className = "fuel-kmpl-none";
+    const v = document.createElement("span");
+    v.textContent = num;
+    const t = document.createElement("small");
+    t.className = "fuel-kmpl-motivo";
+    t.textContent = "no fiel";
+    t.title = "Carga parcial (tanque no lleno): no cuenta para el ranking ni las alertas.";
+    w.appendChild(v);
+    w.appendChild(t);
+    return w;
+  }
   if (!motivo) return "—";
   const wrap = document.createElement("div");
   wrap.className = "fuel-kmpl-none";
@@ -339,7 +358,11 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
           : "—",
       esSol
         ? recLabel(recorridosByLoad?.get(e.loadId))
-        : kmplCell(kmpl, metricsByLoad?.get(e.loadId)?.motivoSinKmpl),
+        : kmplCell(
+            kmpl,
+            metricsByLoad?.get(e.loadId)?.motivoSinKmpl,
+            metricsByLoad?.get(e.loadId)?.cargaParcial,
+          ),
       verdictCell(e, v, nombreValidador),
       e.photos.length ? `📷 ${e.photos.length}` : "—",
     ];

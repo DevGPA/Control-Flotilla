@@ -86,7 +86,8 @@ export type MotivoSinKmpl =
   | "sin_litros"
   | "odometro_retroceso"
   | "salto_improbable"
-  | "llenado_partido";
+  | "llenado_partido"
+  | "kmpl_implausible";
 
 /** Métricas de rendimiento de una carga (km/l del evento). Solo aplica a tipo=carga. */
 export type FuelMetrics = {
@@ -100,6 +101,14 @@ export type FuelMetrics = {
   kmPorLitro: number | null; // kmDesdeAnterior / litros (sobre litrosFill si es llenado partido)
   /** Si kmPorLitro es null, POR QUÉ (para explicar el "—"). undefined cuando sí hay km/l. */
   motivoSinKmpl?: MotivoSinKmpl;
+  /**
+   * true si el evento SÍ tiene km/l pero NO es fiel: la carga o su ancla no fue a tanque lleno.
+   * Se excluye del ranking por-unidad y de las alertas, pero se CONSERVA en el KPI de flota
+   * (quitarlo daría sesgo de supervivencia). Se muestra marcado "no fiel · carga parcial".
+   */
+  cargaParcial?: boolean;
+  /** true si la carga es de un montacargas (Gas LP): km = horómetro, no odómetro. */
+  esMontacargas?: boolean;
   /**
    * Litros usados como DENOMINADOR del km/l. Normalmente = `litros`; en un llenado partido en
    * varias cargas con el mismo odómetro, la fila representativa lleva la SUMA de litros del grupo

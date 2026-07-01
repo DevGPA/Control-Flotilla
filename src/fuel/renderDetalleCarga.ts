@@ -185,6 +185,15 @@ function buildRendimientoCard(
       cmp.textContent = `Referencia: ${refs.join(" · ")}`;
       card.appendChild(cmp);
     }
+    // Evento con km/l pero NO fiel (tanque no lleno): se muestra el número, pero se avisa que
+    // no representa la eficiencia real (el supuesto tanque-lleno → tanque-lleno no se cumple).
+    if (metrics.cargaParcial) {
+      const nf = document.createElement("div");
+      nf.className = "fv-calc-action";
+      nf.textContent =
+        "⚠ Rendimiento no fiel: carga parcial (tanque no lleno) — no cuenta para el ranking ni las alertas.";
+      card.appendChild(nf);
+    }
   } else {
     // Sin km/l: explicar el motivo (no dejar el "—" desnudo).
     const motivo = metrics?.motivoSinKmpl;
