@@ -223,10 +223,17 @@ export function renderKpisCumplimiento(
       const f = c.filter;
       kc.style.cursor = "pointer";
       kc.tabIndex = 0;
+      // A11y: es un control interactivo — role + Enter/Espacio (WCAG 4.1.2)
+      kc.setAttribute("role", "button");
+      kc.setAttribute("aria-label", `Filtrar por ${c.label}`);
       const h = () => onFilter(f);
       kc.addEventListener("click", h);
       kc.addEventListener("keydown", (ev) => {
-        if ((ev as KeyboardEvent).key === "Enter") h();
+        const k = (ev as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          ev.preventDefault();
+          h();
+        }
       });
     }
     const ktop = document.createElement("div");
@@ -307,7 +314,11 @@ export function renderTableCumplimiento(deps: RenderCumplimientoDeps): {
       const handler = () => deps.onRowClick!(u.eco);
       tr.addEventListener("click", handler);
       tr.addEventListener("keydown", (ev) => {
-        if ((ev as KeyboardEvent).key === "Enter") handler();
+        const k = (ev as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          ev.preventDefault(); // Espacio no debe scrollear
+          handler();
+        }
       });
     }
     tbody.appendChild(tr);
@@ -394,8 +405,7 @@ export function renderExpedienteUnidad(
   const diaHnc = diaHoyNoCirculaForanea(placa);
   if (engomado || diaHnc) {
     const info = document.createElement("div");
-    info.style.cssText =
-      "font-size:11px;color:var(--s2);padding:8px 0;border-bottom:1px solid var(--ln);margin-bottom:10px";
+    info.className = "cmp-info-banner";
     const parts: string[] = [];
     if (engomado) parts.push(`Engomado ${engomado} (verificación por terminación de placa)`);
     if (diaHnc) parts.push(`Hoy No Circula foránea: ${DIA_LABEL[diaHnc] ?? diaHnc}`);
@@ -405,7 +415,7 @@ export function renderExpedienteUnidad(
 
   if (!entries.length) {
     const empty = document.createElement("div");
-    empty.style.cssText = "text-align:center;padding:28px;color:var(--s3);font-size:12px";
+    empty.className = "cmp-empty";
     empty.textContent = "Sin documentos de cumplimiento capturados para esta unidad.";
     container.appendChild(empty);
     return;
@@ -421,18 +431,17 @@ export function renderExpedienteUnidad(
   const docs = [...entries].sort((a, b) => orden[a.estado] - orden[b.estado]);
   for (const d of docs) {
     const row = document.createElement("div");
-    row.style.cssText =
-      "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--ln)";
+    row.className = "cmp-doc-row";
 
     const tipo = document.createElement("span");
-    tipo.style.cssText = "flex:1;font-size:12px;color:var(--w1)";
+    tipo.className = "cmp-doc-tipo";
     tipo.textContent = TIPO_LABEL[d.tipoDoc] ?? d.tipoDoc;
     row.appendChild(tipo);
 
     row.appendChild(estadoPill(d.estado));
 
     const meta = document.createElement("span");
-    meta.style.cssText = "font-size:11px;color:var(--s2);min-width:120px;text-align:right";
+    meta.className = "cmp-doc-meta";
     meta.textContent = expedienteMeta(d);
     row.appendChild(meta);
 
@@ -441,12 +450,10 @@ export function renderExpedienteUnidad(
       const docId = d.docId;
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "needs-write";
+      del.className = "needs-write cmp-doc-del";
       del.textContent = "✕";
       del.title = "Eliminar documento";
       del.setAttribute("aria-label", `Eliminar ${TIPO_LABEL[d.tipoDoc] ?? d.tipoDoc}`);
-      del.style.cssText =
-        "border:none;background:transparent;color:var(--s3);cursor:pointer;font-size:13px;padding:0 4px";
       del.addEventListener("click", () => onDelete(docId));
       row.appendChild(del);
     }
@@ -465,8 +472,7 @@ const JUR_OPCIONES: Array<{ value: string; label: string }> = [
   { value: "otra", label: "Otra" },
 ];
 
-const INPUT_CSS =
-  "padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)";
+// Estilos en clases .cmp-* / .field-input (main.css) — UX 2026-07 Lote 2.
 
 /**
  * Formulario compacto de alta/edición de un documento (captura manual). DOM-safe.
@@ -479,17 +485,15 @@ export function renderCapturaForm(
   onSave: (fields: CapturaFields) => void,
 ): void {
   const wrap = document.createElement("div");
-  wrap.style.cssText =
-    "display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:12px 0 4px;margin-top:10px;border-top:1px dashed var(--ln)";
+  wrap.className = "cmp-form";
 
   const titulo = document.createElement("div");
-  titulo.style.cssText =
-    "width:100%;font-size:11px;font-weight:700;color:var(--s1);margin-bottom:2px";
+  titulo.className = "cmp-form-title";
   titulo.textContent = "Agregar / actualizar documento";
   wrap.appendChild(titulo);
 
   const selTipo = document.createElement("select");
-  selTipo.style.cssText = INPUT_CSS;
+  selTipo.className = "field-input";
   selTipo.setAttribute("aria-label", "Tipo de documento");
   for (const k of Object.keys(TIPO_LABEL) as ComplianceTipoDoc[]) {
     const o = document.createElement("option");
@@ -500,7 +504,7 @@ export function renderCapturaForm(
   wrap.appendChild(selTipo);
 
   const selJur = document.createElement("select");
-  selJur.style.cssText = INPUT_CSS;
+  selJur.className = "field-input";
   selJur.setAttribute("aria-label", "Jurisdicción");
   for (const j of JUR_OPCIONES) {
     const o = document.createElement("option");
@@ -512,7 +516,7 @@ export function renderCapturaForm(
 
   const inFecha = document.createElement("input");
   inFecha.type = "date";
-  inFecha.style.cssText = INPUT_CSS;
+  inFecha.className = "field-input";
   inFecha.title = "Fecha de vencimiento";
   inFecha.setAttribute("aria-label", "Fecha de vencimiento");
   wrap.appendChild(inFecha);
@@ -520,7 +524,7 @@ export function renderCapturaForm(
   const inRef = document.createElement("input");
   inRef.type = "text";
   inRef.placeholder = "Referencia / folio";
-  inRef.style.cssText = INPUT_CSS + ";width:130px";
+  inRef.className = "field-input cmp-input-ref";
   inRef.setAttribute("aria-label", "Referencia o folio");
   wrap.appendChild(inRef);
 
@@ -528,19 +532,19 @@ export function renderCapturaForm(
   inMonto.type = "number";
   inMonto.min = "0";
   inMonto.placeholder = "Monto $";
-  inMonto.style.cssText = INPUT_CSS + ";width:90px";
+  inMonto.className = "field-input cmp-input-monto";
   inMonto.setAttribute("aria-label", "Monto del adeudo");
   wrap.appendChild(inMonto);
 
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = "Guardar";
-  btn.style.cssText =
-    "padding:5px 12px;border:1px solid var(--ac);border-radius:6px;font-size:11px;color:#fff;background:var(--ac);cursor:pointer";
+  btn.className = "cmp-btn-save";
   wrap.appendChild(btn);
 
   const err = document.createElement("span");
-  err.style.cssText = "width:100%;font-size:10px;color:var(--R);display:none";
+  err.className = "cmp-form-err";
+  err.style.display = "none"; // se muestra con style.display="" al validar
   wrap.appendChild(err);
 
   btn.addEventListener("click", () => {
