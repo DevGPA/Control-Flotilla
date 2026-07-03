@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-+NCWP/sdHdLyCKwTvANQIRPPdeyrut7sTDCiQgTJ+do='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-CoWJTl3AAht+WW4FFoqnFGIh6TItxKNYTZ3iQ+KvQ/U='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -413,6 +413,20 @@ g.inflateBytes=async function(src){
       <div id="kpi-donut" role="img" aria-label="Distribución operativa de la flota (operativas vs. en taller)" style="width:88px;height:88px;flex-shrink:0"></div>
       <div class="dleg" id="dleg"></div>
     </div>
+  </div>
+</div>
+
+<!-- MAPA DE FLOTA (Híbrido B×C H4): cada tile es una unidad, agrupadas por
+     sucursal. Lo puebla buildKPIs vía window.__fleetMap (src/ui/fleetMap.ts,
+     lógica pura testeada). Mismo criterio de estado que el hero y las alertas. -->
+<div id="fleet-map-panel" style="display:none;margin:0 12px 6px;padding:10px 14px;background:var(--bg);border:var(--card-bd);box-shadow:var(--card-sh);border-radius:var(--r2)">
+  <div class="fm-title"><span role="heading" aria-level="2">Mapa de flota</span><span class="fm-hint">cada cuadro es una unidad · click abre su expediente</span></div>
+  <div id="fleet-map"></div>
+  <div class="fm-legend" aria-hidden="true">
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--Gl);box-shadow:inset 0 0 0 1px var(--G)"></span>Operativa</span>
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--Al);box-shadow:inset 0 0 0 1px var(--A)"></span>Revisar</span>
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--Rl);box-shadow:inset 0 0 0 1.5px var(--R)"></span>Requiere atención</span>
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--Bl);box-shadow:inset 0 0 0 1px var(--B)"></span>En taller</span>
   </div>
 </div>
 
@@ -3278,6 +3292,28 @@ function buildKPIs(){
     dleg.title="Operativa = unidad no está en taller. Findings pendientes (chips arriba) NO la sacan de operativa — sigue circulando.";
     dleg.innerHTML=
       legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
+  }
+
+  // Híbrido B×C H4: mapa de flota — flags con las MISMAS reglas que el hero/alertas;
+  // la agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
+  const fmWrap=document.getElementById("fleet-map-panel"), fmEl=document.getElementById("fleet-map");
+  if(fmWrap&&fmEl&&window.__fleetMap){
+    const model=window.__fleetMap.build(fleet.map(x=>({
+      uid:x.uid,eco:x.eco,plate:x.plate,branch:x.branch,
+      enTaller:isUnitEnTaller(x),
+      atencion:x.risk==="Urgente"||(x.minT!=null&&x.minT<=TCRIT)||svcStatus(x)==="vencido",
+      revisar:x.risk==="Revisar"||x.risk==="Completar"||svcStatus(x)==="proximo"
+    })));
+    const has=model.some(g=>g.tiles.length);
+    fmWrap.dataset.has=has?"1":"0";
+    // Solo visible en la vista Inspecciones (showView lo restaura al volver).
+    const inInsp=document.getElementById("kpi")&&document.getElementById("kpi").style.display!=="none";
+    fmWrap.style.display=(has&&inInsp)?"":"none";
+    if(has)window.__fleetMap.render(fmEl,model,uid=>{
+      const t=(units||[]).find(v=>v.uid===uid);
+      if(t&&typeof selUnit==="function")selUnit(uid);
+      else if(typeof openFleetModal==="function")openFleetModal("all");
+    });
   }
 
   // Refresca analytics panel si está abierto (no-op si cerrado).
@@ -6695,7 +6731,7 @@ function showView(view){
   // Se restaura siempre desde el estado real de los datos (units[]).
   if(!isInsp){
     // Al salir: simplemente ocultar
-    ["kpi","tb","periodo-bar"].forEach(id=>{
+    ["kpi","tb","periodo-bar","fleet-map-panel"].forEach(id=>{
       const el=document.getElementById(id); if(el) el.style.display="none";
     });
     const tw=document.getElementById("tw"); if(tw) tw.style.display="none";
@@ -6709,6 +6745,9 @@ function showView(view){
     // La barra ahora es el control de rango de fechas — mostrar cuando hay data
     // (ya no depende de periodos, que el cloud no puebla).
     if(pb) pb.style.display = hasData ? "flex" : "none";
+    // Híbrido H4: restaurar el mapa de flota si buildKPIs lo pobló (dataset.has).
+    const fmp=document.getElementById("fleet-map-panel");
+    if(fmp) fmp.style.display = (hasData && fmp.dataset.has==="1") ? "" : "none";
     // Ocultar loader y drop zone si hay datos
     if(hasData){
       const ldr=document.getElementById("ldr"); if(ldr) ldr.style.display="none";

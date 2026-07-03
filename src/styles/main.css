@@ -3838,6 +3838,118 @@ select.filter-active {
   color: #fff;
   filter: brightness(1.12);
 }
+
+/* ════ MAPA DE FLOTA (Híbrido B×C H4) ════════════════════════
+   Tiles por unidad agrupados por sucursal; el urgente pulsa. */
+.fm-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--w2);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.fm-hint {
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  color: var(--s3);
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+#fleet-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 26px;
+  margin-top: 10px;
+}
+.fm-glbl {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--s2);
+  margin-bottom: 6px;
+}
+.fm-dots {
+  display: grid;
+  grid-template-columns: repeat(7, 18px);
+  gap: 5px;
+}
+.fm-tile {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.fm-tile:hover,
+.fm-tile:focus-visible {
+  transform: scale(1.35);
+  z-index: 2;
+  position: relative;
+}
+.fm-ok {
+  background: var(--Gl);
+  box-shadow: inset 0 0 0 1px var(--G);
+}
+.fm-rev {
+  background: var(--Al);
+  box-shadow: inset 0 0 0 1px var(--A);
+}
+.fm-taller {
+  background: var(--Bl);
+  box-shadow: inset 0 0 0 1px var(--B);
+}
+.fm-urg {
+  background: var(--Rl);
+  box-shadow: inset 0 0 0 1.5px var(--R);
+  animation: fmPulse 1.8s infinite;
+}
+@keyframes fmPulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1.5px var(--R),
+      0 0 0 0 rgba(225, 29, 72, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1.5px var(--R),
+      0 0 0 5px rgba(225, 29, 72, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-urg {
+    animation: none;
+  }
+}
+.fm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ln2);
+  font-size: var(--text-2xs);
+  color: var(--s2);
+}
+.fm-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.fm-sw {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
 .alert-chip {
   display: inline-flex;
   align-items: center;
@@ -5429,6 +5541,16 @@ body:not([data-view="inspecciones"]) #alerts-panel {
     min-height: 44px;
     padding: 10px 14px;
     font-size: 12px;
+  }
+  /* Híbrido H4: tiles del mapa de flota más picables en móvil */
+  .fm-dots {
+    grid-template-columns: repeat(7, 26px);
+    gap: 6px;
+  }
+  .fm-tile {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
   }
   /* Lote 3: #btn-rango ya usa .btn-accent (sin estilo inline) → sin !important */
   #btn-rango {
