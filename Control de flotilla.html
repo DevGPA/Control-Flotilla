@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Rjh2QkL5/M07VgFRKtkrilFrIJGcAaH+69CM8ZgGd3o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-+NCWP/sdHdLyCKwTvANQIRPPdeyrut7sTDCiQgTJ+do='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3535,27 +3535,53 @@ function buildAlertsSummary(){
     for(const a of window.complianceAlerts()) alerts.push(a);
   }
 
-  // Render — chips por severidad. XSS-safe: textContent para conteo/etiqueta,
-  // detail (lista de unidades) va como title (texto plano, sin parseo HTML).
+  // Render — COLA DE ACCIÓN (Híbrido B×C H3): tarjetas con botones en lugar de
+  // chips-filtro. XSS-safe: todo textContent/createElement; detail también va
+  // como title (texto completo).
   if(!alerts.length){panel.style.display="none";return;}
   panel.style.display="block";
   list.replaceChildren();
+  const mkBtn=(label,cls,fn)=>{const b=document.createElement("button");b.type="button";b.className=cls;b.textContent=label;b.addEventListener("click",ev=>{ev.stopPropagation();fn();});return b;};
+  // 1) Tarjetas POR UNIDAD urgente (top 3, más hallazgos primero) — accionables.
+  const topUrg=[...urgentes].sort((a,b)=>b.F.filter(f=>f.lv==="Urgente").length-a.F.filter(f=>f.lv==="Urgente").length).slice(0,3);
+  for(const u of topUrg){
+    const card=document.createElement("div");card.className="aq-card aq-unit sev-r";
+    const top=document.createElement("div");top.className="aq-top";
+    const eco=document.createElement("span");eco.className="aq-eco";eco.textContent=`ECO ${u.eco||u.plate||"?"}`;
+    const tag=document.createElement("span");tag.className="aq-tag";tag.textContent="URGENTE";
+    top.append(eco,tag);
+    if(u.branch){const suc=document.createElement("span");suc.className="aq-suc";suc.textContent=u.branch;top.appendChild(suc);}
+    card.appendChild(top);
+    const det=document.createElement("div");det.className="aq-detail";
+    const f0=u.F.find(f=>f.lv==="Urgente");
+    det.textContent=(f0&&f0.text)?f0.text:"Hallazgo urgente pendiente";
+    det.title=det.textContent;card.appendChild(det);
+    const acts=document.createElement("div");acts.className="aq-acts";
+    acts.appendChild(mkBtn("Expediente","aq-btn",()=>{if(typeof selUnit==="function")selUnit(u.uid);}));
+    const toTaller=mkBtn("→ Taller","aq-btn aq-pri needs-write",()=>sendUnitToTaller(u));
+    acts.appendChild(toTaller);
+    card.appendChild(acts);
+    list.appendChild(card);
+  }
+  // 2) Tarjetas AGREGADAS (una por tipo de alerta) con su acción.
   for(const a of alerts){
-    const clickable=a.action||a.view;
-    const chip=document.createElement(clickable?"button":"span");
-    chip.className="alert-chip sev-"+a.sev+(clickable?"":" no-action");
-    if(a.action){const act=a.action;chip.type="button";chip.addEventListener("click",()=>setF(act));}
-    else if(a.view){const vw=a.view;chip.type="button";chip.addEventListener("click",()=>showView(vw));}
-    if(a.detail)chip.title=a.detail;
+    const card=document.createElement("div");card.className="aq-card sev-"+a.sev;
+    const top=document.createElement("div");top.className="aq-top";
     const ico=document.createElement("span");ico.className="ac-ico";
     const i=document.createElement("i");
     i.setAttribute("data-lucide",a.icon);
     i.style.width="13px";i.style.height="13px";
     ico.appendChild(i);
-    const n=document.createElement("span");n.className="ac-n";n.textContent=a.count;
-    const lbl=document.createElement("span");lbl.textContent=a.short;
-    chip.append(ico,n,lbl);
-    list.appendChild(chip);
+    const n=document.createElement("b");n.className="aq-n";n.textContent=a.count;
+    const lbl=document.createElement("span");lbl.className="aq-short";lbl.textContent=a.short;
+    top.append(ico,n,lbl);card.appendChild(top);
+    if(a.detail){const det=document.createElement("div");det.className="aq-detail";det.textContent=a.detail;det.title=a.detail;card.appendChild(det);}
+    const acts=document.createElement("div");acts.className="aq-acts";
+    if(a.action){const act=a.action;acts.appendChild(mkBtn("Ver en tabla","aq-btn",()=>setF(act)));}
+    else if(a.view){const vw=a.view;acts.appendChild(mkBtn("Abrir módulo","aq-btn",()=>showView(vw)));}
+    else if(a.short&&a.short.startsWith("Llantas")){acts.appendChild(mkBtn("Ver unidades","aq-btn",()=>{if(typeof openFleetModal==="function")openFleetModal("tiresCrit");}));}
+    if(acts.children.length)card.appendChild(acts);
+    list.appendChild(card);
   }
   if(window.lucide&&window.lucide.createIcons)window.lucide.createIcons();
   // Resumen para el estado plegado + restaura preferencia del usuario.
@@ -3572,6 +3598,17 @@ function buildAlertsSummary(){
   let collapsed=false;
   try{collapsed=localStorage.getItem("cf_alerts_collapsed")==="1";}catch(e){}
   setAlertsCollapsed(collapsed);
+}
+
+// Híbrido B×C H3: "Enviar a taller" desde la cola de acción — abre el modal de
+// nuevo ingreso y precarga los datos de la unidad (patrón de reingresoTaller).
+// La escritura real sigue gateada por canWrite() y el botón lleva .needs-write.
+function sendUnitToTaller(u){
+  if(typeof canWrite==="function"&&!canWrite())return;
+  if(typeof openTallerModal!=="function")return;
+  openTallerModal();
+  const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
+  set("tf-eco",u.eco);set("tf-plate",u.plate);set("tf-brand",u.brand);set("tf-branch",u.branch);
 }
 
 // Pliega/expande el panel de alertas y recuerda la preferencia en localStorage.
