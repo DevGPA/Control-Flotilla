@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-av1cKlQV0jIDtXPTB52pIhooAk1doBLE40MVdfzcyA8='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-+P1wkMuyFD1uS2KDH79HNpauKOULnhfX+/sEzGV1dZI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -435,6 +435,20 @@ g.inflateBytes=async function(src){
      con getElementById → queda dormido sin tocarlo. Para reactivar el widget,
      restaurar este bloque desde git (commit dc2208e tenía la cola de acción). -->
 </div><!-- /ops-row -->
+
+<!-- MINI-TARJETA DE UNIDAD (H9): click en un tile del mapa cuya unidad NO tiene
+     inspección en el rango actual → ficha rápida con datos del catálogo y accesos.
+     La llena openUnitCard(u) (inline). Escape la cierra (listener global). -->
+<div id="unit-card-modal" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <div role="dialog" aria-modal="true" aria-labelledby="uc-title" style="background:var(--bg);border:1px solid var(--ln);border-radius:12px;box-shadow:var(--shadow-xl);width:420px;max-width:92vw;padding:14px 18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+      <b id="uc-title" style="font-size:14px;color:var(--w1)">Unidad</b>
+      <button type="button" aria-label="Cerrar ficha de unidad" onclick="document.getElementById('unit-card-modal').style.display='none'" style="border:none;background:transparent;color:var(--s2);font-size:16px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div id="uc-body" style="font-size:12px;color:var(--s1);line-height:1.75"></div>
+    <div id="uc-acts" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"></div>
+  </div>
+</div>
 
 <!-- ANALYTICS VIEW (4º tab — full screen, sibling de Inspecciones/Taller/Semanales) -->
 <div class="analytics-panel" id="analytics-panel" style="display:none">
@@ -3279,6 +3293,10 @@ function buildKPIs(){
   // la agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
   const fmWrap=document.getElementById("fleet-map-panel"), fmEl=document.getElementById("fleet-map");
   if(fmWrap&&fmEl&&window.__fleetMap){
+    // H9: índice key→unidad del catálogo (misma derivación de key que el módulo)
+    // para el click de dos niveles: detalle si hay inspección en rango; si no, ficha.
+    const fmKey=x=>x.uid!=null?String(x.uid):String(x.eco??x.plate??"?");
+    const fmIndex=new Map(fleet.map(x=>[fmKey(x),x]));
     const model=window.__fleetMap.build(fleet.map(x=>({
       uid:x.uid,eco:x.eco,plate:x.plate,branch:x.branch,
       enTaller:isUnitEnTaller(x),
@@ -3290,10 +3308,14 @@ function buildKPIs(){
     // Solo visible en la vista Inspecciones (showView lo restaura al volver).
     const inInsp=document.getElementById("kpi")&&document.getElementById("kpi").style.display!=="none";
     fmWrap.style.display=(has&&inInsp)?"":"none";
-    if(has)window.__fleetMap.render(fmEl,model,uid=>{
-      const t=(units||[]).find(v=>v.uid===uid);
-      if(t&&typeof selUnit==="function")selUnit(uid);
-      else if(typeof openFleetModal==="function")openFleetModal("all");
+    if(has)window.__fleetMap.render(fmEl,model,key=>{
+      const cu=fmIndex.get(key);if(!cu)return;
+      // Nivel 1: la unidad tiene inspección en el rango → detalle completo (#det).
+      // El match es por PLACA (o eco) — los uid de catálogo e inspecciones difieren.
+      const t=(units||[]).find(v=>(cu.plate&&v.plate===cu.plate)||(cu.eco!=null&&String(v.eco)===String(cu.eco)));
+      if(t&&typeof selUnit==="function")selUnit(t.uid);
+      // Nivel 2: sin inspección en el rango → mini-tarjeta con datos y accesos.
+      else openUnitCard(cu);
     });
     // H5: colapsable (persistido) + wrapper lado-a-lado con la cola de acción.
     const fmHdr=document.getElementById("fm-header");
@@ -3641,6 +3663,40 @@ function sendUnitToTaller(u){
   openTallerModal();
   const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
   set("tf-eco",u.eco);set("tf-plate",u.plate);set("tf-brand",u.brand);set("tf-branch",u.branch);
+}
+
+// H9: mini-tarjeta de unidad — click en tile del mapa SIN inspección en el rango.
+// XSS-safe (textContent). Acciones: ficha en el modal de flota (filtrado al eco)
+// y salto a Cumplimiento (solo si el módulo está visible para el usuario).
+function openUnitCard(u){
+  const m=document.getElementById("unit-card-modal");if(!m||!u)return;
+  document.getElementById("uc-title").textContent=`ECO ${u.eco||u.plate||"?"}${u.brand?" · "+u.brand:""}`;
+  const body=document.getElementById("uc-body");body.replaceChildren();
+  const row=(k,v)=>{const d=document.createElement("div");const b=document.createElement("b");b.style.color="var(--w1)";b.textContent=k+": ";d.appendChild(b);d.appendChild(document.createTextNode(v||"—"));body.appendChild(d);};
+  row("Placa",u.plate);
+  row("Sucursal",u.branch);
+  row("Estado última inspección",u.risk||"Sin datos");
+  row("Última inspección",u.fecha||"Sin registro en este rango");
+  if(u.km)row("Kilometraje",String(u.km));
+  if(u.nextSvc||u.kmNextSvc)row("Próximo servicio",String(u.nextSvc||u.kmNextSvc));
+  if(typeof isUnitEnTaller==="function"&&isUnitEnTaller(u))row("Taller","EN TALLER actualmente");
+  const acts=document.getElementById("uc-acts");acts.replaceChildren();
+  const mk=(lbl,fn,pri)=>{const b=document.createElement("button");b.type="button";b.className="aq-btn"+(pri?" aq-pri":"");b.textContent=lbl;b.addEventListener("click",()=>{m.style.display="none";fn();});acts.appendChild(b);};
+  mk("Ficha en flota",()=>{
+    if(typeof openFleetModal!=="function")return;
+    openFleetModal("all");
+    const s=document.getElementById("fleet-mod-srch");
+    if(s){s.value=String(u.eco||u.plate||"");if(typeof renderFleetModalRows==="function")renderFleetModalRows();}
+  },true);
+  const mnCmp=document.getElementById("mn-cumplimiento");
+  if(mnCmp&&mnCmp.style.display!=="none")
+    mk("Cumplimiento",()=>{
+      if(typeof showView!=="function")return;
+      showView("cumplimiento");
+      const s=document.getElementById("cmp-search");
+      if(s){s.value=String(u.eco||u.plate||"");s.dispatchEvent(new Event("input",{bubbles:true}));}
+    });
+  m.style.display="flex";
 }
 
 // Híbrido H5: el wrapper #ops-row (mapa + cola lado a lado) se muestra si alguno
@@ -4791,7 +4847,7 @@ function closeModal(id){
 // (gasto/tendencias/expediente de cumplimiento se muestran con style.display).
 document.addEventListener("keydown",function(e){
   if(e.key!=="Escape")return;
-  ["gasto-overlay","tendencias-overlay","cmp-modal"].forEach(function(id){
+  ["gasto-overlay","tendencias-overlay","cmp-modal","unit-card-modal"].forEach(function(id){
     const el=document.getElementById(id);
     if(el&&el.style.display&&el.style.display!=="none")el.style.display="none";
   });
