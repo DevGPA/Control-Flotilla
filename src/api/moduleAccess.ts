@@ -7,12 +7,18 @@
  * tenant + rol + sucursal en AppSync.
  */
 
+// ⚠️ FUENTE DE VERDAD de los módulos limitables por usuario. Al agregar un módulo
+// nuevo, añádelo AQUÍ (a las tres estructuras) y quedará automáticamente: (1) gateado
+// en el nav por gatingPlan y (2) como checkbox en el modal de Usuarios (que se genera
+// dinámicamente desde esta lista, ver openUsuarioModal en el HTML). No hardcodear
+// módulos en el HTML ni en otros lados.
 export const ASSIGNABLE_MODULES = [
   "inspecciones",
   "taller",
   "semanales",
   "analytics",
   "combustible",
+  "cumplimiento",
 ] as const;
 export type ModuleKey = (typeof ASSIGNABLE_MODULES)[number];
 
@@ -23,6 +29,17 @@ export const MODULE_NAV: Record<ModuleKey, string> = {
   semanales: "mn-semanales",
   analytics: "mn-analytics",
   combustible: "mn-combustible",
+  cumplimiento: "mn-cumplimiento",
+};
+
+/** módulo → etiqueta visible en el modal de Usuarios (checkbox). */
+export const MODULE_LABEL: Record<ModuleKey, string> = {
+  inspecciones: "Inspecciones",
+  taller: "Taller",
+  semanales: "Semanales",
+  analytics: "Análisis",
+  combustible: "Combustible",
+  cumplimiento: "Cumplimiento",
 };
 
 function isModuleKey(s: string): s is ModuleKey {

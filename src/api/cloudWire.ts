@@ -15,7 +15,7 @@
 
 import { configureAmplify, type Schema } from "./amplifyClient";
 import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
-import { gatingPlan, MODULE_NAV } from "./moduleAccess";
+import { gatingPlan, MODULE_NAV, ASSIGNABLE_MODULES, MODULE_LABEL } from "./moduleAccess";
 import { showAuthModal } from "../ui/authModal";
 import {
   uploadZipToCloud,
@@ -144,6 +144,10 @@ declare global {
     __moduleGating?: {
       plan: typeof gatingPlan;
       allNavIds: string[];
+      /** Módulos limitables (fuente de verdad) para poblar el modal de Usuarios. */
+      assignable: readonly string[];
+      /** módulo → etiqueta visible del checkbox. */
+      labels: Record<string, string>;
     };
   }
 }
@@ -333,7 +337,12 @@ export function setupCloud(): void {
   // ── Módulo de Administración de Usuarios (2026-06-12) ──────────────────────
   // El gate de ROL real es server-side (AppSync exige grupo 'admin'); isAdmin()
   // es solo para mostrar/ocultar la vista. ensureSession garantiza login.
-  window.__moduleGating = { plan: gatingPlan, allNavIds: Object.values(MODULE_NAV) };
+  window.__moduleGating = {
+    plan: gatingPlan,
+    allNavIds: Object.values(MODULE_NAV),
+    assignable: ASSIGNABLE_MODULES,
+    labels: MODULE_LABEL,
+  };
   window.__admin = {
     isAdmin: () => isAdmin(),
     refreshSession: () => forceRefreshSession(),
