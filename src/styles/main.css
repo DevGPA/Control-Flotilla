@@ -122,11 +122,20 @@
   --shadow-lg: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 10px 15px -3px rgba(15, 23, 42, 0.04);
   --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.03);
 
+  /* ── Piel B (Híbrido B×C, 2026-07-03): tarjeta estándar en capas ─────────────
+     Borde hairline translúcido + sombra suave de dos capas + elevación al hover.
+     Usar estos tres tokens en TODA tarjeta/panel (hero, .kc, .chart-card, paneles
+     nuevos) en lugar de border --ln + sombra ad-hoc. */
+  --card-bd: 1px solid rgba(21, 28, 40, 0.08);
+  --card-sh: 0 1px 1px rgba(21, 28, 40, 0.04), 0 8px 20px -12px rgba(21, 28, 40, 0.14);
+  --card-sh-hover: 0 2px 2px rgba(21, 28, 40, 0.05), 0 16px 30px -12px rgba(21, 28, 40, 0.22);
+
   --fh: "Inter", system-ui, -apple-system, sans-serif;
   --fb: "Inter", system-ui, -apple-system, sans-serif;
   --fm: "DM Mono", "SF Mono", "Cascadia Code", monospace;
   --r1: 6px;
-  --r2: 8px;
+  /* Piel B: radio de tarjeta 8→12px (los controles chicos siguen en --r1). */
+  --r2: 12px;
   --r3: 12px;
   --r4: 16px;
   --col-tpl: 36px 96px 148px 110px 92px 1fr 76px 86px;
@@ -219,6 +228,11 @@
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
   --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.35);
+
+  /* Piel B — versión dark de la tarjeta en capas (hairline claro + sombra negra) */
+  --card-bd: 1px solid rgba(148, 170, 205, 0.12);
+  --card-sh: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 26px -14px rgba(0, 0, 0, 0.5);
+  --card-sh-hover: 0 2px 3px rgba(0, 0, 0, 0.45), 0 18px 34px -14px rgba(0, 0, 0, 0.6);
 
   /* UX Fase 4: overrides dark de los tokens nuevos. Antes las pills de taller
      repar/cotiz/porrec NO tenían versión dark (fondos pastel light en oscuro). */
@@ -738,10 +752,18 @@ select {
   gap: 12px;
   padding: 10px 14px;
   background: var(--bg);
-  border: 1px solid var(--ln);
+  /* Piel B: tarjeta en capas + elevación al hover (todas las hero son clicables) */
+  border: var(--card-bd);
   border-radius: var(--r2);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-sh);
   min-width: 0;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-sh-hover);
 }
 .hero-icon {
   width: 36px;
@@ -789,9 +811,9 @@ select {
   gap: 14px;
   padding: 10px 16px;
   background: var(--bg);
-  border: 1px solid var(--ln);
+  border: var(--card-bd);
   border-radius: var(--r2);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--card-sh);
   flex: 0 0 auto;
 }
 .dwrap {
@@ -895,14 +917,19 @@ select {
   padding: 12px 14px;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--ln);
-  transition: box-shadow 0.15s;
+  /* Piel B: tarjeta en capas */
+  border: var(--card-bd);
+  box-shadow: var(--card-sh);
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .kc.btn {
   cursor: pointer;
 }
 .kc.btn:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  box-shadow: var(--card-sh-hover);
 }
 .ktop {
   position: absolute;
@@ -1611,6 +1638,13 @@ select.filter-active {
 .tr:hover::before {
   opacity: 1;
   width: 5px;
+}
+/* Piel B (Híbrido B×C): la franja de severidad SIEMPRE visible en filas
+   urgente/revisar (antes solo al hover) — se escanea sin leer. Al hover crece. */
+.tr.ru::before,
+.tr.rr::before {
+  opacity: 1;
+  width: 3px;
 }
 .tr.ru::before {
   background: var(--R);
@@ -5337,8 +5371,10 @@ body:not([data-view="inspecciones"]) #alerts-panel {
      quedaban del mismo color que la página (delta de luminancia ~nulo) → la tarjeta
      se veía invisible y los títulos flotaban sueltos. En dark sigue contrastando. */
   background: var(--bg);
-  border: 1px solid var(--ln);
+  /* Piel B: tarjeta en capas (mismo trío de tokens que .kc/.hero-card) */
+  border: var(--card-bd);
   border-radius: var(--r2);
+  box-shadow: var(--card-sh);
   padding: 12px 14px 10px;
   min-width: 0;
 }
