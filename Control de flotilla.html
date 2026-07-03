@@ -325,10 +325,10 @@ g.inflateBytes=async function(src){
 <!-- BARRA DE RANGO DE FECHAS (reemplaza chips de período) -->
 <div id="periodo-bar">
   <span class="periodo-label">Rango:</span>
-  <input type="date" id="rango-desde" aria-label="Desde" style="padding:3px 6px;border:1px solid var(--ln);border-radius:5px;font-size:11px;background:var(--bg);color:var(--w1)"/>
+  <input type="date" id="rango-desde" aria-label="Desde" class="field-input"/>
   <span style="color:var(--s2);font-size:11px">→</span>
-  <input type="date" id="rango-hasta" aria-label="Hasta" style="padding:3px 6px;border:1px solid var(--ln);border-radius:5px;font-size:11px;background:var(--bg);color:var(--w1)"/>
-  <button id="btn-rango" onclick="aplicarRango()" style="padding:3px 12px;border:1px solid var(--ac);border-radius:6px;font-size:10px;color:#fff;background:var(--ac);cursor:pointer;font-weight:600">Aplicar</button>
+  <input type="date" id="rango-hasta" aria-label="Hasta" class="field-input"/>
+  <button id="btn-rango" onclick="aplicarRango()" class="btn-accent">Aplicar</button>
   <span id="rango-count" style="font-size:10px;color:var(--s2);margin-left:4px"></span>
   <div id="periodo-chips" style="display:none"></div>
   <button id="btn-tendencias" onclick="showTendencias()" style="display:none" title="Comparar tendencias entre períodos"><i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i> Tendencias</button>
@@ -625,10 +625,10 @@ g.inflateBytes=async function(src){
 
   <!-- Barra: Operaciones Activas -->
   <div class="tl-bar" id="tl-bar-activas">
-    <select id="tl-filt-suc" onchange="renderTaller()" aria-label="Filtrar taller por sucursal" style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="tl-filt-suc" onchange="renderTaller()" aria-label="Filtrar taller por sucursal" class="field-input">
       <option value="all">Todas las sucursales</option>
     </select>
-    <select id="tl-filt-area" onchange="renderTaller()" aria-label="Filtrar taller por área" style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="tl-filt-area" onchange="renderTaller()" aria-label="Filtrar taller por área" class="field-input">
       <option value="all">Todas las áreas</option>
       <option value="LOGISTICA">Logística</option>
       <option value="SERVICIO TECNICO">Servicio Técnico</option>
@@ -636,14 +636,14 @@ g.inflateBytes=async function(src){
       <option value="ALMACEN">Almacén</option>
       <option value="ADMINISTRACION">Administración</option>
     </select>
-    <select id="tl-filt-tipo" onchange="renderTaller()" aria-label="Filtrar taller por tipo de mantenimiento" style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="tl-filt-tipo" onchange="renderTaller()" aria-label="Filtrar taller por tipo de mantenimiento" class="field-input">
       <option value="all">Todos los tipos</option>
       <option value="Correctivo">Mtto Correctivo</option>
       <option value="Preventivo">Mtto Preventivo</option>
     </select>
     <input id="tl-filt-q" type="text" placeholder="Buscar ECO, placa, técnico…"
       aria-label="Buscar en taller por ECO, placa o técnico"
-      style="padding:5px 9px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg);width:180px"
+      class="field-input" style="width:180px"
       oninput="renderTaller()"/>
     <span id="tl-rcnt" style="font-size:10px;color:var(--s2)"></span>
     <button onclick="exportTallerActivasExcel()"
@@ -660,12 +660,12 @@ g.inflateBytes=async function(src){
   <div class="tl-bar" id="tl-bar-historial" style="display:none;flex-wrap:wrap;gap:6px">
     <input id="tl-hist-q" type="text" placeholder="Buscar por No. Unidad, Placas o Modelo…"
       aria-label="Buscar en historial de taller"
-      style="padding:5px 9px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg);width:200px"
+      class="field-input" style="width:200px"
       oninput="renderTaller()"/>
-    <select id="tl-hist-suc" onchange="renderTaller()" aria-label="Filtrar historial por sucursal" style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="tl-hist-suc" onchange="renderTaller()" aria-label="Filtrar historial por sucursal" class="field-input">
       <option value="all">Todas las sucursales</option>
     </select>
-    <select id="tl-hist-tipo" onchange="renderTaller()" aria-label="Filtrar historial por tipo" style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)" title="Filtrar por tipo de mantenimiento">
+    <select id="tl-hist-tipo" onchange="renderTaller()" aria-label="Filtrar historial por tipo" class="field-input" title="Filtrar por tipo de mantenimiento">
       <option value="all">Todos los tipos</option>
       <option value="Correctivo">Correctivo</option>
       <option value="Preventivo">Preventivo</option>
@@ -675,11 +675,11 @@ g.inflateBytes=async function(src){
       Desde
       <input id="tl-hist-desde" type="date" onchange="renderTaller()"
         aria-label="Fecha desde (filtro historial taller)"
-        style="padding:4px 6px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)"/>
+        class="field-input"/>
       Hasta
       <input id="tl-hist-hasta" type="date" onchange="renderTaller()"
         aria-label="Fecha hasta (filtro historial taller)"
-        style="padding:4px 6px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)"/>
+        class="field-input"/>
     </div>
     <button onclick="document.getElementById('tl-hist-q').value='';document.getElementById('tl-hist-desde').value='';document.getElementById('tl-hist-hasta').value='';document.getElementById('tl-hist-suc').value='all';document.getElementById('tl-hist-tipo').value='all';renderTaller()"
       style="padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10px;color:var(--s2);background:var(--bg);cursor:pointer">✕ Limpiar</button>
@@ -897,7 +897,7 @@ g.inflateBytes=async function(src){
     <div class="divdr"></div>
     <select id="sw-filt-suc" onchange="renderSemanales()"
       aria-label="Filtrar semanal por sucursal"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+      class="field-input">
       <option value="all">Todas las sucursales</option>
     </select>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
@@ -975,11 +975,10 @@ g.inflateBytes=async function(src){
     <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable" class="field-input">
       <option value="">Todos los responsables</option>
     </select>
-    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+    <div class="sw sw-inline bar-search">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
-        aria-label="Buscar combustible por ID de unidad, placa o responsable"
-        style="border:none;background:transparent;font-size:11px;color:var(--w1);width:160px;outline:none"/>
+        aria-label="Buscar combustible por ID de unidad, placa o responsable"/>
     </div>
     <button id="fuel-export-toka" type="button"
       title="Descarga el layout de carga masiva Toka con las unidades del filtro actual"
@@ -1064,11 +1063,10 @@ g.inflateBytes=async function(src){
     <select id="cmp-sucursal" aria-label="Filtrar cumplimiento por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
-    <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
+    <div class="sw sw-inline bar-search">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="cmp-search" type="text" placeholder="ID unidad, placa…"
-        aria-label="Buscar cumplimiento por ID de unidad o placa"
-        style="border:none;background:transparent;font-size:11px;color:var(--w1);width:160px;outline:none"/>
+        aria-label="Buscar cumplimiento por ID de unidad o placa"/>
     </div>
     <span id="cmp-count" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
