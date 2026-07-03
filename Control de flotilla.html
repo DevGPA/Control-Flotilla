@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-nqd9Qr56wKsp19iHfLJp9HjPJIFECkfveJPpF/bAiWk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-Rjh2QkL5/M07VgFRKtkrilFrIJGcAaH+69CM8ZgGd3o='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -359,6 +359,12 @@ g.inflateBytes=async function(src){
 
 <!-- HERO METRICS -->
 <div id="kpi">
+  <!-- Híbrido B×C H2: headline — la pantalla dice qué atender HOY.
+       Lo escribe buildKPIs (misma pasada que los KPIs; scoped por sucursal). -->
+  <div id="hero-head">
+    <div id="hero-title" role="heading" aria-level="2"><span id="hero-att">—</span><span id="hero-att-rest"> unidades por revisar</span></div>
+    <div id="hero-sub">Cargando estado de la flota…</div>
+  </div>
   <div class="hero-row">
     <div class="hero-card" onclick="openFleetModal()" style="cursor:pointer" role="button" tabindex="0" title="Ver todas las unidades de la flota">
       <div class="hero-icon" style="background:var(--B)"><i data-lucide="truck" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
@@ -3194,16 +3200,32 @@ function buildKPIs(){
   // muestra la tabla. ──
   const t=sUnits.length;
   const d30=new Date();d30.setHours(0,0,0,0);d30.setDate(d30.getDate()+30);
-  let u=0,r=0,withObs=0,nSvcRange=0;
+  let u=0,r=0,withObs=0,nSvcRange=0,att=0;
   for(const x of sUnits){
     const dm=checklistDB[x.uid]||{};
     const pend=x.F.filter(f=>!isFindingDone(dm,f,x.fecha));
-    if(pend.some(f=>f.lv==="Urgente")) u++;
+    const esUrg=pend.some(f=>f.lv==="Urgente");
+    if(esUrg) u++;
     if(pend.some(f=>f.lv==="Revisar")) r++;
     if(x.obs) withObs++;
     // Review 2026-06-11: km-first (svcStatus), en sync con filtro/finding/hero.
     const ss=svcStatus(x);
     if(ss==="vencido"||ss==="proximo") nSvcRange++;
+    // Híbrido B×C H2: "requiere atención HOY" = urgente ∪ llanta crítica ∪ svc
+    // vencido, deduplicado POR UNIDAD (los KPIs los cuentan por separado).
+    if(esUrg || (x.minT!==null&&x.minT<=TCRIT) || ss==="vencido") att++;
+  }
+  // Hero headline (Híbrido B×C H2) — mismos datos scoped de esta pasada.
+  const heroN=document.getElementById("hero-att");
+  if(heroN){
+    const heroR=document.getElementById("hero-att-rest"), heroS=document.getElementById("hero-sub");
+    heroN.textContent=String(att);
+    heroN.style.color=att?"var(--A)":"var(--G)";
+    if(heroR) heroR.textContent=att===1?" unidad requiere tu atención hoy":" unidades requieren tu atención hoy";
+    if(heroS){
+      const pctOp=fleetN?Math.round((operativaDonut/fleetN)*100):0;
+      heroS.textContent=`${fleetN} en flota · ${pctOp}% operativa · ${nSvcAlert} servicio${nSvcAlert!==1?"s":""} por atender · ${t} inspección${t!==1?"es":""} en el rango`;
+    }
   }
   const fcAll=document.getElementById("fc_all");if(fcAll)fcAll.textContent=t?`(${t})`:"";
   const fc0=document.getElementById("fc0");if(fc0)fc0.textContent=u?`(${u})`:"";
