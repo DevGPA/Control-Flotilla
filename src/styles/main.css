@@ -732,34 +732,12 @@ select {
 }
 
 /* ════ KPI BAR ═══════════════════════════════════════════ */
+/* H7: sin headline (decisión del usuario) — los KPIs compactos son la primera fila. */
 #kpi {
   display: none;
-  /* Híbrido B×C H2: headline arriba + fila de tarjetas abajo */
-  flex-direction: column;
-  gap: 10px;
   flex-shrink: 0;
-  padding: 12px 16px 0;
+  padding: 10px 16px 0;
   background: var(--bg2);
-}
-/* ── Hero headline (Híbrido B×C H2): la pantalla dice qué atender HOY ── */
-#hero-head {
-  min-width: 0;
-}
-#hero-title {
-  font-size: var(--text-3xl);
-  font-weight: 800;
-  letter-spacing: -0.8px;
-  line-height: 1.15;
-  color: var(--w1);
-  text-wrap: balance;
-}
-#hero-att {
-  font-variant-numeric: tabular-nums;
-}
-#hero-sub {
-  font-size: var(--text-md);
-  color: var(--s2);
-  margin-top: 3px;
 }
 .hero-row {
   display: flex;
@@ -773,7 +751,7 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
-  /* H2: compactas — el headline #hero-title es el héroe ahora */
+  /* H2/H7: compactas */
   padding: 8px 12px;
   background: var(--bg);
   /* Piel B: tarjeta en capas + elevación al hover (todas las hero son clicables) */
@@ -3839,25 +3817,10 @@ select.filter-active {
   filter: brightness(1.12);
 }
 
-/* ════ DASH SCROLL (Híbrido H6) ══════════════════════════════════════════
-   Banda de dashboard (hero + KPIs + mapa + cola) que CEDE espacio: en pantallas
-   cortas obtiene scroll propio y la tabla (#main) conserva un mínimo garantizado.
-   En pantallas altas la banda cabe completa y no scrollea (cero cambio visual). */
-#dash-scroll {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-/* La tabla es el caballo de batalla: nunca menos de ~42% del viewport. */
-#main {
-  min-height: 42vh;
-}
-
-/* ════ OPS ROW (Híbrido H5): mapa + cola de acción lado a lado ════════════
-   La app es de viewport fijo (sin scroll de página): estos paneles llevan
-   ALTURA TOPE con scroll interno para no aplastar la tabla. */
+/* ════ OPS ROW (Híbrido H5/H7): mapa + cola de acción lado a lado ════════════
+   La app es de viewport fijo (sin scroll de página): los paneles quedan SIEMPRE
+   visibles completos y su CONTENIDO scrollea adentro, con alturas que se adaptan
+   a la pantalla (media query por ALTURA abajo). Sin bandas de scroll externas. */
 #ops-row {
   gap: 10px;
   margin: 0 12px 6px;
@@ -3874,12 +3837,42 @@ select.filter-active {
   min-width: 0;
 }
 #fleet-map {
-  max-height: 170px;
+  max-height: 150px;
   overflow-y: auto;
+  scrollbar-width: thin;
 }
 #alerts-list {
-  max-height: 190px;
+  max-height: 160px;
   overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* Laptops compactas: el dashboard se comprime para que la tabla conserve
+   ~5-6 filas visibles. El contenido sigue completo vía scroll interno. */
+@media (max-height: 800px) {
+  #fleet-map {
+    max-height: 105px;
+  }
+  #alerts-list {
+    max-height: 110px;
+  }
+  #kpi {
+    padding: 8px 12px 0;
+  }
+  .hero-card {
+    padding: 6px 10px;
+    gap: 9px;
+  }
+  .hero-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+  }
+  .hero-val {
+    font-size: 17px;
+  }
+  .hero-sub {
+    display: none;
+  }
 }
 
 /* ════ MAPA DE FLOTA (Híbrido B×C H4) ════════════════════════
