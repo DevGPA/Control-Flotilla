@@ -31,8 +31,21 @@ describe("gatingPlan", () => {
   });
   it("oculta los no asignados", () => {
     const p = gatingPlan(["combustible"], false, "combustible");
-    expect(p.hidden).toEqual(["mn-insp", "mn-taller", "mn-semanales", "mn-analytics"]);
+    expect(p.hidden).toEqual([
+      "mn-insp",
+      "mn-taller",
+      "mn-semanales",
+      "mn-analytics",
+      "mn-cumplimiento",
+    ]);
     expect(p.redirectTo).toBeNull(); // ya está en una vista permitida
+  });
+  it("cumplimiento es limitable: se oculta si no está asignado y es válido en el CSV", () => {
+    expect(gatingPlan(["combustible"], false, "combustible").hidden).toContain("mn-cumplimiento");
+    expect(parseModulos("cumplimiento")).toEqual(["cumplimiento"]);
+    expect(gatingPlan(["cumplimiento"], false, "cumplimiento").hidden).not.toContain(
+      "mn-cumplimiento",
+    );
   });
   it("redirige al primer permitido si la vista actual no está permitida", () => {
     const p = gatingPlan(["combustible", "taller"], false, "inspecciones");

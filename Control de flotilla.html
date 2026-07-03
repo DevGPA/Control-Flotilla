@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-4EUfyj+j64eCCtk6JG5GWS85jJJS77QfNgX0wKC4epM='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-PHqRa56KVWhr+5nyq9qb37nd+0qX8DOYi+BC5wvpCik='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -769,12 +769,16 @@ g.inflateBytes=async function(src){
       </div>
       <div class="tl-field full" id="uf-modulos-field">
         <label>Módulos permitidos</label>
+        <!-- Estos checkboxes se REGENERAN dinámicamente al abrir el modal desde la
+             fuente de verdad (buildModuloCheckboxes → window.__moduleGating.assignable,
+             def. en src/api/moduleAccess.ts). Lo de abajo es solo fallback estático. -->
         <div id="uf-modulos" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px">
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="inspecciones"/> Inspecciones</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="taller"/> Taller</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="semanales"/> Semanales</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="analytics"/> Análisis</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="combustible"/> Combustible</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500"><input type="checkbox" class="uf-mod" value="cumplimiento"/> Cumplimiento</label>
         </div>
         <div style="font-size:10.5px;color:var(--s2);margin-top:4px">Sin marcar nada = acceso a todos los módulos. (El admin siempre ve todo.)</div>
       </div>
@@ -6261,6 +6265,21 @@ function populateSucursalOptions(selected){
   sel.value=selected||"";
 }
 
+// Genera los checkboxes de "Módulos permitidos" desde la fuente de verdad
+// (window.__moduleGating.assignable + labels, def. en src/api/moduleAccess.ts).
+// Así, agregar un módulo nuevo allá lo hace aparecer aquí sin tocar el HTML.
+// Fallback: si el gating aún no cargó, deja el contenido estático que ya exista.
+function buildModuloCheckboxes(){
+  const mg = window.__moduleGating;
+  const box = document.getElementById("uf-modulos");
+  if(!box || !mg || !Array.isArray(mg.assignable) || !mg.assignable.length) return;
+  box.innerHTML = mg.assignable.map(function(m){
+    const label = (mg.labels && mg.labels[m]) || m;
+    return '<label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500">'
+      + '<input type="checkbox" class="uf-mod" value="'+escAttr(m)+'"/> '+escHtml(label)+'</label>';
+  }).join("");
+}
+
 // ── Modal alta/edición ──
 function openUsuarioModal(sub){
   _uvEditSub = sub || null;
@@ -6274,6 +6293,7 @@ function openUsuarioModal(sub){
   document.getElementById("uf-rol").value = u ? (u.rol||"") : "";
   document.getElementById("uf-rol").disabled = !!u; // el rol se cambia con su acción dedicada
   // Módulos permitidos (CSV en u.modulos). Sin marcar = todos.
+  buildModuloCheckboxes(); // genera los checkboxes desde la fuente de verdad (moduleAccess)
   const modSet = new Set(String((u && u.modulos) || "").split(",").map(s=>s.trim()).filter(Boolean));
   document.querySelectorAll(".uf-mod").forEach(cb=>{ cb.checked = modSet.has(cb.value); });
   document.getElementById("uf-hint").textContent = u
