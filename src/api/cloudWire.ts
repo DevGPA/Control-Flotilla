@@ -16,6 +16,7 @@
 import { configureAmplify, type Schema } from "./amplifyClient";
 import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
 import { gatingPlan, MODULE_NAV, ASSIGNABLE_MODULES, MODULE_LABEL } from "./moduleAccess";
+import { buildFleetMapModel, renderFleetMap } from "../ui/fleetMap";
 import { showAuthModal } from "../ui/authModal";
 import {
   uploadZipToCloud,
@@ -148,6 +149,11 @@ declare global {
       assignable: readonly string[];
       /** módulo → etiqueta visible del checkbox. */
       labels: Record<string, string>;
+    };
+    /** Mapa de flota (Híbrido B×C H4) — lógica pura testeada; buildKPIs la invoca. */
+    __fleetMap?: {
+      build: typeof buildFleetMapModel;
+      render: typeof renderFleetMap;
     };
   }
 }
@@ -343,6 +349,7 @@ export function setupCloud(): void {
     assignable: ASSIGNABLE_MODULES,
     labels: MODULE_LABEL,
   };
+  window.__fleetMap = { build: buildFleetMapModel, render: renderFleetMap };
   window.__admin = {
     isAdmin: () => isAdmin(),
     refreshSession: () => forceRefreshSession(),
