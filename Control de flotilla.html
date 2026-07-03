@@ -357,6 +357,11 @@ g.inflateBytes=async function(src){
   </div>
 </div>
 
+<!-- DASH SCROLL (Híbrido H6): banda de dashboard (hero + KPIs + mapa + cola) con
+     scroll PROPIO que cede espacio — la app es de viewport fijo y en laptops el
+     bloque fijo aplastaba la tabla (#main tiene min-height garantizado en CSS).
+     En pantallas altas se ve completa sin scroll; solo markup+CSS, sin JS. -->
+<div id="dash-scroll">
 <!-- HERO METRICS -->
 <div id="kpi">
   <!-- Híbrido B×C H2: headline — la pantalla dice qué atender HOY.
@@ -443,6 +448,7 @@ g.inflateBytes=async function(src){
   <div id="alerts-list"></div>
 </div>
 </div><!-- /ops-row -->
+</div><!-- /dash-scroll -->
 
 <!-- ANALYTICS VIEW (4º tab — full screen, sibling de Inspecciones/Taller/Semanales) -->
 <div class="analytics-panel" id="analytics-panel" style="display:none">

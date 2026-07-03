@@ -3839,6 +3839,22 @@ select.filter-active {
   filter: brightness(1.12);
 }
 
+/* ════ DASH SCROLL (Híbrido H6) ══════════════════════════════════════════
+   Banda de dashboard (hero + KPIs + mapa + cola) que CEDE espacio: en pantallas
+   cortas obtiene scroll propio y la tabla (#main) conserva un mínimo garantizado.
+   En pantallas altas la banda cabe completa y no scrollea (cero cambio visual). */
+#dash-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+/* La tabla es el caballo de batalla: nunca menos de ~42% del viewport. */
+#main {
+  min-height: 42vh;
+}
+
 /* ════ OPS ROW (Híbrido H5): mapa + cola de acción lado a lado ════════════
    La app es de viewport fijo (sin scroll de página): estos paneles llevan
    ALTURA TOPE con scroll interno para no aplastar la tabla. */
