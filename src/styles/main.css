@@ -734,9 +734,32 @@ select {
 /* ════ KPI BAR ═══════════════════════════════════════════ */
 #kpi {
   display: none;
+  /* Híbrido B×C H2: headline arriba + fila de tarjetas abajo */
+  flex-direction: column;
+  gap: 10px;
   flex-shrink: 0;
-  padding: 10px 16px 0;
+  padding: 12px 16px 0;
   background: var(--bg2);
+}
+/* ── Hero headline (Híbrido B×C H2): la pantalla dice qué atender HOY ── */
+#hero-head {
+  min-width: 0;
+}
+#hero-title {
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  line-height: 1.15;
+  color: var(--w1);
+  text-wrap: balance;
+}
+#hero-att {
+  font-variant-numeric: tabular-nums;
+}
+#hero-sub {
+  font-size: var(--text-md);
+  color: var(--s2);
+  margin-top: 3px;
 }
 .hero-row {
   display: flex;
@@ -750,7 +773,8 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  /* H2: compactas — el headline #hero-title es el héroe ahora */
+  padding: 8px 12px;
   background: var(--bg);
   /* Piel B: tarjeta en capas + elevación al hover (todas las hero son clicables) */
   border: var(--card-bd);
@@ -766,13 +790,13 @@ select {
   box-shadow: var(--card-sh-hover);
 }
 .hero-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
   flex-shrink: 0;
   color: #fff;
 }
@@ -780,11 +804,12 @@ select {
   min-width: 0;
 }
 .hero-val {
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.5px;
   color: var(--w1);
+  font-variant-numeric: tabular-nums;
 }
 /* UX Fase 1 (2026-06-11): piso de legibilidad 10.5px — antes 9px con
    letter-spacing 1px era ilegible en móvil/exterior (operadores de campo). */
