@@ -4586,7 +4586,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 .sw-filter-btn {
   padding: 4px 10px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   border: 1.5px solid var(--ln);
   background: var(--bg3);
@@ -4624,7 +4624,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 .sw-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .sw-table th {
   position: sticky;
@@ -4632,7 +4632,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   background: var(--bg2);
   padding: 8px 10px;
   text-align: left;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: var(--s2);
   text-transform: uppercase;
@@ -4817,6 +4817,99 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+
+/* ── Input/select compacto de barras de filtro (UX 2026-07 Lote 2) ──────────
+   Clase única para el patrón que estaba copy-pasteado inline ~18 veces en el
+   HTML y en renderCapturaForm. Usarla en TODO input/select nuevo de barra. */
+.field-input {
+  padding: 5px 8px;
+  border: 1px solid var(--ln);
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  color: var(--w1);
+  background: var(--bg);
+}
+
+/* ══════════════════════════════════════════════════════════
+   CUMPLIMIENTO — expediente por unidad + formulario de captura
+   (UX 2026-07 Lote 2: antes vivía como cssText inline en
+   renderCumplimiento.ts; nivelado a clases con tokens.)
+   ══════════════════════════════════════════════════════════ */
+.cmp-info-banner {
+  font-size: var(--text-sm);
+  color: var(--s2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--ln);
+  margin-bottom: var(--space-2);
+}
+.cmp-empty {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--s3);
+  font-size: var(--text-md);
+}
+.cmp-doc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--ln);
+}
+.cmp-doc-tipo {
+  flex: 1;
+  font-size: var(--text-md);
+  color: var(--w1);
+}
+.cmp-doc-meta {
+  font-size: var(--text-sm);
+  color: var(--s2);
+  min-width: 120px;
+  text-align: right;
+}
+.cmp-doc-del {
+  border: none;
+  background: transparent;
+  color: var(--s3);
+  cursor: pointer;
+  font-size: var(--text-base);
+  padding: 0 var(--space-1);
+}
+.cmp-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-3) 0 var(--space-1);
+  margin-top: var(--space-2);
+  border-top: 1px dashed var(--ln);
+}
+.cmp-form-title {
+  width: 100%;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--s1);
+  margin-bottom: 2px;
+}
+.cmp-input-ref {
+  width: 130px;
+}
+.cmp-input-monto {
+  width: 90px;
+}
+.cmp-btn-save {
+  padding: 5px var(--space-3);
+  border: 1px solid var(--ac);
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  color: #fff;
+  background: var(--ac);
+  cursor: pointer;
+}
+.cmp-form-err {
+  width: 100%;
+  font-size: var(--text-xs);
+  color: var(--R);
 }
 
 /* ══════════════════════════════════════════════════════════

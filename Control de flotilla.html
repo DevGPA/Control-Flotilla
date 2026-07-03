@@ -957,26 +957,22 @@ g.inflateBytes=async function(src){
       <button class="fuel-seg-btn" id="fuel-seg-dash" role="tab" aria-selected="false">📊 Dashboard</button>
     </div>
     <span class="fuel-seg-divdr"></span>
-    <select id="fuel-filt-tipo" aria-label="Filtrar por tipo"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="fuel-filt-tipo" aria-label="Filtrar por tipo" class="field-input">
       <option value="all">Cargas y solicitudes</option>
       <option value="carga">Solo cargas</option>
       <option value="solicitud">Solo solicitudes</option>
     </select>
-    <select id="fuel-filt-verdict" aria-label="Filtrar por estado de validación"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="fuel-filt-verdict" aria-label="Filtrar por estado de validación" class="field-input">
       <option value="all">Toda validación</option>
       <option value="ok">Validado</option>
       <option value="discrepancia">Discrepancia</option>
       <option value="pendiente">Pendiente</option>
       <option value="historico">Histórico</option>
     </select>
-    <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
-    <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable" class="field-input">
       <option value="">Todos los responsables</option>
     </select>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
@@ -1025,12 +1021,14 @@ g.inflateBytes=async function(src){
   <!-- Dashboard ejecutivo (Fase D) -->
   <div id="fuel-dash" style="display:none;flex:1;overflow:auto;padding:12px 16px">
     <div class="fuel-dash-grid">
-      <div class="chart-card"><div class="chart-card-header">Peor rendimiento vs. su tipo</div><div id="fchart-peores" class="chart-canvas"></div></div>
-      <div class="chart-card"><div class="chart-card-header">Mejor rendimiento vs. su tipo</div><div id="fchart-mejores" class="chart-canvas"></div></div>
-      <div class="chart-card"><div class="chart-card-header">Consumo por sucursal ($)</div><div id="fchart-sucursal" class="chart-canvas"></div></div>
-      <div class="chart-card"><div class="chart-card-header">Consumo por responsable ($)</div><div id="fchart-responsable" class="chart-canvas"></div></div>
-      <div class="chart-card"><div class="chart-card-header">Consumo por tipo de combustible ($)</div><div id="fchart-tipo" class="chart-canvas"></div></div>
-      <div class="chart-card chart-card-wide"><div class="chart-card-header">Tendencia mensual (litros y gasto)</div><div id="fchart-tendencia" class="chart-canvas"></div></div>
+      <!-- A11y (UX 2026-07 Lote 2): mismo patrón que Inspecciones/Analytics —
+           título con role=heading y canvas con role=img + aria-label. -->
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Peor rendimiento vs. su tipo</div></div><div id="fchart-peores" class="chart-canvas" role="img" aria-label="Gráfica de barras: unidades con peor rendimiento de combustible comparado con su tipo de unidad"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Mejor rendimiento vs. su tipo</div></div><div id="fchart-mejores" class="chart-canvas" role="img" aria-label="Gráfica de barras: unidades con mejor rendimiento de combustible comparado con su tipo de unidad"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por sucursal ($)</div></div><div id="fchart-sucursal" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por sucursal"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por responsable ($)</div></div><div id="fchart-responsable" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por responsable"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por tipo de combustible ($)</div></div><div id="fchart-tipo" class="chart-canvas" role="img" aria-label="Gráfica: gasto en pesos por tipo de combustible (magna, premium, diésel)"></div></div>
+      <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tendencia mensual (litros y gasto)</div></div><div id="fchart-tendencia" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia mensual de litros cargados y gasto en pesos"></div></div>
     </div>
   </div>
 </div>
@@ -1056,16 +1054,14 @@ g.inflateBytes=async function(src){
   <div id="cmp-kpis" style="padding:10px 16px 0"></div>
   <!-- Barra de filtros -->
   <div id="cmp-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--ln)">
-    <select id="cmp-estado" aria-label="Filtrar por estado de cumplimiento"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="cmp-estado" aria-label="Filtrar por estado de cumplimiento" class="field-input">
       <option value="all">Todo el cumplimiento</option>
       <option value="conIssues">Con pendientes</option>
       <option value="vencido">Con documentos vencidos</option>
       <option value="porVencer">Por vencer (30 días)</option>
       <option value="adeudo">Con multas/adeudos</option>
     </select>
-    <select id="cmp-sucursal" aria-label="Filtrar cumplimiento por sucursal"
-      style="padding:5px 8px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--w1);background:var(--bg)">
+    <select id="cmp-sucursal" aria-label="Filtrar cumplimiento por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
@@ -1103,7 +1099,7 @@ g.inflateBytes=async function(src){
   </div>
   <!-- Modal de expediente de cumplimiento por unidad (abierto desde el tablero) -->
   <div id="cmp-modal" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
-    <div role="dialog" aria-modal="true" aria-label="Expediente de cumplimiento" style="background:var(--bg);border:1px solid var(--ln);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:560px;max-width:92vw;max-height:82vh;overflow:auto;padding:14px 18px">
+    <div role="dialog" aria-modal="true" aria-label="Expediente de cumplimiento" style="background:var(--bg);border:1px solid var(--ln);border-radius:12px;box-shadow:var(--shadow-xl);width:560px;max-width:92vw;max-height:82vh;overflow:auto;padding:14px 18px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
         <b id="cmp-modal-title" style="font-size:13px;color:var(--w1)"></b>
         <button type="button" aria-label="Cerrar" onclick="document.getElementById('cmp-modal').style.display='none'" style="border:none;background:transparent;color:var(--s2);font-size:16px;cursor:pointer;line-height:1">✕</button>

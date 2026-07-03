@@ -185,10 +185,17 @@ export function renderKpisFuel(
     if (c.filter && onFilter) {
       kc.style.cursor = "pointer";
       kc.tabIndex = 0;
+      // A11y: es un control interactivo — role + Enter/Espacio (WCAG 4.1.2)
+      kc.setAttribute("role", "button");
+      kc.setAttribute("aria-label", `Filtrar por ${c.label}`);
       const h = () => onFilter(c.filter!);
       kc.addEventListener("click", h);
       kc.addEventListener("keydown", (ev) => {
-        if ((ev as KeyboardEvent).key === "Enter") h();
+        const k = (ev as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          ev.preventDefault();
+          h();
+        }
       });
     }
     const ktop = document.createElement("div");
