@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-PHqRa56KVWhr+5nyq9qb37nd+0qX8DOYi+BC5wvpCik='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-nqd9Qr56wKsp19iHfLJp9HjPJIFECkfveJPpF/bAiWk='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -335,10 +335,10 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- UX Fase 2: GASTO TALLER MODAL (drill-down por sucursal + tendencia 6 meses) -->
-<div id="gasto-overlay" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
-  <div style="background:var(--bg);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:680px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+<div id="gasto-overlay" role="dialog" aria-modal="true" aria-labelledby="gasto-ttl" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:var(--bg);border-radius:14px;box-shadow:var(--shadow-xl);width:680px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 14px;border-bottom:1px solid var(--ln);flex-shrink:0">
-      <div style="font-size:15px;font-weight:700;color:var(--w1);display:flex;align-items:center;gap:8px"><i data-lucide="banknote" style="width:16px;height:16px"></i> Gasto de Taller</div>
+      <div id="gasto-ttl" style="font-size:15px;font-weight:700;color:var(--w1);display:flex;align-items:center;gap:8px"><i data-lucide="banknote" style="width:16px;height:16px"></i> Gasto de Taller</div>
       <button onclick="document.getElementById('gasto-overlay').style.display='none'" aria-label="Cerrar gasto de taller" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--s2)">✕</button>
     </div>
     <div id="gasto-content" style="flex:1;overflow-y:auto;min-height:0;padding:16px 24px 24px"></div>
@@ -346,10 +346,11 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- TENDENCIAS MODAL -->
-<div id="tendencias-overlay" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
-  <div style="background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:720px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+<div id="tendencias-overlay" role="dialog" aria-modal="true" aria-labelledby="tendencias-ttl" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <!-- background:#fff → var(--bg): estaba hardcodeado y rompía el tema oscuro (fix Lote 4) -->
+  <div style="background:var(--bg);border-radius:14px;box-shadow:var(--shadow-xl);width:720px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 14px;border-bottom:1px solid var(--ln);flex-shrink:0">
-      <div style="font-size:15px;font-weight:700;color:var(--w1);display:flex;align-items:center;gap:8px"><i data-lucide="trending-up" style="width:16px;height:16px"></i> Tendencias de Flota por Período</div>
+      <div id="tendencias-ttl" style="font-size:15px;font-weight:700;color:var(--w1);display:flex;align-items:center;gap:8px"><i data-lucide="trending-up" style="width:16px;height:16px"></i> Tendencias de Flota por Período</div>
       <button onclick="document.getElementById('tendencias-overlay').style.display='none'" aria-label="Cerrar tendencias" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--s2)">✕</button>
     </div>
     <div id="tendencias-content" style="flex:1;overflow-y:auto;min-height:0;padding:16px 24px 24px"></div>
@@ -553,7 +554,7 @@ g.inflateBytes=async function(src){
 </div>
 
 <!-- LIGHTBOX -->
-<div id="lb" onclick="lbBg(event)">
+<div id="lb" role="dialog" aria-modal="true" aria-label="Visor de fotos" onclick="lbBg(event)">
   <button id="lbclose" onclick="lbClose()" aria-label="Cerrar visor de imagen">✕</button>
   <img id="lbimg" src="" alt=""/>
   <div id="lblabel"></div>
@@ -4636,8 +4637,11 @@ function escAttr(s){
 }
 // UX Fase 4 (2026-06-11): a11y de modales — role/aria + foco al abrir + focus
 // trap (antes el Tab se escapaba al fondo, WCAG 2.4.3) + restaurar foco al cerrar.
+// UX 2026-07 Lote 4: + nombre accesible (aria-labelledby por convención de título,
+// WCAG 4.1.2) y cierre con Escape (WCAG 2.1.2 — antes solo cerraban con el botón).
 let _modalPrevFocus=null;
 function _trapFocus(e){
+  if(e.key==="Escape"){e.stopPropagation();closeModal(e.currentTarget.id);return;}
   if(e.key!=="Tab")return;
   const modal=e.currentTarget;
   const focusables=modal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
@@ -4653,6 +4657,12 @@ function openModal(id){
   el.classList.add("open");
   el.setAttribute("role","dialog");
   el.setAttribute("aria-modal","true");
+  // Nombre accesible: primer elemento-título del modal por convención
+  // (.tl-mttl / .pm-hdr / ids *-ttl|*-mttl). Si no tiene id se le asigna.
+  if(!el.getAttribute("aria-labelledby")&&!el.getAttribute("aria-label")){
+    const t=el.querySelector('.tl-mttl,.pm-hdr,[id$="-ttl"],[id$="-mttl"]');
+    if(t){ if(!t.id)t.id=id+"-ttl"; el.setAttribute("aria-labelledby",t.id); }
+  }
   _modalPrevFocus=document.activeElement;
   el.addEventListener("keydown",_trapFocus);
   const f=el.querySelector('input,select,textarea,button:not([aria-label^="Cerrar"])');
@@ -4666,6 +4676,15 @@ function closeModal(id){
   if(_modalPrevFocus&&_modalPrevFocus.focus){try{_modalPrevFocus.focus();}catch(e){}}
   _modalPrevFocus=null;
 }
+// UX 2026-07 Lote 4: Escape también cierra los overlays que NO usan openModal
+// (gasto/tendencias/expediente de cumplimiento se muestran con style.display).
+document.addEventListener("keydown",function(e){
+  if(e.key!=="Escape")return;
+  ["gasto-overlay","tendencias-overlay","cmp-modal"].forEach(function(id){
+    const el=document.getElementById(id);
+    if(el&&el.style.display&&el.style.display!=="none")el.style.display="none";
+  });
+});
 
 // ════════════════════════════════════════════════════════════
 // PDF EXPORT  (jsPDF — generado 100% en el navegador)
@@ -8688,7 +8707,7 @@ window.deleteTallerEntry = deleteTallerEntry;
 })();
 </script>
 <!-- Modal de Flota completa (abierto desde la hero card FLOTA) -->
-<div id="fleet-modal" onclick="if(event.target.id==='fleet-modal')closeFleetModal()">
+<div id="fleet-modal" role="dialog" aria-modal="true" aria-labelledby="fleet-mod-ttl" onclick="if(event.target.id==='fleet-modal')closeFleetModal()">
   <div>
     <div class="fleet-mod-hdr">
       <div>
