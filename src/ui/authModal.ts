@@ -34,8 +34,11 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
       "backdrop-filter:blur(8px)",
     ].join(";");
 
-    // Card.
+    // Card. A11y (UX 2026-07 Lote 4): dialog con nombre accesible.
     const card = document.createElement("div");
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    card.setAttribute("aria-labelledby", "auth-modal-title");
     card.style.cssText = [
       "background:var(--bg)",
       "border:1px solid var(--ln)",
@@ -49,6 +52,7 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
 
     // Header.
     const h = document.createElement("h2");
+    h.id = "auth-modal-title";
     h.style.cssText = "margin:0 0 6px 0;font-size:20px;font-weight:600;color:var(--w1)";
     h.textContent = opts.title ?? "Control Flotilla";
     card.appendChild(h);
@@ -211,8 +215,7 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
           backdrop.remove();
           resolve();
         } else {
-          err2.textContent =
-            res.status === "error" ? res.message : "Cognito requiere otro paso";
+          err2.textContent = res.status === "error" ? res.message : "Cognito requiere otro paso";
           btn2.disabled = false;
           btn2.textContent = "Cambiar password";
         }
