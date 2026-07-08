@@ -1055,6 +1055,7 @@ g.inflateBytes=async function(src){
           <th data-sort="litros">Litros</th>
           <th data-sort="monto">Monto</th>
           <th data-sort="kmpl">km/l</th>
+          <th data-sort="tcaptura" title="Minutos entre abrir el formulario en MoreApp y guardarlo">T. captura</th>
           <th>Alertas</th>
           <th data-sort="verdict">Validación</th>
           <th>Evidencias</th>
@@ -1074,6 +1075,7 @@ g.inflateBytes=async function(src){
       <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Rendimiento por tipo de unidad (km/l)</div><select id="fuel-dash-tipo-unidad" aria-label="Elegir tipo de unidad a comparar" class="field-input"></select></div><div id="fchart-tipo-unidad" class="chart-canvas" role="img" aria-label="Gráfica de barras: km por litro de cada unidad del tipo seleccionado, peor primero, con su sucursal"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por sucursal ($)</div></div><div id="fchart-sucursal" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por sucursal"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por responsable ($)</div></div><div id="fchart-responsable" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por responsable"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tiempo de captura por responsable (mediana, min)</div></div><div id="fchart-tcaptura" class="chart-canvas" role="img" aria-label="Gráfica de barras: minutos entre abrir y guardar el formulario de MoreApp, por responsable, quien más tarda primero"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por tipo de combustible ($)</div></div><div id="fchart-tipo" class="chart-canvas" role="img" aria-label="Gráfica: gasto en pesos por tipo de combustible (magna, premium, diésel)"></div></div>
       <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tendencia mensual (litros y gasto)</div></div><div id="fchart-tendencia" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia mensual de litros cargados y gasto en pesos"></div></div>
     </div>

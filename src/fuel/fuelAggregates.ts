@@ -2,6 +2,7 @@
  * Agregadores PUROS para el dashboard ejecutivo de combustible. Sin DOM.
  */
 import type { FuelEntry, FleetBaseline, FuelStat } from "./types";
+import { percentile } from "../analyzer/statistics";
 
 /** km/l representativo de un grupo: el ponderado por volumen (kmplVol) si existe; si no, la media. */
 function repKmpl(s: FuelStat): number {
@@ -149,6 +150,68 @@ export function aggByGroup(
     g.cargas += 1;
   }
   return [...m.values()].sort((a, b) => b.gasto - a.gasto);
+}
+
+/**
+ * Offset UTC (horas) de la sucursal — México sin DST desde 2022. Cancún (Quintana Roo)
+ * = UTC-5, Cabos (BCS) = UTC-7, el resto de la operación GPA (GDL/MTY/CDMX/Vallarta)
+ * = UTC-6. `fechaHora` viene en hora local del DISPOSITIVO; sin este offset, las
+ * duraciones de Cancún salían corridas −1 h (observado en payloads reales).
+ */
+export function tzOffsetDeSucursal(sucursal: string | undefined): number {
+  const s = (sucursal ?? "").toLowerCase();
+  if (s.includes("canc")) return -5;
+  if (s.includes("cabo")) return -7;
+  return -6;
+}
+
+/**
+ * Minutos entre la APERTURA del formulario (`fechaHora`, hora local que el widget
+ * auto-llena al abrir) y su CIERRE (`formCerrado`, ISO UTC de meta.registrationDate).
+ * undefined si falta alguno, si sale negativa (reloj/huso roto o fecha editada hacia
+ * adelante) o si supera 24 h (el chofer registró un evento viejo — eso no es "tiempo
+ * de captura"). Precisión ±1 min (la apertura es minuto-granular).
+ */
+export function duracionCapturaMin(
+  e: Pick<FuelEntry, "fechaHora" | "formCerrado" | "sucursal">,
+): number | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(String(e.fechaHora ?? ""));
+  if (!m || !e.formCerrado) return undefined;
+  const offset = tzOffsetDeSucursal(e.sucursal);
+  const abiertoUtc = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]! - offset, +m[5]!);
+  const cerradoUtc = Date.parse(e.formCerrado);
+  if (!Number.isFinite(cerradoUtc)) return undefined;
+  const min = (cerradoUtc - abiertoUtc) / 60000;
+  if (!Number.isFinite(min) || min < 0 || min > 24 * 60) return undefined;
+  return Math.round(min * 10) / 10;
+}
+
+export type DuracionGrupo = { group: string; medianaMin: number; p90Min: number; n: number };
+
+/**
+ * Duración de captura agrupada por responsable — mediana (robusta a outliers) y p90.
+ * Orden DESC por mediana: quien más tarda en cerrar el formulario, primero (obs. 4
+ * de auditoría). Solo entradas con duración medible.
+ */
+export function duracionPorResponsable(entries: readonly FuelEntry[]): DuracionGrupo[] {
+  const porResp = new Map<string, number[]>();
+  for (const e of entries) {
+    const d = duracionCapturaMin(e);
+    if (d == null) continue;
+    const r = e.responsable || "(sin responsable)";
+    const arr = porResp.get(r);
+    if (arr) arr.push(d);
+    else porResp.set(r, [d]);
+  }
+  const out: DuracionGrupo[] = [];
+  for (const [group, vals] of porResp)
+    out.push({
+      group,
+      medianaMin: Math.round(percentile(vals, 50) * 10) / 10,
+      p90Min: Math.round(percentile(vals, 90) * 10) / 10,
+      n: vals.length,
+    });
+  return out.sort((a, b) => b.medianaMin - a.medianaMin);
 }
 
 export type MonthConsumo = { mes: string; litros: number; gasto: number; cargas: number };
