@@ -131,6 +131,7 @@ describe("integración", () => {
       search: "",
       flag: "",
       area: "",
+      submarca: "",
     };
     const rapida = entry({
       eco: "1",

@@ -67,6 +67,8 @@ export type FuelTableFilter = {
   flag: string;
   /** Filtro por área operativa: "" = todas, "(sin área)" = unidades sin asignar, o área exacta. */
   area: string;
+  /** Filtro por tipo de unidad (submarca): "" = todos, "(sin tipo)" = sin marca en catálogo, o submarca exacta. */
+  submarca: string;
 };
 
 /** Veredicto efectivo de una entrada (pendiente si no hay revisión). */
@@ -141,6 +143,7 @@ export function filterAndSortFuel(
     if (filter.hasta && e.fecha > filter.hasta) return false;
     if (filter.flag && !matchesFlag(findingsByLoad?.get(e.loadId), filter.flag)) return false;
     if (filter.area && (e.area ?? "(sin área)") !== filter.area) return false;
+    if (filter.submarca && (e.submarca ?? "(sin tipo)") !== filter.submarca) return false;
     return matchesSearch(e, filter.search);
   });
 
@@ -482,11 +485,12 @@ function pill(v: FuelDisplayVerdict): HTMLElement {
   return span;
 }
 
-/** Llena los <select> de sucursal y responsable con los valores únicos presentes. */
+/** Llena los <select> de sucursal, responsable y tipo de unidad con los valores únicos presentes. */
 export function populateFuelSelects(
   selSucursal: HTMLSelectElement | null,
   selResponsable: HTMLSelectElement | null,
   entries: readonly FuelEntry[],
+  selSubmarca?: HTMLSelectElement | null,
 ): void {
   const fill = (sel: HTMLSelectElement | null, values: string[], label: string) => {
     if (!sel) return;
@@ -508,4 +512,10 @@ export function populateFuelSelects(
   const resp = [...new Set(entries.map((e) => e.responsable ?? "").filter(Boolean))].sort();
   fill(selSucursal, sucs, "Todas las sucursales");
   fill(selResponsable, resp, "Todos los responsables");
+  if (selSubmarca !== undefined) {
+    // Tipo de unidad = submarca del catálogo (Aumark TM3, NP 300…). "(sin tipo)" filtra
+    // las unidades que aún no tienen marca en el catálogo.
+    const tipos = [...new Set(entries.map((e) => e.submarca ?? "").filter(Boolean))].sort();
+    fill(selSubmarca, [...tipos, "(sin tipo)"], "Todos los tipos de unidad");
+  }
 }

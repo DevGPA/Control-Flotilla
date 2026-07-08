@@ -37,6 +37,7 @@ const NO_FILTER: FuelTableFilter = {
   search: "",
   flag: "",
   area: "",
+  submarca: "",
 };
 
 describe("filterAndSortFuel", () => {

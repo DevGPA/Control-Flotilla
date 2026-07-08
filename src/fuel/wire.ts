@@ -72,6 +72,7 @@ const filter: FuelTableFilter = {
   hasta: undefined,
   flag: "",
   area: "",
+  submarca: "",
 };
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
@@ -216,6 +217,7 @@ function renderCombustible(): void {
     $("fuel-filt-suc") as HTMLSelectElement | null,
     $("fuel-filt-resp") as HTMLSelectElement | null,
     all,
+    $("fuel-filt-tipounidad") as HTMLSelectElement | null,
   );
 
   // La submarca ya viaja en cada FuelEntry (join por economicoId en cloudHydrate).
@@ -449,6 +451,8 @@ function syncFilterControls(): void {
   if (fSel) fSel.value = filter.flag;
   const aSel = $("fuel-filt-area") as HTMLSelectElement | null;
   if (aSel) aSel.value = filter.area;
+  const tuSel = $("fuel-filt-tipounidad") as HTMLSelectElement | null;
+  if (tuSel) tuSel.value = filter.submarca;
 }
 
 function updateFuelNavBadge(): void {
@@ -529,6 +533,10 @@ function mountControls(): void {
   });
   ($("fuel-filt-area") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
     filter.area = (e.target as HTMLSelectElement).value;
+    renderCombustible();
+  });
+  ($("fuel-filt-tipounidad") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
+    filter.submarca = (e.target as HTMLSelectElement).value;
     renderCombustible();
   });
   ($("fuel-rango-desde") as HTMLInputElement | null)?.addEventListener("change", (e) => {
