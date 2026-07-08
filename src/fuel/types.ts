@@ -75,6 +75,12 @@ export type FuelEntry = {
   precioPorLitro?: number;
   monto?: number;
   seLlenoTanque?: string;
+  /**
+   * Cierre del formulario (ISO UTC, de meta.registrationDate de MoreApp): cuándo el chofer
+   * GUARDÓ el envío. La apertura es `fechaHora` (el widget la auto-llena al abrir, en hora
+   * local del dispositivo). La duración de captura se deriva con el huso de la sucursal.
+   */
+  formCerrado?: string;
   ubicacion?: string; // formattedValue del GPS
   /** Coordenadas del GPS de la carga (liga a Maps para verificar que sea una gasolinera). */
   ubicacionLatLng?: { lat: number; lng: number };

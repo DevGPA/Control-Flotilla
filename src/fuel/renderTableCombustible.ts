@@ -11,6 +11,7 @@ import type {
   MotivoSinKmpl,
 } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import { duracionCapturaMin } from "./fuelAggregates";
 import {
   MOTIVO_SIN_KMPL_CORTO,
   MOTIVO_SIN_KMPL_LABEL,
@@ -51,6 +52,7 @@ export type FuelSortCol =
   | "litros"
   | "monto"
   | "kmpl"
+  | "tcaptura"
   | "verdict";
 
 export type FuelTableFilter = {
@@ -193,6 +195,9 @@ export function filterAndSortFuel(
           c = esSol
             ? cmpNum(recorridosByLoad?.get(a.loadId)?.km, recorridosByLoad?.get(b.loadId)?.km)
             : cmpNum(kmpl(a), kmpl(b));
+          break;
+        case "tcaptura":
+          c = cmpNum(duracionCapturaMin(a), duracionCapturaMin(b));
           break;
         case "verdict":
           c = VERDICT_RANK[displayVerdictOf(a)] - VERDICT_RANK[displayVerdictOf(b)];
@@ -406,6 +411,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     tr.tabIndex = 0;
 
     const kmpl = kmplByLoad.get(e.loadId);
+    const tcap = duracionCapturaMin(e);
     // La submarca viaja en la entry (join en hidratación) — visible en cargas Y solicitudes,
     // para que auditoría vea el tipo de unidad por fila.
     const cells: (string | HTMLElement)[] = [
@@ -436,6 +442,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
             metricsByLoad?.get(e.loadId)?.motivoSinKmpl,
             metricsByLoad?.get(e.loadId)?.cargaParcial,
           ),
+      tcap != null ? `${tcap} min` : "—",
       alertasCell(findingsByLoad?.get(e.loadId)),
       verdictCell(e, v, nombreValidador),
       e.photos.length ? `📷 ${e.photos.length}` : "—",

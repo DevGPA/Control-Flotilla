@@ -39,6 +39,7 @@ import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
 import {
   rankUnitsByDeviation,
   rankUnitsBySubmarca,
+  duracionPorResponsable,
   splitRanking,
   aggByGroup,
   aggByMonth,
@@ -304,6 +305,7 @@ async function renderFuelDash(): Promise<void> {
     porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
     meses: aggByMonth(ctx.filtered),
     unidadesDeTipo: porSubmarca.get(tipoSeleccionado) ?? [],
+    tcaptura: duracionPorResponsable(ctx.filtered).slice(0, 12),
   };
   const els = {
     peores: $("fchart-peores"),
@@ -313,6 +315,7 @@ async function renderFuelDash(): Promise<void> {
     tipo: $("fchart-tipo"),
     tendencia: $("fchart-tendencia"),
     tipoUnidad: $("fchart-tipo-unidad"),
+    tcaptura: $("fchart-tcaptura"),
   };
   try {
     const { renderFuelDashboard } = await import("./fuelCharts");

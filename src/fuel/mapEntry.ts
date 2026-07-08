@@ -254,6 +254,7 @@ export function mapCargaToFuelEntry(
     precioPorLitro: num(row.precioPorLitro),
     monto: num(row.montoTotal),
     seLlenoTanque: row.seLlenoTanque ?? undefined,
+    formCerrado: typeof datos.formCerrado === "string" ? datos.formCerrado : undefined,
     ubicacion: ubic.texto,
     ubicacionLatLng:
       ubic.lat != null && ubic.lng != null ? { lat: ubic.lat, lng: ubic.lng } : undefined,

@@ -8,7 +8,7 @@ import { BarChart, LineChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange, type TremorPalette } from "../dashboard/chartTheme";
-import type { UnitRank, GroupConsumo, MonthConsumo } from "./fuelAggregates";
+import type { UnitRank, GroupConsumo, MonthConsumo, DuracionGrupo } from "./fuelAggregates";
 
 echarts.use([
   BarChart,
@@ -166,6 +166,52 @@ function consumoBar(container: HTMLElement, groups: GroupConsumo[], p0: TremorPa
   }));
 }
 
+/**
+ * Barra horizontal de tiempo de captura por responsable (mediana en minutos, quien más
+ * tarda arriba). Tooltip con mediana, p90 y nº de formularios (obs. 4 auditoría).
+ */
+function duracionBar(container: HTMLElement, groups: DuracionGrupo[]): void {
+  makeChart(container, (p) => {
+    const data = [...groups].reverse(); // ECharts pinta de abajo→arriba
+    return {
+      grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        backgroundColor: p.bg2,
+        borderColor: p.ln,
+        textStyle: { color: p.text },
+        formatter: (ps: unknown) => {
+          const a = (ps as { dataIndex: number }[])[0]!;
+          const g = data[a.dataIndex]!;
+          return `<b>${g.group}</b><br/>mediana ${g.medianaMin} min · p90 ${g.p90Min} min<br/><span style="opacity:.7">${g.n} formulario${g.n === 1 ? "" : "s"} medidos</span>`;
+        },
+      },
+      xAxis: {
+        type: "value",
+        ...axisCommon(p),
+        axisLabel: { color: p.textSub, fontSize: 10, formatter: "{value} min" },
+      },
+      yAxis: { type: "category", data: data.map((g) => g.group), ...axisCommon(p) },
+      series: [
+        {
+          type: "bar",
+          data: data.map((g) => g.medianaMin),
+          itemStyle: { color: p.ac, borderRadius: [0, 4, 4, 0] },
+          label: {
+            show: true,
+            position: "right",
+            color: p.textSub,
+            fontSize: 10,
+            formatter: "{c} min",
+          },
+          barMaxWidth: 18,
+        },
+      ],
+    };
+  });
+}
+
 /** Línea de tendencia mensual: litros + gasto (doble eje). */
 function tendencia(container: HTMLElement, meses: MonthConsumo[]): void {
   makeChart(container, (p) => ({
@@ -222,6 +268,8 @@ export type FuelDashboardData = {
   meses: MonthConsumo[];
   /** Unidades de la submarca seleccionada, km/l absoluto, peor primero (obs. 1 auditoría). */
   unidadesDeTipo?: UnitRank[];
+  /** Tiempo de captura por responsable, mediana DESC (obs. 4 auditoría). */
+  tcaptura?: DuracionGrupo[];
 };
 
 export type FuelDashboardEls = {
@@ -232,6 +280,7 @@ export type FuelDashboardEls = {
   tipo: HTMLElement | null;
   tendencia: HTMLElement | null;
   tipoUnidad?: HTMLElement | null;
+  tcaptura?: HTMLElement | null;
 };
 
 /** Renderiza todos los charts del dashboard en sus contenedores. */
@@ -244,4 +293,5 @@ export function renderFuelDashboard(els: FuelDashboardEls, data: FuelDashboardDa
   if (els.tipo) consumoBar(els.tipo, data.porTipo, p);
   if (els.tendencia) tendencia(els.tendencia, data.meses);
   if (els.tipoUnidad) hbar(els.tipoUnidad, data.unidadesDeTipo ?? [], (pp) => pp.B);
+  if (els.tcaptura) duracionBar(els.tcaptura, data.tcaptura ?? []);
 }

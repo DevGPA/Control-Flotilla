@@ -728,6 +728,13 @@ function extractCombustibleCommon(envelope: Record<string, unknown>) {
   const fechaRaw = pickStr(answers.dateAndTime);
   const fecha = fechaRaw.split(/[ T]/)[0] || new Date().toISOString().split("T")[0]!;
   const formVersionId = pickStr(((envelope.info ?? {}) as Record<string, unknown>).formVersionId);
+  // Cierre del formulario: meta.registrationDate = epoch ms (string) de cuando el chofer
+  // GUARDÓ el envío en el dispositivo. Con answers.dateAndTime (que el widget auto-llena al
+  // ABRIR el formulario, ya persistido como fechaHora) da el tiempo de captura (auditoría).
+  const regRaw = pickStr(((envelope.meta ?? {}) as Record<string, unknown>).registrationDate);
+  const regMs = Number(regRaw);
+  const formCerrado =
+    regRaw && Number.isFinite(regMs) && regMs > 0 ? new Date(regMs).toISOString() : undefined;
   return {
     answers,
     eco,
@@ -739,6 +746,7 @@ function extractCombustibleCommon(envelope: Record<string, unknown>) {
     sucursal: normSucursal(eco.SUCURSAL),
     responsable: pickResponsable(answers),
     formVersionId,
+    formCerrado,
   };
 }
 
@@ -773,6 +781,7 @@ async function processSolicitud(
     moreappFormVersionId: c.formVersionId,
     sucursalRaw: pickStr(eco.SUCURSAL),
     economicoIdFaltante: c.economicoIdFaltante || undefined,
+    formCerrado: c.formCerrado,
   };
 
   const input = {
@@ -837,6 +846,7 @@ async function processCarga(
     moreappFormVersionId: c.formVersionId,
     sucursalRaw: pickStr(eco.SUCURSAL),
     economicoIdFaltante: c.economicoIdFaltante || undefined,
+    formCerrado: c.formCerrado,
   };
 
   const input = {
