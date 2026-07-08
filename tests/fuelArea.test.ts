@@ -12,6 +12,7 @@ const NO_FILTER: FuelTableFilter = {
   search: "",
   flag: "",
   area: "",
+  submarca: "",
 };
 
 function entry(p: Partial<FuelEntry> & { eco: string }): FuelEntry {

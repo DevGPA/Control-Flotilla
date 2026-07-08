@@ -41,6 +41,59 @@ describe("buildFuelEntries — join de submarca por economicoId", () => {
   });
 });
 
+describe("filtro por tipo de unidad (submarca) en la Lista", () => {
+  const NO_FILTER = {
+    tipo: "all",
+    verdict: "all",
+    sucursal: "",
+    responsable: "",
+    search: "",
+    flag: "",
+    area: "",
+    submarca: "",
+  } as const;
+  const mk = (eco: string, submarca?: string) =>
+    ({
+      loadId: `${eco}|carga|x`,
+      tipo: "carga",
+      eco,
+      eventoId: "x",
+      sucursal: "Guadalajara",
+      fecha: "2026-07-01",
+      submarca,
+      photos: [],
+    }) as import("../src/fuel/types").FuelEntry;
+
+  it("filterAndSortFuel filtra por submarca exacta y por '(sin tipo)'", async () => {
+    const { filterAndSortFuel } = await import("../src/fuel/renderTableCombustible");
+    const entries = [mk("10", "Aumark TM3"), mk("20", "NP 300"), mk("30")];
+    expect(
+      filterAndSortFuel(entries, { ...NO_FILTER, submarca: "Aumark TM3" }, "_idx", -1).map(
+        (e) => e.eco,
+      ),
+    ).toEqual(["10"]);
+    expect(
+      filterAndSortFuel(entries, { ...NO_FILTER, submarca: "(sin tipo)" }, "_idx", -1).map(
+        (e) => e.eco,
+      ),
+    ).toEqual(["30"]);
+    expect(filterAndSortFuel(entries, { ...NO_FILTER }, "_idx", -1)).toHaveLength(3);
+  });
+
+  it("populateFuelSelects llena el select de tipos con únicos + '(sin tipo)' al final", async () => {
+    const { populateFuelSelects } = await import("../src/fuel/renderTableCombustible");
+    const sel = document.createElement("select");
+    populateFuelSelects(
+      null,
+      null,
+      [mk("10", "NP 300"), mk("20", "Aumark TM3"), mk("30", "NP 300")],
+      sel,
+    );
+    const opts = [...sel.querySelectorAll("option")].map((o) => o.value);
+    expect(opts).toEqual(["", "Aumark TM3", "NP 300", "(sin tipo)"]);
+  });
+});
+
 describe("rankUnitsBySubmarca", () => {
   const stat = (kmplVol: number, n: number): FuelStat => ({ mean: kmplVol, sd: 0, n, kmplVol });
   const baseline: FleetBaseline = {
