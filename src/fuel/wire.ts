@@ -20,6 +20,8 @@ import {
   buildFleetBaseline,
   detectFuelAnomalies,
   computeRecorridos,
+  groupFindingsByLoad,
+  matchesFlag,
   type RecorridoInfo,
 } from "./fuelAnalysis";
 import {
@@ -61,6 +63,7 @@ const filter: FuelTableFilter = {
   search: "",
   desde: undefined,
   hasta: undefined,
+  flag: "",
 };
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
@@ -122,6 +125,8 @@ type FuelCtx = {
   anomalies: FuelFinding[];
   metricsByLoad: Map<string, FuelMetrics>;
   recorridosByLoad: Map<string, RecorridoInfo>;
+  /** loadId → anomalías detectadas (chips de la tabla + filtro por alerta). */
+  findingsByLoad: Map<string, FuelFinding[]>;
 };
 let lastCtx: FuelCtx | null = null;
 
@@ -137,11 +142,23 @@ function computeCtx(): FuelCtx {
   const all = scoped();
   const allMetrics = computeFuelMetrics(all);
   const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
-  const filtered = filterAndSortFuel(all, filter, "_idx", -1); // orden irrelevante aquí
-  const ids = new Set(filtered.map((e) => e.loadId));
-  const filteredMetrics = allMetrics.filter((m) => ids.has(m.loadId));
-  const baseline = buildFleetBaseline(filteredMetrics, filtered);
-  const anomalies = detectFuelAnomalies(filteredMetrics, baseline);
+  // FASE 1 — sin el filtro de alerta: las anomalías se detectan sobre el set filtrado por
+  // los demás criterios (el filtro por alerta NECESITA las anomalías → se aplica después).
+  const preFiltered = filterAndSortFuel(all, { ...filter, flag: "" }, "_idx", -1);
+  const preIds = new Set(preFiltered.map((e) => e.loadId));
+  const preMetrics = allMetrics.filter((m) => preIds.has(m.loadId));
+  const baseline = buildFleetBaseline(preMetrics, preFiltered);
+  const anomaliesPre = detectFuelAnomalies(preMetrics, baseline);
+  const findingsByLoad = groupFindingsByLoad(anomaliesPre);
+  // FASE 2 — aplica el filtro por alerta (subconjunto consistente para KPIs/tabla/dashboard).
+  const filtered = filter.flag
+    ? preFiltered.filter((e) => matchesFlag(findingsByLoad.get(e.loadId), filter.flag))
+    : preFiltered;
+  const ids = filter.flag ? new Set(filtered.map((e) => e.loadId)) : preIds;
+  const filteredMetrics = filter.flag ? preMetrics.filter((m) => ids.has(m.loadId)) : preMetrics;
+  const anomalies = filter.flag
+    ? anomaliesPre.filter((f) => f.loadId && ids.has(f.loadId))
+    : anomaliesPre;
   // Recorrido por ciclo sobre el histórico COMPLETO scopeado (la "siguiente solicitud" puede
   // caer fuera del filtro); la tabla/KPI consultan por loadId los registros filtrados.
   const recorridosByLoad = computeRecorridos(all);
@@ -152,6 +169,7 @@ function computeCtx(): FuelCtx {
     anomalies,
     metricsByLoad,
     recorridosByLoad,
+    findingsByLoad,
   };
   lastCtx = ctx;
   lastMetricsByLoad = metricsByLoad;
@@ -180,7 +198,8 @@ function renderCombustible(): void {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
         else if (f === "pendiente") setVerdictFilter("pendiente");
         else if (f === "historico") setVerdictFilter("historico");
-        else if (f === "anomalia") setVerdictFilter("pendiente");
+        // La KPI "Anomalías" filtra por alerta detectada (antes caía en "pendiente").
+        else if (f === "anomalia") setFlagFilter("any");
       },
     );
 
@@ -214,6 +233,7 @@ function renderCombustible(): void {
     metricsByLoad: ctx.metricsByLoad,
     submarcaByEco,
     recorridosByLoad: ctx.recorridosByLoad,
+    findingsByLoad: ctx.findingsByLoad,
     nombreValidador,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
   });
@@ -275,6 +295,12 @@ async function renderFuelDash(): Promise<void> {
 
 function setVerdictFilter(v: FuelVerdictFilter): void {
   filter.verdict = v;
+  syncFilterControls();
+  renderCombustible();
+}
+
+function setFlagFilter(flag: string): void {
+  filter.flag = flag;
   syncFilterControls();
   renderCombustible();
 }
@@ -384,6 +410,8 @@ function syncFilterControls(): void {
   if (vSel) vSel.value = filter.verdict;
   const tSel = $("fuel-filt-tipo") as HTMLSelectElement | null;
   if (tSel) tSel.value = filter.tipo;
+  const fSel = $("fuel-filt-flag") as HTMLSelectElement | null;
+  if (fSel) fSel.value = filter.flag;
 }
 
 function updateFuelNavBadge(): void {
@@ -456,6 +484,10 @@ function mountControls(): void {
   });
   ($("fuel-filt-verdict") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
     filter.verdict = (e.target as HTMLSelectElement).value as FuelVerdictFilter;
+    renderCombustible();
+  });
+  ($("fuel-filt-flag") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
+    filter.flag = (e.target as HTMLSelectElement).value;
     renderCombustible();
   });
   ($("fuel-rango-desde") as HTMLInputElement | null)?.addEventListener("change", (e) => {

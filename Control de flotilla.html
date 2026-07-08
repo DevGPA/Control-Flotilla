@@ -1001,6 +1001,19 @@ g.inflateBytes=async function(src){
       <option value="pendiente">Pendiente</option>
       <option value="historico">Histórico</option>
     </select>
+    <select id="fuel-filt-flag" aria-label="Filtrar por alerta detectada" class="field-input">
+      <option value="">Toda alerta</option>
+      <option value="any">Con alertas</option>
+      <option value="frecuencia">2ª carga en el día</option>
+      <option value="tanque-95">≥95% del tanque</option>
+      <option value="km-retrocede">Odómetro retrocede</option>
+      <option value="km-salto">Salto de odómetro</option>
+      <option value="rendimiento">Rendimiento bajo</option>
+      <option value="consumo">Consumo inusual</option>
+      <option value="litros-implausibles">Litros implausibles</option>
+      <option value="fuga">Posible fuga</option>
+      <option value="captura">Errores de captura</option>
+    </select>
     <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
@@ -1042,8 +1055,10 @@ g.inflateBytes=async function(src){
           <th data-sort="litros">Litros</th>
           <th data-sort="monto">Monto</th>
           <th data-sort="kmpl">km/l</th>
+          <th>Alertas</th>
           <th data-sort="verdict">Validación</th>
           <th>Evidencias</th>
+          <th>Ubicación</th>
         </tr>
       </thead>
       <tbody id="fuel-tbody"></tbody>

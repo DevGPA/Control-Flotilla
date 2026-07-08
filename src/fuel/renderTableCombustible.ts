@@ -3,9 +3,22 @@
  * `renderTableCombustible` construye el DOM con la API segura (createElement/textContent,
  * sin innerHTML con datos — regla anti-XSS del proyecto).
  */
-import type { FuelEntry, FuelMetrics, FuelVerdictGlobal, MotivoSinKmpl } from "./types";
+import type {
+  FuelEntry,
+  FuelFinding,
+  FuelMetrics,
+  FuelVerdictGlobal,
+  MotivoSinKmpl,
+} from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
-import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_LABEL } from "./fuelAnalysis";
+import {
+  MOTIVO_SIN_KMPL_CORTO,
+  MOTIVO_SIN_KMPL_LABEL,
+  FUEL_RULE_LABEL,
+  ruleOfFinding,
+  matchesFlag,
+  worstRisk,
+} from "./fuelAnalysis";
 import { ecoKey } from "./tokaLayout";
 
 /** Valor numérico de un nivel de tanque ("0.25(1/4)" → 0.25). NaN si no parsea. */
@@ -49,6 +62,8 @@ export type FuelTableFilter = {
   search: string;
   desde?: string; // ISO YYYY-MM-DD
   hasta?: string;
+  /** Filtro por alerta detectada: "" = todo, "any" = con alertas, "captura" = errores de captura, o regla exacta. */
+  flag: string;
 };
 
 /** Veredicto efectivo de una entrada (pendiente si no hay revisión). */
@@ -112,6 +127,7 @@ export function filterAndSortFuel(
   sortDir: 1 | -1,
   kmplByLoad?: Map<string, number | null>,
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>,
+  findingsByLoad?: ReadonlyMap<string, readonly FuelFinding[]>,
 ): FuelEntry[] {
   const out = entries.filter((e) => {
     if (filter.tipo !== "all" && e.tipo !== filter.tipo) return false;
@@ -120,6 +136,7 @@ export function filterAndSortFuel(
     if (filter.responsable && (e.responsable ?? "") !== filter.responsable) return false;
     if (filter.desde && e.fecha < filter.desde) return false;
     if (filter.hasta && e.fecha > filter.hasta) return false;
+    if (filter.flag && !matchesFlag(findingsByLoad?.get(e.loadId), filter.flag)) return false;
     return matchesSearch(e, filter.search);
   });
 
@@ -222,6 +239,8 @@ export type RenderTableCombustibleDeps = {
   submarcaByEco?: ReadonlyMap<string, string>;
   /** loadId → recorrido del ciclo (vista Solicitudes). */
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>;
+  /** loadId → anomalías detectadas (columna Alertas y filtro por alerta). */
+  findingsByLoad?: ReadonlyMap<string, FuelFinding[]>;
   /** email del validador → nombre legible (para la celda de Validación). */
   nombreValidador?: (email?: string | null) => string;
 };
@@ -274,6 +293,53 @@ function kmplCell(
   return wrap;
 }
 
+/**
+ * Celda de Ubicación (GPS de la carga): liga a Google Maps si hay coordenadas (para verificar
+ * que el punto sea una gasolinera), texto truncado si solo hay dirección, "—" si nada.
+ */
+function gpsCell(e: FuelEntry): string | HTMLElement {
+  const texto = e.ubicacion ?? "";
+  const ll = e.ubicacionLatLng;
+  if (!ll && !texto) return "—";
+  if (ll) {
+    const a = document.createElement("a");
+    a.href = `https://www.google.com/maps?q=${ll.lat},${ll.lng}`;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.className = "fuel-gps-link";
+    a.textContent = "📍 Mapa";
+    a.title = texto || `${ll.lat}, ${ll.lng}`;
+    // La liga abre Maps, no el drawer de detalle.
+    a.addEventListener("click", (ev) => ev.stopPropagation());
+    return a;
+  }
+  const span = document.createElement("span");
+  span.textContent = texto.length > 28 ? `${texto.slice(0, 27)}…` : texto;
+  span.title = texto;
+  return span;
+}
+
+/** Precedencia visual del chip de Alertas por severidad del peor finding. */
+const ALERT_PILL_CLS: Record<string, string> = {
+  Urgente: "sw-pill-urg",
+  Revisar: "sw-pill-rev",
+  Completar: "sw-pill-hist",
+};
+
+/** Celda de Alertas: chip con la regla más severa (+N si hay más), tooltip con el detalle. */
+function alertasCell(findings: readonly FuelFinding[] | undefined): string | HTMLElement {
+  if (!findings || findings.length === 0) return "—";
+  const worst = worstRisk(findings);
+  // El chip muestra el PRIMER finding de la severidad máxima (orden del detector, estable).
+  const first = findings.find((f) => f.lv === worst) ?? findings[0]!;
+  const label = FUEL_RULE_LABEL[ruleOfFinding(first)] ?? ruleOfFinding(first);
+  const span = document.createElement("span");
+  span.className = `sw-pill ${ALERT_PILL_CLS[worst] ?? "sw-pill-rev"}`;
+  span.textContent = findings.length > 1 ? `${label} +${findings.length - 1}` : label;
+  span.title = findings.map((f) => f.text).join("\n");
+  return span;
+}
+
 /** Celda de Validación: semáforo + (si hay) "{nombre} · {fecha}" en línea chica. */
 function verdictCell(
   e: FuelEntry,
@@ -302,11 +368,20 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
 } {
   const { tbody, entries, filter, sortCol, sortDir, metricsByLoad, submarcaByEco } = deps;
   const recorridosByLoad = deps.recorridosByLoad;
+  const findingsByLoad = deps.findingsByLoad;
   const nombreValidador = deps.nombreValidador;
   const kmplByLoad = new Map<string, number | null>();
   if (metricsByLoad) for (const [id, m] of metricsByLoad) kmplByLoad.set(id, m.kmPorLitro);
 
-  const rows = filterAndSortFuel(entries, filter, sortCol, sortDir, kmplByLoad, recorridosByLoad);
+  const rows = filterAndSortFuel(
+    entries,
+    filter,
+    sortCol,
+    sortDir,
+    kmplByLoad,
+    recorridosByLoad,
+    findingsByLoad,
+  );
   const order = rows.map((r) => r.loadId);
 
   // Vista Solicitudes: las columnas de carga (Litros/Monto/km-l) se reusan para datos de la
@@ -363,8 +438,10 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
             metricsByLoad?.get(e.loadId)?.motivoSinKmpl,
             metricsByLoad?.get(e.loadId)?.cargaParcial,
           ),
+      alertasCell(findingsByLoad?.get(e.loadId)),
       verdictCell(e, v, nombreValidador),
       e.photos.length ? `📷 ${e.photos.length}` : "—",
+      gpsCell(e),
     ];
     for (const c of cells) {
       const td = document.createElement("td");
