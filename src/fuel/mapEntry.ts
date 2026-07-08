@@ -201,7 +201,7 @@ function mapReview(v: ValidacionRow | undefined): FuelReview | undefined {
 }
 
 /** Datos de la unidad del catálogo que se anexan a cada carga (join por economicoId). */
-export type UnidadJoin = { submarca?: string };
+export type UnidadJoin = { submarca?: string; area?: string };
 
 /** Mapea una fila CargaCombustible (+ su validación) a FuelEntry. */
 export function mapCargaToFuelEntry(
@@ -243,6 +243,7 @@ export function mapCargaToFuelEntry(
     km: num(row.kmCapturado),
     tipoUnidad: clase,
     submarca: normSubmarca(unidad?.submarca),
+    area: unidad?.area || undefined,
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,

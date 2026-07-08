@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-+P1wkMuyFD1uS2KDH79HNpauKOULnhfX+/sEzGV1dZI='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2iUzYhJBOgGdA7N1VVJRV5C4/jG6FLqAh5lXQ6Hu8xU='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -844,7 +844,7 @@ g.inflateBytes=async function(src){
   </div>
   <div id="cv-lista-wrap" class="uv-table-wrap">
     <table class="uv-table"><thead><tr>
-      <th>Económico</th><th>Placa</th><th>Producto Toka</th><th>Sucursal</th><th>Marca / Modelo</th><th>Acciones</th>
+      <th>Económico</th><th>Placa</th><th>Producto Toka</th><th>Sucursal</th><th>Área</th><th>Marca / Modelo</th><th>Acciones</th>
     </tr></thead><tbody id="cv-tbody"></tbody></table>
     <div id="cv-empty" class="uv-empty" style="display:none"></div>
   </div>
@@ -880,6 +880,16 @@ g.inflateBytes=async function(src){
       <div class="tl-field">
         <label for="cf-sucursal">Sucursal</label>
         <select id="cf-sucursal"><option value="">— Sin asignar —</option></select>
+      </div>
+      <div class="tl-field">
+        <label for="cf-area">Área</label>
+        <select id="cf-area">
+          <option value="">— Sin asignar —</option>
+          <option>Logística</option>
+          <option>Almacén</option>
+          <option>Postventa</option>
+          <option>Administración</option>
+        </select>
       </div>
       <div class="tl-field">
         <label for="cf-anio">Año</label>
@@ -1017,6 +1027,14 @@ g.inflateBytes=async function(src){
     <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
+    <select id="fuel-filt-area" aria-label="Filtrar combustible por área operativa" class="field-input">
+      <option value="">Todas las áreas</option>
+      <option>Logística</option>
+      <option>Almacén</option>
+      <option>Postventa</option>
+      <option>Administración</option>
+      <option value="(sin área)">Sin área</option>
+    </select>
     <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable" class="field-input">
       <option value="">Todos los responsables</option>
     </select>
@@ -1077,6 +1095,7 @@ g.inflateBytes=async function(src){
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por responsable ($)</div></div><div id="fchart-responsable" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por responsable"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tiempo de captura por responsable (mediana, min)</div></div><div id="fchart-tcaptura" class="chart-canvas" role="img" aria-label="Gráfica de barras: minutos entre abrir y guardar el formulario de MoreApp, por responsable, quien más tarda primero"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por tipo de combustible ($)</div></div><div id="fchart-tipo" class="chart-canvas" role="img" aria-label="Gráfica: gasto en pesos por tipo de combustible (magna, premium, diésel)"></div></div>
+      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Gasto por área ($)</div></div><div id="fchart-area" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por área operativa (logística, almacén, postventa, administración)"></div></div>
       <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tendencia mensual (litros y gasto)</div></div><div id="fchart-tendencia" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia mensual de litros cargados y gasto en pesos"></div></div>
     </div>
   </div>
@@ -6598,7 +6617,7 @@ function renderUnidades(){
   const tb = document.getElementById("cv-tbody");
   const empty = document.getElementById("cv-empty");
   const rows = _cvUnits
-    .filter(u => _qAny(q, [u.economicoId,u.placa,u.productoToka,u.sucursal,u.marca,u.modelo]))
+    .filter(u => _qAny(q, [u.economicoId,u.placa,u.productoToka,u.sucursal,u.area,u.marca,u.modelo]))
     .sort((a,b)=> _ecoNum(a)-_ecoNum(b) || String(a.placa||"").localeCompare(String(b.placa||"")));
   if(!rows.length){
     tb.innerHTML=""; empty.style.display="block";
@@ -6617,6 +6636,7 @@ function renderUnidades(){
       <td>${escHtml(u.placa||"—")}</td>
       <td>${prod}</td>
       <td>${escHtml(u.sucursal||"—")}</td>
+      <td>${escHtml(u.area||"—")}</td>
       <td>${mm}</td>
       <td class="uv-actions">
         <button class="uv-act" title="Editar" data-action="openUnidadModal" data-arg1="${placa}"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
@@ -6650,6 +6670,7 @@ function openUnidadModal(placa){
   pIn.disabled = !!u; // la placa es el identificador → no se edita
   document.getElementById("cf-producto").value = u ? (u.productoToka||"") : "";
   populateUnidadSucursal(u ? (u.sucursal||"") : "");
+  document.getElementById("cf-area").value = u ? (u.area||"") : "";
   document.getElementById("cf-anio").value = (u && u.anio!=null) ? u.anio : "";
   document.getElementById("cf-marca").value = u ? (u.marca||"") : "";
   document.getElementById("cf-modelo").value = u ? (u.modelo||"") : "";
@@ -6666,6 +6687,7 @@ async function saveUnidad(){
   const placa = _cvEditPlaca || document.getElementById("cf-placa").value.trim().toUpperCase().replace(/\s+/g,"");
   const productoToka = document.getElementById("cf-producto").value.trim();
   const sucursal = document.getElementById("cf-sucursal").value.trim();
+  const area = document.getElementById("cf-area").value.trim();
   const marca = document.getElementById("cf-marca").value.trim();
   const modelo = document.getElementById("cf-modelo").value.trim();
   const anioRaw = document.getElementById("cf-anio").value.trim();
@@ -6691,6 +6713,7 @@ async function saveUnidad(){
   if(productoToka) payload.productoToka = _cvNormProducto(productoToka); // grafía exacta de Toka
 
   if(sucursal) payload.sucursal = sucursal;
+  if(area) payload.area = area; // omite vacío (v1: no des-asigna) — no pisa datos del webhook
   if(marca) payload.marca = marca;
   if(modelo) payload.modelo = modelo;
   if(anio !== undefined) payload.anio = anio;

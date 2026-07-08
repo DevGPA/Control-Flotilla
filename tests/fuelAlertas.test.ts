@@ -36,6 +36,7 @@ const NO_FILTER: FuelTableFilter = {
   responsable: "",
   search: "",
   flag: "",
+  area: "",
 };
 
 describe("helpers de findings", () => {

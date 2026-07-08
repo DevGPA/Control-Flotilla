@@ -130,6 +130,7 @@ describe("integración", () => {
       responsable: "",
       search: "",
       flag: "",
+      area: "",
     };
     const rapida = entry({
       eco: "1",

@@ -40,6 +40,11 @@ const schema = a
         // prioridad sobre el eco.PRODUCTO de MoreApp, que puede quedar desactualizado
         // cuando una unidad migra de tarjeta (p.ej. de TOKA COMBUSTIBLE a EASYGAS).
         productoToka: a.string(),
+        // Área operativa de la unidad (indicador de gasto por área — auditoría 2026-07).
+        // Valores canónicos: Logística | Almacén | Postventa | Administración (select fijo
+        // en el panel admin; validación en cliente). El webhook NUNCA la escribe, así que
+        // la asignación del admin sobrevive re-ingestas (el upsert solo pisa campos presentes).
+        area: a.string(),
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "placa"])

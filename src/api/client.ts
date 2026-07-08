@@ -78,6 +78,7 @@ export type UnitInput = {
   sucursal?: string;
   vin?: string;
   productoToka?: string;
+  area?: string;
 };
 
 export async function upsertUnit(input: UnitInput): Promise<Schema["Unit"]["type"]> {
