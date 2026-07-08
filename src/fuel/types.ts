@@ -70,6 +70,8 @@ export type FuelEntry = {
   monto?: number;
   seLlenoTanque?: string;
   ubicacion?: string; // formattedValue del GPS
+  /** Coordenadas del GPS de la carga (liga a Maps para verificar que sea una gasolinera). */
+  ubicacionLatLng?: { lat: number; lng: number };
   photos: FuelPhoto[];
   review?: FuelReview;
 };
@@ -120,6 +122,8 @@ export type FuelMetrics = {
   litrosFill?: number;
   precioPorLitro: number | null; // monto / litros
   diasDesdeAnterior: number | null;
+  /** Capacidad nominal del tanque en litros (de eco.TANQUE). undefined si no parsea. */
+  tanqueCap?: number;
 };
 
 /** Estadísticas de un grupo (por unidad o por tipo). */
@@ -162,6 +166,7 @@ export type FuelThresholds = {
   LEAK_FLOOR: number; // km/l mínimo para juzgar fuga (exime unidades crónicamente ineficientes)
   LEAK_MIN_N: number; // n mínimo de eventos fieles para juzgar la caída de una unidad
   MIN_BASELINE_N: number; // n mínimo para confiar en el baseline por unidad
+  TANK_FILL_PCT: number; // fracción de la capacidad nominal del tanque que marca la carga a revisar
 };
 
 /**

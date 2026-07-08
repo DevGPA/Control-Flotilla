@@ -35,6 +35,7 @@ const NO_FILTER: FuelTableFilter = {
   sucursal: "",
   responsable: "",
   search: "",
+  flag: "",
 };
 
 describe("filterAndSortFuel", () => {

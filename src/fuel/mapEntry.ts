@@ -117,6 +117,36 @@ export function classByTankAndFuel(
   return `${tamano} ${comb}`;
 }
 
+/**
+ * Extrae texto y coordenadas del widget location de MoreApp (`ubicacionDeCarga`).
+ * Forma real observada: { coordinates: {latitude, longitude}, location: {...}, formattedValue }.
+ * Tolera variantes (location.latitude/longitude, lat/lng planos, números como string) y cae a
+ * parsear "lat,lng" del formattedValue. Coordenadas fuera de rango → solo texto.
+ */
+export function parseUbicacion(raw: unknown): { texto?: string; lat?: number; lng?: number } {
+  const o = safeObj(raw);
+  const texto =
+    typeof o.formattedValue === "string" && o.formattedValue ? o.formattedValue : undefined;
+  const coord = (v: unknown): number | undefined => {
+    const n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const candidates = [safeObj(o.coordinates), safeObj(o.location), o];
+  for (const c of candidates) {
+    const lat = coord(c.latitude ?? c.lat);
+    const lng = coord(c.longitude ?? c.lng);
+    if (lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
+      return { texto, lat, lng };
+  }
+  const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(texto ?? "");
+  if (m) {
+    const lat = parseFloat(m[1]!);
+    const lng = parseFloat(m[2]!);
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { texto, lat, lng };
+  }
+  return { texto };
+}
+
 const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>(["ok", "discrepancia", "pendiente"]);
 const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 
@@ -172,8 +202,7 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
       };
     })
     .filter((p) => p.fname);
-  const ubic = safeObj(datos.ubicacionDeCarga);
-  const ubicacion = typeof ubic.formattedValue === "string" ? ubic.formattedValue : undefined;
+  const ubic = parseUbicacion(datos.ubicacionDeCarga);
   const producto = typeof datos.producto === "string" ? datos.producto : "";
   const combustible = typeof datos.combustible === "string" ? datos.combustible : "";
   const { tipoUnidad, esMontacargas } = deriveTipo(producto, combustible);
@@ -204,7 +233,9 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
     precioPorLitro: num(row.precioPorLitro),
     monto: num(row.montoTotal),
     seLlenoTanque: row.seLlenoTanque ?? undefined,
-    ubicacion,
+    ubicacion: ubic.texto,
+    ubicacionLatLng:
+      ubic.lat != null && ubic.lng != null ? { lat: ubic.lat, lng: ubic.lng } : undefined,
     photos,
     review: mapReview(val),
   };

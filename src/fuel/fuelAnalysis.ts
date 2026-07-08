@@ -33,6 +33,9 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   LEAK_FLOOR: 4,
   LEAK_MIN_N: 4,
   MIN_BASELINE_N: 3,
+  // Carga al tope del tanque (auditoría): litros > 95% de la capacidad nominal ⇒ la unidad
+  // llegó casi vacía (contra política de recarga) o hay cargas segregadas/desvío.
+  TANK_FILL_PCT: 0.95,
 };
 
 /**
@@ -259,6 +262,8 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
         const km = typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
         const litros = typeof e.litros === "number" && e.litros > 0 ? e.litros : null;
         const monto = typeof e.monto === "number" && Number.isFinite(e.monto) ? e.monto : null;
+        const tanqueNum = parseFloat(String(e.tanque ?? ""));
+        const tanqueCap = Number.isFinite(tanqueNum) && tanqueNum > 0 ? tanqueNum : undefined;
         let diasDesdeAnterior: number | null = null;
         if (prevEmitted) {
           const dt = toTime(e) - toTime(prevEmitted);
@@ -294,6 +299,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           litrosFill: esRep && multi ? litrosGrupo : undefined,
           precioPorLitro,
           diasDesdeAnterior,
+          tanqueCap,
         });
         prevEmitted = e;
       }
@@ -475,6 +481,47 @@ export function buildFleetBaseline(
   };
 }
 
+/** Regla de un finding a partir de su key "Fuel:<regla>:<loadId>". */
+export function ruleOfFinding(f: Pick<FuelFinding, "key">): string {
+  return f.key.split(":")[1] ?? "";
+}
+
+/** Agrupa findings por loadId (chips por fila de la tabla y filtro por alerta). */
+export function groupFindingsByLoad(findings: readonly FuelFinding[]): Map<string, FuelFinding[]> {
+  const m = new Map<string, FuelFinding[]>();
+  for (const f of findings) if (f.loadId) pushInto(m, f.loadId, f);
+  return m;
+}
+
+/** Etiqueta corta por regla de anomalía (chips de la tabla y opciones del filtro). */
+export const FUEL_RULE_LABEL: Record<string, string> = {
+  frecuencia: "2ª carga en el día",
+  "tanque-95": "≥95% del tanque",
+  "km-retrocede": "Odómetro retrocede",
+  "km-salto": "Salto de odómetro",
+  rendimiento: "Rendimiento bajo",
+  consumo: "Consumo inusual",
+  "litros-implausibles": "Litros implausibles",
+  fuga: "Posible fuga",
+  "captura-litros": "Captura: litros",
+  "captura-monto": "Captura: monto",
+  "captura-km": "Captura: km",
+  "captura-precio": "Captura: precio",
+};
+
+/**
+ * ¿Los findings de una fila empatan el filtro de alerta? `""` = sin filtro (todo pasa),
+ * `"any"` = con alguna alerta, `"captura"` = cualquier error de captura (prefijo),
+ * cualquier otro valor = regla exacta.
+ */
+export function matchesFlag(findings: readonly FuelFinding[] | undefined, flag: string): boolean {
+  if (!flag) return true;
+  const fs = findings ?? [];
+  if (flag === "any") return fs.length > 0;
+  if (flag === "captura") return fs.some((f) => ruleOfFinding(f).startsWith("captura"));
+  return fs.some((f) => ruleOfFinding(f) === flag);
+}
+
 /** Precedencia de RiskLevel para agregar el peor. */
 const RISK_ORDER: Record<RiskLevel, number> = { Urgente: 3, Revisar: 2, Completar: 1.5, OK: 1 };
 
@@ -617,6 +664,23 @@ export function detectFuelAnomalies(
           m,
           "litros-implausibles",
           `Litros implausibles: ${m.litros.toFixed(1)} L — posible error de captura (máx. usual de su tipo ≈ ${Math.round(techoL)} L)`,
+          "Revisar",
+        );
+
+      // 8. Carga al tope del tanque (auditoría): litros > TANK_FILL_PCT · capacidad NOMINAL
+      // (eco.TANQUE). Complementa la regla 7 (techo estadístico): aquí la señal es que la
+      // unidad llegó casi vacía o hay cargas segregadas. Montacargas fuera (tanque Gas LP
+      // no comparable). Sin capacidad fiable, la regla simplemente no aplica.
+      if (
+        !m.esMontacargas &&
+        m.litros != null &&
+        m.tanqueCap != null &&
+        m.litros > cfg.TANK_FILL_PCT * m.tanqueCap
+      )
+        push(
+          m,
+          "tanque-95",
+          `Carga al ${Math.round((m.litros / m.tanqueCap) * 100)}% del tanque (${m.litros.toFixed(1)} L de ${m.tanqueCap} L) — llegó casi vacío o cargas segregadas`,
           "Revisar",
         );
 
