@@ -51,6 +51,12 @@ export type FuelEntry = {
   responsable?: string;
   km?: number;
   tipoUnidad?: string; // categoría derivada de producto (Diesel / Gas LP / Premium…)
+  /**
+   * Submarca/tipo comercial de la unidad (`Unit.marca`, de eco.SUBMARCA de MoreApp:
+   * "Aumark TM3", "NP 300…"). Join por economicoId en hidratación — cambiarla en el
+   * catálogo re-clasifica el histórico. Dimensión del comparativo de rendimiento por tipo.
+   */
+  submarca?: string;
   combustible?: string;
   /**
    * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no

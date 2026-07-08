@@ -77,16 +77,19 @@ function hbar(
         borderColor: p.ln,
         textStyle: { color: p.text },
         formatter: (ps: unknown) => {
-          const a = (ps as { name: string; value: number }[])[0]!;
-          const item = data.find((d) => d.eco === a.name);
+          // Lookup por dataIndex (no por name: con sucursal la etiqueta del eje es "44 · MTY").
+          const a = (ps as { name: string; value: number; dataIndex: number }[])[0]!;
+          const item = data[a.dataIndex];
           const n = item ? item.n : 0;
           const cargas = `<span style="opacity:.7">${n} carga${n === 1 ? "" : "s"} en el período</span>`;
+          const eco = item?.eco ?? a.name;
           if (esDesv && item) {
             const dv = (item.desviacion ?? 0) * 100;
             const base = item.tipoMean ? `${item.tipoMean.toFixed(2)} km/l` : "—";
-            return `Unidad ${a.name}<br/><b>${pct1(dv)} vs ${item.tipo ?? "su tipo"}</b><br/>${item.kmpl.toFixed(2)} km/l · tipo ${base}<br/>${cargas}`;
+            return `Unidad ${eco}<br/><b>${pct1(dv)} vs ${item.tipo ?? "su tipo"}</b><br/>${item.kmpl.toFixed(2)} km/l · tipo ${base}<br/>${cargas}`;
           }
-          return `Unidad ${a.name}<br/><b>${a.value.toFixed(2)} km/l</b><br/>${cargas}`;
+          const suc = item?.sucursal ? ` · ${item.sucursal}` : "";
+          return `Unidad ${eco}${suc}<br/><b>${a.value.toFixed(2)} km/l</b><br/>${cargas}`;
         },
       },
       xAxis: {
@@ -94,7 +97,15 @@ function hbar(
         ...axisCommon(p),
         axisLabel: { color: p.textSub, fontSize: 10, formatter: esDesv ? "{value}%" : "{value}" },
       },
-      yAxis: { type: "category", data: data.map((d) => d.eco), ...axisCommon(p) },
+      // Con sucursal (comparativo por submarca): "44 · MTY" en el eje para ver de un
+      // vistazo de qué sucursal es cada unidad del ranking.
+      yAxis: {
+        type: "category",
+        data: data.map((d) =>
+          d.sucursal ? `${d.eco} · ${d.sucursal.slice(0, 3).toUpperCase()}` : d.eco,
+        ),
+        ...axisCommon(p),
+      },
       series: [
         {
           type: "bar",
@@ -209,6 +220,8 @@ export type FuelDashboardData = {
   porResponsable: GroupConsumo[];
   porTipo: GroupConsumo[];
   meses: MonthConsumo[];
+  /** Unidades de la submarca seleccionada, km/l absoluto, peor primero (obs. 1 auditoría). */
+  unidadesDeTipo?: UnitRank[];
 };
 
 export type FuelDashboardEls = {
@@ -218,6 +231,7 @@ export type FuelDashboardEls = {
   responsable: HTMLElement | null;
   tipo: HTMLElement | null;
   tendencia: HTMLElement | null;
+  tipoUnidad?: HTMLElement | null;
 };
 
 /** Renderiza todos los charts del dashboard en sus contenedores. */
@@ -229,4 +243,5 @@ export function renderFuelDashboard(els: FuelDashboardEls, data: FuelDashboardDa
   if (els.responsable) consumoBar(els.responsable, data.porResponsable, p);
   if (els.tipo) consumoBar(els.tipo, data.porTipo, p);
   if (els.tendencia) tendencia(els.tendencia, data.meses);
+  if (els.tipoUnidad) hbar(els.tipoUnidad, data.unidadesDeTipo ?? [], (pp) => pp.B);
 }
