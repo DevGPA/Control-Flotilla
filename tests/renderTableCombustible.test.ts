@@ -325,6 +325,7 @@ describe("renderTableCombustible (DOM)", () => {
     const sol = entry({
       eco: "06",
       tipo: "solicitud",
+      submarca: "Peugeot",
       nivelAntes: "0.25(1/4)",
       nivelDeseado: "1.00",
       montoEstimado: 1525,
@@ -337,7 +338,6 @@ describe("renderTableCombustible (DOM)", () => {
       filter: { ...NO_FILTER, tipo: "solicitud" },
       sortCol: "_idx",
       sortDir: -1,
-      submarcaByEco: new Map([["6", "Peugeot"]]),
       recorridosByLoad: new Map([[sol.loadId, { km: 800, viaCarga: true, cerrado: true }]]),
     });
     // Encabezado adaptado

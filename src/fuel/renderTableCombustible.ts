@@ -19,7 +19,6 @@ import {
   matchesFlag,
   worstRisk,
 } from "./fuelAnalysis";
-import { ecoKey } from "./tokaLayout";
 
 /** Valor numérico de un nivel de tanque ("0.25(1/4)" → 0.25). NaN si no parsea. */
 function nivelNum(s: string | undefined): number {
@@ -235,8 +234,6 @@ export type RenderTableCombustibleDeps = {
   sortDir: 1 | -1;
   metricsByLoad?: Map<string, FuelMetrics>;
   onRowClick?: (loadId: string, visibleOrder: string[]) => void;
-  /** economicoId (clave canónica) → submarca/marca del catálogo de Unidades (vista Solicitudes). */
-  submarcaByEco?: ReadonlyMap<string, string>;
   /** loadId → recorrido del ciclo (vista Solicitudes). */
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>;
   /** loadId → anomalías detectadas (columna Alertas y filtro por alerta). */
@@ -366,7 +363,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   filtered: number;
   empty: boolean;
 } {
-  const { tbody, entries, filter, sortCol, sortDir, metricsByLoad, submarcaByEco } = deps;
+  const { tbody, entries, filter, sortCol, sortDir, metricsByLoad } = deps;
   const recorridosByLoad = deps.recorridosByLoad;
   const findingsByLoad = deps.findingsByLoad;
   const nombreValidador = deps.nombreValidador;
@@ -409,11 +406,12 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     tr.tabIndex = 0;
 
     const kmpl = kmplByLoad.get(e.loadId);
-    const submarca = esSol ? submarcaByEco?.get(ecoKey(e.eco)) : undefined;
+    // La submarca viaja en la entry (join en hidratación) — visible en cargas Y solicitudes,
+    // para que auditoría vea el tipo de unidad por fila.
     const cells: (string | HTMLElement)[] = [
       String(i + 1),
       e.tipo === "carga" ? "Carga" : "Solicitud",
-      submarca ? `${e.eco} · ${submarca}` : e.eco,
+      e.submarca ? `${e.eco} · ${e.submarca}` : e.eco,
       e.placa ?? "—",
       e.fecha || "—",
       e.sucursal || "—",

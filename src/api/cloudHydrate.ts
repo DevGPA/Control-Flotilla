@@ -442,7 +442,15 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // CargaCombustible (solicitudes + cargas) + ValidacionCarga (revisión) → FuelEntry[].
   // Las fotos de evidencia se pre-firman junto con las demás (más abajo).
   {
-    const fuelEntries = buildFuelEntries(combustible, validaciones);
+    // Join VIVO con el catálogo de Unidades: submarca (eco.SUBMARCA → Unit.marca) por
+    // economicoId. buildFuelEntries normaliza las claves (ecoKey "06"↔"6").
+    const unidadPorEco = new Map<string, { submarca?: string }>();
+    for (const u of units) {
+      const eco = String(u.economicoId ?? "");
+      const marca = String(u.marca ?? "").trim();
+      if (eco && marca && !unidadPorEco.has(eco)) unidadPorEco.set(eco, { submarca: marca });
+    }
+    const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco);
     window.fuelEntries = fuelEntries;
     if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
     if (typeof window.initRangoFuel === "function") window.initRangoFuel();

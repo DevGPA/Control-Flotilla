@@ -36,7 +36,13 @@ import {
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
-import { rankUnitsByDeviation, splitRanking, aggByGroup, aggByMonth } from "./fuelAggregates";
+import {
+  rankUnitsByDeviation,
+  rankUnitsBySubmarca,
+  splitRanking,
+  aggByGroup,
+  aggByMonth,
+} from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
 import { upsertValidacionCarga } from "../api/client";
 
@@ -210,17 +216,7 @@ function renderCombustible(): void {
     all,
   );
 
-  // Submarca por económico (del catálogo de Unidades) para la vista Solicitudes.
-  const fleet =
-    (window as unknown as { __fleetUnits?: Array<{ eco?: string; brand?: string }> })
-      .__fleetUnits ?? [];
-  const submarcaByEco = new Map<string, string>();
-  for (const u of fleet) {
-    const k = ecoKey(u.eco);
-    const m = (u.brand ?? "").trim();
-    if (k && m && !submarcaByEco.has(k)) submarcaByEco.set(k, m);
-  }
-
+  // La submarca ya viaja en cada FuelEntry (join por economicoId en cloudHydrate).
   renderTableCombustible({
     tbody,
     countEl: $("fuel-rcnt"),
@@ -231,7 +227,6 @@ function renderCombustible(): void {
     sortCol,
     sortDir,
     metricsByLoad: ctx.metricsByLoad,
-    submarcaByEco,
     recorridosByLoad: ctx.recorridosByLoad,
     findingsByLoad: ctx.findingsByLoad,
     nombreValidador,
@@ -258,6 +253,9 @@ function setDashView(show: boolean): void {
   if (show) void renderFuelDash();
 }
 
+// Submarca seleccionada en el comparativo por tipo de unidad ("" = la de más unidades).
+let dashSubmarca = "";
+
 /** Render del dashboard ejecutivo (carga echarts dinámicamente al primer uso). */
 async function renderFuelDash(): Promise<void> {
   const dash = $("fuel-dash");
@@ -269,6 +267,35 @@ async function renderFuelDash(): Promise<void> {
   // pesado no cae siempre en "peores" por física. mejores/peores disjuntos (splitRanking).
   const ranks = rankUnitsByDeviation(ctx.baseline);
   const { mejores, peores } = splitRanking(ranks, 10);
+
+  // Comparativo por submarca (obs. 1 auditoría): submarca y última sucursal conocida
+  // por unidad, del MISMO set filtrado (respeta período/sucursal/etc.).
+  const submarcaDe = new Map<string, string>();
+  const sucursalDe = new Map<string, string>();
+  for (const e of ctx.filtered) {
+    if (e.submarca && !submarcaDe.has(e.eco)) submarcaDe.set(e.eco, e.submarca);
+    if (e.sucursal) sucursalDe.set(e.eco, e.sucursal); // filtered viene DESC → la 1ª es la última
+  }
+  const porSubmarca = rankUnitsBySubmarca(ctx.baseline, submarcaDe, sucursalDe);
+  // Selector: submarcas ordenadas por nº de unidades (la más poblada primero = default).
+  const submarcas = [...porSubmarca.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([label]) => label);
+  const sel = $("fuel-dash-tipo-unidad") as HTMLSelectElement | null;
+  if (sel) {
+    const prev = dashSubmarca || submarcas[0] || "";
+    sel.replaceChildren();
+    for (const s of submarcas) {
+      const o = document.createElement("option");
+      o.value = s;
+      o.textContent = `${s} (${porSubmarca.get(s)!.length})`;
+      sel.appendChild(o);
+    }
+    if (submarcas.includes(prev)) sel.value = prev;
+    dashSubmarca = sel.value;
+  }
+  const tipoSeleccionado = dashSubmarca || submarcas[0] || "";
+
   const data = {
     peores,
     mejores,
@@ -276,6 +303,7 @@ async function renderFuelDash(): Promise<void> {
     porResponsable: aggByGroup(ctx.filtered, (e) => e.responsable ?? "").slice(0, 12),
     porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
     meses: aggByMonth(ctx.filtered),
+    unidadesDeTipo: porSubmarca.get(tipoSeleccionado) ?? [],
   };
   const els = {
     peores: $("fchart-peores"),
@@ -284,6 +312,7 @@ async function renderFuelDash(): Promise<void> {
     responsable: $("fchart-responsable"),
     tipo: $("fchart-tipo"),
     tendencia: $("fchart-tendencia"),
+    tipoUnidad: $("fchart-tipo-unidad"),
   };
   try {
     const { renderFuelDashboard } = await import("./fuelCharts");
@@ -513,6 +542,11 @@ function mountControls(): void {
   // Toggle segmentado Lista | Dashboard.
   $("fuel-seg-lista")?.addEventListener("click", () => setDashView(false));
   $("fuel-seg-dash")?.addEventListener("click", () => setDashView(true));
+  // Selector de submarca del comparativo por tipo de unidad.
+  ($("fuel-dash-tipo-unidad") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
+    dashSubmarca = (e.target as HTMLSelectElement).value;
+    void renderFuelDash();
+  });
   // Descargar layout de carga masiva Toka (respeta los filtros activos).
   $("fuel-export-toka")?.addEventListener("click", () => void exportTokaLayout());
   // Controles del drawer de detalle.

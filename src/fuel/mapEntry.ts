@@ -11,6 +11,7 @@ import type {
   FuelEvidenceKind,
   FuelVerdict,
 } from "./types";
+import { ecoKey } from "./tokaLayout";
 
 export interface CargaRow {
   economicoId: string;
@@ -147,6 +148,18 @@ export function parseUbicacion(raw: unknown): { texto?: string; lat?: number; ln
   return { texto };
 }
 
+/**
+ * Normaliza la submarca del catálogo para mostrar/agrupar: colapsa espacios y recorta.
+ * Conserva el casing original (es la etiqueta visible); el agrupador del ranking
+ * compara case-insensitive por su cuenta.
+ */
+export function normSubmarca(s: string | null | undefined): string | undefined {
+  const v = String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return v || undefined;
+}
+
 const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>(["ok", "discrepancia", "pendiente"]);
 const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 
@@ -187,8 +200,15 @@ function mapReview(v: ValidacionRow | undefined): FuelReview | undefined {
   };
 }
 
+/** Datos de la unidad del catálogo que se anexan a cada carga (join por economicoId). */
+export type UnidadJoin = { submarca?: string };
+
 /** Mapea una fila CargaCombustible (+ su validación) a FuelEntry. */
-export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEntry {
+export function mapCargaToFuelEntry(
+  row: CargaRow,
+  val?: ValidacionRow,
+  unidad?: UnidadJoin,
+): FuelEntry {
   const datos = safeObj(row.datos);
   const tipo: FuelTipo = row.tipo === "solicitud" ? "solicitud" : "carga";
   const photosRaw = Array.isArray(datos.photos) ? (datos.photos as unknown[]) : [];
@@ -222,6 +242,7 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
     responsable: row.responsable ?? undefined,
     km: num(row.kmCapturado),
     tipoUnidad: clase,
+    submarca: normSubmarca(unidad?.submarca),
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,
@@ -241,14 +262,30 @@ export function mapCargaToFuelEntry(row: CargaRow, val?: ValidacionRow): FuelEnt
   };
 }
 
-/** Construye los FuelEntry mergeando cargas con sus validaciones (por loadId). */
+/**
+ * Construye los FuelEntry mergeando cargas con sus validaciones (por loadId) y el catálogo
+ * de unidades (por economicoId, claves normalizadas con ecoKey: "06"↔"6"). El join de
+ * `unidadPorEco` es VIVO: cambiar la submarca en el catálogo re-clasifica el histórico.
+ */
 export function buildFuelEntries(
   rows: readonly CargaRow[],
   validaciones: readonly ValidacionRow[] = [],
+  unidadPorEco?: ReadonlyMap<string, UnidadJoin>,
 ): FuelEntry[] {
   const valByLoad = new Map<string, ValidacionRow>();
   for (const v of validaciones) valByLoad.set(v.loadId, v);
+  // Re-keyea el catálogo con ecoKey para que "06" (catálogo) case con "6" (cargas).
+  const unidadByKey = new Map<string, UnidadJoin>();
+  if (unidadPorEco)
+    for (const [eco, u] of unidadPorEco) {
+      const k = ecoKey(eco);
+      if (k && !unidadByKey.has(k)) unidadByKey.set(k, u);
+    }
   return rows.map((r) =>
-    mapCargaToFuelEntry(r, valByLoad.get(loadIdOf(r.economicoId, r.tipo, r.eventoId))),
+    mapCargaToFuelEntry(
+      r,
+      valByLoad.get(loadIdOf(r.economicoId, r.tipo, r.eventoId)),
+      unidadByKey.get(ecoKey(r.economicoId)),
+    ),
   );
 }

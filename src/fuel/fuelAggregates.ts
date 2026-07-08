@@ -34,6 +34,8 @@ export type UnitRank = {
   tipoMean?: number;
   /** Desviación relativa vs su tipo: (kmpl − tipoMean) / tipoMean. + = mejor que sus pares. */
   desviacion?: number;
+  /** Última sucursal conocida de la unidad (comparativo entre sucursales por submarca). */
+  sucursal?: string;
 };
 
 /**
@@ -90,6 +92,40 @@ export function splitRanking(
   const mejores = ranks.slice(0, k); // mejor primero (desc)
   const peores = ranks.slice(ranks.length - k).reverse(); // peor primero (asc)
   return { mejores, peores };
+}
+
+/**
+ * Ranking de unidades por km/l (ponderado por volumen) AGRUPADO por submarca comercial
+ * ("Aumark TM3", "NP 300…"). Dentro del MISMO tipo el km/l absoluto SÍ es comparable —
+ * es el comparativo del auditor: ¿qué unidades de este tipo rinden peor y de qué sucursal
+ * son? Cada grupo va ordenado ASC (peor primero). Las submarcas se fusionan
+ * case-insensitive (la clave del Map conserva la primera grafía vista).
+ *
+ * `minN = 2` (más laxo que el 4 del ranking global): dentro del mismo tipo se prefiere
+ * transparencia con pocas lecturas a dejar unidades fuera; con n<4 el promedio entra sin
+ * recorte IQR, así que el tooltip muestra `n` para ponderar la confianza.
+ */
+export function rankUnitsBySubmarca(
+  baseline: FleetBaseline,
+  submarcaDe: ReadonlyMap<string, string>,
+  sucursalDe: ReadonlyMap<string, string>,
+  minN = 2,
+): Map<string, UnitRank[]> {
+  const canon = new Map<string, string>(); // clave case-insensitive → etiqueta visible
+  const out = new Map<string, UnitRank[]>();
+  for (const [eco, s] of baseline.porUnidad) {
+    const k = repKmpl(s);
+    if (!(s.n >= minN && Number.isFinite(k) && k > 0)) continue;
+    const label = submarcaDe.get(eco) || "(sin tipo)";
+    const key = label.toUpperCase();
+    if (!canon.has(key)) {
+      canon.set(key, label);
+      out.set(label, []);
+    }
+    out.get(canon.get(key)!)!.push({ eco, kmpl: k, n: s.n, sucursal: sucursalDe.get(eco) });
+  }
+  for (const ranks of out.values()) ranks.sort((a, b) => a.kmpl - b.kmpl); // peor primero
+  return out;
 }
 
 export type GroupConsumo = { group: string; litros: number; gasto: number; cargas: number };
