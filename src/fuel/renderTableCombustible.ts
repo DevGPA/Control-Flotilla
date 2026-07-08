@@ -65,6 +65,8 @@ export type FuelTableFilter = {
   hasta?: string;
   /** Filtro por alerta detectada: "" = todo, "any" = con alertas, "captura" = errores de captura, o regla exacta. */
   flag: string;
+  /** Filtro por área operativa: "" = todas, "(sin área)" = unidades sin asignar, o área exacta. */
+  area: string;
 };
 
 /** Veredicto efectivo de una entrada (pendiente si no hay revisión). */
@@ -138,6 +140,7 @@ export function filterAndSortFuel(
     if (filter.desde && e.fecha < filter.desde) return false;
     if (filter.hasta && e.fecha > filter.hasta) return false;
     if (filter.flag && !matchesFlag(findingsByLoad?.get(e.loadId), filter.flag)) return false;
+    if (filter.area && (e.area ?? "(sin área)") !== filter.area) return false;
     return matchesSearch(e, filter.search);
   });
 

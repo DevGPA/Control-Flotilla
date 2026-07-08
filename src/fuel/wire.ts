@@ -71,6 +71,7 @@ const filter: FuelTableFilter = {
   desde: undefined,
   hasta: undefined,
   flag: "",
+  area: "",
 };
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
@@ -306,6 +307,7 @@ async function renderFuelDash(): Promise<void> {
     meses: aggByMonth(ctx.filtered),
     unidadesDeTipo: porSubmarca.get(tipoSeleccionado) ?? [],
     tcaptura: duracionPorResponsable(ctx.filtered).slice(0, 12),
+    porArea: aggByGroup(ctx.filtered, (e) => e.area ?? "(sin área)"),
   };
   const els = {
     peores: $("fchart-peores"),
@@ -316,6 +318,7 @@ async function renderFuelDash(): Promise<void> {
     tendencia: $("fchart-tendencia"),
     tipoUnidad: $("fchart-tipo-unidad"),
     tcaptura: $("fchart-tcaptura"),
+    area: $("fchart-area"),
   };
   try {
     const { renderFuelDashboard } = await import("./fuelCharts");
@@ -444,6 +447,8 @@ function syncFilterControls(): void {
   if (tSel) tSel.value = filter.tipo;
   const fSel = $("fuel-filt-flag") as HTMLSelectElement | null;
   if (fSel) fSel.value = filter.flag;
+  const aSel = $("fuel-filt-area") as HTMLSelectElement | null;
+  if (aSel) aSel.value = filter.area;
 }
 
 function updateFuelNavBadge(): void {
@@ -520,6 +525,10 @@ function mountControls(): void {
   });
   ($("fuel-filt-flag") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
     filter.flag = (e.target as HTMLSelectElement).value;
+    renderCombustible();
+  });
+  ($("fuel-filt-area") as HTMLSelectElement | null)?.addEventListener("change", (e) => {
+    filter.area = (e.target as HTMLSelectElement).value;
     renderCombustible();
   });
   ($("fuel-rango-desde") as HTMLInputElement | null)?.addEventListener("change", (e) => {

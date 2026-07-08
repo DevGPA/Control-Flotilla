@@ -136,6 +136,7 @@ declare global {
         sucursal?: string;
         vin?: string;
         productoToka?: string;
+        area?: string;
       }) => Promise<void>;
       remove: (placa: string) => Promise<void>;
     };

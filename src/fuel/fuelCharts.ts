@@ -270,6 +270,8 @@ export type FuelDashboardData = {
   unidadesDeTipo?: UnitRank[];
   /** Tiempo de captura por responsable, mediana DESC (obs. 4 auditoría). */
   tcaptura?: DuracionGrupo[];
+  /** Gasto por área operativa (obs. 5 auditoría). */
+  porArea?: GroupConsumo[];
 };
 
 export type FuelDashboardEls = {
@@ -281,6 +283,7 @@ export type FuelDashboardEls = {
   tendencia: HTMLElement | null;
   tipoUnidad?: HTMLElement | null;
   tcaptura?: HTMLElement | null;
+  area?: HTMLElement | null;
 };
 
 /** Renderiza todos los charts del dashboard en sus contenedores. */
@@ -294,4 +297,5 @@ export function renderFuelDashboard(els: FuelDashboardEls, data: FuelDashboardDa
   if (els.tendencia) tendencia(els.tendencia, data.meses);
   if (els.tipoUnidad) hbar(els.tipoUnidad, data.unidadesDeTipo ?? [], (pp) => pp.B);
   if (els.tcaptura) duracionBar(els.tcaptura, data.tcaptura ?? []);
+  if (els.area) consumoBar(els.area, data.porArea ?? [], p);
 }

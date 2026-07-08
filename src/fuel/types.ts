@@ -57,6 +57,11 @@ export type FuelEntry = {
    * catálogo re-clasifica el histórico. Dimensión del comparativo de rendimiento por tipo.
    */
   submarca?: string;
+  /**
+   * Área operativa de la unidad (`Unit.area`, capturada por el admin). Join por
+   * economicoId en hidratación — reasignar el área re-clasifica el gasto histórico.
+   */
+  area?: string;
   combustible?: string;
   /**
    * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no
@@ -193,5 +198,8 @@ export type FuelFinding = {
   loadId?: string;
   eco?: string;
 };
+
+/** Áreas operativas canónicas de la flotilla (select fijo del admin y filtro de gasto). */
+export const AREAS_FLOTILLA = ["Logística", "Almacén", "Postventa", "Administración"] as const;
 
 export type { RiskLevel };
