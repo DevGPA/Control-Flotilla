@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-xaWwJHnVJYLTGb2Hs8Inn9HFqR78YYq2ZNsY94NxSY4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-mnC18pxUTE/j5wTR8TbbqegR9Ky0NDrJjjmx6GuThMY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -330,6 +330,9 @@ g.inflateBytes=async function(src){
   <input type="date" id="rango-hasta" aria-label="Hasta" class="field-input"/>
   <button id="btn-rango" onclick="aplicarRango()" class="btn-accent">Aplicar</button>
   <span id="rango-count" style="font-size:10px;color:var(--s2);margin-left:4px"></span>
+  <button class="needs-admin" data-action="abrirAnulados" data-arg1="checklist" data-arg2="Registros anulados — Inspecciones"
+    title="Inspecciones anuladas (historial y restauración)"
+    style="cursor:pointer;margin-left:8px;padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10.5px;color:var(--s2);background:var(--bg2)">⛔ Anulados</button>
   <div id="periodo-chips" style="display:none"></div>
   <button id="btn-tendencias" onclick="showTendencias()" style="display:none" title="Comparar tendencias entre períodos"><i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i> Tendencias</button>
 </div>
@@ -921,6 +924,9 @@ g.inflateBytes=async function(src){
       <label>Hasta <input type="date" id="sw-rango-hasta" onchange="aplicarRangoSemanal()"/></label>
       <button id="sw-btn-rango" onclick="aplicarRangoSemanal()">Aplicar</button>
       <span id="sw-rango-count" class="sw-rango-count"></span>
+      <button class="needs-admin" data-action="abrirAnulados" data-arg1="semanal" data-arg2="Registros anulados — Semanales"
+        title="Reportes semanales anulados (historial y restauración)"
+        style="cursor:pointer;margin-left:8px;padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10.5px;color:var(--s2);background:var(--bg2)">⛔ Anulados</button>
     </div>
     <!-- chips row legacy: oculta — vista ahora muestra todas las entries del rango -->
     <div id="sw-periodo-chips" style="display:none"></div>
@@ -2470,6 +2476,68 @@ function scopeBySucursal(arr){
   return (arr||[]).filter(x=>String(x && x.sucursal||"").trim()===loc);
 }
 window.scopeUnits=scopeUnits; window.scopeBySucursal=scopeBySucursal;
+
+// ── Anulación admin de registros (Lote E3): inspecciones y semanales ─────────
+// El modal/panel viven en src/anulacion/ui.ts (window.__anulacionUI); la persistencia
+// en window.__anulaciones (AppSync exige grupo admin). Tras anular/restaurar se
+// re-hidrata desde la nube: KPIs, alertas, flota y análisis se recalculan solos.
+function _anulacionRefresh(msg){
+  if(window.notify) window.notify(msg,"ok",6000);
+  const det=document.getElementById("det"); if(det) det.classList.remove("open");
+  if(window.__cloudHydrate) window.__cloudHydrate();
+}
+function anularInspeccion(uid){
+  if(!window.__anulacionUI||!window.__anulaciones) return;
+  const u=(window.__inspections||[]).find(x=>x.uid===uid)||(typeof units!=="undefined"?units.find(x=>x.uid===uid):null);
+  if(!u) return;
+  const parts=String(uid).split("__");
+  const placa=u.plate||parts[0]||"";
+  const fecha=parts[1]||u.fecha||"";
+  window.__anulacionUI.openAnular({
+    etiqueta:`Inspección · unidad ${u.eco||placa} (${placa}) · ${fecha}`,
+    confirmText:placa,
+    onConfirm:async(motivo)=>{
+      await window.__anulaciones.anular(`checklist|${placa}|${fecha}`,"checklist",motivo);
+      _anulacionRefresh("Inspección anulada: fuera de KPIs y alertas (reversible).");
+    }
+  });
+}
+window.anularInspeccion=anularInspeccion;
+function anularSemanal(swKey){
+  if(!window.__anulacionUI||!window.__anulaciones) return;
+  const all=(typeof getSwEntriesInRange==="function")?getSwEntriesInRange():[];
+  const e=all.find(x=>x._swKey===swKey)||all.find(x=>x.uid===swKey);
+  if(!e) return;
+  const periodoId=e._periodoId||(String(swKey).includes("::")?String(swKey).split("::")[1]:"");
+  window.__anulacionUI.openAnular({
+    etiqueta:`Reporte semanal · unidad ${e.eco||e.uid} (${e.uid}) · semana ${periodoId}`,
+    confirmText:String(e.uid),
+    onConfirm:async(motivo)=>{
+      await window.__anulaciones.anular(`semanal|${periodoId}|${e.uid}`,"semanal",motivo);
+      _anulacionRefresh("Reporte semanal anulado: fuera de KPIs (reversible).");
+    }
+  });
+}
+window.anularSemanal=anularSemanal;
+function abrirAnulados(modulo,titulo){
+  if(!window.__anulacionUI||!window.__anulaciones) return;
+  window.__anulacionUI.openPanel({
+    modulo, titulo,
+    fetchRows:()=>window.__anulaciones.list(),
+    resolveEtiqueta:(refId)=>{
+      const p=String(refId).split("|");
+      if(p[0]==="checklist") return `Inspección · ${p[1]} · ${p[2]}`;
+      if(p[0]==="semanal") return `Reporte semanal · ${p[2]} · semana ${p[1]}`;
+      return refId;
+    },
+    onRestaurar:async(refId)=>{
+      await window.__anulaciones.restaurar(refId);
+      if(window.notify) window.notify("Registro restaurado: vuelve a contar en KPIs.","ok",5000);
+      if(window.__cloudHydrate) window.__cloudHydrate();
+    }
+  });
+}
+window.abrirAnulados=abrirAnulados;
 // Aplica el estado de rol a la UI: clase body.ro-viewer (CSS oculta .needs-write),
 // badge "Solo lectura", y re-aplica el bloqueo de sucursal en el dropdown.
 function applyRolePermissions(){
@@ -4011,7 +4079,10 @@ function renderDet(){
       u.km?`<b>${Number(u.km).toLocaleString("es-MX")}km</b>`:null,
       u.fecha?escHtml(u.fecha):null,
       u.inspCnt?u.inspCnt+` insp.`:null
-    ].filter(Boolean).join('<span class="msep">·</span>')}</div>`;
+    ].filter(Boolean).join('<span class="msep">·</span>')}
+    <button class="needs-admin" data-action="anularInspeccion" data-arg1="${escAttr(u.uid)}"
+      title="Excluye esta inspección de KPIs y alertas, con motivo y rastro (reversible)"
+      style="margin-left:8px;cursor:pointer;color:var(--R);border:1px solid var(--R);background:transparent;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">⛔ Anular</button></div>`;
   const photoCount=u.photos.length;
   const noteCount=(notesDB[u.uid]||[]).length;
   const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !isFindingDone(dm,f,u.fecha);}).length;
@@ -7626,6 +7697,11 @@ function selSwUnit(swKey){
       </div>
       ${photosBlock}
       ${tallerBtn}
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <button class="needs-admin" data-action="anularSemanal" data-arg1="${escAttr(swKeyForThumbs)}"
+          title="Excluye este reporte semanal de KPIs, con motivo y rastro (reversible)"
+          style="cursor:pointer;color:var(--R);border:1px solid var(--R);background:transparent;border-radius:6px;padding:4px 10px;font-size:10.5px;font-weight:700">⛔ Anular reporte…</button>
+      </div>
     </div>
   `;
   // Mismo float panel del mensual: drag por .dtop + resize handles + defaultPos
