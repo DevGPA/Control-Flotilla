@@ -46,6 +46,8 @@ import {
 } from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
 import { upsertValidacionCarga } from "../api/client";
+import { refIdCombustible } from "../anulacion/anulacion";
+import { openAnularModal, openAnuladosPanel } from "../anulacion/ui";
 
 declare global {
   interface Window {
@@ -121,8 +123,24 @@ function $(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
-/** Aplica el lock por sucursal (no-op para admin/"Todas"). */
+/**
+ * Aplica el lock por sucursal (no-op para admin/"Todas") y EXCLUYE las anuladas:
+ * todo el flujo normal (KPIs, métricas, anomalías, dashboard, tabla, badge, export
+ * Toka) trabaja solo con registros vigentes. Las anuladas viven en scopedAnuladas().
+ */
 function scoped(): FuelEntry[] {
+  const all = (window.fuelEntries ?? []).filter((e) => !e.anulada);
+  return typeof window.scopeBySucursal === "function" ? window.scopeBySucursal(all) : all;
+}
+
+/** Solo los registros ANULADOS (vista "Anuladas" de la tabla), con lock de sucursal. */
+function scopedAnuladas(): FuelEntry[] {
+  const all = (window.fuelEntries ?? []).filter((e) => e.anulada);
+  return typeof window.scopeBySucursal === "function" ? window.scopeBySucursal(all) : all;
+}
+
+/** Universo completo (vigentes + anuladas) con lock de sucursal — solo para el rango de fechas. */
+function scopedTodas(): FuelEntry[] {
   const all = window.fuelEntries ?? [];
   return typeof window.scopeBySucursal === "function" ? window.scopeBySucursal(all) : all;
 }
@@ -220,14 +238,21 @@ function renderCombustible(): void {
     $("fuel-filt-tipounidad") as HTMLSelectElement | null,
   );
 
+  // Vista "Anuladas": la tabla cambia de universo (solo anuladas, que están fuera de
+  // TODO cálculo). El filtro de veredicto/alerta no aplica ahí (las anuladas no tienen
+  // findings ni entran al flujo de validación); fechas/sucursal/tipo/búsqueda sí.
+  const vistaAnuladas = filter.verdict === "anulada";
+  const tableEntries = vistaAnuladas ? scopedAnuladas() : all;
+  const tableFilter = vistaAnuladas ? { ...filter, verdict: "all" as const, flag: "" } : filter;
+
   // La submarca ya viaja en cada FuelEntry (join por economicoId en cloudHydrate).
   renderTableCombustible({
     tbody,
     countEl: $("fuel-rcnt"),
     emptyEl: $("fuel-empty"),
     tableEl: $("fuel-table"),
-    entries: all,
-    filter,
+    entries: tableEntries,
+    filter: tableFilter,
     sortCol,
     sortDir,
     metricsByLoad: ctx.metricsByLoad,
@@ -479,7 +504,9 @@ function initRangoFuel(): void {
     filter.hasta = hEl.value;
     return;
   }
-  const all = scoped();
+  // Rango sobre el universo COMPLETO (incl. anuladas): una anulada más reciente que
+  // todas las vigentes debe caber en el rango default para verse en la vista Anuladas.
+  const all = scopedTodas();
   const fechas = all
     .map((e) => e.fecha)
     .filter(Boolean)
@@ -569,6 +596,8 @@ function mountControls(): void {
   });
   // Descargar layout de carga masiva Toka (respeta los filtros activos).
   $("fuel-export-toka")?.addEventListener("click", () => void exportTokaLayout());
+  // Panel de registros anulados (visible solo admin vía .needs-admin).
+  $("fuel-anulados")?.addEventListener("click", abrirPanelAnulados);
   // Controles del drawer de detalle.
   $("fuel-det-close")?.addEventListener("click", closeFuelDetail);
   $("fuel-det-prev")?.addEventListener("click", () => navDetail(-1));
@@ -625,6 +654,78 @@ function renderCurrentDetail(): void {
     resolveUrl,
     canWrite: canWrite(),
     onValidate: handleValidate,
+    esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,
+    onAnular: () => anularCarga(load),
+    onRestaurar: () => void restaurarCarga(load),
+  });
+}
+
+/** Etiqueta legible de una entrada para el modal/panel de anulación. */
+function etiquetaDe(e: FuelEntry): string {
+  const tipo = e.tipo === "carga" ? "Carga" : "Solicitud";
+  return `${tipo} · unidad ${e.eco}${e.placa ? ` (${e.placa})` : ""} · folio ${e.eventoId} · ${e.fecha}`;
+}
+
+/** Abre el flujo de anulación de una carga/solicitud (solo admin; enforcement en AppSync). */
+function anularCarga(load: FuelEntry): void {
+  openAnularModal({
+    etiqueta: etiquetaDe(load),
+    confirmText: load.eco,
+    onConfirm: async (motivo) => {
+      if (!window.__anulaciones) throw new Error("sin sesión cloud");
+      const refId = refIdCombustible(load.loadId);
+      await window.__anulaciones.anular(refId, "combustible", motivo);
+      // Optimista: etiquetar local (la próxima hidratación reafirma desde la nube).
+      const info = {
+        motivo,
+        anuladoPor: window.__cloudSession?.email || "admin",
+        ts: new Date().toISOString(),
+      };
+      load.anulada = info;
+      window.__anuladasActivas?.set(refId, info);
+      window.notify?.("Registro anulado: quedó fuera de KPIs y cálculos (reversible).", "ok", 6000);
+      renderCombustible();
+      renderCurrentDetail();
+    },
+  });
+}
+
+/** Restaura una carga anulada (deja rastro de la restauración en la fila de anulación). */
+async function restaurarCarga(load: FuelEntry): Promise<void> {
+  if (!window.__anulaciones || !load.anulada) return;
+  try {
+    const refId = refIdCombustible(load.loadId);
+    await window.__anulaciones.restaurar(refId);
+    load.anulada = undefined;
+    window.__anuladasActivas?.delete(refId);
+    window.notify?.("Registro restaurado: vuelve a contar en KPIs y cálculos.", "ok", 5000);
+    renderCombustible();
+    renderCurrentDetail();
+  } catch (e) {
+    console.error("[fuel] restaurar:", e);
+    window.notify?.("No se pudo restaurar el registro.", "error", 5000);
+  }
+}
+
+/** Panel de anulados del módulo combustible (historial + Restaurar). */
+function abrirPanelAnulados(): void {
+  openAnuladosPanel({
+    modulo: "combustible",
+    titulo: "Registros anulados — Combustible",
+    fetchRows: async () => (window.__anulaciones ? window.__anulaciones.list() : []),
+    resolveEtiqueta: (refId) => {
+      const loadId = refId.replace(/^combustible\|/, "");
+      const e = loadById(loadId);
+      return e ? etiquetaDe(e) : loadId;
+    },
+    onRestaurar: async (refId) => {
+      await window.__anulaciones!.restaurar(refId);
+      const loadId = refId.replace(/^combustible\|/, "");
+      const e = loadById(loadId);
+      if (e) e.anulada = undefined;
+      window.__anuladasActivas?.delete(refId);
+      renderCombustible();
+    },
   });
 }
 

@@ -21,7 +21,9 @@ import {
   listCombustible,
   listValidaciones,
   listComplianceDocs,
+  listAnulaciones,
 } from "./client";
+import { buildAnuladasActivas, type AnulacionInfo } from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
 import { buildComplianceEntries } from "../compliance/mapEntry";
 import type { FuelEntry } from "../fuel/types";
@@ -88,6 +90,9 @@ declare global {
     initRangoBar?: () => void;
     // Flota: unidades distintas (catálogo) con última inspección — para KPIs hero + dona.
     __fleetUnits?: Unit[];
+    /** Anulaciones ACTIVAS (refId → info). Overlay admin que excluye registros de los
+     *  cálculos; lo consumen combustible (tag en FuelEntry) y los módulos legacy. */
+    __anuladasActivas?: Map<string, AnulacionInfo>;
     // Fase C1: registro de toggles locales recientes ("placa key" → ts) que el
     // merge respeta; lo escribe cloudWire.__cloudSetCheck.
     __checkDirty?: Record<string, string>;
@@ -227,6 +232,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     combustible,
     validaciones,
     complianceDocs,
+    anulaciones,
   ] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
@@ -253,7 +259,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       console.warn("[cloudHydrate] listComplianceDocs falló (no-fatal):", e);
       return [] as Schema["ComplianceDoc"]["type"][];
     }),
+    // No-fatal: las anulaciones son un overlay; si el modelo aún no está desplegado,
+    // nada se excluye (comportamiento previo intacto).
+    listAnulaciones(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listAnulaciones falló (no-fatal):", e);
+      return [] as Schema["Anulacion"]["type"][];
+    }),
   ]);
+
+  // Índice refId → info de anulaciones ACTIVAS (las restauradas no excluyen). Se expone
+  // en window para los módulos legacy (Inspecciones/Semanales) y se aplica aquí abajo.
+  const anuladasActivas = buildAnuladasActivas(anulaciones);
+  window.__anuladasActivas = anuladasActivas;
 
   if (
     units.length === 0 &&
@@ -453,7 +470,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       if (eco && (marca || area) && !unidadPorEco.has(eco))
         unidadPorEco.set(eco, { submarca: marca || undefined, area: area || undefined });
     }
-    const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco);
+    const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco, anuladasActivas);
     window.fuelEntries = fuelEntries;
     if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
     if (typeof window.initRangoFuel === "function") window.initRangoFuel();

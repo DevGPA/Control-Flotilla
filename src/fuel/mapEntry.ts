@@ -12,6 +12,7 @@ import type {
   FuelVerdict,
 } from "./types";
 import { ecoKey } from "./tokaLayout";
+import { refIdCombustible, type AnulacionInfo } from "../anulacion/anulacion";
 
 export interface CargaRow {
   economicoId: string;
@@ -273,6 +274,7 @@ export function buildFuelEntries(
   rows: readonly CargaRow[],
   validaciones: readonly ValidacionRow[] = [],
   unidadPorEco?: ReadonlyMap<string, UnidadJoin>,
+  anuladasActivas?: ReadonlyMap<string, AnulacionInfo>,
 ): FuelEntry[] {
   const valByLoad = new Map<string, ValidacionRow>();
   for (const v of validaciones) valByLoad.set(v.loadId, v);
@@ -283,11 +285,16 @@ export function buildFuelEntries(
       const k = ecoKey(eco);
       if (k && !unidadByKey.has(k)) unidadByKey.set(k, u);
     }
-  return rows.map((r) =>
-    mapCargaToFuelEntry(
+  return rows.map((r) => {
+    const e = mapCargaToFuelEntry(
       r,
       valByLoad.get(loadIdOf(r.economicoId, r.tipo, r.eventoId)),
       unidadByKey.get(ecoKey(r.economicoId)),
-    ),
-  );
+    );
+    // Overlay de anulación admin: el registro queda etiquetado (no se descarta aquí;
+    // la exclusión de cálculos/vistas la decide el consumidor — wire.scoped()).
+    const an = anuladasActivas?.get(refIdCombustible(e.loadId));
+    if (an) e.anulada = an;
+    return e;
+  });
 }

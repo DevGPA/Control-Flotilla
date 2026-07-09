@@ -1010,6 +1010,7 @@ g.inflateBytes=async function(src){
       <option value="discrepancia">Discrepancia</option>
       <option value="pendiente">Pendiente</option>
       <option value="historico">Histórico</option>
+      <option value="anulada">Anuladas</option>
     </select>
     <select id="fuel-filt-flag" aria-label="Filtrar por alerta detectada" class="field-input">
       <option value="">Toda alerta</option>
@@ -1046,6 +1047,12 @@ g.inflateBytes=async function(src){
       <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
         aria-label="Buscar combustible por ID de unidad, placa o responsable"/>
     </div>
+    <button id="fuel-anulados" type="button" class="needs-admin"
+      title="Registros anulados de combustible (historial y restauración)"
+      aria-label="Ver registros anulados de combustible"
+      style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--s2);background:var(--bg2);cursor:pointer">
+      ⛔ Anulados
+    </button>
     <button id="fuel-export-toka" type="button"
       title="Descarga el layout de carga masiva Toka con las unidades del filtro actual"
       aria-label="Descargar layout de carga masiva Toka"
