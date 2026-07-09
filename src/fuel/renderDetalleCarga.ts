@@ -47,6 +47,12 @@ export type RenderDetalleCargaDeps = {
     nota?: string,
   ) => void;
   onPhotoClick?: (url: string) => void;
+  /** ¿La sesión es admin? (muestra Anular/Restaurar; el enforcement real es AppSync). */
+  esAdmin?: boolean;
+  /** Abre el flujo de anulación de este registro (solo admin). */
+  onAnular?: () => void;
+  /** Restaura este registro anulado (solo admin). */
+  onRestaurar?: () => void;
 };
 
 const VERDICT_META: Record<FuelVerdict, { cls: string; txt: string }> = {
@@ -240,6 +246,53 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   }
 
   body.replaceChildren();
+
+  // Anulación admin: banner si el registro está anulado (con Restaurar para admin),
+  // o botón discreto de anular para admin en registros vigentes.
+  {
+    const an = load.anulada;
+    if (an) {
+      const banner = document.createElement("div");
+      banner.style.cssText =
+        "display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--ln);border-left:4px solid var(--R);border-radius:8px;background:var(--bg3)";
+      const txt = document.createElement("div");
+      txt.style.cssText = "flex:1;min-width:200px;font-size:12px";
+      const t1 = document.createElement("div");
+      t1.style.fontWeight = "700";
+      t1.textContent = "⛔ Registro anulado — excluido de KPIs, rendimientos y reportes";
+      const t2 = document.createElement("div");
+      t2.style.cssText = "color:var(--s2);margin-top:2px";
+      const quien = deps.nombreValidador
+        ? deps.nombreValidador(an.anuladoPor)
+        : (an.anuladoPor.split("@")[0] ?? an.anuladoPor);
+      const fecha = /^(\d{4}-\d{2}-\d{2})/.exec(an.ts)?.[1] ?? "";
+      t2.textContent = `Motivo: ${an.motivo || "—"} · ${quien}${fecha ? ` · ${fecha}` : ""}`;
+      txt.appendChild(t1);
+      txt.appendChild(t2);
+      banner.appendChild(txt);
+      if (deps.esAdmin && deps.onRestaurar) {
+        const rest = document.createElement("button");
+        rest.className = "fv-btn";
+        rest.textContent = "↩ Restaurar";
+        rest.title = "Reincorpora el registro a KPIs y cálculos (queda el rastro de la anulación)";
+        rest.addEventListener("click", () => deps.onRestaurar!());
+        banner.appendChild(rest);
+      }
+      body.appendChild(banner);
+    } else if (deps.esAdmin && deps.onAnular) {
+      const bar = document.createElement("div");
+      bar.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:6px";
+      const anular = document.createElement("button");
+      anular.className = "fv-btn";
+      anular.style.cssText = "color:var(--R);border-color:var(--R)";
+      anular.textContent = "⛔ Anular registro…";
+      anular.title =
+        "Excluye este registro de KPIs y cálculos, con motivo y rastro de auditoría (reversible)";
+      anular.addEventListener("click", () => deps.onAnular!());
+      bar.appendChild(anular);
+      body.appendChild(bar);
+    }
+  }
 
   // Info del ciclo + quién validó (línea contextual, antes de las fichas).
   {

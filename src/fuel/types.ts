@@ -91,6 +91,11 @@ export type FuelEntry = {
   ubicacionLatLng?: { lat: number; lng: number };
   photos: FuelPhoto[];
   review?: FuelReview;
+  /**
+   * Anulación admin ACTIVA (tombstone lógico): el registro existe pero se excluye de
+   * KPIs/métricas/anomalías/dashboard/export. Solo visible en la vista "Anuladas".
+   */
+  anulada?: { motivo: string; anuladoPor: string; ts: string };
 };
 
 /**

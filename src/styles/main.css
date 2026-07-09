@@ -5816,3 +5816,10 @@ body:not([data-view="inspecciones"]) #alerts-panel {
     grid-template-columns: 1fr;
   }
 }
+
+/* Anulación admin (2026-07-09): controles exclusivos de admin OCULTOS por default
+   (fail-closed) — solo visibles cuando la sesión confirma el grupo y agrega
+   body.is-admin (applyRolePermissions). El enforcement real es AppSync. */
+body:not(.is-admin) .needs-admin {
+  display: none !important;
+}

@@ -39,7 +39,13 @@ function nivelLabel(s: string | undefined): string {
 }
 
 export type FuelTipoFilter = "all" | "carga" | "solicitud";
-export type FuelVerdictFilter = "all" | "ok" | "discrepancia" | "pendiente" | "historico";
+export type FuelVerdictFilter =
+  | "all"
+  | "ok"
+  | "discrepancia"
+  | "pendiente"
+  | "historico"
+  | "anulada";
 export type FuelSortCol =
   | "_idx"
   | "tipo"
@@ -354,6 +360,25 @@ function verdictCell(
   v: FuelDisplayVerdict,
   nombreFn?: (email?: string | null) => string,
 ): HTMLElement {
+  // Registro anulado (tombstone admin): pill gris con quién/cuándo y el motivo en tooltip.
+  if (e.anulada) {
+    const wrap = document.createElement("div");
+    wrap.className = "sw-valcell";
+    const span = document.createElement("span");
+    span.className = "sw-pill sw-pill-hist";
+    span.textContent = "Anulada";
+    span.title = e.anulada.motivo || "Sin motivo registrado";
+    wrap.appendChild(span);
+    const sub = document.createElement("small");
+    sub.className = "sw-valby";
+    const nombre = nombreFn
+      ? nombreFn(e.anulada.anuladoPor)
+      : (e.anulada.anuladoPor.split("@")[0] ?? e.anulada.anuladoPor);
+    const fecha = fechaCorta(e.anulada.ts);
+    sub.textContent = fecha ? `${nombre} · ${fecha}` : nombre;
+    wrap.appendChild(sub);
+    return wrap;
+  }
   const rev = e.review?.revisadoPor;
   if (!rev || rev === "ui") return pill(v);
   const wrap = document.createElement("div");
