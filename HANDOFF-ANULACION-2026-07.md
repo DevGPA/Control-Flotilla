@@ -1,6 +1,10 @@
 # Plan: Anulación admin de registros (Lote E) — Inspecciones, Semanales y Combustible
 
-> Estado: PLAN APROBADO PENDIENTE DE EJECUCIÓN · Diseñado 2026-07-09
+> Estado: **EJECUTADO 2026-07-09** — E1 (541d7e4), E2 (f355b34), E3 (324981e) en main.
+> Prueba de supervivencia post-deploy: anulación directa en Dynamo + re-backfill de la
+> carga → el registro base se reescribió y la anulación quedó intacta (luego se limpió).
+> Pendiente de validar con sesión real: que un usuario operativo reciba Unauthorized al
+> intentar escribir Anulacion/CargaCombustible/Checklist/Semanal (regla declarativa AppSync).
 > Contexto: petición del usuario tras el programa de auditoría 2026-07 (lotes A-D).
 
 ## Contexto y decisión
