@@ -61,6 +61,41 @@ describe("esAnulacionActiva / buildAnuladasActivas", () => {
     expect(m.has("checklist|JX36971|2026-07-01")).toBe(false);
   });
 
+  it("predicado de exclusión de hidratación: checklist y semanal por identidad natural", () => {
+    const anuladas = buildAnuladasActivas([
+      {
+        refId: refIdChecklist("JX36971", "2026-07-01"),
+        modulo: "checklist",
+        motivo: "m",
+        anuladoPor: "a",
+        ts: "t",
+      },
+      {
+        refId: refIdSemanal("2026-W27", "AAA111"),
+        modulo: "semanal",
+        motivo: "m",
+        anuladoPor: "a",
+        ts: "t",
+      },
+    ]);
+    const checklists = [
+      { unitUid: "JX36971", fecha: "2026-07-01" }, // anulado
+      { unitUid: "JX36971", fecha: "2026-06-01" },
+      { unitUid: "BBB222", fecha: "2026-07-01" },
+    ];
+    const vigentes = checklists.filter((c) => !anuladas.has(refIdChecklist(c.unitUid, c.fecha)));
+    expect(vigentes).toHaveLength(2);
+    expect(vigentes.some((c) => c.unitUid === "JX36971" && c.fecha === "2026-07-01")).toBe(false);
+
+    const semanales = [
+      { periodoId: "2026-W27", unitUid: "AAA111" }, // anulado
+      { periodoId: "2026-W27", unitUid: "BBB222" },
+      { periodoId: "2026-W28", unitUid: "AAA111" },
+    ];
+    const vigentesSw = semanales.filter((s) => !anuladas.has(refIdSemanal(s.periodoId, s.unitUid)));
+    expect(vigentesSw).toHaveLength(2);
+  });
+
   it("filas sin refId se ignoran; campos faltantes degradan a string vacío", () => {
     const m = buildAnuladasActivas([{ refId: "" }, { refId: "semanal|2026-W27|AAA111" }]);
     expect(m.size).toBe(1);

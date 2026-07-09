@@ -23,7 +23,12 @@ import {
   listComplianceDocs,
   listAnulaciones,
 } from "./client";
-import { buildAnuladasActivas, type AnulacionInfo } from "../anulacion/anulacion";
+import {
+  buildAnuladasActivas,
+  refIdChecklist,
+  refIdSemanal,
+  type AnulacionInfo,
+} from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
 import { buildComplianceEntries } from "../compliance/mapEntry";
 import type { FuelEntry } from "../fuel/types";
@@ -271,6 +276,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // en window para los módulos legacy (Inspecciones/Semanales) y se aplica aquí abajo.
   const anuladasActivas = buildAnuladasActivas(anulaciones);
   window.__anuladasActivas = anuladasActivas;
+  // Checklists VIGENTES: los anulados por admin salen de TODA construcción de vistas
+  // (inspecciones por rango, última inspección por unidad, flota, fallback). Combustible
+  // etiqueta en vez de filtrar (tiene vista "Anuladas" propia); semanales filtra en su loop.
+  const checklistsVigentes = checklists.filter(
+    (c) => !anuladasActivas.has(refIdChecklist(String(c.unitUid), String(c.fecha ?? ""))),
+  );
 
   if (
     units.length === 0 &&
@@ -405,6 +416,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   if (semanales.length > 0) {
     const periodoMap = new Map<string, WeeklyEntry[]>();
     for (const s of semanales) {
+      // Reporte semanal anulado por admin → fuera de KPIs/tabla/badges del módulo.
+      if (anuladasActivas.has(refIdSemanal(String(s.periodoId), String(s.unitUid)))) continue;
       const datos = safeParseObj(s.datos);
       // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
       // placa si upload viejo no lo guardó.
@@ -487,7 +500,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // colisionar en selección/detalle. Preserva eco/plate/fecha reales.
   const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
   const inspections: Unit[] = [];
-  for (const c of checklists) {
+  for (const c of checklistsVigentes) {
     const fecha = String(c.fecha ?? "");
     if (!monthOf(fecha)) continue; // requiere fecha parseable
     const u =
@@ -502,7 +515,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Flota = unidades distintas del catálogo con su ÚLTIMO checklist (estado actual,
   // independiente del rango). Alimenta los KPIs hero + dona Operativa/Taller.
   const latestByUnit = new Map<string, Schema["Checklist"]["type"]>();
-  for (const c of checklists) {
+  for (const c of checklistsVigentes) {
     const e = latestByUnit.get(c.unitUid);
     if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(c.unitUid, c);
   }
@@ -563,7 +576,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   } else {
     // Fallback: sin checklists con fecha parseable → latest-per-unit plano.
     const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
-    for (const c of checklists) {
+    for (const c of checklistsVigentes) {
       const existing = checklistByUnit.get(c.unitUid);
       if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
         checklistByUnit.set(c.unitUid, c);
