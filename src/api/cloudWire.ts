@@ -49,6 +49,9 @@ import {
   adminSetRole,
   adminListUsers,
   listAuditEvents,
+  listAnulaciones,
+  upsertAnulacion,
+  restaurarAnulacion,
   type AdminResult,
   type AdminCreateInput,
 } from "./client";
@@ -139,6 +142,13 @@ declare global {
         area?: string;
       }) => Promise<void>;
       remove: (placa: string) => Promise<void>;
+    };
+    /** Anulación admin de registros (2026-07-09): tombstone lógico reversible.
+     *  tenantId/usuario desde la sesión; AppSync exige grupo admin para escribir. */
+    __anulaciones?: {
+      list: () => Promise<Schema["Anulacion"]["type"][]>;
+      anular: (refId: string, modulo: string, motivo: string) => Promise<void>;
+      restaurar: (refId: string) => Promise<void>;
     };
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
@@ -404,6 +414,32 @@ export function setupCloud(): void {
     remove: async (placa) => {
       const s = await ensureSession();
       await deleteUnit({ tenantId: s.tenantId, placa });
+    },
+  };
+
+  // ── Anulación admin de registros (2026-07-09) ───────────────────────────────
+  // Tombstone lógico reversible (ver src/anulacion/anulacion.ts). tenantId y el
+  // usuario salen de la sesión; el gate de ROL real es server-side (AppSync exige
+  // grupo admin para escribir Anulacion) — la UI solo esconde los controles.
+  window.__anulaciones = {
+    list: async () => {
+      const s = await ensureSession();
+      return listAnulaciones(s.tenantId);
+    },
+    anular: async (refId, modulo, motivo) => {
+      const s = await ensureSession();
+      await upsertAnulacion({
+        tenantId: s.tenantId,
+        refId,
+        modulo,
+        motivo,
+        anuladoPor: s.email || "admin",
+        ts: new Date().toISOString(),
+      });
+    },
+    restaurar: async (refId) => {
+      const s = await ensureSession();
+      await restaurarAnulacion(s.tenantId, refId, s.email || "admin");
     },
   };
 

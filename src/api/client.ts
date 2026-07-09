@@ -517,6 +517,78 @@ export async function listValidaciones(
   );
 }
 
+// ───────────────────────── Anulación admin (Anulacion) ─────────────────────────
+// Tombstone lógico reversible de registros de evento (ver src/anulacion/anulacion.ts).
+// Escritura SOLO admin (AppSync valida el grupo); todos los del tenant leen.
+
+export type AnulacionInput = {
+  tenantId: string;
+  refId: string;
+  modulo: string; // 'combustible' | 'checklist' | 'semanal'
+  motivo: string;
+  anuladoPor: string;
+  ts: string;
+};
+
+/**
+ * Anula un registro (upsert idempotente por refId). Re-anular tras una restauración
+ * ACTUALIZA la fila: nuevo motivo/anuladoPor/ts y limpia restauradaPor/Ts.
+ */
+export async function upsertAnulacion(input: AnulacionInput): Promise<Schema["Anulacion"]["type"]> {
+  const c = getClient();
+  const payload = {
+    ...input,
+    restauradaPor: null,
+    restauradaTs: null,
+  } as unknown as Parameters<typeof c.models.Anulacion.create>[0];
+  const created = await c.models.Anulacion.create(payload);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.Anulacion.update(payload);
+    throwOnErrors("upsertAnulacion(update)", updated.errors);
+    if (!updated.data)
+      throw new Error(`upsertAnulacion(update) null data ${input.refId} — auth filtering?`);
+    return updated.data;
+  }
+  throwOnErrors("upsertAnulacion(create)", created.errors);
+  throw new Error(`upsertAnulacion(create) null data ${input.refId} — auth filtering?`);
+}
+
+/**
+ * Restaura un registro anulado: NO borra la fila — la marca con restauradaPor/Ts
+ * (historial bidireccional para auditoría). La exclusión deja de aplicar.
+ */
+export async function restaurarAnulacion(
+  tenantId: string,
+  refId: string,
+  restauradaPor: string,
+): Promise<Schema["Anulacion"]["type"]> {
+  const c = getClient();
+  const updated = await c.models.Anulacion.update({
+    tenantId,
+    refId,
+    restauradaPor,
+    restauradaTs: new Date().toISOString(),
+  } as unknown as Parameters<typeof c.models.Anulacion.update>[0]);
+  throwOnErrors("restaurarAnulacion", updated.errors);
+  if (!updated.data)
+    throw new Error(`restaurarAnulacion null data ${refId} — ¿no existe o auth filtering?`);
+  return updated.data;
+}
+
+export async function listAnulaciones(tenantId: string): Promise<Schema["Anulacion"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["Anulacion"]["type"]>(
+    (token) =>
+      c.models.Anulacion.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listAnulaciones",
+  );
+}
+
 // ───────────────────────── Cumplimiento (ComplianceDoc) ─────────────────────────
 // Expediente de cumplimiento por unidad (captura manual operativo/admin). Identidad
 // (tenantId, economicoId, docId). El estado vencido/por-vencer se DERIVA en el front

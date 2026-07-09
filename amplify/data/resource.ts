@@ -121,13 +121,13 @@ const schema = a
       })
       .identifier(["tenantId", "unitUid", "fecha"])
       .authorization((allow) => [
-        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
-        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
-        // conserva escritura vía el grant a nivel de schema, más abajo.
-        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO admin
+        // (hardening 2026-07-09: operativo ya no escribe — los checklists entran
+        // por el webhook/IAM y la carga legacy Excel es un flujo admin; ningún
+        // flujo operativo del cliente escribía este modelo, verificado por grep).
+        // Deuda técnica: admin es grupo GLOBAL de escritura (no por-tenant);
         // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
         allow.groupDefinedIn("tenantId").to(["read"]),
-        allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
       ]),
 
@@ -165,13 +165,11 @@ const schema = a
       })
       .identifier(["tenantId", "periodoId", "unitUid"])
       .authorization((allow) => [
-        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin
-        // (viewer = solo lectura, incidente permisos 2026-06-18). El webhook (IAM)
-        // conserva escritura vía el grant a nivel de schema, más abajo.
-        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
-        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO admin
+        // (hardening 2026-07-09: operativo ya no escribe — los semanales entran
+        // por el webhook/IAM y la carga legacy Excel es un flujo admin; ningún
+        // flujo operativo del cliente escribía este modelo, verificado por grep).
         allow.groupDefinedIn("tenantId").to(["read"]),
-        allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
       ])
       .secondaryIndexes((index) => [
@@ -220,10 +218,11 @@ const schema = a
       })
       .identifier(["tenantId", "economicoId", "tipo", "eventoId"])
       .authorization((allow) => [
-        // Lectura aislada por tenant (incluye viewer). Escritura SOLO operativo/admin.
-        // El webhook (IAM) conserva escritura vía el grant a nivel de schema.
+        // Lectura aislada por tenant (incluye viewer). Escritura SOLO admin
+        // (hardening 2026-07-09: operativo ya no escribe — las cargas entran por el
+        // webhook/IAM; ningún flujo del cliente escribía este modelo. La validación
+        // humana del operativo vive en ValidacionCarga, que conserva su permiso).
         allow.groupDefinedIn("tenantId").to(["read"]),
-        allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
       ])
       .secondaryIndexes((index) => [
@@ -258,6 +257,40 @@ const schema = a
         allow.groupDefinedIn("tenantId").to(["read"]),
         allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
+      ]),
+
+    // ── Anulación admin de registros (2026-07-09) ───────────────────────────
+    // Tombstone LÓGICO reversible para registros de evento capturados por error
+    // (Inspecciones/Semanales/Combustible). El registro base NUNCA se borra ni se
+    // modifica: esta fila lo excluye de KPIs/cálculos/vistas en la hidratación.
+    // Modelo separado con la identidad natural del registro (patrón ValidacionCarga/
+    // CheckDone) → sobrevive re-ingests del webhook y backfills. Restaurar NO borra
+    // la fila: la marca con restauradaPor/Ts (historial bidireccional de auditoría).
+    // ESCRITURA SOLO admin — AppSync valida el grupo en el servidor, no la UI.
+    Anulacion: a
+      .model({
+        tenantId: a.string().required(),
+        // "combustible|<economicoId>|<tipo>|<eventoId>" (= "combustible|" + loadId)
+        // "checklist|<unitUid>|<fecha>"   (identidad de Checklist)
+        // "semanal|<periodoId>|<unitUid>" (identidad de Semanal)
+        refId: a.string().required(),
+        modulo: a.string().required(), // 'combustible' | 'checklist' | 'semanal' — validado en cliente
+        motivo: a.string().required(),
+        anuladoPor: a.string().required(),
+        ts: a.string().required(), // ISO
+        // Restauración suave: con valor, la anulación YA NO aplica pero queda el rastro.
+        restauradaPor: a.string(),
+        restauradaTs: a.string(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "refId"])
+      .authorization((allow) => [
+        // Todos los del tenant LEEN (badge/motivo visibles); escribe SOLO admin.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        index("tenantId").sortKeys(["modulo"]).name("byTenantAndModulo"),
       ]),
 
     // Completación de hallazgos del checklist, COMPARTIDA entre usuarios del tenant.

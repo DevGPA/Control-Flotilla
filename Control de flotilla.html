@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-2iUzYhJBOgGdA7N1VVJRV5C4/jG6FLqAh5lXQ6Hu8xU='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-xaWwJHnVJYLTGb2Hs8Inn9HFqR78YYq2ZNsY94NxSY4='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2437,7 +2437,10 @@ async function doLogout(){
 function sessionGroups(){ return (window.__cloudSession && window.__cloudSession.groups) || []; }
 function canWrite(){ const g=sessionGroups(); return g.includes("admin")||g.includes("operativo"); }
 function isViewer(){ const g=sessionGroups(); return g.includes("viewer") && !g.includes("admin") && !g.includes("operativo"); }
-window.canWrite=canWrite; window.isViewer=isViewer;
+// Controles EXCLUSIVOS de admin (p.ej. anular registros). El enforcement real es
+// server-side (AppSync exige grupo admin); esto solo muestra/oculta la UI.
+function esAdmin(){ return sessionGroups().includes("admin"); }
+window.canWrite=canWrite; window.isViewer=isViewer; window.esAdmin=esAdmin;
 // Sucursal a la que queda FIJADO el usuario (null = ve todas): admin, sin sucursal,
 // o sucursal "Todas"/"all" → sin bloqueo.
 function lockedSucursal(){
@@ -2465,11 +2468,14 @@ window.scopeUnits=scopeUnits; window.scopeBySucursal=scopeBySucursal;
 function applyRolePermissions(){
   if(!document.getElementById("ro-style")){
     const st=document.createElement("style"); st.id="ro-style";
-    st.textContent="body.ro-viewer .needs-write{display:none !important}";
+    st.textContent="body.ro-viewer .needs-write{display:none !important}\n"
+      +"body:not(.is-admin) .needs-admin{display:none !important}";
     document.head.appendChild(st);
   }
   const ro=isViewer();
   document.body.classList.toggle("ro-viewer", ro);
+  // Controles exclusivos de admin (.needs-admin): visibles solo con grupo admin.
+  document.body.classList.toggle("is-admin", esAdmin());
   const host=document.getElementById("user-email");
   let badge=document.getElementById("ro-badge");
   if(ro && host && host.parentElement && !badge){
