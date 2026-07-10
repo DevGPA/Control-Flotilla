@@ -56,7 +56,7 @@ import {
   type AdminCreateInput,
 } from "./client";
 import { isAdmin, forceRefreshSession } from "./auth";
-import { hydrateFromCloud } from "./cloudHydrate";
+import { hydrateFromCloud, ensureFuelWindow, refreshFuelOnly } from "./cloudHydrate";
 import { startLiveSync } from "./liveSync";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
 import { getCloudPhotoUrl } from "./photoFetch";
@@ -99,6 +99,10 @@ declare global {
     /** Obtiene URL firmada de S3 para una foto (lazy, cacheada hasta su expiresAt real).
      *  opts.force re-firma fresca (usado por el onerror del <img> para auto-sanar 403). */
     __cloudGetPhotoUrl?: (filename: string, opts?: { force?: boolean }) => Promise<string | null>;
+    /** Perf F3-1: amplía la ventana hidratada de combustible hacia atrás hasta cubrir
+     *  fromISO (YYYY-MM-DD). Lo llama el control de rango de Combustible al pedir
+     *  fechas anteriores a la ventana default (~3 meses). Resuelve true si amplió. */
+    __fuelEnsureWindow?: (fromISO: string) => Promise<boolean>;
     /** Guarda la completación de un hallazgo en la nube (compartida entre usuarios).
      *  Fase C1: plate = placa cruda (no uid de fila); itemKey = findingKey estable;
      *  done:false = tombstone (propaga desmarcados); ts = timestamp del toggle. */
@@ -511,6 +515,10 @@ export function setupCloud(): void {
     return getCloudPhotoUrl(session.tenantId, filename, opts);
   };
 
+  // Perf F3-1: ampliación bajo demanda de la ventana de combustible (serializada
+  // dentro de cloudHydrate; segura de llamar repetidamente desde el control de rango).
+  window.__fuelEnsureWindow = (fromISO: string) => ensureFuelWindow(fromISO);
+
   // Completación de hallazgos compartida (Fase C1).
   // - unitUid = PLACA cruda (no uid de fila placa__fecha) — identidad física.
   // - itemKey = findingKey estable (Llanta:/Bin:/… sin valores volátiles).
@@ -687,14 +695,37 @@ function setupAutoRefresh(tenantId: string): void {
 
   // LIVE (2026-07-10): suscripciones AppSync de los modelos que alimenta el puente
   // Operaciones-GPA. Un evento → debounce 2.5s (agrupa ráfagas: carga+validación
-  // llegan juntas) → refresh con gap corto (10s). El poll de 4 min queda como red
-  // de seguridad si el WebSocket se cae. Mismas guardas de uiBusy: nunca interrumpe.
+  // llegan juntas). El poll de 4 min queda como red de seguridad si el WebSocket
+  // se cae. Mismas guardas de uiBusy: nunca interrumpe.
+  //
+  // Perf F3-4: si TODOS los eventos acumulados en el debounce son de combustible
+  // (CargaCombustible/ValidacionCarga — el caso común: cada carga del webhook),
+  // refresca SOLO ese módulo (2 queries acotadas + rebuild) en vez de re-descargar
+  // los 9 modelos. Cualquier otro modelo → hydrate completo como antes.
   const LIVE_GAP_MS = 10_000;
+  const FUEL_MODELS = new Set(["CargaCombustible", "ValidacionCarga"]);
   let liveTimer: number | undefined;
+  let liveModels = new Set<string>();
   startLiveSync((modelo) => {
+    liveModels.add(modelo);
     window.clearTimeout(liveTimer);
-    liveTimer = window.setTimeout(() => {
-      void refresh(`live:${modelo}`, LIVE_GAP_MS);
-    }, 2_500);
+    const fire = (): void => {
+      if (uiBusy()) {
+        // usuario escribiendo/en modal — reintentar sin perder los modelos acumulados
+        liveTimer = window.setTimeout(fire, 5_000);
+        return;
+      }
+      const models = liveModels;
+      liveModels = new Set();
+      const soloFuel = models.size > 0 && [...models].every((m) => FUEL_MODELS.has(m));
+      if (soloFuel) {
+        void refreshFuelOnly().then((ok) => {
+          if (!ok) void refresh("live:fuel-fallback", LIVE_GAP_MS);
+        });
+      } else {
+        void refresh(`live:${[...models].join("+")}`, LIVE_GAP_MS);
+      }
+    };
+    liveTimer = window.setTimeout(fire, 2_500);
   });
 }

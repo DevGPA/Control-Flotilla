@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Y2sHWBLC0zssxlVU7tWgHzIi4mqexZGcBipyDrJQJnw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-cAz8p0PTrQyXWthhBiq0NqrffA2dJBOpGDmd7S5e6eQ=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4573,7 +4573,15 @@ function lbUpdate(){
   const item=lbImgs[lbIdx];if(!item)return;
   // Resolve URL if lazy
   if(!item.url && item.fname) item.url = imgUrl(item.fname);
-  
+  // Perf F3-3: con la hidratación por ventana, la foto puede no estar pre-firmada —
+  // firmar on-demand y actualizar si el usuario sigue viendo esta misma foto.
+  if(!item.url && item.fname && typeof window.__cloudGetPhotoUrl==="function"){
+    const _idx=lbIdx;
+    window.__cloudGetPhotoUrl(item.fname).then(u=>{
+      if(u){ item.url=u; if(lbIdx===_idx) document.getElementById("lbimg").src=u; }
+    }).catch(()=>{});
+  }
+
   const _img=document.getElementById("lbimg");
   _img.src=item.url || "";
   _img.alt=item.label || "Foto de inspección";  // a11y WCAG 1.1.1: antes alt="" fijo
@@ -5254,8 +5262,21 @@ async function exportPDF(){
   }
 
   // ── FOTOS ─────────────────────────────────────────────────
+  // Perf F3-3: firmar on-demand las fotos que el mapa pre-firmado no tenga (rango
+  // viejo fuera de la ventana hidratada) — exportPDF es async, podemos esperar.
+  const _pdfUrlByFname = new Map();
+  {
+    const _missing = (u.photos||[]).filter(p=>p.fname && !imgUrl(p.fname));
+    if(_missing.length && typeof window.__cloudGetPhotoUrl==="function"){
+      await Promise.all(_missing.map(p=>
+        window.__cloudGetPhotoUrl(p.fname)
+          .then(url=>{ if(url) _pdfUrlByFname.set(p.fname, url); })
+          .catch(()=>{})
+      ));
+    }
+  }
   const photosWithUrl=u.photos
-    .map(p=>({...p,url:imgUrl(p.fname)}))
+    .map(p=>({...p,url:imgUrl(p.fname)||_pdfUrlByFname.get(p.fname)||null}))
     .filter(p=>p.url);
 
   if(photosWithUrl.length){
@@ -7674,6 +7695,21 @@ function selSwUnit(swKey){
       </div>
     </div>
   `;
+  // Perf F3-3: los thumbnails de períodos NO activos ya no vienen pre-firmados del
+  // hydrate — firmar on-demand las que salieron "no disponible" y reemplazar in-place.
+  if(dbody && e.photos && e.photos.length && typeof window.__cloudGetPhotoUrl==="function"){
+    e.photos.forEach((fname, i) => {
+      if(weeklyImgUrl(fname)) return; // ya resuelta (ZIP local o mapa pre-firmado)
+      window.__cloudGetPhotoUrl(fname).then(url=>{
+        if(!url) return;
+        const thumb = dbody.querySelector(`.sw-det-thumb[data-arg2="${i}"] .sw-det-thumb-placeholder`);
+        if(!thumb) return; // el usuario ya navegó a otra unidad
+        const img=document.createElement("img");
+        img.loading="lazy"; img.src=url; img.alt=fname;
+        thumb.replaceWith(img);
+      }).catch(()=>{});
+    });
+  }
   // Mismo float panel del mensual: drag por .dtop + resize handles + defaultPos
   // top-right. Idempotente — initFloatPanel chequea dataset.fpInit.
   if(window.initFloatPanel) window.initFloatPanel();

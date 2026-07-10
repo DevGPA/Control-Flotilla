@@ -464,6 +464,30 @@ export async function listCombustible(
   );
 }
 
+/**
+ * Perf F3-1/F3-2: cargas de combustible por VENTANA de fechas vía el GSI
+ * byTenantAndFecha — Query real de DynamoDB (KeyCondition tenantId + fecha BETWEEN),
+ * no Scan del histórico completo. Es la tabla más grande del sistema (~1k filas/mes);
+ * el costo queda O(ventana) en vez de O(histórico).
+ *
+ * `fromISO`/`toISO` en YYYY-MM-DD (mismo formato que CargaCombustible.fecha).
+ */
+export async function listCombustibleRange(
+  tenantId: string,
+  fromISO: string,
+  toISO: string,
+): Promise<Schema["CargaCombustible"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["CargaCombustible"]["type"]>(
+    (token) =>
+      c.models.CargaCombustible.listCargaCombustibleByTenantIdAndFecha(
+        { tenantId, fecha: { between: [fromISO, toISO] } },
+        { limit: 1000, nextToken: token ?? undefined },
+      ),
+    "listCombustibleRange",
+  );
+}
+
 export type ValidacionCargaInput = {
   tenantId: string;
   loadId: string;
