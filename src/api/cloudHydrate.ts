@@ -719,6 +719,25 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     }
   }
 
+  // Perf F2-5: cota superior del mapa de URLs firmadas. Antes crecía monótonamente (solo
+  // .set, nunca .delete) → en sesiones largas (PWA abierta días) acumulaba decenas de miles
+  // de {url ~500 chars, expires} (~15-30 MB). Podamos las más antiguas (el Map preserva orden
+  // de inserción) al superar el tope; las evictadas se re-firman por-demanda al verse
+  // (imgUrl → lazyObserver → __cloudGetPhotoUrl), así que podar es seguro.
+  const PHOTO_URL_CAP = 6000;
+  if (existingMap.size > PHOTO_URL_CAP) {
+    const toDelete: string[] = [];
+    const excess = existingMap.size - PHOTO_URL_CAP;
+    for (const key of existingMap.keys()) {
+      if (toDelete.length >= excess) break;
+      toDelete.push(key);
+    }
+    for (const key of toDelete) existingMap.delete(key);
+    console.info(
+      `[cloudHydrate] photo URL cache podado: -${toDelete.length} (tope ${PHOTO_URL_CAP})`,
+    );
+  }
+
   // Completaciones de checklist COMPARTIDAS (Fase C1): merge puro con fan-out
   // por placa, tombstones (done:false propaga desmarcados) y dirty-skip (no
   // pisa un toggle local más reciente). Ver mergeCheckDones.ts.
