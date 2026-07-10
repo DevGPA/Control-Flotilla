@@ -22,6 +22,14 @@
 // no ve esos accesos).
 import { setupCloud } from "./api/cloudWire";
 setupCloud();
+// Perf F2-4: subset de iconos Lucide (51 de 1,939; 11.6 KB vs 388 KB del vendor).
+// Expone window.lucide.createIcons() — el contrato que el monolito ya consume
+// (DOMContentLoaded + MutationObserver + guards `if(window.lucide)`). Los <script
+// type=module corren antes de DOMContentLoaded, así el primer paint materializa.
+import { createIcons as lucideCreateIcons } from "./ui/lucideSubset";
+(window as unknown as { lucide: { createIcons: () => void } }).lucide = {
+  createIcons: lucideCreateIcons,
+};
 // Módulo de combustible (Fase B): monta window.renderCombustible / initRangoFuel /
 // updateFuelNavBadge y cablea los controles de la vista. Side-effect import.
 import "./fuel/wire";
@@ -77,7 +85,8 @@ import {
   type UnitSvc,
   type WeeklyPeriodo as WeeklyPeriodoSvc,
 } from "./ui/detail/renderService";
-import { buildUnitReport } from "./pdf/unitReport";
+// Perf F1-6: pdf/unitReport arrastra jspdf (~350 KB) — se importa DINÁMICO dentro del
+// shim exportPDF (flag USE_NEW_PDF) para que jspdf no viaje en el bundle eager app.js.
 import { renderActivas as renderActivasNew } from "./taller/renderActivas";
 import { renderActivasKpis as renderActivasKpisNew } from "./taller/renderActivasKpis";
 import {
@@ -367,6 +376,8 @@ if (readFlag("USE_NEW_PDF")) {
       return;
     }
     try {
+      // Perf F1-6: import dinámico — jspdf solo se descarga al exportar un PDF.
+      const { buildUnitReport } = await import("./pdf/unitReport");
       const doc = buildUnitReport(unit, {
         checklistDB: (window.checklistDB ?? appStore.get("checklistDB")) as ChecklistDB,
         generatedAt: new Date(),

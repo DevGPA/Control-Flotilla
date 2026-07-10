@@ -475,13 +475,17 @@ select {
     transform: rotate(360deg);
   }
 }
-@keyframes glow {
+/* Perf F1-9: glow animaba box-shadow (no compositable) → repaint continuo mientras
+   el punto "live" del header estuviera visible (siempre, con datos). Ahora el halo
+   vive en un ::after con box-shadow ESTÁTICO y solo se anima su opacity (compositor;
+   el hilo de paint queda idle en reposo). Mismo look pulsante. */
+@keyframes glowFade {
   0%,
   100% {
-    box-shadow: 0 0 4px var(--G);
+    opacity: 0.35;
   }
   50% {
-    box-shadow: 0 0 10px var(--G);
+    opacity: 1;
   }
 }
 @keyframes pulse {
@@ -584,7 +588,15 @@ select {
 }
 .hdot.live {
   background: var(--G);
-  animation: glow 2.5s ease-in-out infinite;
+  position: relative;
+}
+.hdot.live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--G);
+  animation: glowFade 2.5s ease-in-out infinite;
 }
 .hstxt {
   font-size: 10.5px;
@@ -3942,27 +3954,38 @@ select.filter-active {
   background: var(--Bl);
   box-shadow: inset 0 0 0 1px var(--B);
 }
+/* Perf F1-9: fmPulse animaba box-shadow (no compositable) → repaint por frame en
+   CADA tile urgente del mapa. Ahora el anillo expansivo es un ::after con borde
+   estático animado por transform:scale + opacity (compositor puro, estilo "ping"). */
 .fm-urg {
   background: var(--Rl);
   box-shadow: inset 0 0 0 1.5px var(--R);
-  animation: fmPulse 1.8s infinite;
+  position: relative;
 }
-@keyframes fmPulse {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 0 0 1.5px var(--R),
-      0 0 0 0 rgba(225, 29, 72, 0.35);
+.fm-urg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(225, 29, 72, 0.35);
+  animation: fmPing 1.8s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes fmPing {
+  0% {
+    transform: scale(1);
+    opacity: 1;
   }
-  50% {
-    box-shadow:
-      inset 0 0 0 1.5px var(--R),
-      0 0 0 5px rgba(225, 29, 72, 0);
+  60%,
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .fm-urg {
+  .fm-urg::after {
     animation: none;
+    opacity: 0;
   }
 }
 .fm-legend {

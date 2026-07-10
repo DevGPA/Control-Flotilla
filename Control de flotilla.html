@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-K60t0446A7sI5RTEw49m/tNHH+VVOMFEwMRigUeieI0='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Y2sHWBLC0zssxlVU7tWgHzIi4mqexZGcBipyDrJQJnw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -82,11 +82,15 @@
   SRI omitido para vendor local: Vite dev server transforma archivos rompiendo el hash.
   Defensa: CSP `script-src 'self'` + control de archivos en repo.
   Versiones: xlsx 0.20.3, jspdf 2.5.1, lucide 1.8.0.
+
+  Perf F1-6 (2026-07-10): xlsx (930 KB) y jspdf (410 KB) ya NO cargan en el boot —
+  se inyectan on-demand vía ensureXLSX()/ensureJsPDF() la primera vez que el usuario
+  importa Excel/ZIP o exporta Excel/PDF (~1.34 MB fuera del arranque).
+  Perf F2-4 (2026-07-10): lucide vendor (388 KB / 1,939 iconos) reemplazado por un
+  subset de 51 iconos (11.6 KB) bundleado en src/ui/lucideSubset.ts — main.ts expone
+  window.lucide.createIcons() con el mismo contrato. Agregar iconos nuevos:
+  scripts/gen-lucide-subset.mjs.
 -->
-<script src="./vendor/xlsx.full.min.js" defer></script>
-<script src="./vendor/jspdf.umd.min.js" defer></script>
-<!-- Lucide icons — SVG. Pin 1.8.0. -->
-<script src="./vendor/lucide.min.js" defer></script>
 <script>
 // Silence benign SheetJS "Bad uncompressed size" warnings emitted when parsing
 // MoreApp-generated xlsx files — data is still recovered correctly.
@@ -100,111 +104,6 @@
     return o.apply(console,arguments);
   };
 })();
-</script>
-<script>
-// Deflate inflate — pure JS, zero dependencies, works in file://
-// RFC 1951 implementation
-(function(g){
-var FLT=new Uint8Array(288),FLD=new Uint8Array(32);
-var i;for(i=0;i<=143;i++)FLT[i]=8;for(i=144;i<=255;i++)FLT[i]=9;
-for(i=256;i<=279;i++)FLT[i]=7;for(i=280;i<=287;i++)FLT[i]=8;
-for(i=0;i<32;i++)FLD[i]=5;
-
-function mkTree(lens,lo,n){
-  var i,M=0;
-  for(i=0;i<n;i++){if(lens[lo+i]>M)M=lens[lo+i];}
-  if(!M)return null;
-  var cnt=new Int32Array(M+2);
-  for(i=0;i<n;i++)cnt[lens[lo+i]]++;
-  var nxt=new Int32Array(M+2),code=0,b;
-  for(b=1;b<=M;b++){code=(code+cnt[b-1])<<1;nxt[b]=code;}
-  var sz=1<<M,tr=new Int32Array(sz).fill(-1);
-  for(i=0;i<n;i++){
-    b=lens[lo+i];if(!b)continue;
-    var v=nxt[b]++,rv=0,tmp=v,k;
-    for(k=0;k<b;k++){rv=(rv<<1)|(tmp&1);tmp>>=1;}
-    for(var j=rv;j<sz;j+=1<<b)tr[j]=(b<<16)|i;
-  }
-  return{tr:tr,M:M};
-}
-
-function pureInflate(src){
-  var pos=0,bit=0,buf=0;
-  function rb(n){
-    while(bit<n){buf|=(src[pos++]||0)<<bit;bit+=8;}
-    var v=buf&((1<<n)-1);buf>>>=n;bit-=n;return v;
-  }
-  function sym(t){
-    var v=buf&((1<<t.M)-1);
-    while(bit<t.M){buf|=(src[pos++]||0)<<bit;bit+=8;v=buf&((1<<t.M)-1);}
-    var e=t.tr[v];if(e<0)throw new Error("Huffman error");
-    var l=e>>>16;buf>>>=l;bit-=l;return e&0xffff;
-  }
-  var LL=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
-  var LE=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
-  var DT=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
-  var DE=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
-  var out=new Uint8Array(src.length*3+1024),olen=0;
-  function push(b){if(olen>=out.length){var n=new Uint8Array(out.length*2);n.set(out);out=n;}out[olen++]=b;}
-  var fin=0;
-  do{
-    fin=rb(1);var bt=rb(2);
-    if(bt===0){
-      buf=0;bit=0;
-      var ln=src[pos]|(src[pos+1]<<8);pos+=4;
-      for(var k=0;k<ln;k++)push(src[pos++]);
-    } else {
-      var lt,dt;
-      if(bt===1){lt=mkTree(FLT,0,288);dt=mkTree(FLD,0,32);}
-      else {
-        var hlit=rb(5)+257,hdist=rb(5)+1,hclen=rb(4)+4;
-        var cl=new Uint8Array(19);
-        var CLO=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
-        for(i=0;i<hclen;i++)cl[CLO[i]]=rb(3);
-        var ct=mkTree(cl,0,19);
-        var ls=new Uint8Array(hlit+hdist),ki=0;
-        while(ki<hlit+hdist){
-          var c=sym(ct);
-          if(c<16){ls[ki++]=c;}
-          else if(c===16){var rv=ls[ki-1];for(var nn=rb(2)+3;nn--;)ls[ki++]=rv;}
-          else if(c===17){ki+=rb(3)+3;}
-          else{ki+=rb(7)+11;}
-        }
-        lt=mkTree(ls,0,hlit);dt=mkTree(ls,hlit,hdist);
-      }
-      for(;;){
-        var s=sym(lt);
-        if(s===256)break;
-        if(s<256){push(s);}
-        else{
-          var li=s-257,len=LL[li]+rb(LE[li]);
-          var di=sym(dt),dist=DT[di]+rb(DE[di]);
-          var fr=olen-dist;
-          for(var x=0;x<len;x++)push(out[fr+x]);
-        }
-      }
-    }
-  } while(!fin);
-  return out.subarray(0,olen);
-}
-g.pureInflate=pureInflate;
-
-// inflateBytes(Uint8Array) → Promise<Uint8Array>
-// Prefiere DecompressionStream nativo (Chrome 80+, Edge 80+, Firefox 113+, Safari 16.4+).
-// Si no está disponible o falla, usa pureInflate como fallback.
-g.inflateBytes=async function(src){
-  if(typeof DecompressionStream!=="undefined"){
-    try{
-      const blob=new Blob([src]);
-      const ds=new DecompressionStream("deflate-raw");
-      const stream=blob.stream().pipeThrough(ds);
-      const buf=await new Response(stream).arrayBuffer();
-      return new Uint8Array(buf);
-    }catch(e){console.debug("[inflateBytes] DecompressionStream falló, fallback pureInflate:", e&&e.message);}
-  }
-  return pureInflate(src);
-};
-}(window));
 </script>
 <!-- Fuentes self-hosted (P1.8 roadmap). Antes usaba fonts.googleapis.com; Google Fonts
      no soporta SRI (respuesta CSS varía por User-Agent). Ahora servidas localmente
@@ -2032,7 +1931,7 @@ function isFindingDone(dm,f,fechaFila){
 
 function fDate(v){
   if(!v)return"—";
-  if(typeof v==="number"){try{const d=XLSX.SSF.parse_date_code(v);return d?`${String(d.d).padStart(2,"0")}/${String(d.m).padStart(2,"0")}/${d.y}`:"—"}catch{}}
+  if(typeof v==="number"&&typeof XLSX!=="undefined"){try{const d=XLSX.SSF.parse_date_code(v);return d?`${String(d.d).padStart(2,"0")}/${String(d.m).padStart(2,"0")}/${d.y}`:"—"}catch{}}
   if(v instanceof Date)return v.toLocaleDateString("es-MX");
   const s=String(v);if(s.includes("T"))try{return new Date(s).toLocaleDateString("es-MX")}catch{}
   return s.substring(0,10)||"—";
@@ -2365,8 +2264,16 @@ window.filt=filt;
 window.refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
 (function(){
   if(typeof MutationObserver==="undefined") return;
-  let t; const obs = new MutationObserver(() => {
-    clearTimeout(t); t=setTimeout(()=>window.refreshIcons(), 50);
+  // Perf F2-3: solo re-escanear cuando la mutación realmente AÑADE iconos. Antes
+  // cualquier mutación (toasts, tooltips, cambios de texto) disparaba un
+  // querySelectorAll de TODO el documento 50ms después — O(DOM) espurio y continuo.
+  const hasIcon = (n) => n.nodeType===1 && (n.hasAttribute?.("data-lucide") || n.querySelector?.("[data-lucide]"));
+  let t; const obs = new MutationObserver((muts) => {
+    for(const m of muts){
+      for(const n of m.addedNodes){
+        if(hasIcon(n)){ clearTimeout(t); t=setTimeout(()=>window.refreshIcons(), 50); return; }
+      }
+    }
   });
   const start = () => obs.observe(document.body,{childList:true,subtree:true});
   if(document.body) start(); else window.addEventListener("DOMContentLoaded",start);
@@ -2620,10 +2527,45 @@ function showDash(){
 }
 
 // ════════════════════════════════════════════════════════════
+// VENDOR ON-DEMAND (Perf F1-6)
+// xlsx/jspdf salen del boot (~1.34 MB) y se inyectan la primera vez que se usan.
+// CSP: script-src 'self' permite <script src> del mismo origen. La promesa se
+// cachea por src; en error se limpia para permitir reintento (red intermitente).
+// ════════════════════════════════════════════════════════════
+const _vendorPromises={};
+function loadVendorScript(src,isReady){
+  if(isReady())return Promise.resolve();
+  if(!_vendorPromises[src]){
+    _vendorPromises[src]=new Promise((resolve,reject)=>{
+      const s=document.createElement("script");
+      s.src=src;
+      s.onload=()=>{isReady()?resolve():reject(new Error(src+" cargó pero el global no apareció"))};
+      s.onerror=()=>{delete _vendorPromises[src];reject(new Error("No se pudo cargar "+src))};
+      document.head.appendChild(s);
+    });
+  }
+  return _vendorPromises[src];
+}
+function ensureXLSX(){return loadVendorScript("./vendor/xlsx.full.min.js",()=>typeof window.XLSX!=="undefined")}
+function ensureJsPDF(){return loadVendorScript("./vendor/jspdf.umd.min.js",()=>!!(window.jspdf&&window.jspdf.jsPDF))}
+window.ensureXLSX=ensureXLSX;window.ensureJsPDF=ensureJsPDF;
+
+// ════════════════════════════════════════════════════════════
 // EXCEL LOADER
 // ════════════════════════════════════════════════════════════
 function doExcel(file){
   if(!file)return;
+  // Perf F1-6: XLSX carga on-demand — re-entra cuando el vendor esté listo.
+  if(typeof XLSX==="undefined"){
+    showLoader("Cargando componente Excel…");
+    ensureXLSX().then(()=>doExcel(file)).catch(err=>{
+      console.error("[doExcel/vendor]",err);
+      document.getElementById("ldr").style.display="none";
+      document.getElementById("dz").style.display="flex";
+      window.notify("No se pudo cargar el componente Excel. Revisa tu conexión y reintenta.","error",6000);
+    });
+    return;
+  }
   healthLog = [];
   if(window.clearUrlCache) window.clearUrlCache();
   showLoader("Leyendo Excel…");
@@ -2662,6 +2604,16 @@ function doExcel(file){
 // Siempre valida que el archivo sea de tipo semanal antes de procesarlo.
 function doArchivoSemanal(file){
   if(!file) return;
+  // Perf F1-6: XLSX carga on-demand — re-entra cuando el vendor esté listo.
+  if(typeof XLSX==="undefined"){
+    showLoader("Cargando componente Excel…");
+    ensureXLSX().then(()=>doArchivoSemanal(file)).catch(err=>{
+      console.error("[doArchivoSemanal/vendor]",err);
+      document.getElementById("ldr").style.display="none";
+      window.notify("No se pudo cargar el componente Excel. Revisa tu conexión y reintenta.","error",6000);
+    });
+    return;
+  }
   showLoader("Leyendo archivo semanal…");
   if(file.name.toLowerCase().endsWith(".zip")){
     // Para ZIP: delegar a doZip con contexto "semanal" forzado.
@@ -2830,6 +2782,7 @@ async function doZip(file, context = "auto"){
     if(xls.length){
       showLoader("Leyendo Excel…");
       await new Promise(r => setTimeout(r, 20));
+      await ensureXLSX(); // Perf F1-6: vendor on-demand (el ZIP puede traer solo fotos)
       const wb = XLSX.read(xls[0].data, {type:"array", cellDates:false});
       const ws0 = wb.Sheets[wb.SheetNames[0]];
       const hdrs0 = (XLSX.utils.sheet_to_json(ws0,{header:1,defval:""})[0]||[]).map(h=>String(h).toLowerCase().trim());
@@ -5122,6 +5075,8 @@ function renderActionsTab(u,body){
 async function exportPDF(){
   const u=units.find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
+  // Perf F1-6: jspdf carga on-demand.
+  try{ await ensureJsPDF(); }catch(e){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
   const {jsPDF}=window.jspdf;
   if(!jsPDF){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
 
@@ -5455,6 +5410,8 @@ function showResumenEjecutivo(){
 // ════════════════════════════════════════════════════════════
 async function exportFleetPDF(){
   if(!units.length){ window.notify("No hay unidades cargadas.","warn",4000); return; }
+  // Perf F1-6: jspdf carga on-demand.
+  try{ await ensureJsPDF(); }catch(e){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
   const {jsPDF}=window.jspdf;
   if(!jsPDF){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
 
@@ -6852,7 +6809,9 @@ function _cvNormProducto(p){ const u=String(p==null?"":p).toUpperCase();
 // que usan MoreApp (con cargas/solicitudes en window.fuelEntries). Escribe vía AppSync (admin).
 async function importTokaProductos(file){
   if(!file) return;
-  if(!window.XLSX){ window.notify("Componente XLSX no disponible; recarga la página.","error",5000); return; }
+  // Perf F1-6: XLSX carga on-demand.
+  try{ await ensureXLSX(); }
+  catch(e){ window.notify("No se pudo cargar el componente Excel. Revisa tu conexión y reintenta.","error",6000); return; }
   if(!window.__units){ window.notify("Sin sesión activa.","error",4000); return; }
   const fe = Array.isArray(window.fuelEntries) ? window.fuelEntries : [];
   if(!fe.length){ window.notify("Aún no hay datos de combustible cargados para identificar las unidades MoreApp.","warn",6000); return; }
@@ -8340,7 +8299,11 @@ function renderHistorial(){
 
 // ── Exportar Historial Taller a Excel ────────────────────
 function exportTallerActivasExcel(){
-  if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
+  // Perf F1-6: XLSX carga on-demand — re-entra cuando el vendor esté listo.
+  if(!window.XLSX){
+    ensureXLSX().then(()=>exportTallerActivasExcel()).catch(()=>window.notify("No se pudo cargar el componente Excel. Reintenta.","error",6000));
+    return;
+  }
   const isClosed=e=>e.estado==="Finalizado";
   const activas=tallerEntries.filter(e=>!isClosed(e));
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
@@ -8367,7 +8330,11 @@ function exportTallerActivasExcel(){
 }
 
 function exportTallerHistorialExcel(){
-  if(!window.XLSX){window.notify("SheetJS no disponible. Verifica tu conexión.","error",6000);return;}
+  // Perf F1-6: XLSX carga on-demand — re-entra cuando el vendor esté listo.
+  if(!window.XLSX){
+    ensureXLSX().then(()=>exportTallerHistorialExcel()).catch(()=>window.notify("No se pudo cargar el componente Excel. Reintenta.","error",6000));
+    return;
+  }
   const isClosed=e=>e.estado==="Finalizado";
 
   // Agrupar por unitKey (igual que renderHistorial)
@@ -9051,6 +9018,114 @@ window.deleteTallerEntry = deleteTallerEntry;
 <!-- Módulos TS nuevos (Vite dev server resuelve en /src/). Feature flag:
      localStorage.setItem('USE_NEW_RENDER','1') para probar renderTable nuevo.
      Bajo file:// este script 404 silenciosamente y el legado sigue trabajando. -->
+<!-- Perf F1-10: inflate movido del <head> al final del body (2026-07-10) — era
+     JS síncrono ANTES de los <link> de CSS y retrasaba el primer paint. Solo lo
+     consume el flujo ZIP (interacción del usuario, post-parse siempre). -->
+<script>
+// Deflate inflate — pure JS, zero dependencies, works in file://
+// RFC 1951 implementation
+(function(g){
+var FLT=new Uint8Array(288),FLD=new Uint8Array(32);
+var i;for(i=0;i<=143;i++)FLT[i]=8;for(i=144;i<=255;i++)FLT[i]=9;
+for(i=256;i<=279;i++)FLT[i]=7;for(i=280;i<=287;i++)FLT[i]=8;
+for(i=0;i<32;i++)FLD[i]=5;
+
+function mkTree(lens,lo,n){
+  var i,M=0;
+  for(i=0;i<n;i++){if(lens[lo+i]>M)M=lens[lo+i];}
+  if(!M)return null;
+  var cnt=new Int32Array(M+2);
+  for(i=0;i<n;i++)cnt[lens[lo+i]]++;
+  var nxt=new Int32Array(M+2),code=0,b;
+  for(b=1;b<=M;b++){code=(code+cnt[b-1])<<1;nxt[b]=code;}
+  var sz=1<<M,tr=new Int32Array(sz).fill(-1);
+  for(i=0;i<n;i++){
+    b=lens[lo+i];if(!b)continue;
+    var v=nxt[b]++,rv=0,tmp=v,k;
+    for(k=0;k<b;k++){rv=(rv<<1)|(tmp&1);tmp>>=1;}
+    for(var j=rv;j<sz;j+=1<<b)tr[j]=(b<<16)|i;
+  }
+  return{tr:tr,M:M};
+}
+
+function pureInflate(src){
+  var pos=0,bit=0,buf=0;
+  function rb(n){
+    while(bit<n){buf|=(src[pos++]||0)<<bit;bit+=8;}
+    var v=buf&((1<<n)-1);buf>>>=n;bit-=n;return v;
+  }
+  function sym(t){
+    var v=buf&((1<<t.M)-1);
+    while(bit<t.M){buf|=(src[pos++]||0)<<bit;bit+=8;v=buf&((1<<t.M)-1);}
+    var e=t.tr[v];if(e<0)throw new Error("Huffman error");
+    var l=e>>>16;buf>>>=l;bit-=l;return e&0xffff;
+  }
+  var LL=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  var LE=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  var DT=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  var DE=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  var out=new Uint8Array(src.length*3+1024),olen=0;
+  function push(b){if(olen>=out.length){var n=new Uint8Array(out.length*2);n.set(out);out=n;}out[olen++]=b;}
+  var fin=0;
+  do{
+    fin=rb(1);var bt=rb(2);
+    if(bt===0){
+      buf=0;bit=0;
+      var ln=src[pos]|(src[pos+1]<<8);pos+=4;
+      for(var k=0;k<ln;k++)push(src[pos++]);
+    } else {
+      var lt,dt;
+      if(bt===1){lt=mkTree(FLT,0,288);dt=mkTree(FLD,0,32);}
+      else {
+        var hlit=rb(5)+257,hdist=rb(5)+1,hclen=rb(4)+4;
+        var cl=new Uint8Array(19);
+        var CLO=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+        for(i=0;i<hclen;i++)cl[CLO[i]]=rb(3);
+        var ct=mkTree(cl,0,19);
+        var ls=new Uint8Array(hlit+hdist),ki=0;
+        while(ki<hlit+hdist){
+          var c=sym(ct);
+          if(c<16){ls[ki++]=c;}
+          else if(c===16){var rv=ls[ki-1];for(var nn=rb(2)+3;nn--;)ls[ki++]=rv;}
+          else if(c===17){ki+=rb(3)+3;}
+          else{ki+=rb(7)+11;}
+        }
+        lt=mkTree(ls,0,hlit);dt=mkTree(ls,hlit,hdist);
+      }
+      for(;;){
+        var s=sym(lt);
+        if(s===256)break;
+        if(s<256){push(s);}
+        else{
+          var li=s-257,len=LL[li]+rb(LE[li]);
+          var di=sym(dt),dist=DT[di]+rb(DE[di]);
+          var fr=olen-dist;
+          for(var x=0;x<len;x++)push(out[fr+x]);
+        }
+      }
+    }
+  } while(!fin);
+  return out.subarray(0,olen);
+}
+g.pureInflate=pureInflate;
+
+// inflateBytes(Uint8Array) → Promise<Uint8Array>
+// Prefiere DecompressionStream nativo (Chrome 80+, Edge 80+, Firefox 113+, Safari 16.4+).
+// Si no está disponible o falla, usa pureInflate como fallback.
+g.inflateBytes=async function(src){
+  if(typeof DecompressionStream!=="undefined"){
+    try{
+      const blob=new Blob([src]);
+      const ds=new DecompressionStream("deflate-raw");
+      const stream=blob.stream().pipeThrough(ds);
+      const buf=await new Response(stream).arrayBuffer();
+      return new Uint8Array(buf);
+    }catch(e){console.debug("[inflateBytes] DecompressionStream falló, fallback pureInflate:", e&&e.message);}
+  }
+  return pureInflate(src);
+};
+}(window));
+</script>
 <script type="module" src="/src/main.ts" onerror="/* no-op: file:// o build sin Vite */"></script>
 </body>
 </html>
