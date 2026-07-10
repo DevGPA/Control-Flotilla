@@ -57,6 +57,7 @@ import {
 } from "./client";
 import { isAdmin, forceRefreshSession } from "./auth";
 import { hydrateFromCloud } from "./cloudHydrate";
+import { startLiveSync } from "./liveSync";
 import { uploadPhotosToS3, type PhotoUploadResult } from "./photoUpload";
 import { getCloudPhotoUrl } from "./photoFetch";
 import type { LoadedZip } from "../io/zipLoader";
@@ -659,10 +660,10 @@ function setupAutoRefresh(tenantId: string): void {
     return false;
   };
 
-  const refresh = async (reason: string): Promise<void> => {
+  const refresh = async (reason: string, minGapMs: number = MIN_GAP_MS): Promise<void> => {
     if (running) return;
     if (!window.__cloudSession) return; // solo con sesión
-    if (Date.now() - last < MIN_GAP_MS) return;
+    if (Date.now() - last < minGapMs) return;
     if (uiBusy()) return; // pospone si el usuario está trabajando
     last = Date.now();
     running = true;
@@ -683,4 +684,17 @@ function setupAutoRefresh(tenantId: string): void {
   window.setInterval(() => {
     if (document.visibilityState === "visible") void refresh("poll");
   }, POLL_MS);
+
+  // LIVE (2026-07-10): suscripciones AppSync de los modelos que alimenta el puente
+  // Operaciones-GPA. Un evento → debounce 2.5s (agrupa ráfagas: carga+validación
+  // llegan juntas) → refresh con gap corto (10s). El poll de 4 min queda como red
+  // de seguridad si el WebSocket se cae. Mismas guardas de uiBusy: nunca interrumpe.
+  const LIVE_GAP_MS = 10_000;
+  let liveTimer: number | undefined;
+  startLiveSync((modelo) => {
+    window.clearTimeout(liveTimer);
+    liveTimer = window.setTimeout(() => {
+      void refresh(`live:${modelo}`, LIVE_GAP_MS);
+    }, 2_500);
+  });
 }
