@@ -228,24 +228,42 @@ declare global {
 window.__newRenderAvailable = true;
 window.__appStore = appStore;
 
-// Expose ECharts-backed dashboard widgets al legacy (buildKPIs / buildAnalytics).
-import("./dashboard/charts").then(
-  ({
-    renderDonut,
-    renderBranchesBar,
-    renderCategoriesBar,
-    renderTrendLine,
-    renderTallerHeatmap,
-    renderKmScatter,
-  }) => {
-    window.renderDonutChart = renderDonut;
-    window.renderBranchesChart = renderBranchesBar;
-    window.renderCategoriesChart = renderCategoriesBar;
-    window.renderTrendChart = renderTrendLine;
-    window.renderTallerHeatmapChart = renderTallerHeatmap;
-    window.renderKmScatterChart = renderKmScatter;
-  },
-);
+// Perf F1-5: NO cargar ECharts (~639 KB / ~213 KB gz) en el boot. Antes este import()
+// corría al evaluar el módulo (arranque), así que TODA sesión —incluidas las que solo
+// miran la tabla de Inspecciones— descargaba y parseaba ECharts. Lo diferimos a idle:
+// la dona del home y los 5 charts de Análisis están guardados por `typeof` en el legado,
+// así que al resolver el import re-pintamos la dona (y Análisis si está abierto) sin romper
+// nada. Expone los widgets ECharts al legado (buildKPIs / buildAnalytics).
+function loadDashboardCharts(): Promise<void> {
+  return import("./dashboard/charts").then(
+    ({
+      renderDonut,
+      renderBranchesBar,
+      renderCategoriesBar,
+      renderTrendLine,
+      renderTallerHeatmap,
+      renderKmScatter,
+    }) => {
+      window.renderDonutChart = renderDonut;
+      window.renderBranchesChart = renderBranchesBar;
+      window.renderCategoriesChart = renderCategoriesBar;
+      window.renderTrendChart = renderTrendLine;
+      window.renderTallerHeatmapChart = renderTallerHeatmap;
+      window.renderKmScatterChart = renderKmScatter;
+      // Re-pintar ahora que la lib está lista (no-op si no hay datos / vista distinta).
+      const w = window as unknown as { buildKPIs?: () => void; buildAnalytics?: () => void };
+      w.buildKPIs?.();
+      if (document.body.dataset.view === "analytics") w.buildAnalytics?.();
+    },
+  );
+}
+const ric = (
+  window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
+  }
+).requestIdleCallback;
+if (typeof ric === "function") ric(() => void loadDashboardCharts(), { timeout: 3000 });
+else setTimeout(() => void loadDashboardCharts(), 1200);
 
 // Bridge bidireccional window.* ↔ appStore. Siempre activo para que los
 // módulos nuevos puedan leer del store, y el legado siga escribiendo como

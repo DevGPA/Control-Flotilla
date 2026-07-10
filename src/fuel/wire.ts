@@ -206,6 +206,15 @@ function computeCtx(): FuelCtx {
 function renderCombustible(): void {
   const tbody = $("fuel-tbody");
   if (!tbody) return; // vista no montada aún
+  // Perf F1-3: si la vista Combustible NO está activa, solo refresca el badge de nav
+  // (barato: 1 pasada) y NO recomputes el pipeline analítico ni reconstruyas
+  // tabla/KPIs/dashboard (hasta 9 ECharts). Antes cloudHydrate llamaba renderCombustible
+  // en CADA hidratación/poll aunque el usuario estuviera en otro módulo. showView(
+  // "combustible") vuelve a invocar renderCombustible al entrar, poblando la vista.
+  if (document.body.dataset.view !== "combustible") {
+    updateFuelNavBadge();
+    return;
+  }
   const all = scoped();
   const ctx = computeCtx();
   cargarNombresValidadores(); // no bloquea; re-pinta al llegar la lista
