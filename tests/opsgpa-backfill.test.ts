@@ -64,10 +64,16 @@ const SOL_ROTO = {
 };
 
 function depsMock() {
-  const escritos: { carga: unknown[]; semanal: unknown[]; copiadas: string[] } = {
+  const escritos: {
+    carga: unknown[];
+    semanal: unknown[];
+    copiadas: string[];
+    validaciones: unknown[];
+  } = {
     carga: [],
     semanal: [],
     copiadas: [],
+    validaciones: [],
   };
   const paginas: Record<string, Array<Array<Record<string, unknown>>>> = {
     // SOL en 2 páginas (prueba la paginación por cursor)
@@ -91,6 +97,9 @@ function depsMock() {
     persistirSemanal: async (unit, semanal) => {
       escritos.semanal.push({ unit, semanal });
     },
+    persistirValidacion: async (input) => {
+      escritos.validaciones.push(input);
+    },
   };
   return { deps, escritos };
 }
@@ -110,6 +119,15 @@ describe("runBackfill: reingesta pull con los mismos adaptadores", () => {
     // idempotencia de folio: mismos eventoId OPS- que produciría el puente push
     expect((escritos.carga[0] as { eventoId: string }).eventoId).toBe("OPS-34354ae5d278");
     expect((escritos.carga[1] as { eventoId: string; tipo: string }).tipo).toBe("carga");
+    // validación en origen: la SOL "Aprobada" genera ValidacionCarga; el reporte
+    // (sin status) y el roto no
+    expect(r.validadas).toBe(1);
+    expect(escritos.validaciones).toHaveLength(1);
+    expect(escritos.validaciones[0]).toMatchObject({
+      loadId: "10|solicitud|OPS-34354ae5d278",
+      verdictGlobal: "ok",
+      fuenteDeteccion: "ops-gpa",
+    });
   });
 
   it("dryRun: mapea y reporta sin copiar ni escribir nada", async () => {
@@ -117,9 +135,11 @@ describe("runBackfill: reingesta pull con los mismos adaptadores", () => {
     const r = await runBackfill({ backfill: true, dryRun: true }, deps);
     expect(r.dryRun).toBe(true);
     expect(r.escritos).toEqual({ solicitud: 1, carga: 1, semanal: 1 }); // contados
+    expect(r.validadas).toBe(1); // contada
     expect(escritos.carga).toHaveLength(0); // pero NO persistidos
     expect(escritos.semanal).toHaveLength(0);
     expect(escritos.copiadas).toHaveLength(0); // ni copiados
+    expect(escritos.validaciones).toHaveLength(0); // ni validaciones
   });
 
   it("limit acota por tipo y respeta tipos explícitos", async () => {

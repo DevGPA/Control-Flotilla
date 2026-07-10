@@ -20,6 +20,11 @@ import {
   type GpaOpsEvento,
 } from "../../../src/opsgpa/evento";
 import { mapCombustible } from "../../../src/opsgpa/mapCarga";
+import {
+  mapValidacion,
+  OPS_FUENTE_DETECCION,
+  type ValidacionCargaInput,
+} from "../../../src/opsgpa/mapValidacion";
 import { mapSemanal, type SemanalInput, type UnitInput } from "../../../src/opsgpa/mapChecklist";
 import {
   runBackfill,
@@ -93,6 +98,33 @@ async function upsert(
       throw new Error(`${modelo}.create: ${JSON.stringify(created.errors)}`);
     }
   }
+}
+
+/**
+ * Upsert de ValidacionCarga con REGLA DE NO-PISADO: si ya existe un veredicto y NO fue
+ * escrito por el puente (fuenteDeteccion ≠ "ops-gpa"), es de un humano de tesorería en
+ * FC y se respeta — el puente jamás lo sobreescribe (auditoría selectiva conserva la
+ * última palabra).
+ */
+async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
+  const client = await getDataClient();
+  const model = client.models.ValidacionCarga as unknown as {
+    create: (i: never) => Promise<{ errors?: GraphqlErrors }>;
+    update: (i: never) => Promise<{ errors?: GraphqlErrors }>;
+    get: (k: never) => Promise<{ data?: { fuenteDeteccion?: string | null } | null }>;
+  };
+  const created = await model.create(input as never);
+  if (!created.errors) return;
+  if (!isConditionalCheckFailed(created.errors)) {
+    throw new Error(`ValidacionCarga.create: ${JSON.stringify(created.errors)}`);
+  }
+  const existente = await model.get({ tenantId: input.tenantId, loadId: input.loadId } as never);
+  if (existente.data && existente.data.fuenteDeteccion !== OPS_FUENTE_DETECCION) {
+    console.log(`validación humana respetada (no-pisado): ${input.loadId}`);
+    return;
+  }
+  const upd = await model.update(input as never);
+  if (upd.errors) throw new Error(`ValidacionCarga.update: ${JSON.stringify(upd.errors)}`);
 }
 
 /**
@@ -177,6 +209,7 @@ async function ejecutarBackfill(req: BackfillRequest): Promise<BackfillResumen> 
       await upsert("Unit", unit as unknown as Record<string, unknown>);
       await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     },
+    persistirValidacion: (input) => upsertValidacion(input),
   });
 }
 
@@ -244,10 +277,15 @@ export const handler = async (
     if (evento.tipo === "SOL") {
       const input = mapCombustible(plano as OpsSolRecord | OpsCargaRecord, resolver);
       await upsert("CargaCombustible", input as unknown as Record<string, unknown>);
+      // Validación en origen (decisión 2026-07-10): la aprobación de Ops ES la
+      // validación de FC. Con regla de no-pisado de veredictos humanos.
+      const validacion = mapValidacion(plano as Record<string, unknown>, input);
+      if (validacion) await upsertValidacion(validacion);
       return res(200, {
         folio: evento.folio,
         evento: evento.evento,
         destino: `CargaCombustible/${input.tipo}`,
+        validada: validacion ? validacion.verdictGlobal : "pendiente",
       });
     }
     // CL: semanal implementado; mensual → 422 explícito (visible en DLQ, no silencioso).

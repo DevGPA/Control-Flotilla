@@ -13,6 +13,7 @@ import { extraerEvidencias, stripInfra } from "./contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "./contract";
 import { mapCombustible } from "./mapCarga";
 import { mapSemanal } from "./mapChecklist";
+import { mapValidacion, type ValidacionCargaInput } from "./mapValidacion";
 import type { CargaCombustibleInput } from "./contract";
 import type { SemanalInput, UnitInput } from "./mapChecklist";
 
@@ -41,12 +42,16 @@ export interface BackfillDeps {
   ) => Promise<string>;
   persistirCarga: (input: CargaCombustibleInput) => Promise<void>;
   persistirSemanal: (unit: UnitInput, semanal: SemanalInput) => Promise<void>;
+  /** Upsert de ValidacionCarga con regla de no-pisado (la implementa el handler). */
+  persistirValidacion: (input: ValidacionCargaInput) => Promise<void>;
 }
 
 export interface BackfillResumen {
   dryRun: boolean;
   leidos: number;
   escritos: { solicitud: number; carga: number; semanal: number };
+  /** Validaciones derivadas de la aprobación en origen (decisión 2026-07-10). */
+  validadas: number;
   omitidosMensual: number;
   errores: Array<{ id: string; error: string }>;
 }
@@ -61,6 +66,7 @@ export async function runBackfill(
     dryRun,
     leidos: 0,
     escritos: { solicitud: 0, carga: 0, semanal: 0 },
+    validadas: 0,
     omitidosMensual: 0,
     errores: [],
   };
@@ -105,6 +111,12 @@ export async function runBackfill(
             );
             if (!dryRun) await deps.persistirCarga(input);
             resumen.escritos[input.tipo] += 1;
+            // Validación en origen: la aprobación de Ops se traduce a ValidacionCarga.
+            const validacion = mapValidacion(plano, input);
+            if (validacion) {
+              if (!dryRun) await deps.persistirValidacion(validacion);
+              resumen.validadas += 1;
+            }
           } else {
             const { unit, semanal } = mapSemanal(plano as unknown as OpsClRecord, resolver);
             if (!dryRun) await deps.persistirSemanal(unit, semanal);
