@@ -4480,16 +4480,20 @@ select.filter-active {
 }
 
 /* Blindaje del tablero de Inspecciones: SOLO visible en su vista. cloudHydrate y
-   otros caminos (showDash/buildAlertsSummary/initRangoBar) re-muestran estos
-   elementos al terminar la hidratación sin saber la vista activa; este !important
-   los oculta en cualquier vista != inspecciones, gobernado por body[data-view] que
-   fija showView. Arregla "se trae el tablero de inspecciones" en Usuarios/Análisis/
-   Combustible/Taller/Semanales (2026-06-22). */
+   otros caminos (showDash/buildKPIs/buildAlertsSummary/initRangoBar) re-muestran
+   estos elementos al terminar la hidratación sin saber la vista activa; este
+   !important los oculta en cualquier vista != inspecciones, gobernado por
+   body[data-view] que fija showView. Arregla "se trae el tablero de inspecciones"
+   en Usuarios/Análisis/Combustible/Taller/Semanales (2026-06-22).
+   #ops-row (mapa de flota Híbrido H4/H5) se agregó 2026-07-10: buildKPIs lo
+   re-mostraba en el auto-refresh (su guard lee el style inline de #kpi que showDash
+   deja en "flex"), y al no estar en esta lista era el único chrome que se filtraba. */
 body:not([data-view="inspecciones"]) #main,
 body:not([data-view="inspecciones"]) #kpi,
 body:not([data-view="inspecciones"]) #tb,
 body:not([data-view="inspecciones"]) #periodo-bar,
 body:not([data-view="inspecciones"]) #tw,
+body:not([data-view="inspecciones"]) #ops-row,
 body:not([data-view="inspecciones"]) #alerts-panel {
   display: none !important;
 }
