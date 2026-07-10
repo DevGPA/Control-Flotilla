@@ -392,11 +392,22 @@ async function listUsersInGroup(group: string): Promise<CognitoUser[]> {
 async function handleList(who: Identity): Promise<Ok | Err> {
   try {
     const client = await getDataClient();
-    const profRes = await client.models.UserProfile.list({
-      filter: { tenantId: { eq: who.tenantId } },
-      limit: 1000,
-    });
-    const profBySub = new Map((profRes.data ?? []).map((p) => [p.cognitoSub, p]));
+    // Perf F3-8: paginar con nextToken — el list plano truncaba en silencio al pasar
+    // de ~1000 perfiles (hoy decenas; el bucle cuesta lo mismo y elimina el riesgo).
+    const profiles: NonNullable<
+      Awaited<ReturnType<typeof client.models.UserProfile.list>>["data"]
+    > = [];
+    let profToken: string | null | undefined;
+    do {
+      const page = await client.models.UserProfile.list({
+        filter: { tenantId: { eq: who.tenantId } },
+        limit: 1000,
+        nextToken: profToken ?? undefined,
+      });
+      profiles.push(...(page.data ?? []));
+      profToken = page.nextToken;
+    } while (profToken);
+    const profBySub = new Map(profiles.map((p) => [p.cognitoSub, p]));
     const tenantUsers = await listUsersInGroup(who.tenantId);
     const roleByUsername = new Map<string, string>();
     for (const rol of ROLE_GROUPS) {

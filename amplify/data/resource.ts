@@ -229,6 +229,10 @@ const schema = a
       .secondaryIndexes((index) => [
         index("tenantId").sortKeys(["sucursal"]).name("byTenantAndSucursal"),
         index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
+        // Perf F3-2 (2026-07-10): habilita Query por ventana de fechas (la tabla más
+        // grande y la única que crece a diario ~1k/mes). El frontend hidrata solo la
+        // ventana visible (default 3 meses) en vez de Scan del histórico completo.
+        index("tenantId").sortKeys(["fecha"]).name("byTenantAndFecha"),
       ]),
 
     // Revisión humana de una carga (1 por carga). loadId = "economicoId|tipo|eventoId".

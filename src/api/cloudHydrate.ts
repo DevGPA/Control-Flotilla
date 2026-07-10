@@ -19,6 +19,7 @@ import {
   listTaller,
   listCheckDone,
   listCombustible,
+  listCombustibleRange,
   listValidaciones,
   listComplianceDocs,
   listAnulaciones,
@@ -241,6 +242,132 @@ export function hydrateSignature(
     .join("|");
 }
 
+// ── Perf F3-1: ventana de hidratación de combustible ─────────────────────────
+// CargaCombustible es la única tabla que crece a diario (~1k filas/mes). En vez de
+// descargar el histórico completo en cada hidratación, se trae solo la ventana
+// visible (default: últimos FUEL_WINDOW_DAYS, alineado con el rango default de la
+// UI de Combustible) vía Query al GSI byTenantAndFecha. Si el usuario amplía el
+// rango de fechas más atrás, ensureFuelWindow() trae el tramo faltante UNA vez y
+// la frontera queda ampliada para los siguientes auto-refresh de la sesión.
+const FUEL_WINDOW_DAYS = 92;
+// Frontera superior fija: incluye cargas con fecha futura por error de captura
+// (mismo comportamiento que el Scan completo previo). La ventana solo se acota
+// por atrás.
+const FUEL_WINDOW_TO = "9999-12-31";
+let fuelWindowFrom: string | null = null;
+// Insumos del último hydrate — ensureFuelWindow reconstruye fuelEntries sin
+// re-descargar validaciones/unidades/anulaciones (cambian poco; el próximo
+// hydrate completo las refresca).
+let fuelRaw: Schema["CargaCombustible"]["type"][] = [];
+let fuelDeps: {
+  tenantId: string;
+  validaciones: Schema["ValidacionCarga"]["type"][];
+  unidadPorEco: Map<string, { submarca?: string; area?: string }>;
+  anuladasActivas: Map<string, AnulacionInfo>;
+} | null = null;
+
+/** Hoy en zona México menos FUEL_WINDOW_DAYS, en YYYY-MM-DD (formato de `fecha`). */
+function defaultFuelWindowFrom(): string {
+  const d = new Date(Date.now() - FUEL_WINDOW_DAYS * 86_400_000);
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+}
+
+const fuelKey = (r: Schema["CargaCombustible"]["type"]): string =>
+  `${r.economicoId}|${r.tipo}|${r.eventoId}`;
+
+// Serializa las ampliaciones (el rango de la UI puede moverse varias veces rápido).
+let ensureFuelChain: Promise<boolean> = Promise.resolve(false);
+
+/**
+ * Amplía la ventana de combustible hacia atrás hasta cubrir `fromISO` (YYYY-MM-DD).
+ * Trae SOLO el tramo faltante, lo mergea al crudo acumulado y reconstruye
+ * window.fuelEntries (referencia nueva → el memo del módulo de combustible se
+ * invalida solo). Devuelve true si amplió. No-op si la ventana ya cubre la fecha
+ * o si aún no corre la primera hidratación.
+ */
+export function ensureFuelWindow(fromISO: string): Promise<boolean> {
+  const next = ensureFuelChain
+    .catch(() => false)
+    .then(async () => {
+      const from = String(fromISO ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return false;
+      if (!fuelDeps || fuelWindowFrom === null || from >= fuelWindowFrom) return false;
+      // Tramo faltante: [from, fuelWindowFrom) — between es inclusivo, así que el tope
+      // es el día anterior a la frontera actual.
+      const upper = new Date(new Date(fuelWindowFrom + "T12:00:00Z").getTime() - 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      let tramo: Schema["CargaCombustible"]["type"][];
+      try {
+        tramo = await listCombustibleRange(fuelDeps.tenantId, from, upper);
+      } catch (e) {
+        console.warn("[ensureFuelWindow] fetch del tramo falló (no-fatal):", e);
+        return false;
+      }
+      fuelWindowFrom = from;
+      if (tramo.length) {
+        const seen = new Set(fuelRaw.map(fuelKey));
+        for (const r of tramo) if (!seen.has(fuelKey(r))) fuelRaw.push(r);
+      }
+      const entries = buildFuelEntries(
+        fuelRaw,
+        fuelDeps.validaciones,
+        fuelDeps.unidadPorEco,
+        fuelDeps.anuladasActivas,
+      );
+      window.fuelEntries = entries;
+      if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
+      if (typeof window.renderCombustible === "function") window.renderCombustible();
+      console.info(
+        `[ensureFuelWindow] ventana ampliada a ${from} (+${tramo.length} filas, total ${fuelRaw.length})`,
+      );
+      return true;
+    });
+  ensureFuelChain = next;
+  return next;
+}
+
+/**
+ * Perf F3-4: refresco EN VIVO solo del módulo de combustible. Cuando el evento live
+ * es de CargaCombustible/ValidacionCarga (ráfagas del webhook/puente Ops), no hace
+ * falta re-descargar los 9 modelos: se re-consulta la ventana (Query al GSI, barata)
+ * + las validaciones, se reconstruye fuelEntries y se re-renderiza el módulo.
+ * Devuelve false si aún no corrió la primera hidratación o si falló (el caller debe
+ * hacer el hydrate completo como fallback).
+ */
+export function refreshFuelOnly(): Promise<boolean> {
+  const next = ensureFuelChain
+    .catch(() => false)
+    .then(async () => {
+      if (!fuelDeps || fuelWindowFrom === null) return false;
+      const deps = fuelDeps;
+      try {
+        const [combustible, validaciones] = await Promise.all([
+          listCombustibleRange(deps.tenantId, fuelWindowFrom, FUEL_WINDOW_TO),
+          listValidaciones(deps.tenantId),
+        ]);
+        fuelRaw = [...combustible];
+        fuelDeps = { ...deps, validaciones };
+        const entries = buildFuelEntries(
+          fuelRaw,
+          validaciones,
+          deps.unidadPorEco,
+          deps.anuladasActivas,
+        );
+        window.fuelEntries = entries;
+        if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
+        if (typeof window.renderCombustible === "function") window.renderCombustible();
+        console.info(`[refreshFuelOnly] ${entries.length} registros (live, ventana)`);
+        return true;
+      } catch (e) {
+        console.warn("[refreshFuelOnly] falló — fallback a hydrate completo:", e);
+        return false;
+      }
+    });
+  ensureFuelChain = next;
+  return next;
+}
+
 /**
  * Lee Units + Checklists del cloud, los merge en LegacyUnit[] y los inyecta
  * en window.units. Trigger re-render de la UI.
@@ -274,10 +401,19 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       return [] as Schema["CheckDone"]["type"][];
     }),
     // No-fatal: el módulo de combustible es independiente; si falla no tumba el resto.
-    listCombustible(tenantId).catch((e) => {
-      console.warn("[cloudHydrate] listCombustible falló (no-fatal):", e);
-      return [] as Schema["CargaCombustible"]["type"][];
-    }),
+    // Perf F3-1: por VENTANA de fechas (Query al GSI byTenantAndFecha) en vez de Scan
+    // del histórico completo — es la tabla más grande (~1k filas/mes). Fallback al
+    // Scan completo si la index query falla (p.ej. GSI recién creado aún en backfill
+    // durante el primer deploy, o cliente corriendo contra un backend sin el índice).
+    listCombustibleRange(tenantId, fuelWindowFrom ?? defaultFuelWindowFrom(), FUEL_WINDOW_TO)
+      .catch((e) => {
+        console.warn("[cloudHydrate] listCombustibleRange falló — fallback a Scan completo:", e);
+        return listCombustible(tenantId);
+      })
+      .catch((e) => {
+        console.warn("[cloudHydrate] listCombustible falló (no-fatal):", e);
+        return [] as Schema["CargaCombustible"]["type"][];
+      }),
     listValidaciones(tenantId).catch((e) => {
       console.warn("[cloudHydrate] listValidaciones falló (no-fatal):", e);
       return [] as Schema["ValidacionCarga"]["type"][];
@@ -534,10 +670,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     }
     const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco, anuladasActivas);
     window.fuelEntries = fuelEntries;
+    // Perf F3-1: fijar el estado de la ventana (frontera + crudo + insumos) para que
+    // ensureFuelWindow pueda ampliar hacia atrás sin re-descargar todo. La frontera
+    // persiste entre auto-refreshes de la sesión (una vez ampliada, se mantiene).
+    if (fuelWindowFrom === null) fuelWindowFrom = defaultFuelWindowFrom();
+    fuelRaw = [...combustible];
+    fuelDeps = { tenantId, validaciones, unidadPorEco, anuladasActivas };
     if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
     if (typeof window.initRangoFuel === "function") window.initRangoFuel();
     if (typeof window.renderCombustible === "function") window.renderCombustible();
-    console.info(`[cloudHydrate] ${fuelEntries.length} registros de combustible hidratados`);
+    console.info(
+      `[cloudHydrate] ${fuelEntries.length} registros de combustible hidratados (ventana desde ${fuelWindowFrom})`,
+    );
   }
 
   // No early-exit aquí. Aunque units.length === 0, semanales puede tener
@@ -643,20 +787,26 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     if (!db[u.uid]) db[u.uid] = {};
   }
 
-  // Pre-fetch URLs firmadas de S3 para TODAS las fotos (mensual + semanal).
-  // Esto evita que imgUrl/weeklyImgUrl (sync) tengan que esperar — las URLs
-  // ya están en cache al momento de renderear. Habilita lightbox, gallery,
-  // thumbnails para multi-user en ambos modos.
+  // Pre-fetch URLs firmadas de S3 para las fotos del RANGO/PERÍODO ACTIVO.
+  // Perf F3-3 (2026-07-10): antes se pre-firmaba TODO el histórico (inspecciones de
+  // todos los meses + todos los períodos semanales + todo combustible) — miles de
+  // firmas SigV4 en el main thread en cada boot, creciendo con el archivo. Ahora:
+  // - Inspecciones: solo el rango visible (window.units, default mes reciente).
+  // - Semanales: solo el período activo.
+  // - Combustible: ya viene acotado por la ventana de hidratación (F3-1).
+  // Las fotos FUERA de lo pre-firmado se firman on-demand al verse: galería vía
+  // lazyObserver→__cloudGetPhotoUrl; lightbox/PDF/drawer con fallback async (F3-3).
   const allPhotoFnames = new Set<string>();
-  // Todos los meses (no solo el activo) → al cambiar de período las fotos ya están.
-  for (const u of allSnapUnits) {
+  for (const u of window.units ?? legacyUnits) {
     for (const p of u.photos ?? []) {
       const fn = (p as { fname?: string }).fname;
       if (fn) allPhotoFnames.add(fn.toLowerCase());
     }
   }
   // Semanales: cada entry tiene array de filenames raw (string[]).
+  const activeWk = window.activeWeeklyPeriodoId;
   for (const periodo of window.weeklyPeriodos ?? []) {
+    if (activeWk && periodo.id !== activeWk) continue;
     for (const entry of periodo.entries ?? []) {
       for (const fn of entry.photos ?? []) {
         if (fn) allPhotoFnames.add(String(fn).toLowerCase());

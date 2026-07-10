@@ -632,6 +632,13 @@ function mountControls(): void {
   ($("fuel-rango-desde") as HTMLInputElement | null)?.addEventListener("change", (e) => {
     filter.desde = (e.target as HTMLInputElement).value || undefined;
     renderCombustible();
+    // Perf F3-1: si el nuevo "desde" cae antes de la ventana hidratada (~3 meses),
+    // traer el tramo faltante del cloud — fire-and-forget: el render de arriba muestra
+    // lo que hay y ensureFuelWindow re-renderiza al llegar el histórico.
+    const w = window as unknown as { __fuelEnsureWindow?: (f: string) => Promise<boolean> };
+    if (filter.desde && typeof w.__fuelEnsureWindow === "function") {
+      void w.__fuelEnsureWindow(filter.desde);
+    }
   });
   ($("fuel-rango-hasta") as HTMLInputElement | null)?.addEventListener("change", (e) => {
     filter.hasta = (e.target as HTMLInputElement).value || undefined;
@@ -715,6 +722,16 @@ function renderCurrentDetail(): void {
     recorrido: lastCtx?.recorridosByLoad.get(loadId),
     nombreValidador,
     resolveUrl,
+    // Perf F3-3: firma on-demand cuando la evidencia no está en el mapa pre-firmado
+    // (cargas fuera de la ventana hidratada). Contrato de cloudWire.
+    resolveUrlAsync: (fname: string) => {
+      const w = window as unknown as {
+        __cloudGetPhotoUrl?: (f: string) => Promise<string | null>;
+      };
+      return typeof w.__cloudGetPhotoUrl === "function"
+        ? w.__cloudGetPhotoUrl(fname)
+        : Promise.resolve(null);
+    },
     canWrite: canWrite(),
     onValidate: handleValidate,
     esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,

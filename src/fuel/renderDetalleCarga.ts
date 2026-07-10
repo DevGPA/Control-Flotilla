@@ -39,6 +39,10 @@ export type RenderDetalleCargaDeps = {
   /** email del validador → nombre legible (para "Revisado por …"). */
   nombreValidador?: (email?: string | null) => string;
   resolveUrl: (fname: string) => string | null;
+  /** Perf F3-3: fallback async cuando resolveUrl (mapa pre-firmado) no tiene la foto —
+   *  con la hidratación por ventana, las evidencias de cargas viejas se firman
+   *  on-demand al abrir el detalle (window.__cloudGetPhotoUrl). */
+  resolveUrlAsync?: (fname: string) => Promise<string | null>;
   canWrite: boolean;
   onValidate: (
     loadId: string,
@@ -117,6 +121,36 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
     });
   }
   return slots;
+}
+
+/**
+ * Perf F3-3: pinta una foto del drawer tolerando que el mapa pre-firmado no la tenga
+ * (hidratación por ventana → evidencias de cargas viejas se firman on-demand).
+ * El click lee img.src al momento (la URL puede llegar async después del render).
+ */
+function wirePhoto(img: HTMLImageElement, fname: string, deps: RenderDetalleCargaDeps): void {
+  const url = deps.resolveUrl(fname);
+  if (url) {
+    img.src = url;
+  } else if (deps.resolveUrlAsync) {
+    img.style.opacity = "0.35"; // placeholder tenue mientras se firma
+    deps
+      .resolveUrlAsync(fname)
+      .then((u) => {
+        if (u) {
+          img.src = u;
+          img.style.opacity = "";
+        }
+      })
+      .catch(() => {
+        /* firma falló — la foto queda como placeholder */
+      });
+  }
+  img.addEventListener("click", () => {
+    const current = img.src;
+    if (!current) return;
+    deps.onPhotoClick ? deps.onPhotoClick(current) : window.open(current, "_blank");
+  });
 }
 
 function photosOfKind(load: FuelEntry, kind: FuelEvidenceKind): FuelPhoto[] {
@@ -226,7 +260,7 @@ function buildRendimientoCard(
 }
 
 export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
-  const { body, load, metrics, resolveUrl, canWrite, onValidate } = deps;
+  const { body, load, metrics, canWrite, onValidate } = deps;
 
   // Encabezado
   if (deps.titleEl) {
@@ -384,15 +418,11 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
       photoCol.appendChild(none);
     } else {
       for (const p of photos) {
-        const url = resolveUrl(p.fname);
         const img = document.createElement("img");
         img.className = "fv-photo";
         img.loading = "lazy";
         img.alt = slot.label;
-        if (url) img.src = url;
-        img.addEventListener("click", () => {
-          if (url) deps.onPhotoClick ? deps.onPhotoClick(url) : window.open(url, "_blank");
-        });
+        wirePhoto(img, p.fname, deps);
         photoCol.appendChild(img);
       }
     }
@@ -439,15 +469,11 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     const strip = document.createElement("div");
     strip.className = "fv-strip";
     for (const p of otras) {
-      const url = resolveUrl(p.fname);
       const img = document.createElement("img");
       img.className = "fv-photo fv-photo-sm";
       img.loading = "lazy";
       img.alt = p.col;
-      if (url) img.src = url;
-      img.addEventListener("click", () => {
-        if (url) deps.onPhotoClick ? deps.onPhotoClick(url) : window.open(url, "_blank");
-      });
+      wirePhoto(img, p.fname, deps);
       strip.appendChild(img);
     }
     sec.appendChild(strip);

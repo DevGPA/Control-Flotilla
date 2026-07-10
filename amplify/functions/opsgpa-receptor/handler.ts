@@ -260,16 +260,25 @@ export const handler = async (
 
   try {
     // 4) Evidencias → bucket de FC, nombres determinísticos; resolver key→fname.
+    // Perf F3-7: copias S3→S3 en PARALELO (antes secuenciales — la latencia del POST
+    // era la suma de todas; con 4-6 evidencias por carga ahora se paga solo la más
+    // lenta). Mismo patrón que downloadPhotos del webhook MoreApp.
     const fnames = new Map<string, string>();
-    for (const { campo, key } of evento.evidencias ?? []) {
+    const copias: Promise<void>[] = (evento.evidencias ?? []).map(async ({ campo, key }) => {
       fnames.set(key, await copiarEvidencia(evento.tipo, evento.unidad, campo, key));
-    }
+    });
     if (evento.firma) {
-      fnames.set(
-        evento.firma,
-        await copiarEvidencia(evento.tipo, evento.unidad, "firma", evento.firma),
+      const firmaKey = evento.firma;
+      copias.push(
+        (async () => {
+          fnames.set(
+            firmaKey,
+            await copiarEvidencia(evento.tipo, evento.unidad, "firma", firmaKey),
+          );
+        })(),
       );
     }
+    await Promise.all(copias);
     const resolver = (key: string): string => fnames.get(key) ?? key;
 
     // 5) Mapear con los adaptadores probados y persistir con upsert idempotente.
