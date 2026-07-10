@@ -223,9 +223,10 @@ function mergeUnitWithChecklist(
 /**
  * Perf F1-4: firma barata del snapshot cloud para detectar "nada cambió" y saltar el
  * rebuild+render (la parte que congela el hilo cada 4min/focus/evento live). Cuenta +
- * max(updatedAt) por modelo detecta altas, bajas y ediciones sin serializar los items.
+ * max(updatedAt) por modelo detecta altas, bajas y ediciones sin serializar los items
+ * (los modelos Amplify siempre tienen updatedAt automático). Exportada para tests.
  */
-function hydrateSignature(
+export function hydrateSignature(
   lists: ReadonlyArray<ReadonlyArray<{ readonly updatedAt?: string | null }>>,
 ): string {
   return lists
