@@ -10,6 +10,7 @@ import { data } from "./data/resource";
 import { storage } from "./storage/resource";
 import { moreappWebhook } from "./functions/moreapp-webhook/resource";
 import { adminUsers } from "./functions/admin-users/resource";
+import { opsgpaReceptor } from "./functions/opsgpa-receptor/resource";
 
 /**
  * Amplify Gen 2 backend entrypoint.
@@ -32,6 +33,7 @@ const backend = defineBackend({
   storage,
   moreappWebhook,
   adminUsers,
+  opsgpaReceptor,
 });
 
 // ── MoreApp webhook (FASE 1 captura) ──────────────────────────
@@ -49,6 +51,47 @@ bucket.grantReadWrite(webhookFn);
 (webhookFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
 
 backend.addOutput({ custom: { moreappWebhookUrl: webhookUrl.url } });
+
+// ── Receptor del puente Operaciones-GPA (gpa.ops.v1, 2026-07-10) ──────────────
+// Function URL dedicada (POST del publisher de Eco-Admin/operaciones-gpa). La
+// autenticación es la firma HMAC verificada en el handler (fail-closed sin secreto):
+// no depende del token estático del webhook legacy. Escribe en el bucket de FC
+// (fotos copiadas + capturas crudas ops-capture/) y LEE el bucket de evidencias
+// de Operaciones-GPA (mismo account) — permiso mínimo s3:GetObject.
+const receptorFn = backend.opsgpaReceptor.resources.lambda;
+const receptorUrl = receptorFn.addFunctionUrl({
+  authType: FunctionUrlAuthType.NONE,
+  cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.POST] },
+});
+bucket.grantReadWrite(receptorFn);
+(receptorFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
+receptorFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["s3:GetObject"],
+    // Evidencias de Operaciones-GPA (prod y, si algún día aplica, otros envs).
+    resources: ["arn:aws:s3:::gpa-ops-evidencias-*/*"],
+  }),
+);
+receptorFn.addToRolePolicy(
+  new PolicyStatement({
+    // Sin ListBucket, S3 reporta un objeto AUSENTE como AccessDenied en vez de 404
+    // (lo vimos en la validación sandbox). Solo listado, sigue siendo read-only.
+    actions: ["s3:ListBucket"],
+    resources: ["arn:aws:s3:::gpa-ops-evidencias-*"],
+  }),
+);
+// Modo BACKFILL (invocación directa): lectura de la tabla de Ops vía su GSI
+// tipo-fecha. Solo Query — nunca escritura sobre Operaciones-GPA.
+receptorFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["dynamodb:Query"],
+    resources: [
+      "arn:aws:dynamodb:*:*:table/gpa_operaciones_*",
+      "arn:aws:dynamodb:*:*:table/gpa_operaciones_*/index/*",
+    ],
+  }),
+);
+backend.addOutput({ custom: { opsgpaReceptorUrl: receptorUrl.url } });
 
 // ── Módulo de Administración de Usuarios (2026-06-12) ─────────────────────────
 // La Lambda admin-users opera la Cognito Admin API. Permisos ACOTADOS al ARN del

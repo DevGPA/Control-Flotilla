@@ -38,6 +38,8 @@
   "devDependencies": {
     "@aws-amplify/backend": "^1.22.0",
     "@aws-amplify/backend-cli": "^1.8.2",
+    "@aws-sdk/client-dynamodb": "^3.1084.0",
+    "@aws-sdk/util-dynamodb": "^3.996.6",
     "@playwright/test": "^1.59.1",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",

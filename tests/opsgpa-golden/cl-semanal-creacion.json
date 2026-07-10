@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "contrato": "gpa.ops.v1",
+  "tipo": "CL",
+  "subtipo": "semanal",
+  "evento": "creacion",
+  "registroId": "88d8c62e3378",
+  "folio": "OPS-88d8c62e3378",
+  "fechaISO": "2026-07-06T13:20:38+00:00",
+  "sucursal": "Guadalajara",
+  "unidad": {
+    "vehicleId": "16",
+    "economico": "16",
+    "placas": "PR3430A"
+  },
+  "responsable": {
+    "nombre": "Chofer Guadalajara",
+    "userId": "16",
+    "accountId": "chofer.gdl@gpa.com.mx"
+  },
+  "status": "Aprobado",
+  "answers": {
+    "tipo": "semanal",
+    "subMarca": "F-350 Chas Cabina Xl",
+    "km": 154302,
+    "fotoKm": "CL/77777777777777777777777777777777.jpg",
+    "answers": {
+      "llantas": "Bien",
+      "carroceria": "Con Raspaduras/Golpes",
+      "nivelAceite": "OK",
+      "fotoLlanta": "CL/abababababababababababababababab.webp"
+    },
+    "obs": "sin novedades",
+    "status": "Aprobado"
+  },
+  "evidencias": [
+    {
+      "campo": "fotoKm",
+      "key": "CL/77777777777777777777777777777777.jpg"
+    },
+    {
+      "campo": "answers.fotoLlanta",
+      "key": "CL/abababababababababababababababab.webp"
+    }
+  ],
+  "firma": "CL/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd.png",
+  "bucketOrigen": "gpa-ops-evidencias-ENV-CUENTA",
+  "emitidoEn": "2026-07-09T00:00:00+00:00"
+}

@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { moreappWebhook } from "../functions/moreapp-webhook/resource";
 import { adminUsers } from "../functions/admin-users/resource";
+import { opsgpaReceptor } from "../functions/opsgpa-receptor/resource";
 
 /**
  * Schema replica 1:1 las 6 entidades de shared/types/entities.ts.
@@ -474,6 +475,9 @@ const schema = a
     allow.resource(moreappWebhook).to(["query", "mutate"]),
     // admin-users escribe UserProfile/AuditEvent y lee UserProfile vía IAM.
     allow.resource(adminUsers).to(["query", "mutate"]),
+    // opsgpa-receptor: puente Operaciones-GPA (gpa.ops.v1) — upserts idempotentes
+    // en CargaCombustible/Unit/Semanal, mismo rol que la ingesta MoreApp.
+    allow.resource(opsgpaReceptor).to(["query", "mutate"]),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;
