@@ -157,6 +157,55 @@ type FuelCtx = {
 };
 let lastCtx: FuelCtx | null = null;
 
+// Perf F2-1: memo del pipeline dependiente SOLO del dataset. computeFuelMetrics y
+// computeRecorridos ordenan por unidad TODO el histórico scopeado; antes corrían en CADA
+// render (filtro/orden/búsqueda/refresh) aunque el dataset no cambiara. El dataset solo
+// cambia al re-hidratar (nueva referencia de window.fuelEntries) o al anular/restaurar
+// (mutan e.anulada EN SITIO → bumpFuelDatasetVersion). Lo dependiente del filtro (preFiltered,
+// baseline, anomalías) se sigue recomputando en cada llamada. filterAndSortFuel NO muta su
+// entrada (usa .filter()), así que reusar el mismo array `all` memoizado es seguro.
+const EMPTY_FUEL: FuelEntry[] = [];
+let _fuelDatasetVersion = 0;
+let _memoRef: FuelEntry[] | null = null;
+let _memoVersion = -1;
+let _memoDataset: {
+  all: FuelEntry[];
+  allMetrics: FuelMetrics[];
+  metricsByLoad: Map<string, FuelMetrics>;
+  recorridosByLoad: Map<string, RecorridoInfo>;
+} | null = null;
+
+/** Invalida el memo del dataset (llamar tras mutar e.anulada en sitio: anular/restaurar). */
+function bumpFuelDatasetVersion(): void {
+  _fuelDatasetVersion++;
+}
+
+// Perf F2-9: los <select> de sucursal/responsable/tipo-unidad solo cambian con el dataset;
+// repoblarlos en cada render (recorría 5506 filas ×3) era caro y podía cerrar un dropdown
+// abierto. Se repueblan solo cuando cambia el dataset (misma clave del memo F2-1).
+let _selectsRef: FuelEntry[] | null = null;
+let _selectsVersion = -1;
+
+function fuelDatasetMemo(): {
+  all: FuelEntry[];
+  allMetrics: FuelMetrics[];
+  metricsByLoad: Map<string, FuelMetrics>;
+  recorridosByLoad: Map<string, RecorridoInfo>;
+} {
+  const ref = window.fuelEntries ?? EMPTY_FUEL;
+  if (_memoDataset && _memoRef === ref && _memoVersion === _fuelDatasetVersion) {
+    return _memoDataset;
+  }
+  const all = scoped();
+  const allMetrics = computeFuelMetrics(all);
+  const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
+  const recorridosByLoad = computeRecorridos(all);
+  _memoRef = ref;
+  _memoVersion = _fuelDatasetVersion;
+  _memoDataset = { all, allMetrics, metricsByLoad, recorridosByLoad };
+  return _memoDataset;
+}
+
 /**
  * Contexto FILTRADO único que alimenta KPIs, tabla y dashboard de forma consistente.
  * El km/l se calcula sobre el histórico COMPLETO scopeado (el delta de odómetro usa
@@ -166,9 +215,9 @@ let lastCtx: FuelCtx | null = null;
  * usaban solo período y los rankings el histórico total → no respetaban los filtros.
  */
 function computeCtx(): FuelCtx {
-  const all = scoped();
-  const allMetrics = computeFuelMetrics(all);
-  const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
+  // Perf F2-1: all/allMetrics/metricsByLoad/recorridosByLoad salen del memo por dataset
+  // (recomputan solo al re-hidratar o anular/restaurar), no en cada filtro/orden/búsqueda.
+  const { all, allMetrics, metricsByLoad, recorridosByLoad } = fuelDatasetMemo();
   // FASE 1 — sin el filtro de alerta: las anomalías se detectan sobre el set filtrado por
   // los demás criterios (el filtro por alerta NECESITA las anomalías → se aplica después).
   const preFiltered = filterAndSortFuel(all, { ...filter, flag: "" }, "_idx", -1);
@@ -186,9 +235,8 @@ function computeCtx(): FuelCtx {
   const anomalies = filter.flag
     ? anomaliesPre.filter((f) => f.loadId && ids.has(f.loadId))
     : anomaliesPre;
-  // Recorrido por ciclo sobre el histórico COMPLETO scopeado (la "siguiente solicitud" puede
-  // caer fuera del filtro); la tabla/KPI consultan por loadId los registros filtrados.
-  const recorridosByLoad = computeRecorridos(all);
+  // recorridosByLoad ya viene del memo por dataset (ciclo solicitud→solicitud sobre el
+  // histórico COMPLETO scopeado; la "siguiente solicitud" puede caer fuera del filtro).
   const ctx: FuelCtx = {
     filtered,
     filteredMetrics,
@@ -206,7 +254,16 @@ function computeCtx(): FuelCtx {
 function renderCombustible(): void {
   const tbody = $("fuel-tbody");
   if (!tbody) return; // vista no montada aún
-  const all = scoped();
+  // Perf F1-3: si la vista Combustible NO está activa, solo refresca el badge de nav
+  // (barato: 1 pasada) y NO recomputes el pipeline analítico ni reconstruyas
+  // tabla/KPIs/dashboard (hasta 9 ECharts). Antes cloudHydrate llamaba renderCombustible
+  // en CADA hidratación/poll aunque el usuario estuviera en otro módulo. showView(
+  // "combustible") vuelve a invocar renderCombustible al entrar, poblando la vista.
+  if (document.body.dataset.view !== "combustible") {
+    updateFuelNavBadge();
+    return;
+  }
+  const { all } = fuelDatasetMemo(); // F2-1: memoizado (evita el scoped() redundante por render)
   const ctx = computeCtx();
   cargarNombresValidadores(); // no bloquea; re-pinta al llegar la lista
 
@@ -231,12 +288,18 @@ function renderCombustible(): void {
     );
 
   // Los selects se pueblan del set COMPLETO (no del filtrado) para no perder opciones.
-  populateFuelSelects(
-    $("fuel-filt-suc") as HTMLSelectElement | null,
-    $("fuel-filt-resp") as HTMLSelectElement | null,
-    all,
-    $("fuel-filt-tipounidad") as HTMLSelectElement | null,
-  );
+  // Perf F2-9: solo cuando cambia el dataset (no en cada filtro/orden/búsqueda/refresh).
+  const dsRef = window.fuelEntries ?? EMPTY_FUEL;
+  if (_selectsRef !== dsRef || _selectsVersion !== _fuelDatasetVersion) {
+    populateFuelSelects(
+      $("fuel-filt-suc") as HTMLSelectElement | null,
+      $("fuel-filt-resp") as HTMLSelectElement | null,
+      all,
+      $("fuel-filt-tipounidad") as HTMLSelectElement | null,
+    );
+    _selectsRef = dsRef;
+    _selectsVersion = _fuelDatasetVersion;
+  }
 
   // Vista "Anuladas": la tabla cambia de universo (solo anuladas, que están fuera de
   // TODO cálculo). El filtro de veredicto/alerta no aplica ahí (las anuladas no tienen
@@ -682,6 +745,7 @@ function anularCarga(load: FuelEntry): void {
         ts: new Date().toISOString(),
       };
       load.anulada = info;
+      bumpFuelDatasetVersion(); // F2-1: e.anulada mutó en sitio → invalidar memo del dataset
       window.__anuladasActivas?.set(refId, info);
       window.notify?.("Registro anulado: quedó fuera de KPIs y cálculos (reversible).", "ok", 6000);
       renderCombustible();
@@ -697,6 +761,7 @@ async function restaurarCarga(load: FuelEntry): Promise<void> {
     const refId = refIdCombustible(load.loadId);
     await window.__anulaciones.restaurar(refId);
     load.anulada = undefined;
+    bumpFuelDatasetVersion(); // F2-1: e.anulada mutó en sitio → invalidar memo del dataset
     window.__anuladasActivas?.delete(refId);
     window.notify?.("Registro restaurado: vuelve a contar en KPIs y cálculos.", "ok", 5000);
     renderCombustible();
@@ -722,7 +787,10 @@ function abrirPanelAnulados(): void {
       await window.__anulaciones!.restaurar(refId);
       const loadId = refId.replace(/^combustible\|/, "");
       const e = loadById(loadId);
-      if (e) e.anulada = undefined;
+      if (e) {
+        e.anulada = undefined;
+        bumpFuelDatasetVersion(); // F2-1: e.anulada mutó en sitio → invalidar memo del dataset
+      }
       window.__anuladasActivas?.delete(refId);
       renderCombustible();
     },

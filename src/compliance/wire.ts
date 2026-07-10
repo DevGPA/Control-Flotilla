@@ -110,6 +110,9 @@ function onKpiFilter(f: CumplimientoEstadoFilter): void {
 function renderCumplimiento(): void {
   const tbody = $("cmp-tbody");
   if (!tbody) return; // la vista aún no está montada en el HTML
+  // Perf F1-1: no reconstruir la vista Cumplimiento si no está activa (el badge se
+  // actualiza aparte vía updateCumplimientoNavBadge; showView re-invoca al entrar).
+  if (document.body.dataset.view !== "cumplimiento") return;
   const unidades = computeResumenes();
 
   const kpisEl = $("cmp-kpis");

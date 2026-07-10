@@ -73,6 +73,9 @@ declare global {
     buildAnalytics?: () => void;
     buildAlertsSummary?: () => void;
     buildKPIs?: () => void;
+    /** Perf F1-4: firma del último snapshot cloud hidratado (cuenta+max updatedAt por
+     *  modelo). Si el siguiente fetch da la misma firma, se omite rebuild+render. */
+    __lastHydrateSig?: string;
     buildBranches?: () => void;
     showDash?: () => void;
     renderDet?: () => void;
@@ -218,6 +221,27 @@ function mergeUnitWithChecklist(
 }
 
 /**
+ * Perf F1-4: firma barata del snapshot cloud para detectar "nada cambió" y saltar el
+ * rebuild+render (la parte que congela el hilo cada 4min/focus/evento live). Cuenta +
+ * max(updatedAt) por modelo detecta altas, bajas y ediciones sin serializar los items
+ * (los modelos Amplify siempre tienen updatedAt automático). Exportada para tests.
+ */
+export function hydrateSignature(
+  lists: ReadonlyArray<ReadonlyArray<{ readonly updatedAt?: string | null }>>,
+): string {
+  return lists
+    .map((arr) => {
+      let max = "";
+      for (const it of arr) {
+        const u = it.updatedAt ?? "";
+        if (u > max) max = u;
+      }
+      return `${arr.length}:${max}`;
+    })
+    .join("|");
+}
+
+/**
  * Lee Units + Checklists del cloud, los merge en LegacyUnit[] y los inyecta
  * en window.units. Trigger re-render de la UI.
  *
@@ -292,6 +316,31 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     console.info("[cloudHydrate] cloud vacío, nada que hidratar");
     return { units: 0, source: "empty" };
   }
+
+  // Perf F1-4: si el snapshot cloud es IDÉNTICO al de la última hidratación, el estado en
+  // window.* y el DOM ya reflejan estos datos → saltar TODO el rebuild + render (parse de
+  // miles de blobs + reconstrucción de 6 módulos), que es la tarea síncrona que congela el
+  // hilo en cada poll/focus/evento live cuando en realidad nada cambió. Las fotos se
+  // re-firman por-demanda al verse (imgUrl → lazyObserver → __cloudGetPhotoUrl), así que
+  // omitir el pre-firmado proactivo no rompe evidencias. El primer hydrate (sig undefined)
+  // y cualquier cambio real (alta/baja/edición → cambia cuenta o max updatedAt) sí procede.
+  const snapshotSig = hydrateSignature([
+    units,
+    checklists,
+    semanales,
+    tallerCloud,
+    checkDones,
+    combustible,
+    validaciones,
+    complianceDocs,
+    anulaciones,
+  ]);
+  if (window.__lastHydrateSig === snapshotSig) {
+    console.info("[cloudHydrate] snapshot sin cambios — omito rebuild+render");
+    const wu = (window as unknown as { units?: unknown[] }).units;
+    return { units: Array.isArray(wu) ? wu.length : 0, source: "cloud" };
+  }
+  window.__lastHydrateSig = snapshotSig;
 
   // ── Auto-migración: tallerEntries locales (IndexedDB) NO en cloud → push ──
   // Si el user creó registros antes de la wire cloud (Taller wire fue Fase 10),
@@ -669,6 +718,25 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     } catch (err) {
       console.warn("[cloudHydrate] photo URLs prefetch falló:", err);
     }
+  }
+
+  // Perf F2-5: cota superior del mapa de URLs firmadas. Antes crecía monótonamente (solo
+  // .set, nunca .delete) → en sesiones largas (PWA abierta días) acumulaba decenas de miles
+  // de {url ~500 chars, expires} (~15-30 MB). Podamos las más antiguas (el Map preserva orden
+  // de inserción) al superar el tope; las evictadas se re-firman por-demanda al verse
+  // (imgUrl → lazyObserver → __cloudGetPhotoUrl), así que podar es seguro.
+  const PHOTO_URL_CAP = 6000;
+  if (existingMap.size > PHOTO_URL_CAP) {
+    const toDelete: string[] = [];
+    const excess = existingMap.size - PHOTO_URL_CAP;
+    for (const key of existingMap.keys()) {
+      if (toDelete.length >= excess) break;
+      toDelete.push(key);
+    }
+    for (const key of toDelete) existingMap.delete(key);
+    console.info(
+      `[cloudHydrate] photo URL cache podado: -${toDelete.length} (tope ${PHOTO_URL_CAP})`,
+    );
   }
 
   // Completaciones de checklist COMPARTIDAS (Fase C1): merge puro con fan-out

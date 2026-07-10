@@ -30,9 +30,18 @@ export function getThemeMode(): ThemeMode {
   return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
 }
 
+// Perf F1-8: memoizar por modo de tema. Antes cada chart llamaba getTremorPalette() y
+// cada llamada hacía ~13 getComputedStyle (reflow forzado); al pintar el dashboard de 9
+// charts eran ~117 lecturas de estilo. La paleta es función pura del modo (light/dark),
+// así que cacheamos por modo: getThemeMode() es un getAttribute barato, y solo re-leemos
+// las CSS vars cuando el usuario alterna el tema. Auto-invalidante, sin observadores.
+let _paletteCache: TremorPalette | null = null;
+
 export function getTremorPalette(): TremorPalette {
-  return {
-    mode: getThemeMode(),
+  const mode = getThemeMode();
+  if (_paletteCache && _paletteCache.mode === mode) return _paletteCache;
+  _paletteCache = {
+    mode,
     bg: readVar("--bg"),
     bg2: readVar("--bg2"),
     bg3: readVar("--bg3"),
@@ -47,6 +56,7 @@ export function getTremorPalette(): TremorPalette {
     ac: readVar("--ac"),
     ac2: readVar("--ac2"),
   };
+  return _paletteCache;
 }
 
 // Observador — dispara callback cuando data-theme cambia (user click toggle).

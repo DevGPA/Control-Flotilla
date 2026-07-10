@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-mnC18pxUTE/j5wTR8TbbqegR9Ky0NDrJjjmx6GuThMY='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w=' 'sha256-K60t0446A7sI5RTEw49m/tNHH+VVOMFEwMRigUeieI0='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3486,6 +3486,11 @@ function buildBranches(){
 
 // Cálculo de stats — render condicional cuando vista activa (lazy via showView).
 function buildAnalytics(){
+  // Perf F1-2: NO recomputar ni redibujar los 5 charts si el panel Análisis está
+  // cerrado. Antes buildKPIs()→buildAnalytics() corría en CADA hidratación/refresh
+  // (poll 4min + focus + evento live) reconstruyendo ECharts en contenedores ocultos.
+  // showView("analytics") lo re-invoca al entrar, así que la vista se puebla al abrirla.
+  if(document.body.dataset.view !== "analytics") return;
   if(!units || !units.length) return;
 
   // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
@@ -7067,6 +7072,9 @@ function tlSort(key){
 
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
+  // Perf F1-1: no reconstruir la vista Taller si no está activa (el badge se
+  // actualiza aparte vía updateTallerBadge; showView re-invoca renderTaller al entrar).
+  if(document.body.dataset.view!=="taller") return;
   if(tlSubView==="historial") return renderHistorial();
   renderActivas();
 }
@@ -7317,6 +7325,9 @@ function getSwUnitsInRange(){
 }
 
 function renderSemanales(){
+  // Perf F1-1: no reconstruir la vista Semanales si no está activa (el badge se
+  // actualiza aparte vía updateSwNavBadge; showView re-invoca renderSemanales al entrar).
+  if(document.body.dataset.view!=="semanales") return;
   renderWeeklyPeriodoBar();
   buildKPIsSemanales();
   renderTableSemanales();
