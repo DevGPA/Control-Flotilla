@@ -8,8 +8,10 @@ test.describe("smoke — bootstrap básico", () => {
     page.on("console", (msg) => {
       if (msg.type() === "error") {
         const text = msg.text();
-        // Ignorar 404 favicon y warnings de SheetJS benignos
-        if (text.includes("favicon")) return;
+        // Ignorar 404 favicon y warnings de SheetJS benignos. Chrome real (channel:
+        // "chrome") pone la URL del recurso en msg.location(), no en el text — cubrir
+        // ambos para que el spec sea estable cross-browser (chromium no pide favicon).
+        if (text.includes("favicon") || msg.location().url.includes("favicon")) return;
         if (text.includes("Bad uncompressed size")) return;
         errors.push(text);
       }
