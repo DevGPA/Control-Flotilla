@@ -17,5 +17,12 @@
       }
     ]
   },
-  "ignorePatterns": ["dist", "node_modules", "*.backup.html", "public/vendor/**", "vendor/**"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "*.backup.html",
+    "public/vendor/**",
+    "vendor/**",
+    "scripts/vendor/**"
+  ]
 }
