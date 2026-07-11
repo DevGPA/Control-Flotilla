@@ -1,10 +1,13 @@
-// Genera los iconos PNG de la PWA desde public/favicon.svg usando Chrome
-// (canvas → PNG, sin dependencias de imagen). Re-correr si cambia el favicon.
+// Genera los iconos PNG de la PWA desde public/gpa-logo.png (logo GPA Aqua)
+// usando Chrome (canvas → PNG, sin dependencias de imagen). Re-correr si cambia
+// el logo (pedido 2026-07-10: el icono de la app debe ser el logo real de GPA).
 //
-// Salidas en public/:
+// El logo es más ancho que alto y con transparencia → se dibuja "contain"
+// centrado en canvas cuadrado con FONDO BLANCO (iOS pinta negro el alfa; y el
+// blanco hace resaltar el emblema azul). Salidas en public/:
 // - icon-192.png / icon-512.png       (manifest, purpose any)
-// - icon-maskable-512.png             (manifest, purpose maskable — logo al 72%
-//   centrado: la zona segura de Android recorta ~20% del borde)
+// - icon-maskable-512.png             (manifest, purpose maskable — logo al ~62%
+//   centrado: la zona segura de Android recorta ~20% del borde en círculo)
 // - apple-touch-icon.png              (180×180 — iOS "Añadir a pantalla de inicio")
 import { chromium } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -13,14 +16,14 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUB = resolve(__dirname, "../public");
-const svg = readFileSync(resolve(PUB, "favicon.svg"), "utf8");
+const logoB64 = readFileSync(resolve(PUB, "gpa-logo.png")).toString("base64");
 
 const browser = await chromium.launch({ channel: "chrome" });
 const page = await browser.newPage();
 
-async function render(size, { pad = 0, bg = null } = {}) {
+async function render(size, { pad = 0, bg = "#FFFFFF" } = {}) {
   return page.evaluate(
-    async ({ svg, size, pad, bg }) => {
+    async ({ logoB64, size, pad, bg }) => {
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -30,28 +33,32 @@ async function render(size, { pad = 0, bg = null } = {}) {
         ctx.fillRect(0, 0, size, size);
       }
       const img = new Image();
-      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
       await new Promise((res, rej) => {
         img.onload = res;
         img.onerror = rej;
-        img.src = url;
+        img.src = "data:image/png;base64," + logoB64;
       });
-      const inner = size - pad * 2;
-      ctx.drawImage(img, pad, pad, inner, inner);
-      URL.revokeObjectURL(url);
+      // "contain" centrado: el logo no es cuadrado — escalar al lado mayor
+      // dentro del área útil (size - 2*pad) preservando proporción.
+      const area = size - pad * 2;
+      const scale = Math.min(area / img.width, area / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
       return canvas.toDataURL("image/png").split(",")[1];
     },
-    { svg, size, pad, bg },
+    { logoB64, size, pad, bg },
   );
 }
 
 const out = [
-  ["icon-192.png", await render(192)],
-  ["icon-512.png", await render(512)],
-  // maskable: logo al ~72% sobre el mismo azul del branding (safe zone Android)
-  ["icon-maskable-512.png", await render(512, { pad: 72, bg: "#1E4FA3" })],
-  // iOS no aplica esquinas por manifest: fondo sólido cuadrado, iOS redondea
-  ["apple-touch-icon.png", await render(180, { pad: 14, bg: "#1E4FA3" })],
+  ["icon-192.png", await render(192, { pad: 14 })],
+  ["icon-512.png", await render(512, { pad: 38 })],
+  // maskable: Android recorta en círculo el 20% exterior — logo más chico (safe zone)
+  ["icon-maskable-512.png", await render(512, { pad: 96 })],
+  // iOS redondea él mismo las esquinas; fondo blanco sólido obligatorio (alfa → negro)
+  ["apple-touch-icon.png", await render(180, { pad: 18 })],
 ];
 for (const [name, b64] of out) {
   writeFileSync(resolve(PUB, name), Buffer.from(b64, "base64"));
