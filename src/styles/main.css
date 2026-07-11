@@ -729,11 +729,16 @@ select {
 /* Dimensiona el SVG del icono de tema de forma determinista. Lucide reemplaza el
    <i data-lucide="moon"> por un <svg> leyendo los ATRIBUTOS width/height del <i>
    (no su style inline), que aquí no existen → el svg salía a su default 24px y en
-   móvil no se dibujaba (caja vacía). Fijarlo por CSS lo arregla en ambos tamaños. */
+   móvil no se dibujaba (caja vacía). Fijarlo por CSS lo arregla en ambos tamaños.
+   2026-07-10 (auditoría móvil): en el header móvil el flex del botón COMPRIMÍA el
+   svg a width 0 (ni width inline !important lo salvaba — shrink del layout, no
+   cascada) → botón "fantasma" sin icono. flex-basis fija + shrink 0 lo hace
+   incompresible. */
 .theme-toggle > svg,
 .theme-toggle > i {
   width: 15px;
   height: 15px;
+  flex: 0 0 15px;
 }
 /* Icons dentro de botones: los clicks pasan siempre al botón padre. */
 .ubtn > svg,
@@ -5483,8 +5488,9 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   }
   .thd,
   .tr {
-    --col-tpl: 64px minmax(0, 1fr) 82px 88px 78px;
+    --col-tpl: 60px minmax(0, 1fr) 80px 84px 76px;
     padding: 0 10px;
+    column-gap: 6px;
   }
   .thd > :nth-child(1),
   .tr > :nth-child(1),
@@ -5493,6 +5499,29 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   .thd > :nth-child(7),
   .tr > :nth-child(7) {
     display: none;
+  }
+  /* Auditoría móvil 2026-07-10: las celdas del grid NO recortaban (overflow visible
+     por default) → headers y pills se ENCIMABAN sobre la columna vecina en 390px.
+     Recortar en la celda; los headers a una línea con ellipsis. */
+  .thd > *,
+  .tr > * {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .th {
+    font-size: 9px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .tr .pill {
+    padding: 2px 5px;
+    font-size: 8px;
+    letter-spacing: 0.2px;
+  }
+  /* Checklist del panel detalle: el grid 2-col (554px de contenido) desbordaba el
+     viewport de 390px — items cortados a la derecha. Una columna en móvil. */
+  .ck-grid {
+    grid-template-columns: 1fr;
   }
 
   /* Drop zone más compacta */
@@ -5633,8 +5662,11 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 }
 
 @media (max-width: 420px) {
+  /* Auditoría móvil 2026-07-10: forzar 1 columna desde 420px producía un scroll
+     eterno (9 KPIs apilados en Combustible/Taller). 2 columnas caben bien hasta
+     ~360px; solo los compactos (SE) caen a 1 (regla en el breakpoint 375). */
   .kc {
-    min-width: 100%;
+    min-width: calc(50% - 3px);
   }
   .hbrand {
     padding: 0 10px;
@@ -5656,6 +5688,9 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 /* UX Fase 3 (2026-06-11): breakpoint para iPhone SE / Android compactos —
    antes la app "caía" al de 420px y la tabla no cabía. */
 @media (max-width: 375px) {
+  .kc {
+    min-width: 100%;
+  }
   .thd,
   .tr {
     /* 4 columnas: ECO, Unidad, Estado, Hallazgos (KM/Fecha vive en el detalle) */

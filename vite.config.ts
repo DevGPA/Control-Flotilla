@@ -9,10 +9,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Valida que los iconos referenciados en el manifest PWA existan en public/.
 // Si falta alguno, falla el build con mensaje claro en lugar de producir un manifest roto
 // que rompería "Add to Home Screen" silenciosamente en producción.
-// Post-fix (2026-04-23): se unificó a un solo favicon.svg con type="image/svg+xml" y
-// sizes="any" — modern PWA spec lo acepta para todos los tamaños. Si en el futuro se
-// requiere soporte iOS home-screen legacy, añadir icon-180.png y listarla aquí.
-const PWA_ICONS = ["favicon.svg"];
+// 2026-07-10 (instalabilidad móvil): PNGs reales generados por
+// scripts/gen-pwa-icons.mjs — Chrome exige 192+512 png para el prompt de instalación
+// (el favicon.svg solo no bastaba) e iOS necesita apple-touch-icon.png.
+const PWA_ICONS = [
+  "favicon.svg",
+  "icon-192.png",
+  "icon-512.png",
+  "icon-maskable-512.png",
+  "apple-touch-icon.png",
+];
 const verifyPwaIcons = {
   name: "verify-pwa-icons",
   buildStart() {
@@ -72,36 +78,40 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     verifyPwaIcons,
     VitePWA({
-      // ── Desmantelamiento del Service Worker (2026-06-18) ──────────────────
-      // selfDestroying genera un sw.js mínimo que, al activarse, se DESREGISTRA
-      // solo y borra los caches en CUALQUIER cliente que lo descargue. El registro
-      // manual de src/main.ts (updateViaCache:'none' + update por hora/visibilidad)
-      // hace que los clientes existentes re-bajen este sw.js y se auto-limpien →
-      // quedan SIN Service Worker, así un reload normal siempre trae lo último
-      // (fin del Ctrl+Shift+R tras deploy). La app es online; no se necesita la PWA.
-      // Tras la ventana de transición se retira todo el andamiaje PWA (Fase B).
-      selfDestroying: true,
+      // ── PWA REACTIVADA (2026-07-10, pedido: instalar la app en el celular) ──
+      // Historia: el SW se desmanteló el 2026-06-18 (selfDestroying) por el
+      // incidente de shell viejo. La causa de RAÍZ ya está corregida por diseño
+      // abajo: el HTML NUNCA se precachea (NetworkFirst + navigateFallback:null),
+      // los assets con hash sí (inmutables), sw-force-reload recarga pestañas al
+      // activarse un update y el registro manual (main.ts) re-chequea el sw.js
+      // por hora/visibilidad con updateViaCache:'none'. Con eso la instalación
+      // móvil (Android prompt + iOS A2HS) es segura sin revivir el stale-shell.
+      selfDestroying: false,
       registerType: "autoUpdate",
       // Registro MANUAL en src/main.ts (updateViaCache:'none' + update periódico).
       // El registerSW.js autogenerado era un register() pelón sin mecanismo de
       // actualización → usuarios atascados en versiones viejas (2026-06-09).
       injectRegister: null,
-      includeAssets: ["favicon.svg"],
+      includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Control de Flotilla GPA",
-        short_name: "Flotilla",
-        description: "Control de checklist, taller e historial de flotilla GPA",
+        name: "GPA Fleet Command — Control de Flotilla",
+        short_name: "Flotilla GPA",
+        description: "Control vehicular GPA: inspecciones, taller, combustible y cumplimiento",
+        lang: "es-MX",
         theme_color: "#1E4FA3",
         background_color: "#F8FAFC",
         display: "standalone",
         start_url: "./",
         icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png" },
           {
-            src: "favicon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
-            purpose: "any maskable",
+            src: "icon-maskable-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
           },
+          { src: "favicon.svg", sizes: "any", type: "image/svg+xml" },
         ],
       },
       workbox: {
