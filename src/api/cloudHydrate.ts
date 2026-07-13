@@ -923,7 +923,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Header status: sin esto quedaba "Sin datos cargados" en sesiones cloud puras.
   {
     const hstxt = document.getElementById("hstxt");
-    if (hstxt && legacyUnits.length > 0) hstxt.textContent = "Datos del servidor (nube)";
+    if (hstxt && legacyUnits.length > 0) {
+      // Etiqueta corta: la larga ("Datos del servidor (nube)") se envolvía a
+      // 3 renglones en el header a 1366px (auditoría UX 2026-07 H20).
+      hstxt.textContent = "Nube";
+      hstxt.title = "Datos del servidor (nube)";
+    }
     const hdot = document.getElementById("hdot");
     if (hdot && legacyUnits.length > 0) hdot.className = "hdot live";
   }

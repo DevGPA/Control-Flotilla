@@ -640,8 +640,15 @@ export function setupCloud(): void {
 type HydrateResult = Awaited<ReturnType<typeof hydrateFromCloud>>;
 let hydrateChain: Promise<unknown> = Promise.resolve();
 function hydrateSerialized(tenantId: string): Promise<HydrateResult> {
+  // Auditoría UX 2026-07 H7: mientras hidrata, los empty-states muestran
+  // "Cargando datos de la nube…" (CSS body[data-hydrating]) en vez de un
+  // "Sin datos" engañoso.
+  document.body.setAttribute("data-hydrating", "1");
   const next = hydrateChain.catch(() => {}).then(() => hydrateFromCloud(tenantId));
   hydrateChain = next.catch(() => {}); // la cadena nunca queda en estado rechazado
+  void next
+    .catch(() => {})
+    .finally(() => document.body.removeAttribute("data-hydrating"));
   return next;
 }
 
