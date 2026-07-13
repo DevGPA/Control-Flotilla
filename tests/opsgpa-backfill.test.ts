@@ -67,11 +67,13 @@ function depsMock() {
   const escritos: {
     carga: unknown[];
     semanal: unknown[];
+    mensual: unknown[];
     copiadas: string[];
     validaciones: unknown[];
   } = {
     carga: [],
     semanal: [],
+    mensual: [],
     copiadas: [],
     validaciones: [],
   };
@@ -97,6 +99,9 @@ function depsMock() {
     persistirSemanal: async (unit, semanal) => {
       escritos.semanal.push({ unit, semanal });
     },
+    persistirChecklist: async (unit, checklist) => {
+      escritos.mensual.push({ unit, checklist });
+    },
     persistirValidacion: async (input) => {
       escritos.validaciones.push(input);
     },
@@ -105,17 +110,24 @@ function depsMock() {
 }
 
 describe("runBackfill: reingesta pull con los mismos adaptadores", () => {
-  it("procesa SOL (solicitud + carga) y CL semanal; cuenta mensual como omitido", async () => {
+  it("procesa SOL (solicitud + carga), CL semanal Y CL mensual (2026-07-13)", async () => {
     const { deps, escritos } = depsMock();
     const r = await runBackfill({ backfill: true }, deps);
     expect(r.leidos).toBe(5);
-    expect(r.escritos).toEqual({ solicitud: 1, carga: 1, semanal: 1 });
-    expect(r.omitidosMensual).toBe(1);
+    expect(r.escritos).toEqual({ solicitud: 1, carga: 1, semanal: 1, mensual: 1 });
+    expect(r.omitidosOtroTipo).toBe(0);
+    // el mensual produce Checklist con el shape del webhook (tipoInspeccion/resultados)
+    const men = escritos.mensual[0] as {
+      checklist: { tipoInspeccion: string; fecha: string; resultados: string };
+    };
+    expect(men.checklist.tipoInspeccion).toBe("mensual");
+    expect(men.checklist.fecha).toBe("2026-07-09");
+    expect(JSON.parse(men.checklist.resultados)).toMatchObject({ fuente: "ops-gpa" });
     // el registro sin económico queda en errores, no tumba el lote
     expect(r.errores).toHaveLength(1);
     expect(r.errores[0]).toMatchObject({ id: "roto" });
-    // se copiaron las 3 evidencias (photo + firma del SOL, f_radiador del CL)
-    expect(escritos.copiadas).toHaveLength(3);
+    // 4 evidencias copiadas (photo + firma del SOL, f_radiador del semanal Y del mensual)
+    expect(escritos.copiadas).toHaveLength(4);
     // idempotencia de folio: mismos eventoId OPS- que produciría el puente push
     expect((escritos.carga[0] as { eventoId: string }).eventoId).toBe("OPS-34354ae5d278");
     expect((escritos.carga[1] as { eventoId: string; tipo: string }).tipo).toBe("carga");
@@ -134,10 +146,11 @@ describe("runBackfill: reingesta pull con los mismos adaptadores", () => {
     const { deps, escritos } = depsMock();
     const r = await runBackfill({ backfill: true, dryRun: true }, deps);
     expect(r.dryRun).toBe(true);
-    expect(r.escritos).toEqual({ solicitud: 1, carga: 1, semanal: 1 }); // contados
+    expect(r.escritos).toEqual({ solicitud: 1, carga: 1, semanal: 1, mensual: 1 }); // contados
     expect(r.validadas).toBe(1); // contada
     expect(escritos.carga).toHaveLength(0); // pero NO persistidos
     expect(escritos.semanal).toHaveLength(0);
+    expect(escritos.mensual).toHaveLength(0);
     expect(escritos.copiadas).toHaveLength(0); // ni copiados
     expect(escritos.validaciones).toHaveLength(0); // ni validaciones
   });

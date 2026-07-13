@@ -12,10 +12,10 @@
 import { extraerEvidencias, stripInfra } from "./contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "./contract";
 import { mapCombustible } from "./mapCarga";
-import { mapSemanal } from "./mapChecklist";
+import { mapSemanal, mapMensual } from "./mapChecklist";
 import { mapValidacion, type ValidacionCargaInput } from "./mapValidacion";
 import type { CargaCombustibleInput } from "./contract";
-import type { SemanalInput, UnitInput } from "./mapChecklist";
+import type { ChecklistInput, SemanalInput, UnitInput } from "./mapChecklist";
 
 export interface BackfillRequest {
   backfill: true;
@@ -42,6 +42,8 @@ export interface BackfillDeps {
   ) => Promise<string>;
   persistirCarga: (input: CargaCombustibleInput) => Promise<void>;
   persistirSemanal: (unit: UnitInput, semanal: SemanalInput) => Promise<void>;
+  /** Mensual (2026-07-13): Unit + Checklist con analyzeRow — mismo destino que MoreApp. */
+  persistirChecklist: (unit: UnitInput, checklist: ChecklistInput) => Promise<void>;
   /** Upsert de ValidacionCarga con regla de no-pisado (la implementa el handler). */
   persistirValidacion: (input: ValidacionCargaInput) => Promise<void>;
 }
@@ -49,10 +51,11 @@ export interface BackfillDeps {
 export interface BackfillResumen {
   dryRun: boolean;
   leidos: number;
-  escritos: { solicitud: number; carga: number; semanal: number };
+  escritos: { solicitud: number; carga: number; semanal: number; mensual: number };
   /** Validaciones derivadas de la aprobación en origen (decisión 2026-07-10). */
   validadas: number;
-  omitidosMensual: number;
+  /** CL con subtipo desconocido (ni semanal ni mensual) — contado, no silencioso. */
+  omitidosOtroTipo: number;
   errores: Array<{ id: string; error: string }>;
 }
 
@@ -65,9 +68,9 @@ export async function runBackfill(
   const resumen: BackfillResumen = {
     dryRun,
     leidos: 0,
-    escritos: { solicitud: 0, carga: 0, semanal: 0 },
+    escritos: { solicitud: 0, carga: 0, semanal: 0, mensual: 0 },
     validadas: 0,
-    omitidosMensual: 0,
+    omitidosOtroTipo: 0,
     errores: [],
   };
 
@@ -87,10 +90,14 @@ export async function runBackfill(
         const plano = stripInfra(item);
         const id = String(plano.id ?? "?");
         try {
-          // Registros que aún no se ingieren se omiten ANTES de copiar evidencias
-          // (mensual: pendiente answersMap — contado, no silencioso).
-          if (tipo === "CL" && (plano as unknown as OpsClRecord).tipo !== "semanal") {
-            resumen.omitidosMensual += 1;
+          // Subtipos de CL desconocidos (ni semanal ni mensual) se omiten ANTES de
+          // copiar evidencias — contados, no silenciosos.
+          if (
+            tipo === "CL" &&
+            (plano as unknown as OpsClRecord).tipo !== "semanal" &&
+            (plano as unknown as OpsClRecord).tipo !== "mensual"
+          ) {
+            resumen.omitidosOtroTipo += 1;
             continue;
           }
           const unidad = {
@@ -117,6 +124,10 @@ export async function runBackfill(
               if (!dryRun) await deps.persistirValidacion(validacion);
               resumen.validadas += 1;
             }
+          } else if ((plano as unknown as OpsClRecord).tipo === "mensual") {
+            const { unit, checklist } = mapMensual(plano as unknown as OpsClRecord, resolver);
+            if (!dryRun) await deps.persistirChecklist(unit, checklist);
+            resumen.escritos.mensual += 1;
           } else {
             const { unit, semanal } = mapSemanal(plano as unknown as OpsClRecord, resolver);
             if (!dryRun) await deps.persistirSemanal(unit, semanal);
