@@ -45,11 +45,7 @@ import {
   aggByMonth,
 } from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
-import {
-  SOLICITUDES_HEADER,
-  buildSolicitudesLayout,
-  solicitudesLayoutToAoa,
-} from "./solicitudesLayout";
+import { buildSolicitudesVista } from "./solicitudesLayout";
 import { upsertValidacionCarga } from "../api/client";
 import { refIdCombustible } from "../anulacion/anulacion";
 import { openAnularModal, openAnuladosPanel } from "../anulacion/ui";
@@ -535,14 +531,15 @@ async function exportTokaLayout(): Promise<void> {
 }
 
 /**
- * Genera y descarga el export "Solicitudes (Excel)": réplica del layout Submissions de
- * MoreApp (30 columnas, una fila por solicitud del filtro activo, MoreApp + OPS). Es el
- * insumo con el que Tesorería cura la dispersión; ver spec 2026-07-13-solicitudes-layout.
+ * Genera y descarga el export "Solicitudes (Excel)" (filtro activo, MoreApp + OPS):
+ * hoja "Solicitudes" con formato profesional (título, TOTAL con SUM viva, fuente
+ * MoreApp/OPS) + hoja "Submissions" réplica exacta de MoreApp. Render en
+ * solicitudesExcel.ts (ExcelJS on-demand); ver spec 2026-07-13-solicitudes-layout.
  */
 async function exportSolicitudesLayout(): Promise<void> {
   const ctx = computeCtx();
-  const result = buildSolicitudesLayout(ctx.filtered);
-  if (result.incluidas === 0) {
+  const vista = buildSolicitudesVista(ctx.filtered);
+  if (vista.incluidas === 0) {
     window.notify?.(
       "No se generó el export: el filtro actual no tiene solicitudes vigentes.",
       "warn",
@@ -551,23 +548,17 @@ async function exportSolicitudesLayout(): Promise<void> {
     return;
   }
   try {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(solicitudesLayoutToAoa(result), { cellDates: true });
-    // Fechas visibles con hora (On y Fecha y Hora); ancho de columna según encabezado.
-    const FMT_FECHA = "yyyy-mm-dd hh:mm";
-    for (let r = 1; r <= result.rows.length; r++) {
-      for (const c of [2, 6]) {
-        const cell = ws[XLSX.utils.encode_cell({ r, c })];
-        if (cell && cell.t === "d") cell.z = FMT_FECHA;
-      }
-    }
-    ws["!cols"] = SOLICITUDES_HEADER.map((h) => ({
-      wch: Math.min(Math.max(h.length + 2, 10), 40),
-    }));
-    XLSX.utils.book_append_sheet(wb, ws, "Submissions");
-    const fecha = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `solicitudes_gasolina_${fecha}.xlsx`);
+    const { downloadSolicitudesXlsx } = await import("./solicitudesExcel");
+    const hoy = new Date();
+    const rango =
+      filter.desde || filter.hasta
+        ? `${filter.desde ?? "inicio"} a ${filter.hasta ?? "hoy"}`
+        : undefined;
+    await downloadSolicitudesXlsx(
+      ctx.filtered,
+      { exportadoEl: hoy, filtroSucursal: filter.sucursal, rango },
+      `solicitudes_gasolina_${hoy.toISOString().slice(0, 10)}.xlsx`,
+    );
   } catch (e) {
     console.warn("[fuel] no se pudo generar el export de solicitudes:", e);
     window.notify?.("No se pudo generar el archivo de solicitudes. Intenta de nuevo.", "err", 6000);
@@ -577,8 +568,8 @@ async function exportSolicitudesLayout(): Promise<void> {
   // Resumen + guardia anti-export-parcial (aprendizaje del incidente Toka 2026-07-13:
   // un filtro de sucursal olvidado produce un layout incompleto sin que se note).
   const partes = [
-    `${result.incluidas} solicitud${result.incluidas === 1 ? "" : "es"}`,
-    `$${result.totalMonto.toLocaleString("es-MX")} solicitados`,
+    `${vista.incluidas} solicitud${vista.incluidas === 1 ? "" : "es"}`,
+    `$${vista.totalMonto.toLocaleString("es-MX")} solicitados`,
   ];
   if (filter.sucursal) partes.push(`⚠️ SOLO sucursal ${filter.sucursal}`);
   window.notify?.(

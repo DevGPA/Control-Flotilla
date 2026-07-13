@@ -32,6 +32,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1068.0",
     "aws-amplify": "^6.17.0",
     "echarts": "6.0.0",
+    "exceljs": "^4.4.0",
     "jspdf": "4.2.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
