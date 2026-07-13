@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-1bwM58dPJrUxlRYTM7bI3B0NugxZ052So4jR8C3k72g=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-pcCRdxdULCQk6sJ9qhJIrjc+1uep0mkVZUOsgWVg4Ps=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -235,6 +235,7 @@
 
 <!-- BARRA DE RANGO DE FECHAS (reemplaza chips de período) -->
 <div id="periodo-bar">
+  <span class="view-ttl" role="heading" aria-level="2">Inspecciones</span>
   <span class="periodo-label">Rango:</span>
   <input type="date" id="rango-desde" aria-label="Desde" class="field-input"/>
   <span style="color:var(--s2);font-size:11px">→</span>
@@ -395,12 +396,13 @@
 
 <!-- ANALYTICS VIEW (4º tab — full screen, sibling de Inspecciones/Taller/Semanales) -->
 <div class="analytics-panel" id="analytics-panel" style="display:none">
+  <div class="view-ttl-bar"><span class="view-ttl" role="heading" aria-level="2">Análisis</span></div>
   <div class="analytics-content" id="analytics-content">
     <div class="analytics-grid">
       <div class="chart-card">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Sucursales por riesgo</div>
-          <div class="chart-hint">Click barra → filtrar</div>
+          <div class="chart-hint">Clic en una barra para filtrar</div>
         </div>
         <div id="chart-branches" class="chart-canvas" role="img" aria-label="Gráfica de barras: inspecciones por sucursal según nivel de riesgo (urgente, revisar, operativa)"></div>
       </div>
@@ -427,7 +429,7 @@
       <div class="chart-card" id="chart-card-heatmap">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Taller · ingresos por día</div>
-          <div class="chart-hint">90 días · hover ver count</div>
+          <div class="chart-hint">90 días · pasa el cursor para ver el detalle</div>
         </div>
         <div id="chart-heatmap" class="chart-canvas" role="img" aria-label="Mapa de calor: cantidad de ingresos a taller por día en los últimos 90 días"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>
@@ -587,6 +589,7 @@
 <div id="taller-view">
   <!-- Sub-tabs de navegación -->
   <div class="tl-subnav">
+    <span class="view-ttl" role="heading" aria-level="2">Taller</span>
     <button class="tl-subtab on" id="tltab-activas" onclick="tlSwitch('activas')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Operaciones Activas
@@ -771,7 +774,7 @@
      carga masiva) y da de alta unidades nuevas. -->
 <div id="unidades-view" style="display:none">
   <div class="uv-bar">
-    <div class="uv-tabs"><button class="uv-tab on" disabled>Unidades</button></div>
+    <span class="view-ttl" role="heading" aria-level="2">Unidades</span>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="cv-srch" placeholder="Buscar por económico, placa, producto…" oninput="renderUnidades()" aria-label="Buscar unidad"/>
@@ -858,10 +861,11 @@
 <div id="view-semanales">
   <!-- Selector de períodos semanales -->
   <div id="sw-periodo-bar">
+    <span class="view-ttl" role="heading" aria-level="2">Semanales</span>
     <span class="sw-periodo-label">Período:</span>
     <div id="sw-rango-controls">
-      <label>Desde <input type="date" id="sw-rango-desde" onchange="aplicarRangoSemanal()"/></label>
-      <label>Hasta <input type="date" id="sw-rango-hasta" onchange="aplicarRangoSemanal()"/></label>
+      <label>Desde <input type="date" id="sw-rango-desde" class="field-input" onchange="aplicarRangoSemanal()"/></label>
+      <label>Hasta <input type="date" id="sw-rango-hasta" class="field-input" onchange="aplicarRangoSemanal()"/></label>
       <button id="sw-btn-rango" onclick="aplicarRangoSemanal()">Aplicar</button>
       <span id="sw-rango-count" class="sw-rango-count"></span>
       <button class="needs-admin" data-action="abrirAnulados" data-arg1="semanal" data-arg2="Registros anulados — Semanales"
@@ -895,6 +899,7 @@
         style="border:none;background:transparent;font-size:11px;color:var(--w1);width:150px;outline:none"
         oninput="swDebouncedSearch(this.value)"/>
     </div>
+    <button id="sw-clear-filters" class="clear-filters clear-filters--on" onclick="swClearFilters()" title="Quitar estado, sucursal y búsqueda (mantiene el período)">✕ Limpiar filtros</button>
     <span id="sw-rcnt" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Tabla -->
@@ -931,9 +936,10 @@
 <div id="view-combustible">
   <!-- Rango de fechas -->
   <div id="fuel-periodo-bar">
+    <span class="view-ttl" role="heading" aria-level="2">Combustible</span>
     <span class="sw-periodo-label">Período:</span>
-    <label>Desde <input type="date" id="fuel-rango-desde"/></label>
-    <label>Hasta <input type="date" id="fuel-rango-hasta"/></label>
+    <label>Desde <input type="date" id="fuel-rango-desde" class="field-input"/></label>
+    <label>Hasta <input type="date" id="fuel-rango-hasta" class="field-input"/></label>
     <span id="fuel-rango-count" class="sw-rango-count"></span>
   </div>
   <!-- KPIs -->
@@ -993,6 +999,8 @@
       <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
         aria-label="Buscar combustible por ID de unidad, placa o responsable"/>
     </div>
+    <button id="fuel-clear-filters" type="button" class="clear-filters clear-filters--on"
+      title="Quitar filtros y búsqueda (mantiene el período)">✕ Limpiar filtros</button>
     <button id="fuel-anulados" type="button" class="needs-admin"
       title="Registros anulados de combustible (historial y restauración)"
       aria-label="Ver registros anulados de combustible"
@@ -1085,6 +1093,7 @@
   <div id="cmp-kpis" style="padding:10px 16px 0"></div>
   <!-- Barra de filtros -->
   <div id="cmp-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--ln)">
+    <span class="view-ttl" role="heading" aria-level="2">Cumplimiento</span>
     <select id="cmp-estado" aria-label="Filtrar por estado de cumplimiento" class="field-input">
       <option value="all">Todo el cumplimiento</option>
       <option value="conIssues">Con pendientes</option>
@@ -1100,6 +1109,8 @@
       <input id="cmp-search" type="text" placeholder="ID unidad, placa…"
         aria-label="Buscar cumplimiento por ID de unidad o placa"/>
     </div>
+    <button id="cmp-clear-filters" type="button" class="clear-filters clear-filters--on"
+      title="Quitar estado, sucursal y búsqueda">✕ Limpiar filtros</button>
     <span id="cmp-count" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Tabla consolidada (una fila por unidad) -->
@@ -7941,6 +7952,14 @@ function swSetF(f){
     });
   }
   renderTableSemanales();
+}
+// Auditoría UX 2026-07 H9: limpiar estado + sucursal + búsqueda de Semanales
+// (el período no se toca: es la ventana de trabajo, no un filtro).
+function swClearFilters(){
+  swCurS="";
+  const srch=document.getElementById("sw-srch"); if(srch) srch.value="";
+  const suc=document.getElementById("sw-filt-suc"); if(suc) suc.value="all";
+  swSetF("all");
 }
 function swSort(col){
   if(swSortCol===col) swSortDir*=-1;

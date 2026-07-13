@@ -5935,3 +5935,37 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 body:not(.is-admin) .needs-admin {
   display: none !important;
 }
+
+/* ════ AUDITORÍA UX 2026-07 · F3 — feedback y wayfinding ══════════ */
+/* Rótulo de vista (H8): cada vista anuncia su nombre en su primera barra. */
+.view-ttl {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--w1);
+  letter-spacing: 0.2px;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+.view-ttl-bar {
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+/* Variante siempre-visible del botón limpiar (Semanales/Combustible/Cumplimiento):
+   el de Inspecciones lo muestra/oculta JS; estos son estáticos (H9). */
+.clear-filters--on {
+  display: inline-flex;
+}
+/* Estado de carga compartido (H7): mientras hidrata desde la nube, los
+   empty-states dicen "Cargando…" en vez de un "Sin datos" engañoso. */
+body[data-hydrating] .sw-empty > *,
+body[data-hydrating] .uv-empty > * {
+  display: none;
+}
+body[data-hydrating] .sw-empty::before,
+body[data-hydrating] .uv-empty::before {
+  content: "Cargando datos de la nube…";
+  display: block;
+  color: var(--s2);
+  font-size: 12px;
+  font-weight: 600;
+}

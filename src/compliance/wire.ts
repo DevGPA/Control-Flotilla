@@ -316,6 +316,19 @@ function complianceAlerts(): ComplianceAlert[] {
 
 // ── Montaje de controles ───────────────────────────────
 function mountControls(): void {
+  // Limpiar filtros (auditoría UX 2026-07 H9).
+  $("cmp-clear-filters")?.addEventListener("click", () => {
+    filter.estado = "all";
+    filter.sucursal = "";
+    filter.search = "";
+    const se = $("cmp-estado") as HTMLSelectElement | null;
+    if (se) se.selectedIndex = 0;
+    const ss = $("cmp-sucursal") as HTMLSelectElement | null;
+    if (ss) ss.selectedIndex = 0;
+    const si = $("cmp-search") as HTMLInputElement | null;
+    if (si) si.value = "";
+    renderCumplimiento();
+  });
   const search = $("cmp-search") as HTMLInputElement | null;
   if (search) {
     search.addEventListener("input", () => {

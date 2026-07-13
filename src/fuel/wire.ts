@@ -706,6 +706,33 @@ function mountControls(): void {
     }
     renderCombustible();
   });
+  // Limpiar filtros (auditoría UX 2026-07 H9): resetea los 7 selects + búsqueda
+  // (NO el rango de fechas, que es el período de trabajo, no un filtro).
+  $("fuel-clear-filters")?.addEventListener("click", () => {
+    filter.tipo = "all";
+    filter.verdict = "all";
+    filter.sucursal = "";
+    filter.responsable = "";
+    filter.search = "";
+    filter.flag = "";
+    filter.area = "";
+    filter.submarca = "";
+    for (const id of [
+      "fuel-filt-tipo",
+      "fuel-filt-verdict",
+      "fuel-filt-suc",
+      "fuel-filt-resp",
+      "fuel-filt-flag",
+      "fuel-filt-area",
+      "fuel-filt-tipounidad",
+    ]) {
+      const sel = $(id) as HTMLSelectElement | null;
+      if (sel) sel.selectedIndex = 0;
+    }
+    const s = $("fuel-srch") as HTMLInputElement | null;
+    if (s) s.value = "";
+    renderCombustible();
+  });
   // Toggle segmentado Lista | Dashboard.
   $("fuel-seg-lista")?.addEventListener("click", () => setDashView(false));
   $("fuel-seg-dash")?.addEventListener("click", () => setDashView(true));
