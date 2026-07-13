@@ -80,6 +80,12 @@ const filter: FuelTableFilter = {
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+// Perf lag 2026-07-13: tope de filas en DOM (el dataset creció a ~2,750 y cada
+// render completo congelaba ~2s el hilo). Cada render normal resetea al base;
+// "Mostrar más" lo amplía solo para su propio re-render.
+const FUEL_ROW_LIMIT = 300;
+let fuelRowLimit = FUEL_ROW_LIMIT;
+let fuelKeepRowLimit = false;
 // Detalle/validación
 let lastMetricsByLoad = new Map<string, FuelMetrics>();
 let detailOrder: string[] = [];
@@ -255,6 +261,8 @@ function computeCtx(): FuelCtx {
 function renderCombustible(): void {
   const tbody = $("fuel-tbody");
   if (!tbody) return; // vista no montada aún
+  if (!fuelKeepRowLimit) fuelRowLimit = FUEL_ROW_LIMIT;
+  fuelKeepRowLimit = false;
   // Perf F1-3: si la vista Combustible NO está activa, solo refresca el badge de nav
   // (barato: 1 pasada) y NO recomputes el pipeline analítico ni reconstruyas
   // tabla/KPIs/dashboard (hasta 9 ECharts). Antes cloudHydrate llamaba renderCombustible
@@ -324,6 +332,12 @@ function renderCombustible(): void {
     findingsByLoad: ctx.findingsByLoad,
     nombreValidador,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
+    rowLimit: fuelRowLimit,
+    onShowMore: () => {
+      fuelRowLimit += 700;
+      fuelKeepRowLimit = true;
+      renderCombustible();
+    },
   });
 
   if (dashShown) void renderFuelDash();

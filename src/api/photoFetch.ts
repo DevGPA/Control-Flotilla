@@ -71,6 +71,36 @@ function entryFor(cacheKey: string): PhotoUrlEntry | null {
 }
 
 /**
+ * Perf lag 2026-07-13: presignar es CPU LOCAL (SigV4 + SHA-256 + decodeJWT por
+ * cada getUrl) — un Promise.all de cientos/miles corre como UNA sola cadena de
+ * microtareas que nunca cede el hilo (long task de 3-4s medido en prod durante
+ * la hidratación). Se trocea en lotes con cesión de MACROtarea entre ellos:
+ * mismo resultado, la UI respira entre lotes.
+ */
+const SIGN_CHUNK = 40;
+const yieldToMain = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+async function signChunked(
+  filenames: string[],
+  signOne: (f: string) => Promise<string | null>,
+  tenantId: string,
+): Promise<Map<string, PhotoUrlEntry | null>> {
+  const out = new Map<string, PhotoUrlEntry | null>();
+  for (let i = 0; i < filenames.length; i += SIGN_CHUNK) {
+    const chunk = filenames.slice(i, i + SIGN_CHUNK);
+    await Promise.all(
+      chunk.map(async (f) => {
+        const key = f.toLowerCase();
+        const url = await signOne(f);
+        out.set(key, url ? entryFor(`${tenantId}/${key}`) : null);
+      }),
+    );
+    if (i + SIGN_CHUNK < filenames.length) await yieldToMain();
+  }
+  return out;
+}
+
+/**
  * Pre-firma URLs para una lista de filenames. Útil para batch render de un panel de
  * fotos. Devuelve map filename → {url, expires} (null si no encontrado).
  */
@@ -78,35 +108,19 @@ export async function batchGetCloudPhotoUrls(
   tenantId: string,
   filenames: string[],
 ): Promise<Map<string, PhotoUrlEntry | null>> {
-  const out = new Map<string, PhotoUrlEntry | null>();
-  await Promise.all(
-    filenames.map(async (f) => {
-      const key = f.toLowerCase();
-      const url = await getCloudPhotoUrl(tenantId, f);
-      out.set(key, url ? entryFor(`${tenantId}/${key}`) : null);
-    }),
-  );
-  return out;
+  return signChunked(filenames, (f) => getCloudPhotoUrl(tenantId, f), tenantId);
 }
 
 /**
  * Re-firma URLs frescas para una lista de fnames (force:true ignora el cache).
- * Firmar es local/barato. Usado por el auto-refresh para renovar URLs próximas a
- * vencer sin costo de red extra.
+ * Firmar es local/barato (pero ver nota de troceo arriba). Usado por el
+ * auto-refresh para renovar URLs próximas a vencer sin costo de red extra.
  */
 export async function refreshPhotoUrls(
   tenantId: string,
   filenames: string[],
 ): Promise<Map<string, PhotoUrlEntry | null>> {
-  const out = new Map<string, PhotoUrlEntry | null>();
-  await Promise.all(
-    filenames.map(async (f) => {
-      const key = f.toLowerCase();
-      const url = await getCloudPhotoUrl(tenantId, f, { force: true });
-      out.set(key, url ? entryFor(`${tenantId}/${key}`) : null);
-    }),
-  );
-  return out;
+  return signChunked(filenames, (f) => getCloudPhotoUrl(tenantId, f, { force: true }), tenantId);
 }
 
 export function clearPhotoCache(): void {

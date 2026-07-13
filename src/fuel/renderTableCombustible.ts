@@ -251,6 +251,11 @@ export type RenderTableCombustibleDeps = {
   sortDir: 1 | -1;
   metricsByLoad?: Map<string, FuelMetrics>;
   onRowClick?: (loadId: string, visibleOrder: string[]) => void;
+  /** Tope de FILAS EN DOM (perf lag 2026-07-13: render de 2,754 filas = ~2s de
+   *  freeze por cambio de filtro). Los datos/conteos/orden NO se acotan. */
+  rowLimit?: number;
+  /** Click en la fila "Mostrar más" (solo aparece si rowLimit truncó). */
+  onShowMore?: () => void;
   /** loadId → recorrido del ciclo (vista Solicitudes). */
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>;
   /** loadId → anomalías detectadas (columna Alertas y filtro por alerta). */
@@ -431,7 +436,9 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   }
 
   tbody.replaceChildren();
-  for (let i = 0; i < rows.length; i++) {
+  const cap =
+    deps.rowLimit != null && deps.rowLimit > 0 ? Math.min(deps.rowLimit, rows.length) : rows.length;
+  for (let i = 0; i < cap; i++) {
     const e = rows[i]!;
     const v = displayVerdictOf(e);
     const tr = document.createElement("tr");
@@ -505,6 +512,23 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
         }
       });
     }
+    tbody.appendChild(tr);
+  }
+
+  // Fila "Mostrar más" cuando el tope truncó el DOM (los datos siguen completos).
+  if (cap < rows.length && deps.onShowMore) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 16;
+    td.style.textAlign = "center";
+    td.style.padding = "10px";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fv-show-more btn-export";
+    btn.textContent = `Mostrar más (${rows.length - cap} restantes)`;
+    btn.addEventListener("click", () => deps.onShowMore!());
+    td.appendChild(btn);
+    tr.appendChild(td);
     tbody.appendChild(tr);
   }
 
