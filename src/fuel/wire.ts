@@ -45,6 +45,11 @@ import {
   aggByMonth,
 } from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
+import {
+  SOLICITUDES_HEADER,
+  buildSolicitudesLayout,
+  solicitudesLayoutToAoa,
+} from "./solicitudesLayout";
 import { upsertValidacionCarga } from "../api/client";
 import { refIdCombustible } from "../anulacion/anulacion";
 import { openAnularModal, openAnuladosPanel } from "../anulacion/ui";
@@ -529,6 +534,60 @@ async function exportTokaLayout(): Promise<void> {
   window.notify?.(`Layout Toka: ${partes.join(" · ")}.`, limpio ? "ok" : "warn", 7000);
 }
 
+/**
+ * Genera y descarga el export "Solicitudes (Excel)": réplica del layout Submissions de
+ * MoreApp (30 columnas, una fila por solicitud del filtro activo, MoreApp + OPS). Es el
+ * insumo con el que Tesorería cura la dispersión; ver spec 2026-07-13-solicitudes-layout.
+ */
+async function exportSolicitudesLayout(): Promise<void> {
+  const ctx = computeCtx();
+  const result = buildSolicitudesLayout(ctx.filtered);
+  if (result.incluidas === 0) {
+    window.notify?.(
+      "No se generó el export: el filtro actual no tiene solicitudes vigentes.",
+      "warn",
+      6000,
+    );
+    return;
+  }
+  try {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(solicitudesLayoutToAoa(result), { cellDates: true });
+    // Fechas visibles con hora (On y Fecha y Hora); ancho de columna según encabezado.
+    const FMT_FECHA = "yyyy-mm-dd hh:mm";
+    for (let r = 1; r <= result.rows.length; r++) {
+      for (const c of [2, 6]) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cell && cell.t === "d") cell.z = FMT_FECHA;
+      }
+    }
+    ws["!cols"] = SOLICITUDES_HEADER.map((h) => ({
+      wch: Math.min(Math.max(h.length + 2, 10), 40),
+    }));
+    XLSX.utils.book_append_sheet(wb, ws, "Submissions");
+    const fecha = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `solicitudes_gasolina_${fecha}.xlsx`);
+  } catch (e) {
+    console.warn("[fuel] no se pudo generar el export de solicitudes:", e);
+    window.notify?.("No se pudo generar el archivo de solicitudes. Intenta de nuevo.", "err", 6000);
+    return;
+  }
+
+  // Resumen + guardia anti-export-parcial (aprendizaje del incidente Toka 2026-07-13:
+  // un filtro de sucursal olvidado produce un layout incompleto sin que se note).
+  const partes = [
+    `${result.incluidas} solicitud${result.incluidas === 1 ? "" : "es"}`,
+    `$${result.totalMonto.toLocaleString("es-MX")} solicitados`,
+  ];
+  if (filter.sucursal) partes.push(`⚠️ SOLO sucursal ${filter.sucursal}`);
+  window.notify?.(
+    `Export de solicitudes: ${partes.join(" · ")}.`,
+    filter.sucursal ? "warn" : "ok",
+    7000,
+  );
+}
+
 /** Sincroniza los controles del DOM con el estado del filtro (idempotente). */
 function syncFilterControls(): void {
   const vSel = $("fuel-filt-verdict") as HTMLSelectElement | null;
@@ -666,6 +725,8 @@ function mountControls(): void {
   });
   // Descargar layout de carga masiva Toka (respeta los filtros activos).
   $("fuel-export-toka")?.addEventListener("click", () => void exportTokaLayout());
+  // Descargar solicitudes en formato MoreApp (respeta los filtros activos).
+  $("fuel-export-solicitudes")?.addEventListener("click", () => void exportSolicitudesLayout());
   // Panel de registros anulados (visible solo admin vía .needs-admin).
   $("fuel-anulados")?.addEventListener("click", abrirPanelAnulados);
   // Controles del drawer de detalle.

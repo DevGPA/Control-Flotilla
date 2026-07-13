@@ -75,6 +75,15 @@ export type FuelEntry = {
   nivelDeseado?: string;
   montoEstimado?: number;
   maxLitros?: number;
+  /** Fracción del tanque a llenar 0–1 (MoreApp `porcentajeDelTanqueALlenar` / OPS `necesidad`). */
+  necesidad?: number;
+  /** Precio por litro del catálogo de la unidad ("$26.63" → 26.63). */
+  precioCatalogo?: number;
+  observaciones?: string;
+  /** Correo fijo de notificación del formulario (MoreApp `datos.email`). */
+  emailNotificar?: string;
+  /** Correo de quien capturó la solicitud (OPS `datos.mail`; MoreApp no lo guarda). */
+  mailSolicitante?: string;
   // Carga
   litros?: number;
   precioPorLitro?: number;

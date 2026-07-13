@@ -66,6 +66,19 @@ function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+/** Monto/precio laxo: number directo o string con $ y comas ("$1,225.50" → 1225.5). */
+function money(v: unknown): number | undefined {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v !== "string") return undefined;
+  const n = parseFloat(v.replace(/[$,\s]/g, ""));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** String recortado; vacío o no-string → undefined. */
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
 /** loadId estable: "economicoId|tipo|eventoId". */
 export function loadIdOf(eco: string, tipo: string, eventoId: string): string {
   return `${eco}|${tipo}|${eventoId}`;
@@ -252,6 +265,12 @@ export function mapCargaToFuelEntry(
     nivelDeseado: row.nivelDeseado ?? undefined,
     montoEstimado: num(row.montoEstimado),
     maxLitros: num(row.maxLitros),
+    // Campos del export "Solicitudes (Excel)" (réplica MoreApp) — viven en datos.
+    necesidad: num(datos.porcentajeDelTanqueALlenar) ?? num(datos.necesidad),
+    precioCatalogo: money(datos.precioCatalogo),
+    observaciones: str(datos.observaciones),
+    emailNotificar: str(datos.email),
+    mailSolicitante: str(datos.mail),
     litros: num(row.litrosCargados),
     precioPorLitro: num(row.precioPorLitro),
     monto: num(row.montoTotal),
