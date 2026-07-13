@@ -489,7 +489,11 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
       const handler = () => deps.onRowClick!(e.loadId, order);
       tr.addEventListener("click", handler);
       tr.addEventListener("keydown", (ev) => {
-        if ((ev as KeyboardEvent).key === "Enter") handler();
+        const k = (ev as KeyboardEvent).key;
+        if (k === "Enter" || k === " ") {
+          ev.preventDefault();
+          handler();
+        }
       });
     }
     tbody.appendChild(tr);

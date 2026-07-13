@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-VLJ3XLY7S51buX8gC9uElVJ8iPXdFjTtaHsLIR8Bt0A=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uLFulCT+Rzm9JBVkt97lDjDpmCsf5E8bMubULZFmPjY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -511,10 +511,10 @@
   <!-- DETAIL -->
   <div id="det">
     <div class="dtop">
-      <button class="det-compact" onclick="toggleDetCompact()" title="Compactar/expandir encabezado">
+      <button class="det-compact" onclick="toggleDetCompact()" title="Compactar/expandir encabezado" aria-label="Compactar o expandir encabezado">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
-      <button class="det-pdf" onclick="exportPDF()" title="Exportar PDF">
+      <button class="det-pdf" onclick="exportPDF()" title="Exportar PDF" aria-label="Exportar PDF de la unidad">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       </button>
       <button class="dcls" onclick="closeDet()" aria-label="Cerrar detalle">✕</button>
@@ -7000,7 +7000,9 @@ function showView(view){
   // y si showView captura ese estado, al volver a Inspecciones el dashboard aparece vacío.
   // Se restaura siempre desde el estado real de los datos (units[]).
   if(!isInsp){
-    // Al salir: simplemente ocultar
+    // Al salir: cerrar el expediente flotante (#det es position:fixed y quedaba
+    // encimado sobre las demás vistas — auditoría UX 2026-07, H1) y ocultar el tablero.
+    if(typeof closeDet==="function") closeDet();
     ["kpi","tb","periodo-bar","fleet-map-panel","ops-row"].forEach(id=>{
       const el=document.getElementById(id); if(el) el.style.display="none";
     });

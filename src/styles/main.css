@@ -1501,13 +1501,14 @@ select.filter-active {
 #fleet-modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 700; /* sobre #det (300); bajo periodo (800) y taller-modal (900) */
   background: #0006;
   display: none;
   align-items: center;
   justify-content: center;
 }
 #fleet-modal > div {
+  position: relative; /* ancla del ✕ .dcls absolute; sin esto se va a la esquina del viewport */
   background: var(--bg);
   border: 1px solid var(--ln);
   border-radius: 12px;
