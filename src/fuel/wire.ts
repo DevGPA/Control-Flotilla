@@ -786,6 +786,7 @@ function renderCurrentDetail(): void {
     },
     canWrite: canWrite(),
     onValidate: handleValidate,
+    onKmDetectado: handleKmDetectado,
     esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,
     onAnular: () => anularCarga(load),
     onRestaurar: () => void restaurarCarga(load),
@@ -882,6 +883,59 @@ function navDetail(delta: number): void {
   if (detailOrder.length === 0) return;
   detailIndex = (detailIndex + delta + detailOrder.length) % detailOrder.length;
   renderCurrentDetail();
+}
+
+/**
+ * Guarda la CORRECCIÓN de odómetro leída de la foto (kmDetectado, fuente manual) y
+ * recalcula el rendimiento: computeFuelMetrics usa este valor como odómetro efectivo
+ * (caso eco 86: typo del chofer anulaba el km/l propio y el de la siguiente carga).
+ * El dato crudo del chofer no se toca. km=null quita la corrección.
+ */
+function handleKmDetectado(loadId: string, km: number | null): void {
+  const load = loadById(loadId);
+  if (!load) return;
+  const prevReview = load.review;
+  const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
+  const sess = window.__cloudSession;
+  const tenantId = (sess && sess.tenantId) || "gpa";
+  const revisadoPor = (sess && sess.email) || "";
+  const ts = new Date().toISOString();
+  load.review = {
+    ...review,
+    kmDetectado: km ?? undefined,
+    fuenteDeteccion: "manual",
+    revisadoPor,
+    ts,
+  };
+  // El memo de métricas ahora depende de kmDetectado y la mutación fue in-situ.
+  bumpFuelDatasetVersion();
+  void upsertValidacionCarga({
+    tenantId,
+    loadId,
+    verdictGlobal: review.verdictGlobal,
+    porEvidencia: review.porEvidencia,
+    nota: review.nota,
+    revisadoPor,
+    ts,
+    kmDetectado: km,
+    fuenteDeteccion: "manual",
+  }).catch((e) => {
+    console.warn("[fuel] no se pudo guardar la corrección de odómetro:", e);
+    load.review = prevReview;
+    bumpFuelDatasetVersion();
+    renderCurrentDetail();
+    renderCombustible();
+    window.notify?.("No se pudo guardar la corrección de odómetro.", "error", 4000);
+  });
+  renderCurrentDetail();
+  renderCombustible();
+  window.notify?.(
+    km != null
+      ? `Odómetro corregido a ${km.toLocaleString("es-MX")} km — rendimiento recalculado.`
+      : "Corrección de odómetro eliminada — rendimiento recalculado.",
+    "ok",
+    4500,
+  );
 }
 
 /** Aplica un veredicto (por evidencia o global) y persiste en ValidacionCarga. */
