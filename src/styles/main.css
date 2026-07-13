@@ -960,7 +960,7 @@ select {
   border-radius: var(--r2) var(--r2) 0 0;
 }
 .klbl {
-  font-size: var(--text-2xs);
+  font-size: 10.5px; /* piso escritorio — espeja .hero-lbl (auditoría UX 2026-07 H6) */
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 700;
@@ -1519,6 +1519,18 @@ select.filter-active {
   box-shadow: 0 10px 40px #0003;
   overflow: hidden;
 }
+/* Auditoría UX 2026-07 H5 — tabla Combustible legible a 1366px:
+   fecha en una línea; responsable con elipsis (nombre completo en title). */
+#fuel-table td.fv-td-fecha {
+  white-space: nowrap;
+}
+#fuel-table td.fv-td-resp {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fleet-mod-hdr {
   display: flex;
   justify-content: space-between;
@@ -1740,19 +1752,19 @@ select.filter-active {
   font-weight: 600;
 }
 .tinsp {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s1);
   margin-top: 1px;
 }
 .tkm {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--s1);
   font-variant-numeric: tabular-nums;
   font-family: var(--fm);
   font-weight: 500;
 }
 .tdt {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--s1);
 }
 .pill {
@@ -1761,7 +1773,7 @@ select.filter-active {
   gap: 4px;
   border-radius: 5px;
   padding: 3px 8px;
-  font-size: 9px;
+  font-size: 10px; /* badge de severidad: 9→10px (auditoría UX H6) */
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -3896,6 +3908,38 @@ select.filter-active {
   .hero-sub {
     display: none;
   }
+  /* Auditoría UX 2026-07 H4: comprimir también el chrome fijo de las DEMÁS
+     vistas (KPIs .kc compartidos por Taller/Semanales/Combustible/Cumplimiento
+     y sus barras) — antes solo Inspecciones se adaptaba a laptops ≤800px. */
+  .kc {
+    padding: 7px 12px;
+  }
+  .kval {
+    font-size: 17px;
+  }
+  .ksub {
+    display: none;
+  }
+  .kprog {
+    margin-top: 5px;
+  }
+  #sw-kpis {
+    padding: 6px 16px 2px;
+  }
+  .kpi-row {
+    gap: 8px;
+  }
+  #sw-bar,
+  #fuel-bar {
+    padding: 5px 16px;
+  }
+  #sw-periodo-bar,
+  #fuel-periodo-bar {
+    padding: 4px 20px;
+  }
+  #cmp-kpis {
+    padding: 6px 16px 0 !important; /* padding inline en el markup */
+  }
 }
 
 /* ════ MAPA DE FLOTA (Híbrido B×C H4) ════════════════════════
@@ -4663,7 +4707,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   }
 }
 .fv-collbl {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs); /* 9→10px: etiquetas de dato del drawer (auditoría UX H6) */
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--s2);
@@ -5074,7 +5118,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   gap: 2px;
 }
 .sw-valby {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s2);
   font-weight: 600;
   max-width: 160px;
@@ -5089,7 +5133,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   gap: 3px;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 11px; /* pills de estado: piso de datos en escritorio (auditoría UX H6) */
   font-weight: 700;
   white-space: nowrap;
 }
@@ -5207,7 +5251,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 }
 /* Celda de responsable / verificador */
 .sw-resp {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s1);
   max-width: 130px;
   overflow: hidden;
