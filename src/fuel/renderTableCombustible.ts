@@ -485,6 +485,15 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
       else td.appendChild(c);
       tr.appendChild(td);
     }
+    // Auditoría UX 2026-07 H5: fecha en una línea y responsable con elipsis —
+    // los nombres completos partían la fila a 3-4 renglones en 1366px.
+    // Índices atados al orden de `cells` (4=fecha, 6=responsable).
+    tr.children.item(4)?.classList.add("fv-td-fecha");
+    const tdResp = tr.children.item(6);
+    if (tdResp) {
+      tdResp.classList.add("fv-td-resp");
+      if (e.responsable) (tdResp as HTMLElement).title = e.responsable;
+    }
     if (deps.onRowClick) {
       const handler = () => deps.onRowClick!(e.loadId, order);
       tr.addEventListener("click", handler);

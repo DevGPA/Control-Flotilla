@@ -104,7 +104,9 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   const k = buildKpisSemanales(periodo);
   if (!k) return null;
 
-  const row = el("div", "kpi-row", "padding:10px 16px 6px");
+  // Sin padding inline: #sw-kpis (el contenedor) ya lo aporta — el inline lo
+  // duplicaba y bloqueaba la compresión del @media (max-height:800px).
+  const row = el("div", "kpi-row", "");
 
   row.appendChild(
     buildCard({

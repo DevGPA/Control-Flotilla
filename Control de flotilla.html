@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uLFulCT+Rzm9JBVkt97lDjDpmCsf5E8bMubULZFmPjY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-1bwM58dPJrUxlRYTM7bI3B0NugxZ052So4jR8C3k72g=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7630,7 +7630,7 @@ function renderTableSemanales(){
       <td style="font-weight:700;color:var(--w1);font-family:var(--fm)">${escHtml(e.eco||"—")}${camIcon}</td>
       <td style="font-weight:600;color:var(--ac);font-family:var(--fm)">${escHtml(e.plate||"—")}</td>
       <td class="sw-km">${e.km ? Number(String(e.km).replace(/[^0-9.]/g,"")).toLocaleString("es-MX")+" km" : "—"}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.branch||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.branch||"—")}</td>
       <td>${swPill(e.aceiteRisk, e.aceite||e.aceiteRisk)}</td>
       <td>${swPill(e.radiadorRisk, e.radiador||e.radiadorRisk)}</td>
       <td>${(()=>{
@@ -7649,9 +7649,9 @@ function renderTableSemanales(){
       })()}</td>
       <td>${swPill(effectiveRisk, effectiveRisk==="OK"?"Operativa":effectiveRisk==="Revisar"?"Operativa · Revisar":"Urgente")}</td>
       <td><span class="sw-resp" title="${escHtml(e.responsable||"")}">${escHtml(e.responsable||"—")}</span></td>
-      <td style="font-size:10px;color:var(--s2)">
+      <td style="font-size:11px;color:var(--s2)">
         ${escHtml(e.fecha||"—")}
-        ${e._periodo?`<div style="font-size:9px;color:var(--s3);margin-top:1px">${escHtml(e._periodo)}</div>`:""}
+        ${e._periodo?`<div style="font-size:10px;color:var(--s3);margin-top:1px">${escHtml(e._periodo)}</div>`:""}
       </td>
       <td>${tallerBtn}</td>
     </tr>`;
@@ -8208,14 +8208,14 @@ ${tlAlert}`;
     return `<tr style="${rowBg};cursor:pointer" data-action="openTallerModal" data-arg1="${escAttr(e.id)}" title="Clic para editar">
       <td style="font-weight:700;color:var(--w1)">${escHtml(_ecoDisplay)}${histBadge}</td>
       <td style="font-weight:600;color:var(--ac)">${escHtml(e.plate||"—")}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.sucursal||"—")}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.area||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.sucursal||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.area||"—")}</td>
       <td>${e.tipo?`<span class="tl-tipo ${tipoCls}">${escHtml(e.tipo)}</span>`:"—"}</td>
       <td>${fmtDate(e.fentrada)}</td>
       <td style="text-align:center">${diasTag}</td>
       <td>${fmtDate(e.fsalidaEst)}</td>
-      <td style="font-size:10px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
-      <td style="max-width:200px;color:var(--s1);font-size:10px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
+      <td style="font-size:11px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
+      <td style="max-width:200px;color:var(--s1);font-size:11px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
       <td onclick="event.stopPropagation()">
         <button class="tl-fin-btn" data-action="finalizarUnidad" data-arg1="${escAttr(e.id)}" data-stop-propagation="1" title="Marcar como Finalizado">✓ Salida</button>
       </td>
