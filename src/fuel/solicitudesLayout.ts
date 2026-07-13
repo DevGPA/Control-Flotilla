@@ -109,14 +109,19 @@ function tsMs(e: FuelEntry): number {
   return d === "" ? 0 : d.getTime();
 }
 
+/** Selección compartida por layout y vista: solicitudes vigentes en orden cronológico. */
+function solicitudesVigentes(entries: readonly FuelEntry[]): FuelEntry[] {
+  return entries
+    .filter((e) => e.tipo === "solicitud" && !e.anulada)
+    .sort((a, b) => tsMs(a) - tsMs(b) || a.eventoId.localeCompare(b.eventoId));
+}
+
 /**
  * Arma el layout: una fila por SOLICITUD vigente (cargas y anuladas fuera), en orden
  * cronológico ascendente como el export de MoreApp.
  */
 export function buildSolicitudesLayout(entries: readonly FuelEntry[]): SolicitudesLayoutResult {
-  const solicitudes = entries
-    .filter((e) => e.tipo === "solicitud" && !e.anulada)
-    .sort((a, b) => tsMs(a) - tsMs(b) || a.eventoId.localeCompare(b.eventoId));
+  const solicitudes = solicitudesVigentes(entries);
 
   const rows = solicitudes.map((e): SolicitudCell[] => [
     serial(e.eventoId),
@@ -161,4 +166,63 @@ export function buildSolicitudesLayout(entries: readonly FuelEntry[]): Solicitud
 /** Header + filas para XLSX.utils.aoa_to_sheet (con cellDates para On/Fecha y Hora). */
 export function solicitudesLayoutToAoa(result: SolicitudesLayoutResult): SolicitudCell[][] {
   return [[...SOLICITUDES_HEADER], ...result.rows];
+}
+
+/** Fila LEGIBLE de la hoja de trabajo "Solicitudes" (formato profesional). */
+export type SolicitudVista = {
+  folio: string | number;
+  fechaHora: Date | "";
+  sucursal: string;
+  eco: string;
+  placa: string;
+  submarca: string;
+  area: string; // legible, con acento ("Logística") — no la grafía MoreApp
+  combustible: string;
+  nivelAntes: string;
+  nivelDeseado: string;
+  necesidad: number | ""; // fracción 0–1; el % lo pinta el formato de Excel
+  precio: number | "";
+  maxLitros: number | "";
+  monto: number | "";
+  observaciones: string;
+  solicitante: string;
+  /** Origen del registro — hace visibles los duplicados MoreApp↔OPS del piloto. */
+  fuente: "MoreApp" | "Operaciones-GPA";
+};
+
+export type SolicitudesVistaResult = {
+  filas: SolicitudVista[];
+  incluidas: number;
+  totalMonto: number;
+};
+
+/** Mismas solicitudes/orden que el layout, pero como objetos tipados para la vista. */
+export function buildSolicitudesVista(entries: readonly FuelEntry[]): SolicitudesVistaResult {
+  const solicitudes = solicitudesVigentes(entries);
+  const filas = solicitudes.map(
+    (e): SolicitudVista => ({
+      folio: serial(e.eventoId),
+      fechaHora: fechaHoraLocal(e.fechaHora || e.fecha),
+      sucursal: e.sucursal,
+      eco: e.eco,
+      placa: e.placa ?? "",
+      submarca: e.submarca ?? "",
+      area: e.area ?? "",
+      combustible: e.combustible ?? "",
+      nivelAntes: e.nivelAntes ?? "",
+      nivelDeseado: e.nivelDeseado ?? "",
+      necesidad: e.necesidad ?? "",
+      precio: e.precioCatalogo ?? "",
+      maxLitros: e.maxLitros ?? "",
+      monto: e.montoEstimado ?? "",
+      observaciones: e.observaciones ?? "",
+      solicitante: e.responsable ?? "",
+      fuente: e.eventoId.startsWith("OPS-") ? "Operaciones-GPA" : "MoreApp",
+    }),
+  );
+  return {
+    filas,
+    incluidas: filas.length,
+    totalMonto: solicitudes.reduce((s, e) => s + (e.montoEstimado ?? 0), 0),
+  };
 }

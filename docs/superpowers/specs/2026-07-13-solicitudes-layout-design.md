@@ -54,6 +54,26 @@ MISMA estructura para no romper el flujo de curaduría manual de Tesorería.
 - 0 solicitudes en el filtro → notify warn, no se genera archivo.
 - Si el filtro de sucursal está activo, el aviso lo dice explícitamente.
 
+## v2 — Formato profesional (mismo día, pedido del usuario)
+
+El archivo pasa a 2 hojas, renderizadas con **ExcelJS** (chunk on-demand; xlsx CE no
+escribe estilos — Toka sigue en xlsx):
+
+1. **"Solicitudes"** (hoja de trabajo): título "Solicitudes de Combustible · GPA" +
+   línea de contexto (fecha export, conteo, total, rango, sucursal del filtro);
+   17 columnas legibles (Folio, Fecha y hora, Sucursal, Económico, Placas, Submarca,
+   Área, Combustible, Niveles, Necesidad %, Precio $/L, Máx. litros, **Monto a
+   cargar $**, Observaciones, Solicitante, **Fuente MoreApp/Operaciones-GPA** para
+   cazar duplicados del piloto); encabezado teal congelado con autofiltro, zebra,
+   formatos `$#,##0`/`%`/fecha y **fila TOTAL con fórmula SUM viva** (curar montos a
+0 recalcula solo). Módulos: `buildSolicitudesVista` (puro, en solicitudesLayout)
+   - `src/fuel/solicitudesExcel.ts` (render + descarga).
+2. **"Submissions"**: la réplica exacta de 30 columnas (compatibilidad total).
+
+Gotcha documentado: ExcelJS serializa fechas por valor UTC (xlsx corrige a local);
+`utcWallClock()` re-crea el instante con los componentes locales para que Excel
+muestre la hora de la sucursal.
+
 ## Pruebas
 
 - Golden del encabezado (30 strings exactos).
