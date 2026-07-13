@@ -25,7 +25,12 @@ import {
   OPS_FUENTE_DETECCION,
   type ValidacionCargaInput,
 } from "../../../src/opsgpa/mapValidacion";
-import { mapSemanal, type SemanalInput, type UnitInput } from "../../../src/opsgpa/mapChecklist";
+import {
+  mapSemanal,
+  mapMensual,
+  type SemanalInput,
+  type UnitInput,
+} from "../../../src/opsgpa/mapChecklist";
 import {
   runBackfill,
   type BackfillRequest,
@@ -81,7 +86,7 @@ function isConditionalCheckFailed(errors: GraphqlErrors): boolean {
 
 /** Upsert idempotente create→update (mismo patrón que process* del webhook). */
 async function upsert(
-  modelo: "CargaCombustible" | "Unit" | "Semanal",
+  modelo: "CargaCombustible" | "Unit" | "Semanal" | "Checklist",
   input: Record<string, unknown>,
 ): Promise<void> {
   const client = await getDataClient();
@@ -209,6 +214,10 @@ async function ejecutarBackfill(req: BackfillRequest): Promise<BackfillResumen> 
       await upsert("Unit", unit as unknown as Record<string, unknown>);
       await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     },
+    persistirChecklist: async (unit, checklist) => {
+      await upsert("Unit", unit as unknown as Record<string, unknown>);
+      await upsert("Checklist", checklist as unknown as Record<string, unknown>);
+    },
     persistirValidacion: (input) => upsertValidacion(input),
   });
 }
@@ -297,7 +306,15 @@ export const handler = async (
         validada: validacion ? validacion.verdictGlobal : "pendiente",
       });
     }
-    // CL: semanal implementado; mensual → 422 explícito (visible en DLQ, no silencioso).
+    // CL mensual (2026-07-13): Unit + Checklist con analyzeRow (mismo pipeline que
+    // el mensual de MoreApp — aparece en Inspecciones con riesgo/hallazgos/llantas).
+    if ((plano as OpsClRecord).tipo === "mensual") {
+      const { unit, checklist } = mapMensual(plano as OpsClRecord, resolver);
+      await upsert("Unit", unit as unknown as Record<string, unknown>);
+      await upsert("Checklist", checklist as unknown as Record<string, unknown>);
+      return res(200, { folio: evento.folio, evento: evento.evento, destino: "Checklist/mensual" });
+    }
+    // CL semanal (subtipos desconocidos → throw de mapSemanal → 422 visible en DLQ).
     const { unit, semanal } = mapSemanal(plano as OpsClRecord, resolver);
     await upsert("Unit", unit as unknown as Record<string, unknown>);
     await upsert("Semanal", semanal as unknown as Record<string, unknown>);
