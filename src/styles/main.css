@@ -140,7 +140,7 @@
   --r4: 16px;
   /* Nombre de unidad fluido (auditoría UX H12): a 1920 la col fija de 148px
      truncaba nombres mientras Comentarios (1fr) iba casi vacía. */
-  --col-tpl: 36px 96px minmax(148px, 230px) 110px 92px minmax(200px, 1fr) 76px 86px;
+  --col-tpl: 36px 96px minmax(148px, 230px) 110px 92px minmax(170px, 1fr) 76px 86px;
 
   /* ── Escala tipográfica (UX 2026-06-19) ─────────────────────────────────────
      Antes había ~367 font-size mágicos dispersos (CSS + inline) sin escala y con
