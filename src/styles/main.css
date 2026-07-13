@@ -138,7 +138,9 @@
   --r2: 12px;
   --r3: 12px;
   --r4: 16px;
-  --col-tpl: 36px 96px 148px 110px 92px 1fr 76px 86px;
+  /* Nombre de unidad fluido (auditoría UX H12): a 1920 la col fija de 148px
+     truncaba nombres mientras Comentarios (1fr) iba casi vacía. */
+  --col-tpl: 36px 96px minmax(148px, 230px) 110px 92px minmax(200px, 1fr) 76px 86px;
 
   /* ── Escala tipográfica (UX 2026-06-19) ─────────────────────────────────────
      Antes había ~367 font-size mágicos dispersos (CSS + inline) sin escala y con
@@ -5968,4 +5970,60 @@ body[data-hydrating] .uv-empty::before {
   color: var(--s2);
   font-size: 12px;
   font-weight: 600;
+}
+
+/* ════ AUDITORÍA UX 2026-07 · F5 — consistencia ═══════════════════ */
+/* H11: expediente lado-a-lado en pantallas anchas — la tabla cede espacio
+   en vez de quedar tapada por el panel flotante (#det, 500px + margen). */
+@media (min-width: 1200px) {
+  body.det-open #tw {
+    margin-right: 536px;
+  }
+}
+/* H10/H16: botón canónico de exportar (accent outline + ícono de descarga)
+   y botón canónico de "Anulados" — antes 3 estilos inline divergentes. */
+.btn-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ac);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ac);
+  background: var(--bg2);
+  cursor: pointer;
+}
+.btn-export:hover {
+  background: var(--acd);
+}
+.btn-anulados {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ln);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--s2);
+  background: var(--bg2);
+  cursor: pointer;
+}
+/* H10: acción "agregar" con el mismo peso primario en todas las vistas. */
+.btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ac);
+  cursor: pointer;
+}
+.btn-add:hover {
+  background: var(--ac2);
 }

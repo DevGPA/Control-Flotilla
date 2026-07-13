@@ -155,6 +155,11 @@ function openComplianceDetail(eco: string): void {
   if (title) title.textContent = `Cumplimiento · ${eco}${placa ? ` · ${placa}` : ""}`;
   renderComplianceTab(eco, placa, body);
   modal.style.display = "flex";
+  // A11y (auditoría UX 2026-07 H13): trap de Tab + foco al abrir.
+  const w = window as unknown as { __wireOverlayTrap?: (id: string) => void };
+  w.__wireOverlayTrap?.("cmp-modal");
+  const closeBtn = modal.querySelector<HTMLElement>("button");
+  if (closeBtn) setTimeout(() => closeBtn.focus(), 30);
 }
 
 function hoyMexicoISO(): string {
