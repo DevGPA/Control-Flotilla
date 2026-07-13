@@ -496,6 +496,9 @@ export type ValidacionCargaInput = {
   revisadoPor?: string;
   nota?: string;
   ts?: string;
+  /** Odómetro real leído de la foto (corrección de captura; null = quitar). */
+  kmDetectado?: number | null;
+  fuenteDeteccion?: string;
 };
 
 export async function upsertValidacionCarga(

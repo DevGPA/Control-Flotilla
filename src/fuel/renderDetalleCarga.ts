@@ -50,6 +50,8 @@ export type RenderDetalleCargaDeps = {
     verdict: FuelVerdict,
     nota?: string,
   ) => void;
+  /** Corrección del odómetro leída de la foto (kmDetectado); null = quitar. */
+  onKmDetectado?: (loadId: string, km: number | null) => void;
   onPhotoClick?: (url: string) => void;
   /** ¿La sesión es admin? (muestra Anular/Restaurar; el enforcement real es AppSync). */
   esAdmin?: boolean;
@@ -72,6 +74,8 @@ type Slot = {
   value: string;
   hint?: string;
   detected?: string;
+  /** Origen del valor detectado: "ia" (visión) o "manual" (corregido en validación). */
+  detectedFuente?: "manual" | "ia";
 };
 
 /** Construye los slots de evidencia (valor capturado + tipo de foto). */
@@ -89,6 +93,7 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
     hint: kmHint,
     detected:
       load.review?.kmDetectado != null ? `${NUM.format(load.review.kmDetectado)} km` : undefined,
+    detectedFuente: load.review?.fuenteDeteccion,
   });
 
   if (load.tipo === "carga") {
@@ -396,7 +401,10 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     if (slot.detected) {
       const det = document.createElement("div");
       det.className = "fv-detected";
-      det.textContent = `IA detectó: ${slot.detected}`;
+      det.textContent =
+        slot.detectedFuente === "ia"
+          ? `IA detectó: ${slot.detected}`
+          : `Corregido en validación: ${slot.detected}`;
       formCol.appendChild(det);
     }
     if (slot.hint) {
@@ -404,6 +412,45 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
       h.className = "fv-hint";
       h.textContent = slot.hint;
       formCol.appendChild(h);
+    }
+    // Corrección de odómetro desde la foto (solo cargas, con permiso de escritura):
+    // alimenta kmDetectado → computeFuelMetrics lo usa como odómetro efectivo.
+    if (slot.kind === "odometro" && load.tipo === "carga" && canWrite && deps.onKmDetectado) {
+      const fix = document.createElement("div");
+      fix.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center";
+      const lbl = document.createElement("label");
+      lbl.style.cssText = "font-size:11px;color:var(--s2);flex-basis:100%";
+      lbl.textContent = "Odómetro real (según foto) — corrige el km/l sin tocar lo capturado:";
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.min = "1";
+      inp.step = "1";
+      inp.placeholder = "km reales";
+      inp.value = load.review?.kmDetectado != null ? String(load.review.kmDetectado) : "";
+      inp.style.cssText =
+        "width:130px;padding:4px 8px;border:1px solid var(--ln);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px";
+      const save = document.createElement("button");
+      save.className = "fv-btn fv-btn-ok-sm";
+      save.textContent = "Corregir";
+      const aplicar = () => {
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v) && v > 0) deps.onKmDetectado!(load.loadId, v);
+      };
+      save.addEventListener("click", aplicar);
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") aplicar();
+      });
+      fix.appendChild(lbl);
+      fix.appendChild(inp);
+      fix.appendChild(save);
+      if (load.review?.kmDetectado != null) {
+        const quitar = document.createElement("button");
+        quitar.className = "fv-btn";
+        quitar.textContent = "Quitar corrección";
+        quitar.addEventListener("click", () => deps.onKmDetectado!(load.loadId, null));
+        fix.appendChild(quitar);
+      }
+      formCol.appendChild(fix);
     }
     grid.appendChild(formCol);
 

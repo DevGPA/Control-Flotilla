@@ -147,6 +147,19 @@ function cronoCmp(
  * Calcula métricas km/l por evento de CARGA. Ignora solicitudes (sin litros reales).
  * La primera carga de cada unidad no tiene km/l (sin carga anterior).
  */
+/**
+ * Odómetro EFECTIVO de una carga: el corregido en la validación con la foto
+ * (`review.kmDetectado`, caso eco 86 2026-07-13: capturaron 1,682 en vez de ~16,8xx)
+ * o, si no hay corrección, el capturado por el chofer. El dato crudo NUNCA se toca
+ * (overlay auditable, mismo principio que la anulación); la tabla sigue mostrando
+ * `FuelEntry.km` y el drawer ambos valores.
+ */
+function kmEfectivo(e: Pick<FuelEntry, "km" | "review">): number | null {
+  const det = e.review?.kmDetectado;
+  if (typeof det === "number" && Number.isFinite(det) && det > 0) return det;
+  return typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
+}
+
 export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[] {
   const cargas = entries.filter((e) => e.tipo === "carga");
   const byUnit = groupByUnit(cargas);
@@ -161,7 +174,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
     const sorted = [...arr].sort(cronoCmp);
     const kms: number[] = [];
     for (const c of sorted) {
-      const km = typeof c.km === "number" && Number.isFinite(c.km) ? c.km : null;
+      const km = kmEfectivo(c);
       if (km == null) continue;
       if (kms.length && kms[kms.length - 1] === km) continue; // mismo odómetro = llenado partido
       kms.push(km);
@@ -180,10 +193,13 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
     const sorted = [...arr].sort(cronoCmp);
-    // Ancla de distancia = el ÚLTIMO llenado con odómetro distinto.
+    // Ancla de distancia = el ÚLTIMO llenado con odómetro FIABLE (un retroceso no
+    // ancla; queda pendiente por si fue un reset real de tablero).
     let prevFillKm: number | null = null;
     let prevFillMonta = false;
     let prevFillLleno = false;
+    let pendingResetKm: number | null = null;
+    let pendingResetLleno = false;
     let prevEmitted: FuelEntry | null = null;
     let i = 0;
     while (i < sorted.length) {
@@ -192,10 +208,10 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       // para que el km/l use la SUMA de litros del llenado (y no la distancia ÷ una sola
       // transacción chica, que dispara un km/l absurdo). Sin km → grupo de 1.
       const head = sorted[i]!;
-      const gKm = typeof head.km === "number" && Number.isFinite(head.km) ? head.km : null;
+      const gKm = kmEfectivo(head);
       let j = i + 1;
       if (gKm != null) {
-        while (j < sorted.length && typeof sorted[j]!.km === "number" && sorted[j]!.km === gKm) j++;
+        while (j < sorted.length && kmEfectivo(sorted[j]!) === gKm) j++;
       }
       const group = sorted.slice(i, j);
 
@@ -211,8 +227,24 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       // Montacargas Gas LP: su `km` es horómetro → no se computa km/l (ruido para baseline).
       let fillKmDesde: number | null = null;
       let fillKmpl: number | null = null;
+      let anclaLleno = prevFillLleno;
+      let desdePendiente = false;
       if (prevFillKm != null && gKm != null && !grupoMonta && !prevFillMonta) {
         fillKmDesde = gKm - prevFillKm;
+        // Reset REAL de tablero: retrocede vs la ancla pero es coherente con la
+        // lectura rechazada anterior (pendiente) → se mide contra ella y el tren
+        // nuevo se adopta como ancla. Un typo aislado NO cumple esto (su siguiente
+        // lectura vuelve a ser plausible vs la ancla fiable).
+        if (
+          fillKmDesde <= 0 &&
+          pendingResetKm != null &&
+          gKm - pendingResetKm > 0 &&
+          gKm - pendingResetKm <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+        ) {
+          fillKmDesde = gKm - pendingResetKm;
+          anclaLleno = pendingResetLleno;
+          desdePendiente = true;
+        }
         // km/l solo si el tramo es plausible: >0 y por debajo del salto improbable (un salto
         // > MAX_KM_JUMP suele ser cargas intermedias no registradas → inflaría el km/l).
         // `kmDesdeAnterior` queda poblado en la fila representativa para que la alerta km-salto
@@ -292,7 +324,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           // la fila principal); el resto hereda el motivo calculado del llenado.
           motivoSinKmpl: esRep ? motivoFill : multi ? "llenado_partido" : motivoFill,
           // Fiel = ancla Y llenado actual a tanque lleno. Solo aplica a la fila con km/l real.
-          cargaParcial: esRep && fillKmpl != null ? !(prevFillLleno && grupoLleno) : undefined,
+          cargaParcial: esRep && fillKmpl != null ? !(anclaLleno && grupoLleno) : undefined,
           esMontacargas: e.esMontacargas,
           // Solo en llenados partidos: la fila representativa carga la SUMA de litros como
           // denominador del km/l (para que el baseline pondere el llenado una sola vez).
@@ -305,9 +337,25 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       }
 
       if (gKm != null) {
-        prevFillKm = gKm;
-        prevFillMonta = grupoMonta;
-        prevFillLleno = grupoLleno;
+        // Ancla RESISTENTE: un odómetro que retrocede no se promueve a ancla (un
+        // typo contaminaría también la SIGUIENTE carga con "salto improbable").
+        // Queda pendiente: si la próxima lectura es coherente con él, era un reset
+        // real y se adopta (arriba); si vuelve a medir bien vs la ancla, se limpia.
+        const retrocesoSinAdoptar =
+          prevFillKm != null &&
+          !desdePendiente &&
+          !grupoMonta &&
+          !prevFillMonta &&
+          gKm - prevFillKm <= 0;
+        if (retrocesoSinAdoptar) {
+          pendingResetKm = gKm;
+          pendingResetLleno = grupoLleno;
+        } else {
+          prevFillKm = gKm;
+          prevFillMonta = grupoMonta;
+          prevFillLleno = grupoLleno;
+          pendingResetKm = null;
+        }
       }
       i = j;
     }
