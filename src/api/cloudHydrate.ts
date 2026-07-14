@@ -249,7 +249,11 @@ export function hydrateSignature(
 // UI de Combustible) vía Query al GSI byTenantAndFecha. Si el usuario amplía el
 // rango de fechas más atrás, ensureFuelWindow() trae el tramo faltante UNA vez y
 // la frontera queda ampliada para los siguientes auto-refresh de la sesión.
-const FUEL_WINDOW_DAYS = 92;
+// Perf boot 2026-07-14: 92→31 días. La ventana completa de 3 meses (~2,750 filas,
+// 3.9 MB, 4 páginas secuenciales ≈ 3.4s) dominaba la hidratación del boot. Con 31
+// días el boot paga ~1 página; al ENTRAR a Combustible, initRangoFuel amplía a los
+// 3 meses del rango default vía ensureFuelWindow (en paralelo, ver splitFuelRange).
+const FUEL_WINDOW_DAYS = 31;
 // Frontera superior fija: incluye cargas con fecha futura por error de captura
 // (mismo comportamiento que el Scan completo previo). La ventana solo se acota
 // por atrás.
@@ -275,6 +279,59 @@ function defaultFuelWindowFrom(): string {
 const fuelKey = (r: Schema["CargaCombustible"]["type"]): string =>
   `${r.economicoId}|${r.tipo}|${r.eventoId}`;
 
+/**
+ * Perf boot 2026-07-14: parte [fromISO, toISO] en sub-rangos mensuales SIN huecos
+ * ni traslapes (between es inclusivo en ambos extremos) para pedirlos en PARALELO
+ * — la paginación por nextToken es secuencial y cada página costaba ~1s. El último
+ * sub-rango conserva el tope original (9999-12-31 incluye fechas futuras por error
+ * de captura). `hoyISO` inyectable para tests.
+ */
+export function splitFuelRange(
+  fromISO: string,
+  toISO: string,
+  hoyISO?: string,
+  chunkDays = 31,
+): Array<[string, string]> {
+  const hoy = hoyISO ?? new Date().toLocaleDateString("en-CA", { timeZone: "America/Mexico_City" });
+  const cap = toISO < hoy ? toISO : hoy; // los datos reales terminan aquí
+  const addDays = (iso: string, n: number): string =>
+    new Date(new Date(iso + "T12:00:00Z").getTime() + n * 86_400_000).toISOString().slice(0, 10);
+  const out: Array<[string, string]> = [];
+  let cur = fromISO;
+  while (out.length < 23) {
+    const next = addDays(cur, chunkDays);
+    if (next > cap) break;
+    out.push([cur, addDays(next, -1)]);
+    cur = next;
+  }
+  out.push([cur, toISO]);
+  return out;
+}
+
+/** Descarga un rango de combustible en sub-rangos paralelos + dedup por identidad. */
+async function fetchFuelRangeParallel(
+  tenantId: string,
+  fromISO: string,
+  toISO: string,
+): Promise<Schema["CargaCombustible"]["type"][]> {
+  const parts = splitFuelRange(fromISO, toISO);
+  if (parts.length === 1) return listCombustibleRange(tenantId, fromISO, toISO);
+  const results = await Promise.all(
+    parts.map(([a, b]) => listCombustibleRange(tenantId, a, b)),
+  );
+  const seen = new Set<string>();
+  const out: Schema["CargaCombustible"]["type"][] = [];
+  for (const arr of results)
+    for (const r of arr) {
+      const k = fuelKey(r);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(r);
+      }
+    }
+  return out;
+}
+
 // Serializa las ampliaciones (el rango de la UI puede moverse varias veces rápido).
 let ensureFuelChain: Promise<boolean> = Promise.resolve(false);
 
@@ -299,7 +356,7 @@ export function ensureFuelWindow(fromISO: string): Promise<boolean> {
         .slice(0, 10);
       let tramo: Schema["CargaCombustible"]["type"][];
       try {
-        tramo = await listCombustibleRange(fuelDeps.tenantId, from, upper);
+        tramo = await fetchFuelRangeParallel(fuelDeps.tenantId, from, upper);
       } catch (e) {
         console.warn("[ensureFuelWindow] fetch del tramo falló (no-fatal):", e);
         return false;
@@ -343,7 +400,7 @@ export function refreshFuelOnly(): Promise<boolean> {
       const deps = fuelDeps;
       try {
         const [combustible, validaciones] = await Promise.all([
-          listCombustibleRange(deps.tenantId, fuelWindowFrom, FUEL_WINDOW_TO),
+          fetchFuelRangeParallel(deps.tenantId, fuelWindowFrom, FUEL_WINDOW_TO),
           listValidaciones(deps.tenantId),
         ]);
         fuelRaw = [...combustible];
@@ -405,9 +462,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // del histórico completo — es la tabla más grande (~1k filas/mes). Fallback al
     // Scan completo si la index query falla (p.ej. GSI recién creado aún en backfill
     // durante el primer deploy, o cliente corriendo contra un backend sin el índice).
-    listCombustibleRange(tenantId, fuelWindowFrom ?? defaultFuelWindowFrom(), FUEL_WINDOW_TO)
+    fetchFuelRangeParallel(tenantId, fuelWindowFrom ?? defaultFuelWindowFrom(), FUEL_WINDOW_TO)
       .catch((e) => {
-        console.warn("[cloudHydrate] listCombustibleRange falló — fallback a Scan completo:", e);
+        console.warn("[cloudHydrate] fetchFuelRangeParallel falló — fallback a Scan completo:", e);
         return listCombustible(tenantId);
       })
       .catch((e) => {
