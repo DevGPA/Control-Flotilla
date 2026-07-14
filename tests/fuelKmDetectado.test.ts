@@ -86,7 +86,11 @@ describe("ancla resistente: retroceso sin corregir cuesta 1 intervalo, no 2", ()
   });
 
   it("la siguiente carga mide contra la última ancla FIABLE (10,900 − 10,300 = 600)", () => {
-    expect(ms.get("c4")!.kmPorLitro).toBe(20);
+    // MOTOR DE VENTANAS (2026-07-13): el denominador ahora incluye los 40 L del typo-c3
+    // (conservación de combustible: ese combustible se consumió dentro de la ventana). El
+    // 20 anterior (600/30) era un artefacto del motor por-intervalo que ignoraba litros
+    // reales. La FEATURE se preserva: el typo cuesta 1 intervalo, no 2.
+    expect(ms.get("c4")!.kmPorLitro).toBeCloseTo(600 / 70, 5);
     expect(ms.get("c4")!.motivoSinKmpl).toBeUndefined();
   });
 

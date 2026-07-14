@@ -232,43 +232,48 @@ describe("computeFuelMetrics — piso físico y fidelidad (compuerta km/l)", () 
     expect(m[1]!.motivoSinKmpl).toBe("kmpl_implausible");
   });
 
-  it("km/l plausible con tanque lleno en ambos extremos → fiel (cargaParcial falsy)", () => {
+  // MOTOR DE VENTANAS (2026-07-13): el km/l se mide entre tanques LLENOS; una carga
+  // parcial ya no produce un número "no fiel" — sus litros suman a la ventana abierta
+  // y el rendimiento aparece en el siguiente lleno (conservación de combustible).
+  it("km/l con tanque lleno en ambos extremos → fiel por construcción", () => {
     const m = computeFuelMetrics([
       carga("U1", "2026-01-01", 1000, 50),
       carga("U1", "2026-01-11", 1500, 50), // 10 km/l
     ]);
     expect(m[1]!.kmPorLitro).toBe(10);
-    expect(m[1]!.cargaParcial).toBeFalsy();
+    expect(m[1]!.ventanaCargas).toBe(1);
   });
 
-  it("carga actual con tanque NO lleno → cargaParcial=true (conserva el número)", () => {
+  it("carga actual con tanque NO lleno → sin km/l propio: sus litros suman a la ventana", () => {
     const m = computeFuelMetrics([
       carga("U1", "2026-01-01", 1000, 50),
       carga("U1", "2026-01-11", 1500, 50, undefined, { seLlenoTanque: "No" }),
     ]);
-    expect(m[1]!.kmPorLitro).toBe(10);
-    expect(m[1]!.cargaParcial).toBe(true);
+    expect(m[1]!.kmPorLitro).toBeNull();
+    expect(m[1]!.motivoSinKmpl).toBe("parcial_en_ventana");
   });
 
-  it("ancla con tanque NO lleno → el evento siguiente es parcial aunque él sí llene", () => {
+  it("sin lleno previo fiable, un lleno no puede medir (no hay ventana abierta)", () => {
     const m = computeFuelMetrics([
       carga("U1", "2026-01-01", 1000, 50, undefined, { seLlenoTanque: "No" }),
-      carga("U1", "2026-01-11", 1500, 50), // llena, pero su ancla no
+      carga("U1", "2026-01-11", 1500, 50), // llena, pero no hay lleno anterior
     ]);
-    expect(m[1]!.cargaParcial).toBe(true);
+    expect(m[1]!.kmPorLitro).toBeNull();
+    expect(m[1]!.motivoSinKmpl).toBe("sin_lleno_previo");
   });
 });
 
-describe("buildFleetBaseline — fidelidad: la flota conserva parciales, la unidad no", () => {
-  it("un evento parcial NO entra al baseline por-unidad pero SÍ pondera la flota", () => {
+describe("buildFleetBaseline — los parciales ponderan VÍA la ventana que cierran", () => {
+  it("el cierre lleva la distancia de la VENTANA y la suma de litros (unidad y flota)", () => {
     const entries = [
-      carga("U1", "2026-01-01", 1000, 50, undefined, { seLlenoTanque: "No" }),
-      carga("U1", "2026-01-11", 1500, 50, undefined, { seLlenoTanque: "No" }), // 10 km/l, parcial
+      carga("U1", "2026-01-01", 1000, 50), // lleno: abre ventana
+      carga("U1", "2026-01-06", 1200, 30, undefined, { seLlenoTanque: "No" }), // parcial: suma
+      carga("U1", "2026-01-11", 1500, 50), // lleno: cierra 500 km / 80 L
     ];
     const metrics = computeFuelMetrics(entries);
     const base = buildFleetBaseline(metrics, entries);
-    expect(base.porUnidad.get("U1")).toBeUndefined(); // 0 eventos fieles
-    expect(base.flotaKmplVol!).toBeCloseTo(10, 5); // el parcial sí cuenta en la flota
+    expect(base.porUnidad.get("U1")!.kmplVol).toBeCloseTo(500 / 80, 5);
+    expect(base.flotaKmplVol!).toBeCloseTo(500 / 80, 5); // km de VENTANA, no de segmento
   });
 });
 

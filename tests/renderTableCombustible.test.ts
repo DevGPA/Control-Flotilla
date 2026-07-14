@@ -457,11 +457,13 @@ describe("buildKpisFuel", () => {
 
   it("KPI 'Sin rendimiento' cuenta cargas sin km/l y separa 'por revisar' de estructurales", () => {
     // U1: 1ª carga (estructural) + 2ª válida; U2: 1ª carga (estructural) + retroceso (por revisar).
+    // Cargas a tanque lleno (motor de ventanas: sin "Si" serían todas parciales sin km/l).
+    const lleno = { seLlenoTanque: "Si" } as const;
     const entries = [
-      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-01", km: 1000, litros: 50, monto: 1000 }),
-      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-10", km: 1500, litros: 50, monto: 1000 }),
-      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-01", km: 2000, litros: 50, monto: 1000 }),
-      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-10", km: 1800, litros: 50, monto: 1000 }),
+      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-01", km: 1000, litros: 50, monto: 1000, ...lleno }),
+      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-10", km: 1500, litros: 50, monto: 1000, ...lleno }),
+      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-01", km: 2000, litros: 50, monto: 1000, ...lleno }),
+      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-10", km: 1800, litros: 50, monto: 1000, ...lleno }),
     ];
     const metrics = computeFuelMetrics(entries);
     const baseline = buildFleetBaseline(metrics, entries);

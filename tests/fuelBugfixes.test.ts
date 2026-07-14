@@ -23,6 +23,7 @@ function carga(
     fecha,
     km,
     litros,
+    seLlenoTanque: "Si", // eventos llenos: la ventana equivale al intervalo clásico
     photos: [],
     ...over,
   };
