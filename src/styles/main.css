@@ -82,9 +82,10 @@
   --s1: #475569;
   --s2: #64748b;
   --s3: #6b7280;
-  /* UX Fase 1: #9ca3af daba ~3.8:1 sobre blanco (falla WCAG AA); #75808e ≈4.5:1
-     conservando la jerarquía s3 > s4. */
-  --s4: #75808e;
+  /* Frente 1 (2026-07-14): #75808e daba 4.01:1 real (el "≈4.5" anterior era un
+     cálculo optimista). #6c7683 = 4.6:1 sobre blanco. --s4 es el peldaño más
+     tenue: solo para DECORACIÓN (dots); el texto usa --s2/--s3. */
+  --s4: #6c7683;
 
   /* Semantic colors — Tremor palette (rose/amber/emerald/blue/orange-600) */
   --R: #e11d48;
@@ -1606,8 +1607,8 @@ select.filter-active {
   content: "";
 }
 .th-sort {
-  font-size: 9px;
-  color: var(--s4);
+  font-size: 10px;
+  color: var(--s2); /* --s4 era 4.0:1 claro / 2.5:1 dark — ilegible (frente 1) */
   margin-left: 3px;
   font-family: var(--fm, monospace);
   user-select: none;
@@ -1640,7 +1641,7 @@ select.filter-active {
 }
 .tcmt-empty {
   font-size: 11px;
-  color: var(--s4);
+  color: var(--s2); /* --s4 fallaba AA; --s4 queda solo decorativo (frente 1) */
 }
 .tr {
   display: grid;
@@ -2272,7 +2273,7 @@ select.filter-active {
 }
 .pg-hint {
   font-size: 10px;
-  color: var(--s2);
+  color: var(--s1); /* sobre --bg2/--bg3 los s2/s3 caen bajo 4.5:1 (frente 1) */
 }
 .pg-cats {
   display: flex;
@@ -3314,7 +3315,7 @@ select.filter-active {
 }
 .pm-hint {
   font-size: 10px;
-  color: var(--s2);
+  color: var(--s1); /* sobre paneles tintados (frente 1) */
   line-height: 1.5;
 }
 .pm-ftr {
@@ -3957,9 +3958,9 @@ select.filter-active {
   letter-spacing: 0.8px;
 }
 .fm-hint {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs); /* 9→10px (frente 1) */
   font-weight: 500;
-  color: var(--s3);
+  color: var(--s1); /* --s3 sobre --bg2 = 4.28:1, fallaba AA (frente 1) */
   text-transform: none;
   letter-spacing: 0.2px;
 }
@@ -5854,7 +5855,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 .chart-hint {
   font-size: var(--text-xs); /* 9.5px → 10px */
   font-weight: 500;
-  color: var(--s3);
+  color: var(--s1); /* --s3 sobre tarjetas tintadas fallaba AA (frente 1) */
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -6026,4 +6027,37 @@ body[data-hydrating] .uv-empty::before {
 }
 .btn-add:hover {
   background: var(--ac2);
+}
+
+/* ════ FRENTE 2 (2026-07-14) — aprovechamiento en monitores grandes ═══════ */
+/* Las gráficas y el grid de Análisis estaban dimensionados para 1366; en
+   1920×1080 dejaban media pantalla vacía (auditoría UX H22/F6). El alto de
+   .chart-empty debe espejear el del canvas (mismo patrón que el base). */
+@media (min-width: 1700px) {
+  .analytics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .chart-canvas {
+    --chart-h: 330px;
+  }
+  .chart-card-wide .chart-canvas,
+  #analytics-panel .chart-canvas {
+    --chart-h: 390px;
+  }
+  .chart-empty {
+    margin-top: -330px;
+    height: 330px;
+  }
+  .chart-card-wide .chart-empty,
+  #analytics-panel .chart-empty {
+    margin-top: -390px;
+    height: 390px;
+  }
+}
+/* Mapa de flota: con altura de sobra (1080p+) caben más unidades sin scroll
+   interno; el tope de 150px era para laptops. */
+@media (min-height: 1000px) {
+  #fleet-map {
+    max-height: 280px;
+  }
 }
