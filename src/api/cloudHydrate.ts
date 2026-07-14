@@ -115,8 +115,14 @@ declare global {
     renderCombustible?: () => void;
     updateFuelNavBadge?: () => void;
     initRangoFuel?: () => void;
+    /** Persistencia de sesión del legacy (IndexedDB) — reutilizada para el
+     *  snapshot cloud (stale-while-revalidate, perf boot 2026-07-14). */
+    persistState?: (filename: string) => Promise<void>;
   }
 }
+
+// Throttle de la persistencia del snapshot cloud (ver hydrateFromCloud).
+let lastCloudPersist = 0;
 
 /** Deriva "YYYY-MM" de una fecha de checklist (ISO YYYY-MM-DD o legacy DD/MM/YYYY). */
 function monthOf(fecha: string | null | undefined): string | null {
@@ -988,6 +994,21 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     }
     const hdot = document.getElementById("hdot");
     if (hdot && legacyUnits.length > 0) hdot.className = "hdot live";
+  }
+  // Stale-while-revalidate (perf boot 2026-07-14): persistir el snapshot para que
+  // el PRÓXIMO boot pinte al instante desde IndexedDB (restoreState ya sabe
+  // restaurar y el hydrate corre de fondo y re-renderiza). Sin esto, las sesiones
+  // cloud arrancaban SIEMPRE con IDB vacío → spinner bloqueante los ~10s de la
+  // descarga. Fire-and-forget con throttle (el auto-refresh re-hidrata cada 4min).
+  if (
+    legacyUnits.length > 0 &&
+    typeof window.persistState === "function" &&
+    Date.now() - lastCloudPersist > 5 * 60_000
+  ) {
+    lastCloudPersist = Date.now();
+    void Promise.resolve(window.persistState("Datos de la nube")).catch((e) =>
+      console.warn("[cloudHydrate] persistencia del snapshot falló (no-fatal):", e),
+    );
   }
   if (typeof window.buildKPIs === "function") window.buildKPIs();
   // Sin esto el filtro de sucursales (#bsel) queda vacío en sesiones cloud.
