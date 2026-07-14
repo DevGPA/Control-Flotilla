@@ -629,6 +629,7 @@ function initRangoFuel(): void {
   if (dEl && hEl && dEl.value && hEl.value) {
     filter.desde = dEl.value;
     filter.hasta = hEl.value;
+    ensureVentanaFuel(filter.desde);
     return;
   }
   // Rango sobre el universo COMPLETO (incl. anuladas): una anulada más reciente que
@@ -649,10 +650,26 @@ function initRangoFuel(): void {
     yy -= 1;
   }
   const desde = `${yy}-${String(mm).padStart(2, "0")}-01`;
-  filter.desde = desde < fechas[0]! ? fechas[0]! : desde;
+  // Perf boot 2026-07-14: el default sigue siendo 3 meses, pero la HIDRATACIÓN
+  // inicial solo trae ~1 mes (FUEL_WINDOW_DAYS=31). Ya NO se recorta el desde al
+  // mínimo hidratado: la ampliación se pide bajo demanda al ENTRAR a la vista.
+  filter.desde = desde;
   filter.hasta = max;
   if (dEl) dEl.value = filter.desde;
   if (hEl) hEl.value = filter.hasta;
+  ensureVentanaFuel(desde);
+}
+
+/**
+ * Amplía la ventana de hidratación hasta cubrir `desde` SOLO si la vista de
+ * Combustible está activa (initRangoFuel también corre en cada hidratación de
+ * fondo; sin este guard el boot re-pagaría los 3 meses que la ventana de 31
+ * días ahorra). No-op si ya está cubierta; re-renderiza al llegar el tramo.
+ */
+function ensureVentanaFuel(desde?: string): void {
+  if (!desde || document.body.dataset.view !== "combustible") return;
+  const w = window as unknown as { __fuelEnsureWindow?: (f: string) => Promise<boolean> };
+  if (typeof w.__fuelEnsureWindow === "function") void w.__fuelEnsureWindow(desde);
 }
 
 /** Cablea los listeners de los controles de la vista. Llamar una vez al montar. */
