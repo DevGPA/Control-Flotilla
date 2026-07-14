@@ -16,6 +16,8 @@ import type {
   FuelFinding,
 } from "./types";
 import {
+  computeKmplVida,
+  type KmplVida,
   computeFuelMetrics,
   buildFleetBaseline,
   detectFuelAnomalies,
@@ -180,6 +182,7 @@ let _memoDataset: {
   allMetrics: FuelMetrics[];
   metricsByLoad: Map<string, FuelMetrics>;
   recorridosByLoad: Map<string, RecorridoInfo>;
+  kmplVidaByEco: Map<string, KmplVida>;
 } | null = null;
 
 /** Invalida el memo del dataset (llamar tras mutar e.anulada en sitio: anular/restaurar). */
@@ -198,6 +201,7 @@ function fuelDatasetMemo(): {
   allMetrics: FuelMetrics[];
   metricsByLoad: Map<string, FuelMetrics>;
   recorridosByLoad: Map<string, RecorridoInfo>;
+  kmplVidaByEco: Map<string, KmplVida>;
 } {
   const ref = window.fuelEntries ?? EMPTY_FUEL;
   if (_memoDataset && _memoRef === ref && _memoVersion === _fuelDatasetVersion) {
@@ -207,9 +211,10 @@ function fuelDatasetMemo(): {
   const allMetrics = computeFuelMetrics(all);
   const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
   const recorridosByLoad = computeRecorridos(all);
+  const kmplVidaByEco = computeKmplVida(all);
   _memoRef = ref;
   _memoVersion = _fuelDatasetVersion;
-  _memoDataset = { all, allMetrics, metricsByLoad, recorridosByLoad };
+  _memoDataset = { all, allMetrics, metricsByLoad, recorridosByLoad, kmplVidaByEco };
   return _memoDataset;
 }
 
@@ -845,6 +850,7 @@ function renderCurrentDetail(): void {
     canWrite: canWrite(),
     onValidate: handleValidate,
     onKmDetectado: handleKmDetectado,
+    kmplVida: fuelDatasetMemo().kmplVidaByEco.get(load.eco),
     esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,
     onAnular: () => anularCarga(load),
     onRestaurar: () => void restaurarCarga(load),

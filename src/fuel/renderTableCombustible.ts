@@ -8,7 +8,6 @@ import type {
   FuelFinding,
   FuelMetrics,
   FuelVerdictGlobal,
-  MotivoSinKmpl,
 } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
 import { duracionCapturaMin } from "./fuelAggregates";
@@ -276,26 +275,41 @@ function recLabel(rec: RecorridoInfo | undefined): string {
   return `${NUM.format(rec.km)} km ${rec.viaCarga ? "✓" : "⚠"}`;
 }
 
-/** Celda km/l: el número, o "—" con el MOTIVO debajo (chip gris) cuando no hay rendimiento. */
-function kmplCell(
-  kmpl: number | null | undefined,
-  motivo?: MotivoSinKmpl,
-  parcial?: boolean,
-): string | HTMLElement {
+/**
+ * Celda km/l (motor de VENTANAS): el número con chip "ventana N" cuando el cierre agrupó
+ * varias cargas (y "lleno inferido" si un extremo se infirió por litros), o "—" con el
+ * MOTIVO debajo (chip gris) cuando la carga no cierra ventana.
+ */
+function kmplCell(m: FuelMetrics | undefined): string | HTMLElement {
+  const kmpl = m?.kmPorLitro;
+  const motivo = m?.motivoSinKmpl;
   if (kmpl != null) {
     const num = (Math.round(kmpl * 100) / 100).toFixed(2);
-    if (!parcial) return num;
-    // km/l NO fiel (carga parcial): se muestra el número con marca; no cuenta para ranking/alertas.
+    const chips: { txt: string; title: string }[] = [];
+    if (m?.ventanaCargas != null && m.ventanaCargas > 1)
+      chips.push({
+        txt: `ventana ${m.ventanaCargas}`,
+        title: `Medido entre tanques llenos: de ${NUM.format(m.ventanaDesdeKm ?? 0)} a ${NUM.format(m.km ?? 0)} km — ${m.ventanaCargas} cargas, ${(m.litrosFill ?? 0).toFixed(1)} L en total.`,
+      });
+    if (m?.ventanaInferida)
+      chips.push({
+        txt: "lleno inferido",
+        title:
+          "Un extremo de la ventana se marcó 'No' pero cargó ≥95% del tanque: físicamente fue un llenado.",
+      });
+    if (!chips.length) return num;
     const w = document.createElement("div");
     w.className = "fuel-kmpl-none";
     const v = document.createElement("span");
     v.textContent = num;
-    const t = document.createElement("small");
-    t.className = "fuel-kmpl-motivo";
-    t.textContent = "no fiel";
-    t.title = "Carga parcial (tanque no lleno): no cuenta para el ranking ni las alertas.";
     w.appendChild(v);
-    w.appendChild(t);
+    for (const ch of chips) {
+      const t = document.createElement("small");
+      t.className = "fuel-kmpl-motivo";
+      t.textContent = ch.txt;
+      t.title = ch.title;
+      w.appendChild(t);
+    }
     return w;
   }
   if (!motivo) return "—";
@@ -448,7 +462,6 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     // "historico" no resalta la fila: estado neutro, fuera del radar de control.
     tr.tabIndex = 0;
 
-    const kmpl = kmplByLoad.get(e.loadId);
     const tcap = duracionCapturaMin(e);
     // La submarca viaja en la entry (join en hidratación) — visible en cargas Y solicitudes,
     // para que auditoría vea el tipo de unidad por fila.
@@ -475,11 +488,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
           : "—",
       esSol
         ? recLabel(recorridosByLoad?.get(e.loadId))
-        : kmplCell(
-            kmpl,
-            metricsByLoad?.get(e.loadId)?.motivoSinKmpl,
-            metricsByLoad?.get(e.loadId)?.cargaParcial,
-          ),
+        : kmplCell(metricsByLoad?.get(e.loadId)),
       tcap != null ? `${tcap} min` : "—",
       alertasCell(findingsByLoad?.get(e.loadId)),
       verdictCell(e, v, nombreValidador),

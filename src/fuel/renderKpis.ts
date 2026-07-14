@@ -66,6 +66,9 @@ export function buildKpisFuel(
   // "por revisar" (captura mala, accionables) de los huecos estructurales correctos; el
   // desglose completo por motivo va en el tooltip de la tarjeta.
   const sinKmpl = metrics.filter((m) => m.kmPorLitro == null);
+  // Cargas parciales que SUMAN a una ventana abierta (estructural del motor de ventanas):
+  // el desglose evita que el usuario las lea como "datos por revisar".
+  const enVentana = sinKmpl.filter((m) => m.motivoSinKmpl === "parcial_en_ventana").length;
   const porRevisar = sinKmpl.filter(
     (m) => m.motivoSinKmpl && MOTIVO_SIN_KMPL_ACCIONABLE[m.motivoSinKmpl],
   ).length;
@@ -104,8 +107,10 @@ export function buildKpisFuel(
       value: NUM.format(sinKmpl.length),
       sub:
         porRevisar > 0
-          ? `${porRevisar} por revisar · ${sinKmpl.length - porRevisar} normales`
-          : "todas explicadas",
+          ? `${porRevisar} por revisar · ${enVentana} suman a ventana · ${sinKmpl.length - porRevisar - enVentana} normales`
+          : enVentana > 0
+            ? `${enVentana} suman a ventana · resto explicado`
+            : "todas explicadas",
       tone: porRevisar > 0 ? "a" : "n",
       title: desgloseSinRend || undefined,
     },

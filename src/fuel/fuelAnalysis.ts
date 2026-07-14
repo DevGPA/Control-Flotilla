@@ -491,6 +491,72 @@ export function groupMetricsByUnit(metrics: readonly FuelMetrics[]): Map<string,
   return groupByUnit(metrics);
 }
 
+/** km/L "de vida" de una unidad: referencia robusta sobre TODO su histórico. */
+export type KmplVida = {
+  kmpl: number;
+  km: number; // Σ km de segmentos fiables
+  litros: number; // Σ litros de las cargas de esos segmentos
+  n: number; // cargas que aportaron
+};
+
+/**
+ * km/L de VIDA por unidad = Σ km de segmentos fiables / Σ litros de sus cargas — la
+ * referencia más robusta cuando la unidad casi nunca llena el tanque (sin ventanas
+ * medibles). Ignora el estado de llenado por completo; error acotado ~±1 tanque sobre
+ * el histórico. Usa la misma ancla resistente del motor (typos no cuentan; un reset de
+ * tablero se adopta con la segunda lectura coherente). Guards: no montacargas, ≥5
+ * cargas aportando y ≥500 km (evita referencias de muestra chica).
+ */
+export function computeKmplVida(entries: readonly FuelEntry[]): Map<string, KmplVida> {
+  const cargas = entries.filter((e) => e.tipo === "carga" && !e.esMontacargas);
+  const byUnit = groupByUnit(cargas);
+  const out = new Map<string, KmplVida>();
+  for (const [eco, arr] of byUnit) {
+    const sorted = [...arr].sort(cronoCmp);
+    let prevKm: number | null = null;
+    let pendiente: number | null = null;
+    let km = 0;
+    let litros = 0;
+    let n = 0;
+    for (const c of sorted) {
+      const k = kmEfectivo(c);
+      const l = typeof c.litros === "number" && c.litros > 0 ? c.litros : null;
+      if (k == null) continue;
+      if (prevKm == null) {
+        prevKm = k;
+        continue;
+      }
+      let delta = k - prevKm;
+      if (delta <= 0) {
+        // Retroceso: typo (se ignora) o reset de tablero (lo adopta la siguiente coherente).
+        if (pendiente != null && k - pendiente > 0 && k - pendiente <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) {
+          delta = k - pendiente;
+        } else {
+          pendiente = k;
+          continue;
+        }
+      }
+      pendiente = null;
+      if (delta > DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) {
+        prevKm = k; // salto: el tramo no cuenta, pero la lectura alta es creíble
+        continue;
+      }
+      prevKm = k;
+      if (l != null) {
+        km += delta;
+        litros += l;
+        n++;
+      }
+    }
+    if (n >= 5 && km >= 500 && litros > 0) {
+      const kmpl = km / litros;
+      if (kmpl >= KMPL_FISICO_MIN && kmpl <= KMPL_FISICO_MAX)
+        out.set(eco, { kmpl, km, litros, n });
+    }
+  }
+  return out;
+}
+
 /** Recorrido del ciclo de combustible de una solicitud. */
 export type RecorridoInfo = {
   /** km del ciclo (solicitud → siguiente solicitud). null si no medible / sin siguiente. */
@@ -668,6 +734,7 @@ export const FUEL_RULE_LABEL: Record<string, string> = {
   "captura-monto": "Captura: monto",
   "captura-km": "Captura: km",
   "captura-precio": "Captura: precio",
+  "parciales-cronicos": "Parciales crónicos",
 };
 
 /**
@@ -866,6 +933,24 @@ export function detectFuelAnomalies(
           "Urgente",
         );
       prevLeak = !!leakNow;
+    }
+
+    // 9. Parciales CRÓNICOS (por unidad): si la mayoría de sus cargas recientes no llenan
+    // el tanque, la unidad no puede medir su rendimiento — es la palanca para corregir el
+    // hábito en campo (causa raíz observada en la unidad 47: 47% de cargas parciales).
+    // Anclada a la carga MÁS RECIENTE: el chip vive en la fila nueva y la key se re-ancla
+    // sola al llegar la siguiente carga (los findings no se persisten).
+    const reps = arr.filter((m) => m.llenoEfectivo !== undefined); // filas representativas no-monta
+    const recientes = reps.slice(-cfg.PARTIAL_WINDOW_N);
+    if (recientes.length >= cfg.PARTIAL_MIN_N) {
+      const parciales = recientes.filter((m) => m.llenoEfectivo !== true).length;
+      if (parciales / recientes.length >= cfg.PARTIAL_PCT)
+        push(
+          recientes[recientes.length - 1]!,
+          "parciales-cronicos",
+          `Hábito de cargas parciales: ${parciales} de las últimas ${recientes.length} sin tanque lleno — pedir cargar a tanque lleno para poder medir su rendimiento`,
+          "Revisar",
+        );
     }
   }
   return out;
