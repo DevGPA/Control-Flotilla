@@ -23,7 +23,7 @@ export type NotesDB = Record<string, Note[]>;
 
 export const NOTE_TYPES: Record<NoteType, { label: string; color: string }> = {
   seguimiento: { label: "Seguimiento", color: "var(--B)" },
-  taller:      { label: "En taller",   color: "var(--O)" },
+  taller:      { label: "En taller",   color: "var(--violet)" },
   alerta:      { label: "Alerta",      color: "var(--R)" },
   info:        { label: "Info",        color: "var(--s3)" },
 };

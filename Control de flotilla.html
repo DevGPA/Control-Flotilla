@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JRci9RANYSCRKpNaojfzFJAoPJlGCk0QkZ96e8sxi80=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-x5RF4WudYEayATe0tV+CLjiLyYkS8DbzLDvZP0GzjP8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -286,9 +286,9 @@
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('tiresCrit')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con llantas críticas">
-      <div class="hero-icon" style="background:var(--O)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-icon" style="background:var(--R)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
-        <div class="hero-val" style="color:var(--O)" id="kv4">—</div>
+        <div class="hero-val" style="color:var(--R)" id="kv4">—</div>
         <div class="hero-lbl">Unidades c/ llanta crítica</div>
         <div class="hero-sub">≤ 3mm de taco · en rango</div>
       </div>
@@ -302,9 +302,9 @@
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('taller')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades en taller">
-      <div class="hero-icon" style="background:var(--B)"><i data-lucide="wrench" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-icon" style="background:var(--violet)"><i data-lucide="wrench" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
-        <div class="hero-val" style="color:var(--B)" id="kv_taller">—</div>
+        <div class="hero-val" style="color:var(--violet)" id="kv_taller">—</div>
         <div class="hero-lbl">En Taller</div>
         <div class="hero-sub" id="ks_taller"></div>
       </div>
@@ -341,7 +341,7 @@
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Gl);box-shadow:inset 0 0 0 1px var(--G)"></span>Operativa</span>
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Al);box-shadow:inset 0 0 0 1px var(--A)"></span>Revisar</span>
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Rl);box-shadow:inset 0 0 0 1.5px var(--R)"></span>Requiere atención</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Bl);box-shadow:inset 0 0 0 1px var(--B)"></span>En taller</span>
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--violet-l);box-shadow:inset 0 0 0 1px var(--violet)"></span>En taller</span>
   </div>
 </div>
 
@@ -3417,10 +3417,11 @@ function buildKPIs(){
     const cs = getComputedStyle(document.documentElement);
     const cR = cs.getPropertyValue("--R").trim() || "var(--R)";
     const cG = cs.getPropertyValue("--G").trim() || "var(--G)";
+    const cV = cs.getPropertyValue("--violet").trim() || "var(--violet)";
     try {
       window.renderDonutChart(donutEl, [
         { key: "Operativa", label: "Operativa", value: operativaDonut, color: cG },
-        { key: "Taller",    label: "En taller", value: tallerDonut,    color: cR },
+        { key: "Taller",    label: "En taller", value: tallerDonut,    color: cV },
       ], {
         onSegmentClick: (key) => {
           if (typeof setF === "function") setF(key === "Taller" ? "taller" : "all");
@@ -3429,7 +3430,7 @@ function buildKPIs(){
     } catch (e) { console.warn("[buildKPIs] donut ECharts falló:", e); }
   }
   // Leyenda custom al lado del donut.
-  const legRows=[["op","var(--G)","Operativa",operativaDonut],["tlr","var(--R)","En taller",tallerDonut]];
+  const legRows=[["op","var(--G)","Operativa",operativaDonut],["tlr","var(--violet)","En taller",tallerDonut]];
   const dleg=document.getElementById("dleg");
   if(dleg){
     dleg.title="Operativa = unidad no está en taller. Findings pendientes (chips arriba) NO la sacan de operativa — sigue circulando.";
@@ -3708,7 +3709,7 @@ function buildAlertsSummary(){
   // 3. Llantas críticas
   const llantasCrit=sUnits.filter(u=>u.minT!==null&&u.minT<=TCRIT);
   if(llantasCrit.length)
-    alerts.push({sev:"o",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
+    alerts.push({sev:"r",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
       detail:llantasCrit.slice(0,8).map(u=>`${u.eco||u.plate}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>8?` y ${llantasCrit.length-8} más`:"")});
 
   // 4. Taller: unidades >7 días
@@ -3719,7 +3720,7 @@ function buildAlertsSummary(){
     return dias>7;
   });
   if(tallerLargo.length)
-    alerts.push({sev:"ac",icon:"wrench",count:tallerLargo.length,short:"+7 días taller",
+    alerts.push({sev:"violet",icon:"wrench",count:tallerLargo.length,short:"+7 días taller",
       detail:tallerLargo.sort((a,b)=>new Date(a.fentrada)-new Date(b.fentrada)).slice(0,8).map(e=>{
         const dias=Math.round((Date.now()-new Date(e.fentrada))/86400000);
         return`${e.eco||e.plate}: ${dias}d`;
@@ -3951,7 +3952,7 @@ function renderTable(){
     const tr = document.createElement("div");
     tr.className = `tr ${rc}${selId === u.uid ? " sel" : ""}`;
     tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
-    if(enTallerUnit) tr.style.outline = "1.5px solid var(--B)";
+    if(enTallerUnit) tr.style.outline = "1.5px solid var(--violet)";
     tr.onclick = () => selUnit(u.uid);
     // Teclado (auditoría UX 2026-07 H3): fila operable con Tab + Enter/Espacio
     // (el handler global de [role=button] hace el click).
@@ -4915,7 +4916,7 @@ function sortedUnits(rows){
 // ════════════════════════════════════════════════════════════
 const NOTE_TYPES={
   seguimiento: {label:"Seguimiento", color:"var(--B)"},
-  taller:      {label:"En taller",   color:"var(--O)"},
+  taller:      {label:"En taller",   color:"var(--violet)"},
   alerta:      {label:"Alerta",      color:"var(--R)"},
   info:        {label:"Info",        color:"var(--s3)"},
 };
@@ -7313,7 +7314,7 @@ function _fleetDetailCell(u){
     return `<span style="color:${col};font-weight:600">${lbl}</span>${ref?` <span style="color:var(--s2);font-size:10px">${escHtml(ref)}</span>`:""}`;
   }
   if(_fleetModalKind==="taller"){
-    return `<span style="color:var(--B);font-weight:600">En taller</span>`;
+    return `<span style="color:var(--violet);font-weight:600">En taller</span>`;
   }
   if(_isMissingKind(_fleetModalKind)){
     const last = _fleetModalKind==="missingSemanal" ? _missingLast.get(u.plate) : pickStrFleet(u.fecha);

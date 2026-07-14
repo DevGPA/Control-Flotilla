@@ -3758,6 +3758,9 @@ select.filter-active {
 .aq-card.sev-ac::before {
   background: var(--ac);
 }
+.aq-card.sev-violet::before {
+  background: var(--violet);
+}
 .aq-top {
   display: flex;
   align-items: center;
@@ -3814,6 +3817,10 @@ select.filter-active {
 .aq-card.sev-ac .ac-ico,
 .aq-card.sev-ac .aq-n {
   color: var(--ac);
+}
+.aq-card.sev-violet .ac-ico,
+.aq-card.sev-violet .aq-n {
+  color: var(--violet);
 }
 .aq-detail {
   font-size: var(--text-xs);
@@ -4009,8 +4016,8 @@ select.filter-active {
   box-shadow: inset 0 0 0 1px var(--A);
 }
 .fm-taller {
-  background: var(--Bl);
-  box-shadow: inset 0 0 0 1px var(--B);
+  background: var(--violet-l);
+  box-shadow: inset 0 0 0 1px var(--violet);
 }
 /* Perf F1-9: fmPulse animaba box-shadow (no compositable) → repaint por frame en
    CADA tile urgente del mapa. Ahora el anillo expansivo es un ::after con borde
@@ -4127,6 +4134,11 @@ select.filter-active {
   background: var(--acd);
   border-color: var(--ac);
   color: var(--ac);
+}
+.alert-chip.sev-violet {
+  background: var(--violet-d);
+  border-color: var(--violet);
+  color: var(--violet);
 }
 .alert-chip.sev-n {
   background: var(--bg3);
