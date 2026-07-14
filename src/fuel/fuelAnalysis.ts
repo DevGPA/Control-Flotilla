@@ -473,7 +473,6 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
     for (const m of out) {
       if (ecosOdometroNoFiable.has(m.eco) && !m.esMontacargas) {
         m.kmPorLitro = null;
-        m.cargaParcial = undefined;
         m.motivoSinKmpl = "odometro_no_fiable";
         m.odometroNoFiable = true;
         m.ventanaKmDesde = undefined;
@@ -681,12 +680,9 @@ export function buildFleetBaseline(
     const kmEvento = m.ventanaKmDesde ?? m.kmDesdeAnterior;
     if (kmEvento == null || litrosKmpl == null || !(litrosKmpl > 0)) continue;
     const ev: KmEvent = { km: kmEvento, litros: litrosKmpl, kmpl: m.kmPorLitro };
-    // Flota (KPI de cabecera): incluye eventos parciales — el ponderado por volumen los
-    // sub-pesa y quitarlos daría sesgo de supervivencia (ocultaría la mitad sedienta).
+    // Flota (KPI de cabecera): todos los cierres de ventana ponderan (los litros de las
+    // cargas parciales ya viven en el denominador de su ventana — nada se descarta).
     allEv.push(ev);
-    // Por unidad / tipo (ranking y comparativo "vs su tipo"): SOLO eventos fieles (tanque
-    // lleno en ambos extremos). Un evento parcial no representa la eficiencia real de la unidad.
-    if (m.cargaParcial) continue;
     pushInto(evByUnit, m.eco, ev);
     pushInto(evByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", ev);
   }
@@ -852,12 +848,11 @@ export function detectFuelAnomalies(
           "Revisar",
         );
 
-      // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Solo eventos FIELES:
-      // un km/l bajo por carga parcial es artefacto de medición, no una caída real.
+      // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Todo km/l
+      // emitido por el motor de ventanas es fiel por construcción (lleno→lleno).
       const stat = baseline.porUnidad.get(m.eco);
       if (
         m.kmPorLitro != null &&
-        !m.cargaParcial &&
         stat &&
         stat.n >= cfg.MIN_BASELINE_N &&
         stat.mean > 0
@@ -919,7 +914,6 @@ export function detectFuelAnomalies(
       const leakRef = stat ? (stat.median ?? stat.mean) : null;
       const leakNow =
         m.kmPorLitro != null &&
-        !m.cargaParcial &&
         stat != null &&
         stat.n >= cfg.LEAK_MIN_N &&
         leakRef != null &&

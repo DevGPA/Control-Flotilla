@@ -144,11 +144,6 @@ export type FuelMetrics = {
   kmPorLitro: number | null;
   /** Si kmPorLitro es null, POR QUÉ (para explicar el "—"). undefined cuando sí hay km/l. */
   motivoSinKmpl?: MotivoSinKmpl;
-  /**
-   * @deprecated El motor de ventanas mide lleno→lleno: todo km/l emitido es fiel por
-   * construcción. Ya no se asigna; se elimina en el commit de limpieza.
-   */
-  cargaParcial?: boolean;
   /** Distancia de la VENTANA que cierra esta carga (= numerador del km/l). */
   ventanaKmDesde?: number;
   /** Odómetro del lleno que ABRIÓ la ventana (extremo A, para la cadena del detalle). */
