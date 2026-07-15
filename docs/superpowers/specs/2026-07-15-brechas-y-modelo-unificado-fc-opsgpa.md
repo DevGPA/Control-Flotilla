@@ -83,15 +83,22 @@ Se ejecutó un análisis multi-agente sobre el código real: **4 lentes** (Ops-c
 
 ---
 
-## 5. ⚠ Riesgo de correctitud a verificar YA (no es solo modelado)
+## 5. ⚠ Riesgo de correctitud del semáforo semanal — VERIFICADO (2026-07-15)
 
-El crítico detectó una **contradicción entre dos fixtures del propio repo** en los itemIds del checklist **semanal**:
+Investigado a fondo; la alarma del crítico ("solo `carroceria` coincide") **se refinó**. Contra un registro **real** de prod (`88d8c62e3378`, leído 2026-07-09, en [opsgpa-mapChecklist.test.ts:6-30](../../../tests/opsgpa-mapChecklist.test.ts#L6-L30)), **3 de 4 llaves que lee `mapSemanal` son correctas**: `radiador`, `carroceria`, `llanta_ref` coinciden con el dato real. La cuarta —el **aceite de motor**— es el único punto abierto:
 
-- `mapSemanal` lee 4 itemIds planos: `answers.aceite/radiador/carroceria/llanta_ref` ([mapChecklist.ts:87-90](../../../src/opsgpa/mapChecklist.ts#L87-L90)).
-- El golden `cl-semanal-creacion.json` los anida en `answers.answers` con nombres **distintos**: `llantas/carroceria/nivelAceite/fotoLlanta` — **solo `carroceria` coincide**.
-- Si el envelope real usa los nombres del golden, `mapSemanal` leería `aceite`/`radiador` = `undefined` y `calcEstatusSemanal` (donde **solo aceite y radiador votan**) daría **OK falso** → ocultaría unidades que deberían ir a taller.
+- `mapSemanal` lee `answers.aceite` ([mapChecklist.ts:87](../../../src/opsgpa/mapChecklist.ts#L87)); el estatus semanal lo votan **solo aceite y radiador** ([risk.ts:186-196](../../../src/analyzer/risk.ts#L186-L196)) y `normFluidRisk("")` devuelve **"OK"** ([risk.ts:74](../../../src/analyzer/risk.ts#L74)).
+- El registro real **no trae ningún campo de aceite**; el golden fabricado usa `nivelAceite`. Dos posibilidades binarias:
+  - **(A)** el formulario **semanal** de Ops SÍ captura aceite bajo otra llave (≠`aceite`) → `mapSemanal` lo lee `undefined`→"OK" → el aceite **nunca vota** → una unidad con aceite bajo puede salir OK. **Bug latente.**
+  - **(B)** el semanal de Ops **no pide aceite** (form más ligero que el mensual) → `aceite=""`→OK es correcto por ausencia; solo radiador vota, por diseño. **Sin bug.**
+- **Precedente en el propio repo:** el webhook ya sufrió EXACTAMENTE esta clase de bug — leía la refacción bajo un dataName con typo (`cuentaConLlantaDeRefaccin`) "que NUNCA existe en answers → llanta=''→OK SIEMPRE" ([handler.ts:614-617](../../../amplify/functions/moreapp-webhook/handler.ts#L614-L617)). No es paranoia: es un modo de falla ya visto.
 
-**Acción:** verificar los nombres reales contra un registro semanal de Ops en producción y reconciliar test vs golden **antes** de confiar en el estatus semanal del puente. Es el único hallazgo con potencial de bug vivo (los demás son enriquecimiento/modelado).
+**Dos problemas colaterales confirmados (independientes de A/B):**
+
+1. El golden `cl-semanal-creacion.json` está **fabricado e inconsistente** con el registro real que dice representar (km 154302 vs 11; respuestas anidadas en `answers.answers` con nombres inventados). Regenerarlo desde un registro real.
+2. La prueba de contrato **no verifica ningún valor de riesgo** ([opsgpa-golden-contract.test.ts:54-63](../../../tests/opsgpa-golden-contract.test.ts#L54-L63)) → hoy nada protege el semáforo semanal ante un cambio de llaves.
+
+**Acción (una sola confirmación cierra A/B):** pedir al dueño de Eco-Admin el itemId del **aceite de motor en el formulario SEMANAL** (o un registro real que lo incluya). Si existe y no es `aceite` → corregir `mapSemanal` (leer la llave real con fallback tolerante) + añadir aserción de riesgo al test + regenerar el golden. Si el semanal no pide aceite → documentar que solo radiador vota y cerrar. Incluido en el brief de Ops.
 
 ---
 
