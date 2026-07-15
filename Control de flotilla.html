@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uLFulCT+Rzm9JBVkt97lDjDpmCsf5E8bMubULZFmPjY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-wRUA6YtA0ZSia+lFGGU3p3g0MGCLB475+Lqvq6VIMyw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -814,7 +814,7 @@
         <label for="cf-producto">Producto Toka</label>
         <input id="cf-producto" type="text" list="cf-prod-list" placeholder="Selecciona o escribe el producto Toka"/>
         <datalist id="cf-prod-list">
-          <option value="EASYGAS DISEL CHIP"></option>
+          <option value="EASYGAS DIESEL CHIP"></option>
           <option value="EASYGAS MAGNA CHIP"></option>
           <option value="EASYGAS PREMIUM CHIP"></option>
           <option value="EASYGAS LP CHIP"></option>
@@ -6906,7 +6906,7 @@ function _cvEcoKey(e){ const t=String(e==null?"":e).trim(); return /^\d+$/.test(
 function _cvNormProducto(p){ const u=String(p==null?"":p).toUpperCase();
   if(u.includes("PREMIUM")) return "EASYGAS PREMIUM CHIP";
   if(u.includes("MAGNA")) return "EASYGAS MAGNA CHIP";
-  if(u.includes("DIESEL")||u.includes("DISEL")) return "EASYGAS DISEL CHIP";
+  if(u.includes("DIESEL")||u.includes("DISEL")) return "EASYGAS DIESEL CHIP";
   if(u.includes("LP")) return "EASYGAS LP CHIP";
   return String(p==null?"":p).trim(); }
 

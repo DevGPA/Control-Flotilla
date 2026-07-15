@@ -24,13 +24,14 @@ export const TOKA_HEADER = [
 ] as const;
 
 /**
- * Nombres EXACTOS que Toka exige en el layout (rebrand a EASYGAS, 2026-06). Grafía literal
- * de Toka, incluido "DISEL" (sin segunda E) y "LP" (no "GAS LP"). El dato de origen (MoreApp
- * o catálogo) suele traer las grafías viejas ("TOKA COMBUSTIBLE … CHIP"); `normalizeTokaProducto`
- * las convierte a estas 4 antes de escribir el layout, así Toka no rechaza el archivo.
+ * Nombres EXACTOS que Toka exige en el layout (rebrand a EASYGAS, 2026-06; grafía del
+ * diésel corregida a "DIESEL" 2026-07-14 por Tesorería — antes el código emitía "DISEL").
+ * "LP" sin "GAS". El dato de origen (MoreApp o catálogo) suele traer las grafías viejas
+ * ("TOKA COMBUSTIBLE … CHIP") o el typo "DISEL"; `normalizeTokaProducto` las convierte
+ * a estas 4 antes de escribir el layout, así Toka no rechaza el archivo.
  */
 export const TOKA_PRODUCTOS = [
-  "EASYGAS DISEL CHIP",
+  "EASYGAS DIESEL CHIP",
   "EASYGAS LP CHIP",
   "EASYGAS MAGNA CHIP",
   "EASYGAS PREMIUM CHIP",
@@ -47,7 +48,7 @@ export function normalizeTokaProducto(p: string | null | undefined): string {
   const u = String(p ?? "").toUpperCase();
   if (u.includes("PREMIUM")) return "EASYGAS PREMIUM CHIP";
   if (u.includes("MAGNA")) return "EASYGAS MAGNA CHIP";
-  if (u.includes("DIESEL") || u.includes("DISEL")) return "EASYGAS DISEL CHIP";
+  if (u.includes("DIESEL") || u.includes("DISEL")) return "EASYGAS DIESEL CHIP";
   if (u.includes("LP")) return "EASYGAS LP CHIP"; // cubre "GAS LP" y "LP"
   return String(p ?? "").trim();
 }
