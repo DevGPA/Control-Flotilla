@@ -181,6 +181,33 @@ export interface FcPhotoRef {
  */
 export type EvidenceResolver = (opsKey: string) => string;
 
+/**
+ * Nombre determinístico de una evidencia en el bucket de FC (patrón hermano de moreapp_*).
+ * Identidad por módulo: combustible → economico; checklist → placas.
+ *
+ * SIEMPRE minúsculas (fix 2026-07-14): TODO el pipeline de fotos del front normaliza el
+ * fname con .toLowerCase() antes de firmar la URL (photoFetch/cloudHydrate/imgUrl legacy)
+ * y S3 es case-sensitive — un nombre con mayúsculas (campo "fotoAntes", placas "PR3430A")
+ * producía objetos inalcanzables: la app firmaba "...fotoantes.webp", el objeto real era
+ * "...fotoAntes.webp" → 403 → imagen rota (reporte del usuario con eco 19, 2026-07-14).
+ * La firma ("firma", ya lowercase) era la única visible. El backfill re-copia y
+ * re-referencia solo (idempotente por HeadObject al nombre nuevo).
+ */
+export function nombreEvidencia(
+  tipo: string,
+  unidad: { economico?: string | null; placas?: string | null },
+  campo: string,
+  key: string,
+): string {
+  const idUnidad =
+    tipo === "SOL" ? String(unidad?.economico ?? "sin-eco") : String(unidad?.placas ?? "sin-placa");
+  const m = /\/([0-9a-f]{32})\.(jpg|png|webp)$/.exec(key);
+  const uuid8 = (m?.[1] ?? "00000000").slice(0, 8);
+  const ext = m?.[2] ?? "jpg";
+  const campoSafe = campo.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+  return `opsgpa_${idUnidad}_${uuid8}_${campoSafe}.${ext}`.toLowerCase();
+}
+
 /** Input idempotente para `CargaCombustible.create/update` (subset que usa el ingest). */
 export interface CargaCombustibleInput {
   tenantId: string;
