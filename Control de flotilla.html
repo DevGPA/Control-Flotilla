@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-wRUA6YtA0ZSia+lFGGU3p3g0MGCLB475+Lqvq6VIMyw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zOkSC9+BJFxDk8/uUTmYwuGsKpWnneCqE9GmyHmbovU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -538,9 +538,11 @@
   </div>
   <div id="lbctr"></div>
   <div id="lb-zoom">
+    <button type="button" onclick="lbRotate(-1)" title="Girar a la izquierda (R)" aria-label="Girar a la izquierda">↺</button>
     <button type="button" onclick="lbZoomBtn(-1)" title="Alejar" aria-label="Alejar">−</button>
     <button type="button" class="lbz-lvl" id="lbz-lvl" onclick="lbZoomReset()" title="Restablecer">100%</button>
     <button type="button" onclick="lbZoomBtn(1)" title="Acercar" aria-label="Acercar">+</button>
+    <button type="button" onclick="lbRotate(1)" title="Girar a la derecha (R)" aria-label="Girar a la derecha">↻</button>
     <button type="button" onclick="lbZoomReset()" title="Ajustar a pantalla" aria-label="Ajustar">⤢</button>
   </div>
 </div>
@@ -4639,7 +4641,8 @@ function lbUpdate(){
   _img.classList.toggle("lb-sig", _isSig);
   document.getElementById("lblabel").textContent=item.label;
   document.getElementById("lbctr").textContent=`${lbIdx+1} de ${lbImgs.length}`;
-  lbZoomReset(); // cada foto arranca a 100% (ajustada)
+  _lbRot=0; // cada foto arranca sin girar
+  lbZoomReset(); // cada foto arranca a 100% (ajustada) — _lbApply toma _lbRot=0
 }
 function lbNav(d){lbIdx=(lbIdx+d+lbImgs.length)%lbImgs.length;lbUpdate()}
 function lbClose(){document.getElementById("lb").classList.remove("open");lbZoomReset()}
@@ -4652,6 +4655,7 @@ document.addEventListener("keydown",e=>{
   else if(e.key==="+"||e.key==="=")lbZoomBtn(1);
   else if(e.key==="-"||e.key==="_")lbZoomBtn(-1);
   else if(e.key==="0")lbZoomReset();
+  else if(e.key==="r"||e.key==="R")lbRotate(e.shiftKey?-1:1);
 });
 
 // ── Zoom + arrastre del visor de fotos ──
@@ -4659,7 +4663,7 @@ document.addEventListener("keydown",e=>{
 // el navegador re-muestrea desde la resolución nativa → más detalle real, sin perder
 // calidad hasta el límite de la foto. No usa thumbnails ni background-image.
 const LBZ_MIN=1, LBZ_MAX=6, LBZ_STEP=1.25;
-let _lbScale=1,_lbTx=0,_lbTy=0,_lbDragged=false;
+let _lbScale=1,_lbTx=0,_lbTy=0,_lbDragged=false,_lbRot=0; // _lbRot: giro en grados (0/90/180/270)
 const _lbPtrs=new Map(); // pointerId → {x,y} para pinch/drag
 let _lbPinchBase=0, _lbPinchScale0=1;
 function _lbImg(){return document.getElementById("lbimg")}
@@ -4667,12 +4671,17 @@ function _lbClamp(s){return Math.min(LBZ_MAX,Math.max(LBZ_MIN,s))}
 function _lbApply(){
   const img=_lbImg();if(!img)return;
   if(_lbScale<=1){_lbTx=0;_lbTy=0}
-  img.style.transform=`translate(${_lbTx}px,${_lbTy}px) scale(${_lbScale})`;
+  // rotate PRIMERO (giro sobre el centro de la foto), luego scale y pan. Muchas
+  // fotos de ticket vienen de lado; rotar en 90° las endereza para leerlas.
+  img.style.transform=`translate(${_lbTx}px,${_lbTy}px) scale(${_lbScale}) rotate(${_lbRot}deg)`;
   img.style.cursor=_lbScale>1?"grab":"default";
   const lvl=document.getElementById("lbz-lvl");
   if(lvl)lvl.textContent=Math.round(_lbScale*100)+"%";
 }
 function lbZoomReset(){_lbScale=1;_lbTx=0;_lbTy=0;_lbApply()}
+// Gira la foto en pasos de 90° (dir: -1 antihorario, +1 horario). Conserva zoom/pan.
+function lbRotate(dir){_lbRot=(((_lbRot+dir*90)%360)+360)%360;_lbApply()}
+window.lbRotate=lbRotate;
 // Zoom centrado en (cx,cy) viewport — mantiene el punto bajo el cursor estable.
 function _lbZoomAt(target,cx,cy){
   const img=_lbImg();if(!img)return;
