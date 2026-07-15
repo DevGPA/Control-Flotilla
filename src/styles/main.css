@@ -5015,6 +5015,53 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   background: var(--bg2);
   padding: 10px 16px 6px;
 }
+/* Semanales-2A: KPIs como CHIPS en una sola línea escaneable (lo primero que
+   mira el usuario). Scopeado a #sw-kpis: NO toca .kpi-row/.kc de las otras vistas. */
+#sw-kpis .kpi-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+#sw-kpis .kpi-chips .kc {
+  flex: 0 0 auto;
+  min-width: 0; /* neutraliza el min-width:120px base y el 50%/100% de los breakpoints móviles */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 14px;
+  border-radius: 999px;
+}
+#sw-kpis .kpi-chips .kc.btn:hover {
+  transform: none; /* sin salto vertical; el chip vive en una fila con scroll */
+  box-shadow: var(--card-sh-hover);
+}
+/* Acento de color: la barra superior .ktop pasa a franja IZQUIERDA del chip
+   (conserva el código de color por severidad sin tocar buildCard). */
+#sw-kpis .kpi-chips .ktop {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  width: 3px;
+  height: auto;
+  border-radius: 999px 0 0 999px;
+}
+#sw-kpis .kpi-chips .klbl {
+  margin: 0;
+  white-space: nowrap;
+}
+/* El conteo (.kval) queda como badge a la derecha del label. */
+#sw-kpis .kpi-chips .kval {
+  font-size: 15px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+/* En una línea no caben subtítulo ni barra de progreso — se ocultan
+   (siguen en el DOM: los tests leen su textContent). */
+#sw-kpis .kpi-chips .ksub,
+#sw-kpis .kpi-chips .kprog {
+  display: none;
+}
 /* Toolbar semanales */
 #sw-bar,
 #fuel-bar {
@@ -5151,6 +5198,91 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   font-size: 11px; /* pills de estado: piso de datos en escritorio (auditoría UX H6) */
   font-weight: 700;
   white-space: nowrap;
+}
+/* Semanales-2A: estado normal (OK) silenciado — texto tenue + dot verde suave,
+   sin fondo ni pastilla. Clase NUEVA (no toca .sw-pill-ok, que reusan
+   Cumplimiento/Combustible/detalle). Theme-aware vía --s2/--G. */
+.sw-ok-muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--s2);
+  white-space: nowrap;
+}
+.sw-ok-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--G);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+/* Semanales-2A: bloque "Pendientes" del detalle. */
+.sw-det-pend {
+  border: 1px solid var(--ln);
+  border-radius: var(--r2);
+  background: var(--bg2);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+.sw-det-pend-ok {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--s1);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sw-det-pend-h {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--s2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+.sw-det-pend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sw-det-pend-row + .sw-det-pend-row {
+  border-top: 1px solid var(--ln);
+}
+.sw-det-pend-sis {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--w1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sw-det-pend-obs {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--s2);
+  background: var(--bg3);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.sw-det-pend-val {
+  font-size: 11px;
+  color: var(--s2);
+  margin-left: auto;
+  text-align: right;
+}
+.sw-det-desglose-h {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--s2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 10px;
 }
 .sw-pill-ok {
   background: var(--Gd);

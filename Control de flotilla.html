@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-x5RF4WudYEayATe0tV+CLjiLyYkS8DbzLDvZP0GzjP8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-ZHyr7z2mVL6nSIGj8AGDbWWIU45cQMc+DirQVcOaiC0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7657,9 +7657,13 @@ function renderTableSemanales(){
     }).join("") + `<th style="cursor:default">Acción</th>`; // columna de acción no sorteable
   }
 
+  // Semanales-2A: lo normal se silencia (texto tenue + dot), solo el hallazgo lleva
+  // pastilla de color — así los pocos problemas saltan en una tabla de mayoría OK.
+  const swOkMuted = (label)=>`<span class="sw-ok-muted"><span class="sw-ok-dot"></span>${escHtml(label)}</span>`;
   const swPill = (risk,label)=>{
-    const cls=risk==="Urgente"?"sw-pill-urg":risk==="Revisar"?"sw-pill-rev":"sw-pill-ok";
-    const ico=risk==="Urgente"?'<i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i>':risk==="Revisar"?'<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-1px"></i>':'<i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i>';
+    if(risk!=="Urgente" && risk!=="Revisar") return swOkMuted(label||risk);
+    const cls=risk==="Urgente"?"sw-pill-urg":"sw-pill-rev";
+    const ico=risk==="Urgente"?'<i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i>':'<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-1px"></i>';
     return `<span class="sw-pill ${cls}">${ico} ${escHtml(label||risk)}</span>`;
   };
 
@@ -7708,7 +7712,7 @@ function renderTableSemanales(){
       <td>${(()=>{
         // Carrocería: cosmético — OK=verde, Urgente=rojo estructural, Revisar=azul-info (no amarillo)
         if(!e.carroceriaRisk || e.carroceriaRisk==="OK")
-          return `<span class="sw-pill sw-pill-ok">✓ Sin daños</span>`;
+          return swOkMuted("Sin daños");
         if(e.carroceriaRisk==="Urgente")
           return `<span class="sw-pill sw-pill-urg"><i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i> ${escHtml(e.carroceria||"Daño grave")}</span>`;
         return `<span class="sw-pill sw-pill-info">● ${escHtml(e.carroceria||"Con daños")}</span>`;
@@ -7716,7 +7720,7 @@ function renderTableSemanales(){
       <td>${(()=>{
         // Llanta refacción: accesorio — OK=verde, faltante=ámbar-note informativo
         if(!e.llantaRisk || e.llantaRisk==="OK")
-          return `<span class="sw-pill sw-pill-ok">✓ Con refacción</span>`;
+          return swOkMuted("Con refacción");
         return `<span class="sw-pill sw-pill-note">◌ Completar refacción</span>`;
       })()}</td>
       <td>${swPill(effectiveRisk, effectiveRisk==="OK"?"Operativa":effectiveRisk==="Revisar"?"Operativa · Revisar":"Urgente")}</td>
@@ -7824,9 +7828,26 @@ function selSwUnit(swKey){
        </div>`
     : "";
 
+  // Semanales-2A: bloque "Pendientes" arriba — qué está pendiente de un vistazo
+  // (el usuario lo pidió explícitamente). El desglose completo de los 4 sistemas
+  // queda debajo como referencia.
+  const _pend = swPendientes(e);
+  const _pendBlock = _pend.length===0
+    ? `<div class="sw-det-pend sw-det-pend-ok"><span class="sw-ok-dot"></span> Sin pendientes — unidad operativa</div>`
+    : `<div class="sw-det-pend">
+         <div class="sw-det-pend-h">Pendientes (${_pend.length})</div>
+         ${_pend.map(p=>`<div class="sw-det-pend-row">
+           <span class="sw-pill ${p.cls}">${escHtml(p.nivel)}</span>
+           <span class="sw-det-pend-sis">${escHtml(p.sis)}${p.vital?"":`<span class="sw-det-pend-obs">observación</span>`}</span>
+           ${p.val?`<span class="sw-det-pend-val">${escHtml(p.val)}</span>`:""}
+         </div>`).join("")}
+       </div>`;
+
   if(dbody) dbody.innerHTML = `
     <div style="padding:14px">
       ${photoBtn}
+      ${_pendBlock}
+      <div class="sw-det-desglose-h">Desglose completo</div>
       <div style="display:flex;flex-direction:column;gap:14px">
         <div>
           <div style="font-size:10px;font-weight:700;color:var(--s2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Aceite de motor</div>
@@ -7954,6 +7975,23 @@ window.openMnPhotoForFinding = function(uid, findingText){
   }
 })();
 
+// Semanales-2A: fuente ÚNICA de "qué está pendiente" por unidad — la usan el
+// detalle (bloque Pendientes de selSwUnit) y la nota automática de Taller, para
+// que nunca digan cosas distintas. vital=true (aceite/radiador) inmoviliza;
+// carrocería/llanta son observaciones (no cambian el estatus). Llanta nunca es
+// Urgente (normTireRisk). Ordena Urgente antes que Revisar.
+function swPendientes(e){
+  if(!e) return [];
+  const out=[];
+  const add=(sis,nivel,val,vital,cls)=>{ if(nivel && nivel!=="OK") out.push({sis,nivel,val,vital,cls}); };
+  add("Aceite de motor",     e.aceiteRisk,    e.aceite,     true,  e.aceiteRisk==="Urgente"?"sw-pill-urg":"sw-pill-rev");
+  add("Líquido de radiador", e.radiadorRisk,  e.radiador,   true,  e.radiadorRisk==="Urgente"?"sw-pill-urg":"sw-pill-rev");
+  add("Carrocería",          e.carroceriaRisk,e.carroceria, false, e.carroceriaRisk==="Urgente"?"sw-pill-urg":"sw-pill-info");
+  add("Llanta de refacción", e.llantaRisk,    e.llanta,     false, "sw-pill-note");
+  out.sort((a,b)=>(a.nivel==="Urgente"?0:1)-(b.nivel==="Urgente"?0:1));
+  return out;
+}
+
 // ════════════════════════════════════════════════════════════
 // Enviar unidad urgente al módulo Taller desde Semanales
 // Pre-llena el modal de Taller con la información de la inspección
@@ -7965,12 +8003,9 @@ function enviarATallerDesdeInspeccion(uid){
   const e = all.find(x=>x.aceiteRisk==="Urgente"||x.radiadorRisk==="Urgente") || all[0];
   if(!e) return;
 
-  // Construir nota automática con las anomalías detectadas
-  const issues = [];
-  if(e.aceiteRisk!=="OK")     issues.push(`Aceite motor: ${e.aceite||e.aceiteRisk}`);
-  if(e.radiadorRisk!=="OK")   issues.push(`Radiador: ${e.radiador||e.radiadorRisk}`);
-  if(e.carroceriaRisk!=="OK") issues.push(`Carrocería: ${e.carroceria||e.carroceriaRisk}`);
-  if(e.llantaRisk!=="OK")     issues.push(`Llanta refacción: ${e.llanta||e.llantaRisk}`);
+  // Construir nota automática con las anomalías detectadas (misma fuente que el
+  // bloque Pendientes del detalle — swPendientes).
+  const issues = swPendientes(e).map(p=>`${p.sis}: ${p.val||p.nivel}`);
   const nota = `[Inspección Semanal · ${e._periodo || "rango actual"}]\n${issues.join("\n")}`;
 
   // Abrir modal de Taller en modo "Nuevo registro" pre-rellenado
