@@ -183,7 +183,9 @@ export function evidenceKindOf(col: string): FuelEvidenceKind {
   // Horómetro (montacargas) = lectura de horas/odómetro de la solicitud.
   if (c.includes("horometro") || c.includes("odometro")) return "odometro";
   // fotoMedidorDeCombustible y fotoDelMedidorAntesDeCargar = nivel de combustible.
-  if (c.includes("medidor")) return "medidor";
+  // Ops "reporte de carga": fotoAntes/fotoDespues = nivel de combustible antes/después
+  // (confirmado con Tesorería 2026-07-15; el odómetro va como número, sin foto dedicada).
+  if (c.includes("medidor") || c === "fotoantes" || c === "fotodespues") return "medidor";
   if (c.includes("ticket")) return "ticket";
   if (c.includes("bomba")) return "bomba";
   if (c.includes("signature") || c.includes("firma")) return "firma";

@@ -148,4 +148,20 @@ describe("renderDetalleCarga", () => {
     renderDetalleCarga(d);
     expect(d.body.textContent).not.toContain("Área solicitante");
   });
+
+  it("las fotos de nivel de Ops (fotoAntes/Despues) caen en el slot Medidor", () => {
+    const load = carga({
+      photos: [
+        { fname: "antes.jpg", col: "fotoAntes", group: "Carga" },
+        { fname: "despues.jpg", col: "fotoDespues", group: "Carga" },
+      ],
+    });
+    const d2 = deps(load);
+    renderDetalleCarga(d2);
+    const card = [...d2.body.querySelectorAll(".fv-card")].find(
+      (c) => c.querySelector(".fv-cardhead")?.textContent === "Combustible cargado",
+    );
+    expect(card).toBeTruthy();
+    expect(card!.querySelectorAll("img.fv-photo").length).toBe(2);
+  });
 });
