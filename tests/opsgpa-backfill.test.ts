@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runBackfill, type BackfillDeps } from "../src/opsgpa/backfill";
-import { extraerEvidencias, stripInfra } from "../src/opsgpa/contract";
+import { extraerEvidencias, nombreEvidencia, stripInfra } from "../src/opsgpa/contract";
 
 /** Items crudos como salen de la tabla (con claves de infraestructura). */
 const SOL_ITEM = {
@@ -177,5 +177,26 @@ describe("helpers de contract", () => {
       { campo: "answers.f_radiador", key: "CL/edab420e3fd949af96b77e9477518dd0.jpg" },
     ]);
     expect(extraerEvidencias(stripInfra(SOL_ITEM))).toHaveLength(2);
+  });
+
+  it("nombreEvidencia SIEMPRE en minúsculas (fix 2026-07-14: el front minusculiza antes de firmar y S3 es case-sensitive)", () => {
+    // campo camelCase (reporte de carga de Ops) → lowercase
+    expect(
+      nombreEvidencia(
+        "SOL",
+        { economico: "19" },
+        "fotoAntes",
+        "SOL/006febea1234567890abcdef12345678.webp",
+      ),
+    ).toBe("opsgpa_19_006febea_fotoantes.webp");
+    // placas MAYÚSCULAS (checklist) → lowercase
+    expect(
+      nombreEvidencia(
+        "CL",
+        { placas: "PR3430A" },
+        "answers.f_radiador",
+        "CL/edab420e3fd949af96b77e9477518dd0.jpg",
+      ),
+    ).toBe("opsgpa_pr3430a_edab420e_answers_f_radiador.jpg");
   });
 });

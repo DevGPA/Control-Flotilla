@@ -12,6 +12,7 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/opsgpa-receptor";
 import type { Schema } from "../../data/resource";
+import { nombreEvidencia } from "../../../src/opsgpa/contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "../../../src/opsgpa/contract";
 import {
   toOpsRecord,
@@ -132,24 +133,9 @@ async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
   if (upd.errors) throw new Error(`ValidacionCarga.update: ${JSON.stringify(upd.errors)}`);
 }
 
-/**
- * Nombre determinístico en el bucket de FC (patrón hermano de moreapp_*).
- * Identidad por módulo: combustible → economico; checklist → placas.
- */
-function nombreEvidencia(
-  tipo: string,
-  unidad: { economico?: string | null; placas?: string | null },
-  campo: string,
-  key: string,
-): string {
-  const idUnidad =
-    tipo === "SOL" ? String(unidad?.economico ?? "sin-eco") : String(unidad?.placas ?? "sin-placa");
-  const m = /\/([0-9a-f]{32})\.(jpg|png|webp)$/.exec(key);
-  const uuid8 = (m?.[1] ?? "00000000").slice(0, 8);
-  const ext = m?.[2] ?? "jpg";
-  const campoSafe = campo.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-  return `opsgpa_${idUnidad}_${uuid8}_${campoSafe}.${ext}`;
-}
+// nombreEvidencia vive en src/opsgpa/contract.ts (pura, testeable) — SIEMPRE lowercase
+// desde el fix 2026-07-14: el pipeline de fotos del front minusculiza antes de firmar
+// y S3 es case-sensitive (fotos de Ops con camelCase salían rotas en el drawer).
 
 /**
  * Copia una evidencia del bucket de Ops al de FC (idempotente por HeadObject).
