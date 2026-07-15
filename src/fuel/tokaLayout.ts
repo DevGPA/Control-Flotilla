@@ -5,7 +5,9 @@
  * Estructura EXACTA que exige Toka (1 hoja "Hoja1", 5 columnas en este orden):
  *   ID CLIENTE | Nómina | MONTO DESEADO | Producto | OBSERVACIONES
  * - ID CLIENTE: constante del cliente GPA en Toka (20780).
- * - Nómina: el economicoId de la unidad (entero; "06" → 6).
+ * - Nómina: el economicoId de la unidad TAL CUAL, como TEXTO (conserva ceros a la
+ *   izquierda: "06" → "06"). A petición de Tesorería 2026-07-14 (antes se emitía
+ *   como entero y "06" perdía el cero). Se escribe como celda de texto en el Excel.
  * - MONTO DESEADO: suma del "monto a cargar" de la solicitud (FuelEntry.montoEstimado,
  *   = answers.montoACargar de MoreApp). Las cargas no traen montoEstimado → no suman.
  * - Producto: el `producto` del registro (de eco.PRODUCTO), ya en formato Toka exacto.
@@ -55,7 +57,7 @@ export function normalizeTokaProducto(p: string | null | undefined): string {
 
 export type TokaRow = {
   idCliente: number; // siempre TOKA_ID_CLIENTE
-  nomina: string | number; // número si eco es numérico ("06"→6); string p/ STOCK/TR
+  nomina: string; // economicoId TAL CUAL, como texto ("06" conserva el cero)
   montoDeseado: number; // Σ montoEstimado, redondeado a 2 decimales
   producto: string; // uno de TOKA_PRODUCTOS
   observaciones: ""; // siempre vacío
@@ -116,11 +118,11 @@ export function ecoKey(eco: string | null | undefined): string {
   return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t.toUpperCase();
 }
 
-/** economicoId → nómina Toka: entero si es numérico puro ("06"→6); si no, passthrough. */
-function toNomina(eco: string): { nomina: string | number; numerica: boolean } {
+/** economicoId → nómina Toka: el eco TAL CUAL como texto ("06"→"06"). `numerica`
+ *  solo clasifica (para la advertencia y el orden), no altera el valor. */
+function toNomina(eco: string): { nomina: string; numerica: boolean } {
   const t = eco.trim();
-  if (/^\d+$/.test(t)) return { nomina: parseInt(t, 10), numerica: true };
-  return { nomina: t, numerica: false };
+  return { nomina: t, numerica: /^\d+$/.test(t) };
 }
 
 /** Timestamp para desempatar "registro más reciente" (fechaHora si existe, si no fecha). */
@@ -217,13 +219,15 @@ export function buildTokaLayout(
     rows.push({ idCliente, nomina, montoDeseado, producto, observaciones: "" });
   }
 
-  // Orden estable: nóminas numéricas por valor asc, luego las string A-Z.
+  // Orden estable: nóminas numéricas por VALOR asc (aunque ahora sean texto:
+  // "10" va después de "2", no antes), luego las no numéricas A-Z.
+  const numOf = (s: string): number | null => (/^\d+$/.test(s) ? parseInt(s, 10) : null);
   rows.sort((a, b) => {
-    const an = typeof a.nomina === "number";
-    const bn = typeof b.nomina === "number";
-    if (an && bn) return (a.nomina as number) - (b.nomina as number);
-    if (an !== bn) return an ? -1 : 1;
-    return String(a.nomina).localeCompare(String(b.nomina));
+    const na = numOf(a.nomina);
+    const nb = numOf(b.nomina);
+    if (na !== null && nb !== null) return na - nb;
+    if ((na !== null) !== (nb !== null)) return na !== null ? -1 : 1;
+    return a.nomina.localeCompare(b.nomina);
   });
 
   return {

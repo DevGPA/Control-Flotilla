@@ -105,7 +105,7 @@ describe("buildTokaLayout — estructura Toka", () => {
     const r = buildTokaLayout([sol("6", 1000, DIESEL)]);
     expect(r.rows[0]).toEqual({
       idCliente: 20780,
-      nomina: 6,
+      nomina: "6", // texto (economicoId tal cual)
       montoDeseado: 1000,
       producto: E_DISEL, // normalizado a la grafía de Toka
       observaciones: "",
@@ -116,7 +116,7 @@ describe("buildTokaLayout — estructura Toka", () => {
     const r = buildTokaLayout([sol("6", 1000, DIESEL)]);
     const aoa = tokaLayoutToAoa(r);
     expect(aoa[0]).toEqual([...TOKA_HEADER]);
-    expect(aoa[1]).toEqual([20780, 6, 1000, E_DISEL, ""]);
+    expect(aoa[1]).toEqual([20780, "6", 1000, E_DISEL, ""]);
   });
 });
 
@@ -128,7 +128,7 @@ describe("buildTokaLayout — consolidación por unidad", () => {
       sol("6", 50, DIESEL, { eventoId: "c" }),
     ]);
     expect(r.rows).toHaveLength(1);
-    expect(r.rows[0]!.nomina).toBe(6);
+    expect(r.rows[0]!.nomina).toBe("6");
     expect(r.rows[0]!.montoDeseado).toBe(350);
     expect(r.totalUnidades).toBe(1);
     expect(r.totalMonto).toBe(350);
@@ -142,9 +142,10 @@ describe("buildTokaLayout — consolidación por unidad", () => {
 });
 
 describe("buildTokaLayout — transformación de nómina", () => {
-  it("strip de ceros a la izquierda: '06'→6, '02'→2, '59'→59", () => {
+  it("conserva ceros a la izquierda como TEXTO: '06'→'06', '02'→'02', '59'→'59'", () => {
     const r = buildTokaLayout([sol("06", 1, DIESEL), sol("02", 1, DIESEL), sol("59", 1, DIESEL)]);
-    expect(r.rows.map((x) => x.nomina)).toEqual([2, 6, 59]); // ordenado asc
+    // texto preservado, pero ordenado por VALOR numérico asc
+    expect(r.rows.map((x) => x.nomina)).toEqual(["02", "06", "59"]);
   });
 
   it("nómina no numérica (STOCK) pasa tal cual + advertencia", () => {
@@ -191,7 +192,7 @@ describe("buildTokaLayout — casos borde", () => {
   it("montacargas (Gas LP) se incluye", () => {
     const r = buildTokaLayout([sol("52", 700, GASLP, { esMontacargas: true })]);
     expect(r.rows[0]!.producto).toBe(E_LP); // "GAS LP" → "EASYGAS LP CHIP"
-    expect(r.rows[0]!.nomina).toBe(52);
+    expect(r.rows[0]!.nomina).toBe("52");
   });
 
   it("redondea a 2 decimales", () => {
@@ -214,15 +215,15 @@ describe("buildTokaLayout — casos borde", () => {
       productoOverride: new Map([["44", "EASYGAS DIESEL CHIP"]]), // entrada con DIESEL
     });
     expect(r.rows[0]!.producto).toBe(E_DISEL); // → DIESEL exacto
-    expect(r.rows[0]!.nomina).toBe(44);
+    expect(r.rows[0]!.nomina).toBe("44");
   });
 
   it("override aplica pese al padding de ceros: carga '06' vs clave '6' (bug 🔴 corregido)", () => {
     const r = buildTokaLayout([sol("06", 500, DIESEL)], {
       productoOverride: new Map([["6", "EASYGAS DIESEL CHIP"]]),
     });
-    expect(r.rows[0]!.producto).toBe(E_DISEL);
-    expect(r.rows[0]!.nomina).toBe(6);
+    expect(r.rows[0]!.producto).toBe(E_DISEL); // el lookup normaliza "06"→"6" para casar el override
+    expect(r.rows[0]!.nomina).toBe("06"); // pero la nómina conserva el eco tal cual, como texto
   });
 
   it("override de tipo NO reconocido → se usa pero advierte (no bloquea)", () => {
@@ -247,6 +248,6 @@ describe("buildTokaLayout — casos borde", () => {
       sol("2", 1, MAGNA),
       sol("STOCK 1", 1, MAGNA),
     ]);
-    expect(r.rows.map((x) => x.nomina)).toEqual([2, 10, "STOCK 1", "STOCK 2"]);
+    expect(r.rows.map((x) => x.nomina)).toEqual(["2", "10", "STOCK 1", "STOCK 2"]);
   });
 });

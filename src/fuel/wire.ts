@@ -508,6 +508,16 @@ async function exportTokaLayout(): Promise<void> {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(tokaLayoutToAoa(result));
     ws["!cols"] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 32 }, { wch: 18 }];
+    // Nómina (columna B) como TEXTO: el valor ya es string (celda tipo 's'), y
+    // además fijamos el formato "@" para que Excel/Toka la traten como texto y no
+    // reconviertan "06"→6 al abrir (petición de Tesorería 2026-07-14).
+    for (let r = 1; r <= result.rows.length; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ c: 1, r })];
+      if (cell) {
+        cell.t = "s";
+        cell.z = "@";
+      }
+    }
     XLSX.utils.book_append_sheet(wb, ws, "Hoja1");
     const fecha = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `layout_carga_toka_${fecha}.xlsx`);
