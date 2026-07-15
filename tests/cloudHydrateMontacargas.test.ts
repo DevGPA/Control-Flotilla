@@ -12,7 +12,7 @@ describe("esMontacargasProducto (Gas LP ⇒ montacargas)", () => {
     expect(esMontacargasProducto("TOKA COMBUSTIBLE DIESEL CHIP")).toBe(false);
     expect(esMontacargasProducto("TOKA COMBUSTIBLE PREMIUM CHIP")).toBe(false);
     expect(esMontacargasProducto("TOKA COMBUSTIBLE MAGNA CHIP")).toBe(false);
-    expect(esMontacargasProducto("EASYGAS DISEL CHIP")).toBe(false);
+    expect(esMontacargasProducto("EASYGAS DIESEL CHIP")).toBe(false);
   });
 
   it("marca false para vacío / null / undefined", () => {

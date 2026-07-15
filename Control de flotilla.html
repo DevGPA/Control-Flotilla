@@ -819,7 +819,7 @@
         <label for="cf-producto">Producto Toka</label>
         <input id="cf-producto" type="text" list="cf-prod-list" placeholder="Selecciona o escribe el producto Toka"/>
         <datalist id="cf-prod-list">
-          <option value="EASYGAS DISEL CHIP"></option>
+          <option value="EASYGAS DIESEL CHIP"></option>
           <option value="EASYGAS MAGNA CHIP"></option>
           <option value="EASYGAS PREMIUM CHIP"></option>
           <option value="EASYGAS LP CHIP"></option>
@@ -6971,7 +6971,7 @@ function _cvEcoKey(e){ const t=String(e==null?"":e).trim(); return /^\d+$/.test(
 function _cvNormProducto(p){ const u=String(p==null?"":p).toUpperCase();
   if(u.includes("PREMIUM")) return "EASYGAS PREMIUM CHIP";
   if(u.includes("MAGNA")) return "EASYGAS MAGNA CHIP";
-  if(u.includes("DIESEL")||u.includes("DISEL")) return "EASYGAS DISEL CHIP";
+  if(u.includes("DIESEL")||u.includes("DISEL")) return "EASYGAS DIESEL CHIP";
   if(u.includes("LP")) return "EASYGAS LP CHIP";
   return String(p==null?"":p).trim(); }
 

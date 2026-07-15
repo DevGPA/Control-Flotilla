@@ -13,8 +13,8 @@ import type { FuelEntry } from "../src/fuel/types";
 const DIESEL = "TOKA COMBUSTIBLE DIESEL CHIP";
 const MAGNA = "TOKA COMBUSTIBLE MAGNA CHIP";
 const GASLP = "TOKA COMBUSTIBLE GAS LP CHIP";
-// Grafías de SALIDA exactas que exige Toka (EASYGAS; "DISEL" sin 2ª E, "LP" sin "GAS").
-const E_DISEL = "EASYGAS DISEL CHIP";
+// Grafías de SALIDA exactas que exige Toka (EASYGAS; diésel corregido a "DIESEL" 2026-07-14).
+const E_DISEL = "EASYGAS DIESEL CHIP";
 const E_MAGNA = "EASYGAS MAGNA CHIP";
 const E_LP = "EASYGAS LP CHIP";
 const E_PREMIUM = "EASYGAS PREMIUM CHIP";
@@ -59,14 +59,14 @@ function carga(eco: string, producto: string, over: Partial<FuelEntry> = {}): Fu
 
 describe("normalizeTokaProducto (grafía exacta de Toka)", () => {
   it("convierte las grafías viejas a EASYGAS exacto", () => {
-    expect(normalizeTokaProducto("TOKA COMBUSTIBLE DIESEL CHIP")).toBe("EASYGAS DISEL CHIP");
-    expect(normalizeTokaProducto("EASYGAS DIESEL CHIP")).toBe("EASYGAS DISEL CHIP"); // corrige DIESEL→DISEL
+    expect(normalizeTokaProducto("TOKA COMBUSTIBLE DIESEL CHIP")).toBe("EASYGAS DIESEL CHIP");
+    expect(normalizeTokaProducto("EASYGAS DISEL CHIP")).toBe("EASYGAS DIESEL CHIP"); // corrige el typo DISEL→DIESEL
     expect(normalizeTokaProducto("TOKA COMBUSTIBLE GAS LP CHIP")).toBe("EASYGAS LP CHIP");
     expect(normalizeTokaProducto("TOKA COMBUSTIBLE MAGNA CHIP")).toBe("EASYGAS MAGNA CHIP");
     expect(normalizeTokaProducto("TOKA COMBUSTIBLE PREMIUM CHIP")).toBe(E_PREMIUM);
   });
   it("idempotente sobre las grafías ya correctas", () => {
-    expect(normalizeTokaProducto("EASYGAS DISEL CHIP")).toBe("EASYGAS DISEL CHIP");
+    expect(normalizeTokaProducto("EASYGAS DIESEL CHIP")).toBe("EASYGAS DIESEL CHIP");
     expect(normalizeTokaProducto("EASYGAS LP CHIP")).toBe("EASYGAS LP CHIP");
   });
   it("tipo no reconocido → passthrough (no rompe)", () => {
@@ -213,7 +213,7 @@ describe("buildTokaLayout — casos borde", () => {
     const r = buildTokaLayout([sol("44", 500, DIESEL)], {
       productoOverride: new Map([["44", "EASYGAS DIESEL CHIP"]]), // entrada con DIESEL
     });
-    expect(r.rows[0]!.producto).toBe(E_DISEL); // → DISEL exacto
+    expect(r.rows[0]!.producto).toBe(E_DISEL); // → DIESEL exacto
     expect(r.rows[0]!.nomina).toBe(44);
   });
 
