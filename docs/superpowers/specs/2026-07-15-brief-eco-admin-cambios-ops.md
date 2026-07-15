@@ -12,15 +12,9 @@
 
 Hoy `economico` es editable en Ops. Es la **llave estable** con la que Fleet Command identifica cada unidad y liga todo el histórico de combustible. Si un usuario lo cambia, el registro correspondiente **se huérfana en FC**. Petición: hacer `economico` **no editable** en el servidor e invertir la política a **`sucursal` editable-admin** (que es el campo que sí cambia por operación).
 
-### A2. Confirmar el itemId del **aceite de motor en el formulario SEMANAL**
+### A2. (Resuelto — sin acción de tu lado) El aceite del semanal ya quedó verificado
 
-Fleet Command lee la respuesta de aceite del semanal bajo la llave `aceite`. En el estatus semanal **solo votan aceite y radiador**, así que si el semanal captura el aceite bajo otra llave (el golden sugiere `nivelAceite`), FC lo lee vacío → **"OK" siempre** → una unidad con aceite bajo podría no marcarse para taller. Es la misma clase de bug que ya nos pasó con la refacción (dataName con typo → siempre OK).
-
-- **Necesitamos:** el itemId exacto del aceite de motor en el **semanal** (o un registro real que lo incluya). Si el semanal no captura aceite, confírmalo y lo documentamos (solo radiador vota, por diseño).
-
-### A3. Regenerar el golden `cl-semanal-creacion.json`
-
-El golden compartido del semanal está desalineado con los registros reales (km y nombres de respuestas inventados). Al confirmar A2, regenerarlo desde un **registro real** y re-copiarlo a ambos repos (dispara el pytest de allá y el vitest de acá).
+Confirmamos contra registros reales de producción que el checklist **semanal sí captura el nivel de aceite**, y bajo la llave `aceite` — que es justo la que Fleet Command lee. Todo correcto; **no necesitamos nada de tu lado aquí**, solo lo dejamos anotado. (De nuestro lado regeneramos nuestro archivo de ejemplo `cl-semanal-creacion.json`, que estaba desalineado, y añadimos una prueba extra — sin cambios en Ops.)
 
 ---
 
@@ -81,9 +75,9 @@ Los golden viven en **ambos repos** (`Operaciones-GPA/tests/golden/` ≡ `tests/
 
 ## Resumen de prioridades
 
-| P     | Ítem                                                                   | Esfuerzo Ops |
-| ----- | ---------------------------------------------------------------------- | ------------ |
-| P0    | A1 congelar económico · A2 itemId aceite semanal · A3 regenerar golden | Bajo         |
-| P0/P1 | B1 aprobador · B2 hora local/huso                                      | Medio        |
-| P1    | C1 status · C2 DOC_OPTS · C3 tipo_captura                              | Bajo-medio   |
-| P2    | D1 receptor gpa.fc.v1 + campos namespaced · D2 version · E catálogo    | Medio        |
+| P     | Ítem                                                                | Esfuerzo Ops |
+| ----- | ------------------------------------------------------------------- | ------------ |
+| P0    | A1 congelar económico (A2/A3 ya resueltos de nuestro lado)          | Bajo         |
+| P0/P1 | B1 aprobador · B2 hora local/huso                                   | Medio        |
+| P1    | C1 status · C2 DOC_OPTS · C3 tipo_captura                           | Bajo-medio   |
+| P2    | D1 receptor gpa.fc.v1 + campos namespaced · D2 version · E catálogo | Medio        |
