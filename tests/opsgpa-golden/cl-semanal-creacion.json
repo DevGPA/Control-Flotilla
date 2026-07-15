@@ -4,46 +4,49 @@
   "tipo": "CL",
   "subtipo": "semanal",
   "evento": "creacion",
-  "registroId": "88d8c62e3378",
-  "folio": "OPS-88d8c62e3378",
-  "fechaISO": "2026-07-06T13:20:38+00:00",
+  "registroId": "1a7150032283",
+  "folio": "OPS-1a7150032283",
+  "fechaISO": "2026-07-13T09:24:05.144642-06:00",
   "sucursal": "Guadalajara",
   "unidad": {
-    "vehicleId": "16",
-    "economico": "16",
-    "placas": "PR3430A"
+    "vehicleId": "10",
+    "economico": "10",
+    "placas": "JLL5377"
   },
   "responsable": {
-    "nombre": "Chofer Guadalajara",
-    "userId": "16",
-    "accountId": "chofer.gdl@gpa.com.mx"
+    "nombre": "Operador Guadalajara",
+    "userId": "10",
+    "accountId": "operador.gdl@gpa.com.mx"
   },
   "status": "Aprobado",
   "answers": {
     "tipo": "semanal",
-    "subMarca": "F-350 Chas Cabina Xl",
-    "km": 154302,
-    "fotoKm": "CL/77777777777777777777777777777777.jpg",
+    "subMarca": "Matiz 5 Ptas",
+    "km": 77990,
+    "fotoKm": "CL/11111111111111111111111111111111.jpg",
     "answers": {
-      "llantas": "Bien",
-      "carroceria": "Con Raspaduras/Golpes",
-      "nivelAceite": "OK",
-      "fotoLlanta": "CL/abababababababababababababababab.webp"
+      "aceite": "Nivel Optimo",
+      "radiador": "Nivel Optimo",
+      "carroceria": "Con raspaduras/golpes",
+      "llanta_ref": "Si",
+      "f_frente_d": "CL/22222222222222222222222222222222.jpg",
+      "f_aceite": "CL/33333333333333333333333333333333.jpg",
+      "f_radiador": "CL/44444444444444444444444444444444.jpg",
+      "golpes": [
+        { "foto": "CL/55555555555555555555555555555555.jpg", "desc": "Abolladura" },
+        { "foto": "CL/66666666666666666666666666666666.jpg", "desc": "Rayon" }
+      ]
     },
-    "obs": "sin novedades",
+    "obs": "Ninguna",
     "status": "Aprobado"
   },
   "evidencias": [
-    {
-      "campo": "fotoKm",
-      "key": "CL/77777777777777777777777777777777.jpg"
-    },
-    {
-      "campo": "answers.fotoLlanta",
-      "key": "CL/abababababababababababababababab.webp"
-    }
+    { "campo": "fotoKm", "key": "CL/11111111111111111111111111111111.jpg" },
+    { "campo": "answers.f_frente_d", "key": "CL/22222222222222222222222222222222.jpg" },
+    { "campo": "answers.f_aceite", "key": "CL/33333333333333333333333333333333.jpg" },
+    { "campo": "answers.f_radiador", "key": "CL/44444444444444444444444444444444.jpg" }
   ],
-  "firma": "CL/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd.png",
+  "firma": "CL/77777777777777777777777777777777.png",
   "bucketOrigen": "gpa-ops-evidencias-ENV-CUENTA",
-  "emitidoEn": "2026-07-09T00:00:00+00:00"
+  "emitidoEn": "2026-07-15T00:00:00-06:00"
 }

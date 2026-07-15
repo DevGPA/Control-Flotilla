@@ -51,15 +51,32 @@ describe("contrato compartido: los golden del publisher pasan por el receptor", 
     expect(out.seLlenoTanque).toMatch(/^(Si|No)$/); // normalizado (golden booleano / frontend string)
   });
 
-  it("cl-semanal-creacion → Unit + Semanal (registro real PR3430A)", () => {
+  // El golden cl-semanal-creacion.json se reconstruyó de un registro real de
+  // gpa_operaciones_prod (2026-07-13): answers.answers con las llaves reales
+  // aceite/radiador/carroceria/llanta_ref. Identidad anonimizada, claves S3 placeholder.
+  it("cl-semanal-creacion → Unit + Semanal (registro real eco 10 / JLL5377)", () => {
     const ev = golden("cl-semanal-creacion");
     const { unit, semanal } = mapSemanal(toOpsRecord(ev) as OpsClRecord, resolve);
-    expect(unit.placa).toBe("PR3430A");
-    expect(semanal.unitUid).toBe("PR3430A");
+    expect(unit.placa).toBe("JLL5377");
+    expect(semanal.unitUid).toBe("JLL5377");
     expect(semanal.periodoId).toMatch(/^\d{4}-W\d{2}$/);
-    const datos = JSON.parse(semanal.datos) as { moreappId: string; fuente: string };
+    const datos = JSON.parse(semanal.datos) as Record<string, unknown>;
     expect(datos.moreappId).toBe(ev.folio);
     expect(datos.fuente).toBe("ops-gpa");
+    // El estatus semanal solo lo votan aceite y radiador (regla A1); estas aserciones
+    // fallan si el golden no trae las llaves reales o si el mapeo deja de leerlas.
+    expect(datos.aceite).toBe("Nivel Optimo");
+    expect(datos.radiador).toBe("Nivel Optimo");
+    expect(datos.risk).toBe("OK");
+  });
+
+  it("semanal: bajar un fluido vital escala el estatus (protege el key-rename del envelope)", () => {
+    const ev = golden("cl-semanal-creacion");
+    (ev.answers.answers as Record<string, unknown>).aceite = "Sin Nivel";
+    const { semanal } = mapSemanal(toOpsRecord(ev) as OpsClRecord, resolve);
+    const datos = JSON.parse(semanal.datos) as { aceiteRisk: string; risk: string };
+    expect(datos.aceiteRisk).toBe("Revisar");
+    expect(datos.risk).toBe("Revisar");
   });
 
   it("sol-cambio-estado → re-upsert idempotente con la imagen completa", () => {

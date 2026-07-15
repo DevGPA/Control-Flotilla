@@ -14,7 +14,7 @@ Hoy `economico` es editable en Ops. Es la **llave estable** con la que Fleet Com
 
 ### A2. (Resuelto — sin acción de tu lado) El aceite del semanal ya quedó verificado
 
-Confirmamos contra registros reales de producción que el checklist **semanal sí captura el nivel de aceite**, y bajo la llave `aceite` — que es justo la que Fleet Command lee. Todo correcto; **no necesitamos nada de tu lado aquí**, solo lo dejamos anotado. (De nuestro lado regeneramos nuestro archivo de ejemplo `cl-semanal-creacion.json`, que estaba desalineado, y añadimos una prueba extra — sin cambios en Ops.)
+Confirmamos contra registros reales de producción que el checklist **semanal sí captura el nivel de aceite**, y bajo la llave `aceite` — que es justo la que Fleet Command lee. Todo correcto; **no necesitamos nada de tu lado aquí**, solo lo dejamos anotado. (De nuestro lado regeneramos nuestro archivo de ejemplo `cl-semanal-creacion.json`, que estaba desalineado, y añadimos una prueba extra — sin cambios en Ops.) Sugerencia menor: si tienen su propia copia del golden `cl-semanal-creacion.json`, adopten la nuestra regenerada (refleja la forma real de un registro de prod) para que ambos repos queden idénticos en el próximo sync del contrato.
 
 ---
 
