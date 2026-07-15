@@ -62,7 +62,20 @@ function icon(key: string, style: string): HTMLElement {
 function buildCard(opts: CardOpts): HTMLElement {
   const card = el("div", opts.onClick ? "kc btn" : "kc");
   if (opts.title) card.title = opts.title;
-  if (opts.onClick) card.addEventListener("click", opts.onClick);
+  if (opts.onClick) {
+    const fn = opts.onClick;
+    card.addEventListener("click", fn);
+    // A11y (auditoría UX H14): chip-filtro operable por teclado.
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
+    card.addEventListener("keydown", (ev) => {
+      const k = (ev as KeyboardEvent).key;
+      if (k === "Enter" || k === " ") {
+        ev.preventDefault();
+        fn();
+      }
+    });
+  }
 
   card.appendChild(el("div", "ktop", `background:${opts.topColor}`));
 
@@ -104,9 +117,11 @@ export function renderKpisSemanales(deps: RenderKpisSemanalesDeps): KpisSemanale
   const k = buildKpisSemanales(periodo);
   if (!k) return null;
 
-  // Sin padding inline: #sw-kpis (el contenedor) ya lo aporta — el inline lo
-  // duplicaba y bloqueaba la compresión del @media (max-height:800px).
-  const row = el("div", "kpi-row", "");
+  // Semanales-2A: los KPIs son lo PRIMERO que mira el usuario → una sola línea
+  // de chips escaneables (modificador .kpi-chips, CSS scopeado a #sw-kpis para no
+  // afectar a Taller/Combustible/Cumplimiento que comparten .kpi-row/.kc).
+  // Sin padding inline: #sw-kpis (el contenedor) ya lo aporta.
+  const row = el("div", "kpi-row kpi-chips", "");
 
   row.appendChild(
     buildCard({

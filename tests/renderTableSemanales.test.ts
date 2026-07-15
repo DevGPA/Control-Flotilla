@@ -373,6 +373,34 @@ describe("renderTableSemanales", () => {
     expect(deps.tbody.querySelectorAll("tr").length).toBe(1);
   });
 
+  // Semanales-2A: lo normal se silencia, solo el hallazgo lleva pastilla.
+  it("fila 100% OK: todas las celdas de estado silenciadas (.sw-ok-muted, sin pastilla)", () => {
+    const deps = baseDeps(mkPeriodo([mk()]));
+    renderTableSemanales(deps);
+    expect(deps.tbody.querySelectorAll(".sw-ok-muted").length).toBeGreaterThanOrEqual(4);
+    // OK no debe pintar pastilla verde en la tabla semanal
+    expect(deps.tbody.querySelector(".sw-pill-ok")).toBeFalsy();
+  });
+
+  it("hallazgo Urgente conserva pastilla; carrocería/llanta no-OK conservan pastilla", () => {
+    const deps = baseDeps(
+      mkPeriodo([
+        mk({
+          aceiteRisk: "Urgente",
+          carroceriaRisk: "Revisar",
+          carroceria: "Rayón",
+          llantaRisk: "Revisar",
+        }),
+      ]),
+    );
+    renderTableSemanales(deps);
+    expect(deps.tbody.querySelector(".sw-pill-urg")).toBeTruthy(); // aceite + estado
+    expect(deps.tbody.querySelector(".sw-pill-info")).toBeTruthy(); // carrocería revisar
+    expect(deps.tbody.querySelector(".sw-pill-note")).toBeTruthy(); // llanta faltante
+    // radiador sigue OK → silenciado
+    expect(deps.tbody.querySelector(".sw-ok-muted")).toBeTruthy();
+  });
+
   it("summary refleja filter aplicado", () => {
     const deps = baseDeps(
       mkPeriodo([
