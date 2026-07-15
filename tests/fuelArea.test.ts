@@ -47,6 +47,27 @@ describe("join de área por economicoId", () => {
   });
 });
 
+describe("areaCarga: área solicitante declarada en la carga (datos.areaResponsable)", () => {
+  it("buildFuelEntries expone datos.areaResponsable como areaCarga; ausente = undefined", () => {
+    const entries = buildFuelEntries(
+      [
+        {
+          economicoId: "10",
+          tipo: "carga",
+          eventoId: "R1",
+          datos: JSON.stringify({ areaResponsable: "MANTENIMIENTO" }),
+        },
+        { economicoId: "20", tipo: "carga", eventoId: "R2" },
+      ],
+      [],
+      new Map(),
+    );
+    const byEco = new Map(entries.map((e) => [e.eco, e.areaCarga]));
+    expect(byEco.get("10")).toBe("MANTENIMIENTO");
+    expect(byEco.get("20")).toBeUndefined();
+  });
+});
+
 describe("filtro y agregación por área", () => {
   const entries = [
     entry({ eco: "10", eventoId: "A", area: "Logística", litros: 40, monto: 1000 }),

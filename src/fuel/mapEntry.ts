@@ -258,6 +258,8 @@ export function mapCargaToFuelEntry(
     tipoUnidad: clase,
     submarca: normSubmarca(unidad?.submarca),
     area: unidad?.area || undefined,
+    // Área que SOLICITÓ la carga (por-evento, de Ops); distinta de `area` (dueña de la unidad).
+    areaCarga: str(datos.areaResponsable),
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,

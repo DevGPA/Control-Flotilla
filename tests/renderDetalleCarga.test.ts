@@ -135,4 +135,17 @@ describe("renderDetalleCarga", () => {
     renderDetalleCarga(d2);
     expect(d2.body.querySelector(".fv-nophoto")).toBeTruthy();
   });
+
+  it("muestra 'Área solicitante' cuando la carga trae areaCarga (dato de Ops)", () => {
+    const d2 = deps(carga({ areaCarga: "Mantenimiento" }));
+    renderDetalleCarga(d2);
+    const info = d2.body.querySelector(".fv-revinfo");
+    expect(info?.textContent).toContain("Área solicitante");
+    expect(info?.textContent).toContain("Mantenimiento");
+  });
+
+  it("no muestra 'Área solicitante' cuando la carga no trae areaCarga", () => {
+    renderDetalleCarga(d);
+    expect(d.body.textContent).not.toContain("Área solicitante");
+  });
 });

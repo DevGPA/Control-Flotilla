@@ -62,6 +62,13 @@ export type FuelEntry = {
    * economicoId en hidratación — reasignar el área re-clasifica el gasto histórico.
    */
   area?: string;
+  /**
+   * Área que SOLICITÓ esta carga (dato por-carga de Ops `datos.areaResponsable`, texto
+   * libre p.ej. "MANTENIMIENTO"). Distinta de `area` (área DUEÑA de la unidad, `Unit.area`):
+   * una unidad puede cargar para un área distinta a la suya. MoreApp no la manda; solo
+   * llega en cargas de origen OPS. Se guarda tal cual (sin canonicalizar a AREAS_FLOTILLA).
+   */
+  areaCarga?: string;
   combustible?: string;
   /**
    * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no

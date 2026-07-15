@@ -62,9 +62,15 @@ describe("mapCarga: reporte de carga → CargaCombustible (tipo=carga)", () => {
 
   it("canoniza sucursal sucia y copia las 6 evidencias", () => {
     expect(out.sucursal).toBe("Cancun");
-    const d = JSON.parse(out.datos) as { photos: unknown[]; fuente: string };
+    const d = JSON.parse(out.datos) as {
+      photos: unknown[];
+      fuente: string;
+      areaResponsable: string;
+    };
     expect(d.photos).toHaveLength(6);
     expect(d.fuente).toBe("ops-gpa");
+    // Preservado en datos → FuelEntry.areaCarga (área que solicitó la carga).
+    expect(d.areaResponsable).toBe("LOGISTICA");
   });
 });
 

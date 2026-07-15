@@ -337,6 +337,8 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
       d.textContent = txt;
       info.appendChild(d);
     };
+    // Área que SOLICITÓ la carga (dato por-carga de Ops; distinta del área dueña de la unidad).
+    if (load.areaCarga) addLine(`🏷 Área solicitante: ${load.areaCarga}`);
     const rec = deps.recorrido;
     if (load.tipo === "solicitud" && rec) {
       const sello = rec.viaCarga ? "con carga registrada" : "sin carga registrada";
