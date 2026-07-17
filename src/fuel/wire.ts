@@ -236,7 +236,9 @@ function computeCtx(): FuelCtx {
   const preIds = new Set(preFiltered.map((e) => e.loadId));
   const preMetrics = allMetrics.filter((m) => preIds.has(m.loadId));
   const baseline = buildFleetBaseline(preMetrics, preFiltered);
-  const anomaliesPre = detectFuelAnomalies(preMetrics, baseline);
+  // `all` (histórico scopeado completo, no solo el set filtrado) para que el cross-match de
+  // económico-equivocado vea el odómetro de TODAS las unidades de la sucursal.
+  const anomaliesPre = detectFuelAnomalies(preMetrics, baseline, undefined, all);
   const findingsByLoad = groupFindingsByLoad(anomaliesPre);
   // FASE 2 — aplica el filtro por alerta (subconjunto consistente para KPIs/tabla/dashboard).
   const filtered = filter.flag

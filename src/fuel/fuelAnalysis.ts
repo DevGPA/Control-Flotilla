@@ -64,6 +64,18 @@ export const VENTANA_INFIERE_LLENO = true;
 export const KMPL_FISICO_MIN = 1.5;
 export const KMPL_FISICO_MAX = 40;
 
+/**
+ * Detector de ECONÓMICO EQUIVOCADO: cuando una carga es "huérfana" para su unidad
+ * (retroceso o salto de odómetro) pero su lectura cae EXACTAMENTE donde debería estar la
+ * de OTRA unidad de la MISMA sucursal (captura con el económico mal seleccionado, típico
+ * del piloto Operaciones-GPA). Para evitar cruzar dos camiones parecidos por coincidencia,
+ * el match exige ajuste ESTRECHO: o la lectura queda ENTRE dos cargas consecutivas de la
+ * otra unidad (bracket) muy juntas en km, o es la continuación inmediata de su última
+ * carga (cola) a pocos días y pocos km. Caso real 32→73: 172 km en 1 día.
+ */
+export const ECO_MATCH_MAX_DIAS = 12; // ventana temporal del ancla (cada lado)
+export const ECO_MATCH_GAP_KM = 700; // salto de km máximo para considerar "continuación"
+
 /** Explicación larga del motivo por el que una carga no tiene km/l (para el detalle). */
 export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
   primera_carga:
@@ -731,6 +743,7 @@ export const FUEL_RULE_LABEL: Record<string, string> = {
   "captura-km": "Captura: km",
   "captura-precio": "Captura: precio",
   "parciales-cronicos": "Parciales crónicos",
+  "economico-equivocado": "¿Económico equivocado?",
 };
 
 /**
@@ -762,10 +775,94 @@ export function worstRisk(findings: readonly { lv: RiskLevel }[]): RiskLevel {
  * discrepancia de km (odómetro retrocede / salto improbable), cargas demasiado
  * frecuentes, errores de captura, posible fuga/uso indebido sostenido.
  */
+/**
+ * Cross-match de odómetro para detectar económico equivocado. Candidatas = cargas
+ * huérfanas para su unidad (retroceso/salto vs su propio histórico). Para cada una busca,
+ * entre las OTRAS unidades de su misma sucursal (no montacargas), un ancla con km ≤ K
+ * cercano en tiempo y con salto plausible; si encaja, la lectura "pertenece" a esa unidad.
+ * Devuelve un finding por candidata con match, nombrando la unidad/placa que sí encaja.
+ */
+function detectEconomicoEquivocado(
+  entries: readonly FuelEntry[],
+  metrics: readonly FuelMetrics[],
+  cfg: FuelThresholds,
+): FuelFinding[] {
+  const out: FuelFinding[] = [];
+  const entryByLoad = new Map<string, FuelEntry>();
+  for (const e of entries) entryByLoad.set(e.loadId, e);
+
+  // Histórico de odómetro por unidad (cargas no-montacargas con km fiable), ordenado.
+  type OdoLoad = { fecha: string; km: number; placa: string; sucursal: string };
+  const odoByUnit = new Map<string, OdoLoad[]>();
+  for (const e of entries) {
+    if (e.tipo !== "carga" || e.esMontacargas) continue;
+    if (typeof e.km !== "number" || !Number.isFinite(e.km)) continue;
+    pushInto(odoByUnit, e.eco, {
+      fecha: e.fecha,
+      km: e.km,
+      placa: e.placa ?? "",
+      sucursal: e.sucursal ?? "",
+    });
+  }
+  for (const arr of odoByUnit.values()) arr.sort((a, b) => toTime(a) - toTime(b));
+
+  for (const m of metrics) {
+    // Candidata: huérfana para SU unidad (retroceso o salto vs su propio odómetro).
+    const esHuerfana =
+      m.kmDesdeAnterior != null &&
+      (m.kmDesdeAnterior < 0 || m.kmDesdeAnterior > cfg.MAX_KM_JUMP);
+    if (!esHuerfana) continue;
+    const c = entryByLoad.get(m.loadId);
+    if (!c || c.esMontacargas || typeof c.km !== "number") continue;
+    const K = c.km;
+    const D = toTime({ fecha: c.fecha });
+    const S = c.sucursal ?? "";
+
+    // Busca la OTRA unidad (misma sucursal) donde K encaje ESTRECHO: bracket (entre dos
+    // cargas consecutivas de Y muy juntas) o cola (continuación inmediata de su última).
+    let best: { eco: string; placa: string; gapKm: number; bracket: boolean } | null = null;
+    for (const [ecoY, loadsY] of odoByUnit) {
+      if (ecoY === c.eco) continue;
+      const mismaSuc = loadsY.filter((y) => y.sucursal === S); // no cruzar sucursales
+      // Ancla inferior: carga de Y con km ≤ K más cercana por debajo, ≤ pocos días de D.
+      let low: OdoLoad | null = null;
+      // Ancla superior: carga de Y con km ≥ K más cercana por arriba, ≤ pocos días de D.
+      let high: OdoLoad | null = null;
+      for (const y of mismaSuc) {
+        const dias = Math.abs(D - toTime({ fecha: y.fecha })) / 86400000;
+        if (dias > ECO_MATCH_MAX_DIAS) continue;
+        if (y.km <= K && (!low || y.km > low.km)) low = y;
+        if (y.km >= K && (!high || y.km < high.km)) high = y;
+      }
+      if (!low) continue; // sin ancla inferior cercana no hay match
+      const gapLow = K - low.km;
+      if (gapLow > ECO_MATCH_GAP_KM) continue; // demasiado lejos por debajo → no es continuación
+      // Bracket: además una carga por arriba cercana en km (K cae DENTRO del tramo real de Y).
+      const bracket = high != null && high.km - low.km <= 2 * ECO_MATCH_GAP_KM;
+      // Cola: K es (casi) el tope de Y — no hay carga por arriba dentro de la ventana.
+      const cola = high == null;
+      if (!bracket && !cola) continue; // hay algo por arriba pero lejos → ajuste flojo, se descarta
+      if (!best || gapLow < best.gapKm)
+        best = { eco: ecoY, placa: low.placa, gapKm: gapLow, bracket };
+    }
+    if (best)
+      out.push({
+        cat: "Combustible",
+        text: `¿Económico equivocado? El odómetro ${K.toLocaleString("es-MX")} km encaja con la unidad ${best.eco}${best.placa ? ` (${best.placa})` : ""} — verifica la captura`,
+        lv: "Revisar",
+        key: `Fuel:economico-equivocado:${m.loadId}`,
+        loadId: m.loadId,
+        eco: m.eco,
+      });
+  }
+  return out;
+}
+
 export function detectFuelAnomalies(
   metrics: readonly FuelMetrics[],
   baseline: FleetBaseline,
   cfg: FuelThresholds = DEFAULT_FUEL_THRESHOLDS,
+  entries?: readonly FuelEntry[],
 ): FuelFinding[] {
   const out: FuelFinding[] = [];
   const push = (m: FuelMetrics, rule: string, text: string, lv: RiskLevel) =>
@@ -947,5 +1044,11 @@ export function detectFuelAnomalies(
         );
     }
   }
+
+  // 10. Económico equivocado (cross-match de odómetro entre unidades de la misma sucursal).
+  // Requiere `entries` (km/fecha/sucursal/placa de TODAS las unidades) — opcional para no
+  // romper llamadas que solo pasan métricas.
+  if (entries && entries.length) out.push(...detectEconomicoEquivocado(entries, metrics, cfg));
+
   return out;
 }
