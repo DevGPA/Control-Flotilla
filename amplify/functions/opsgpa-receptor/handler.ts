@@ -12,7 +12,7 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/opsgpa-receptor";
 import type { Schema } from "../../data/resource";
-import { nombreEvidencia } from "../../../src/opsgpa/contract";
+import { nombreEvidencia, inputSinCampos } from "../../../src/opsgpa/contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "../../../src/opsgpa/contract";
 import {
   toOpsRecord,
@@ -85,10 +85,17 @@ function isConditionalCheckFailed(errors: GraphqlErrors): boolean {
   );
 }
 
-/** Upsert idempotente create→update (mismo patrón que process* del webhook). */
+/**
+ * Upsert idempotente create→update (mismo patrón que process* del webhook).
+ * `omitirEnUpdate`: campos que se escriben SOLO al CREAR (no se pisan en unidades ya
+ * existentes). Se usa con `["sucursal"]` en Unit — el admin de FC manda sobre la
+ * sucursal (unidades que se trasladan entre sucursales); la ingesta ya no la revierte
+ * (2026-07-17, decisión "sucursal editable-admin").
+ */
 async function upsert(
   modelo: "CargaCombustible" | "Unit" | "Semanal" | "Checklist",
   input: Record<string, unknown>,
+  omitirEnUpdate: string[] = [],
 ): Promise<void> {
   const client = await getDataClient();
   const model = client.models[modelo] as unknown as {
@@ -98,7 +105,7 @@ async function upsert(
   const created = await model.create(input as never);
   if (created.errors) {
     if (isConditionalCheckFailed(created.errors)) {
-      const upd = await model.update(input as never);
+      const upd = await model.update(inputSinCampos(input, omitirEnUpdate) as never);
       if (upd.errors) throw new Error(`${modelo}.update: ${JSON.stringify(upd.errors)}`);
     } else {
       throw new Error(`${modelo}.create: ${JSON.stringify(created.errors)}`);
@@ -197,11 +204,11 @@ async function ejecutarBackfill(req: BackfillRequest): Promise<BackfillResumen> 
     persistirCarga: async (input: CargaCombustibleInput) =>
       upsert("CargaCombustible", input as unknown as Record<string, unknown>),
     persistirSemanal: async (unit: UnitInput, semanal: SemanalInput) => {
-      await upsert("Unit", unit as unknown as Record<string, unknown>);
+      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     },
     persistirChecklist: async (unit, checklist) => {
-      await upsert("Unit", unit as unknown as Record<string, unknown>);
+      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
     },
     persistirValidacion: (input) => upsertValidacion(input),
@@ -296,13 +303,13 @@ export const handler = async (
     // el mensual de MoreApp — aparece en Inspecciones con riesgo/hallazgos/llantas).
     if ((plano as OpsClRecord).tipo === "mensual") {
       const { unit, checklist } = mapMensual(plano as OpsClRecord, resolver);
-      await upsert("Unit", unit as unknown as Record<string, unknown>);
+      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
       return res(200, { folio: evento.folio, evento: evento.evento, destino: "Checklist/mensual" });
     }
     // CL semanal (subtipos desconocidos → throw de mapSemanal → 422 visible en DLQ).
     const { unit, semanal } = mapSemanal(plano as OpsClRecord, resolver);
-    await upsert("Unit", unit as unknown as Record<string, unknown>);
+    await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
     await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     return res(200, { folio: evento.folio, evento: evento.evento, destino: "Semanal" });
   } catch (e) {

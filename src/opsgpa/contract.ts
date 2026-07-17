@@ -182,6 +182,22 @@ export interface FcPhotoRef {
 export type EvidenceResolver = (opsKey: string) => string;
 
 /**
+ * Devuelve una COPIA del input sin las claves indicadas (no muta el original).
+ * Se usa en el upsert idempotente para el path de UPDATE: campos que se escriben
+ * SOLO al crear y no deben pisarse en registros existentes (p.ej. `sucursal` en Unit
+ * — el admin de FC manda; ver 2026-07-17 "sucursal editable-admin").
+ */
+export function inputSinCampos(
+  input: Record<string, unknown>,
+  campos: readonly string[],
+): Record<string, unknown> {
+  if (!campos.length) return { ...input };
+  const out = { ...input };
+  for (const k of campos) delete out[k];
+  return out;
+}
+
+/**
  * Nombre determinístico de una evidencia en el bucket de FC (patrón hermano de moreapp_*).
  * Identidad por módulo: combustible → economico; checklist → placas.
  *

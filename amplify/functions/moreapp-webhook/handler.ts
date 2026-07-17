@@ -499,7 +499,10 @@ async function processMensual(
   const uCreated = await client.models.Unit.create(unitInput);
   if (uCreated.errors) {
     if (isConditionalCheckFailed(uCreated.errors)) {
-      const uUpd = await client.models.Unit.update(unitInput);
+      // sucursal editable-admin (2026-07-17): NO pisar sucursal de una unidad ya
+      // existente — el admin de FC manda (unidades trasladadas entre sucursales).
+      const { sucursal: _s, ...unitUpdate } = unitInput;
+      const uUpd = await client.models.Unit.update(unitUpdate);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
@@ -595,7 +598,10 @@ async function processSemanal(
   const uCreated = await client.models.Unit.create(unitInput);
   if (uCreated.errors) {
     if (isConditionalCheckFailed(uCreated.errors)) {
-      const uUpd = await client.models.Unit.update(unitInput);
+      // sucursal editable-admin (2026-07-17): NO pisar sucursal de una unidad ya
+      // existente — el admin de FC manda (unidades trasladadas entre sucursales).
+      const { sucursal: _s, ...unitUpdate } = unitInput;
+      const uUpd = await client.models.Unit.update(unitUpdate);
       if (uUpd.errors) throw new Error(`Unit.update: ${JSON.stringify(uUpd.errors)}`);
     } else {
       throw new Error(`Unit.create: ${JSON.stringify(uCreated.errors)}`);
