@@ -47,6 +47,9 @@ export interface UnitInput {
   economicoId?: string;
   marca?: string;
   sucursal?: string;
+  // El área NO viene en el checklist; el receptor la estampa desde el catálogo de Ops
+  // (CAT#VEHICLE) antes del upsert. A diferencia de sucursal, Ops manda (create+update).
+  area?: string;
 }
 
 /** Input idempotente para Semanal ([tenantId, periodoId, unitUid]). */

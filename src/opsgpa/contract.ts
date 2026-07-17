@@ -197,6 +197,29 @@ export function inputSinCampos(
   return out;
 }
 
+// Vocabulario de áreas (decisión 2026-07-17 "área automática desde Ops"): se adoptan
+// las 5 de Ops. El catálogo CAT#VEHICLE de Operaciones-GPA guarda `responsable` en
+// MAYÚSCULAS sin acentos; FC lo muestra en grafía bonita. Fuente ÚNICA del área: el
+// catálogo (la areaResponsable por-carga viene vacía ~80% → no sirve para mantener).
+const AREA_OPS: Record<string, string> = {
+  LOGISTICA: "Logística",
+  ALMACEN: "Almacén",
+  "SERVICIO TECNICO": "Servicio Técnico",
+  MANTENIMIENTO: "Mantenimiento",
+  ADMINISTRACION: "Administración",
+};
+
+/** Normaliza `CAT#VEHICLE.responsable` (Ops) a la grafía de FC; "" si es desconocida. */
+export function normalizarArea(responsable: unknown): string {
+  return (
+    AREA_OPS[
+      String(responsable ?? "")
+        .trim()
+        .toUpperCase()
+    ] ?? ""
+  );
+}
+
 /**
  * Nombre determinístico de una evidencia en el bucket de FC (patrón hermano de moreapp_*).
  * Identidad por módulo: combustible → economico; checklist → placas.
