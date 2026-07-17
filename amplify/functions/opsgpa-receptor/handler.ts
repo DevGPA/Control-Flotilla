@@ -12,7 +12,7 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/opsgpa-receptor";
 import type { Schema } from "../../data/resource";
-import { nombreEvidencia, inputSinCampos } from "../../../src/opsgpa/contract";
+import { nombreEvidencia, inputSinCampos, normalizarArea } from "../../../src/opsgpa/contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "../../../src/opsgpa/contract";
 import {
   toOpsRecord,
@@ -113,6 +113,48 @@ async function upsert(
   }
 }
 
+// ── Área de la unidad desde el catálogo de Ops (CAT#VEHICLE.responsable) ──
+// Fuente ÚNICA y completa del área: la `areaResponsable` por-carga viene vacía ~80%,
+// así que NO sirve para mantener el campo. El catálogo tiene 100% de cobertura. Se
+// cachea por invocación (1 Query a Ops por contenedor, reutilizada en todo el batch del
+// backfill). Ops manda sobre el área: se escribe en create Y update (a diferencia de
+// sucursal, que solo se escribe en create). Decisión 2026-07-17 "área automática".
+let areasOps: Map<string, string> | null = null;
+const ecoNorm = (e: unknown): string =>
+  String(e ?? "")
+    .trim()
+    .replace(/^0+/, "") || "0";
+async function cargarAreasOps(): Promise<Map<string, string>> {
+  if (areasOps) return areasOps;
+  const m = new Map<string, string>();
+  let cursor: Record<string, unknown> | undefined;
+  do {
+    const r = await ddb.send(
+      new QueryCommand({
+        TableName: OPS_TABLE,
+        KeyConditionExpression: "PK = :p",
+        ExpressionAttributeValues: { ":p": { S: "CAT#VEHICLE" } },
+        ExclusiveStartKey: cursor as never,
+      }),
+    );
+    for (const raw of r.Items ?? []) {
+      const it = unmarshall(raw);
+      const area = normalizarArea(it.responsable);
+      if (area) m.set(ecoNorm(it.economico), area);
+    }
+    cursor = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (cursor);
+  areasOps = m;
+  return m;
+}
+
+/** Estampa `unit.area` desde el catálogo de Ops (solo si Ops la tiene; nunca la vacía). */
+async function estampaArea(unit: UnitInput): Promise<UnitInput> {
+  const area = (await cargarAreasOps()).get(ecoNorm(unit.economicoId));
+  if (area) unit.area = area;
+  return unit;
+}
+
 /**
  * Upsert de ValidacionCarga con REGLA DE NO-PISADO: si ya existe un veredicto y NO fue
  * escrito por el puente (fuenteDeteccion ≠ "ops-gpa"), es de un humano de tesorería en
@@ -204,10 +246,12 @@ async function ejecutarBackfill(req: BackfillRequest): Promise<BackfillResumen> 
     persistirCarga: async (input: CargaCombustibleInput) =>
       upsert("CargaCombustible", input as unknown as Record<string, unknown>),
     persistirSemanal: async (unit: UnitInput, semanal: SemanalInput) => {
+      await estampaArea(unit);
       await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     },
     persistirChecklist: async (unit, checklist) => {
+      await estampaArea(unit);
       await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
     },
@@ -303,12 +347,14 @@ export const handler = async (
     // el mensual de MoreApp — aparece en Inspecciones con riesgo/hallazgos/llantas).
     if ((plano as OpsClRecord).tipo === "mensual") {
       const { unit, checklist } = mapMensual(plano as OpsClRecord, resolver);
+      await estampaArea(unit);
       await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
       return res(200, { folio: evento.folio, evento: evento.evento, destino: "Checklist/mensual" });
     }
     // CL semanal (subtipos desconocidos → throw de mapSemanal → 422 visible en DLQ).
     const { unit, semanal } = mapSemanal(plano as OpsClRecord, resolver);
+    await estampaArea(unit);
     await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
     await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     return res(200, { folio: evento.folio, evento: evento.evento, destino: "Semanal" });
