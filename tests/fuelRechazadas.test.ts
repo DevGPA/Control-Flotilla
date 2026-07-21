@@ -9,6 +9,7 @@ import {
 import type { FuelEntry } from "../src/fuel/types";
 import { buildKpisFuel } from "../src/fuel/renderKpis";
 import { computeFuelMetrics, buildFleetBaseline } from "../src/fuel/fuelAnalysis";
+import { renderDetalleCarga } from "../src/fuel/renderDetalleCarga";
 
 const ROW = {
   economicoId: "45",
@@ -172,5 +173,43 @@ describe("KPI Rechazadas sin triage", () => {
 
   it("la tarjeta NO aparece cuando no hay rechazadas", () => {
     expect(kpis([OK_OPS]).find((c) => c.key === "rechazadas")).toBeUndefined();
+  });
+});
+
+describe("detalle: triage de rechazada", () => {
+  it("admin ve el banner de triage con botón 'No contar' que dispara onAnular", () => {
+    const body = document.createElement("div");
+    let anulada = false;
+    renderDetalleCarga({
+      body,
+      load: VIGENTE_RECHAZADA,
+      resolveUrl: () => "",
+      canWrite: true,
+      onValidate: () => {},
+      esAdmin: true,
+      onAnular: () => {
+        anulada = true;
+      },
+    });
+    expect(body.textContent).toContain("Rechazada en Operaciones-GPA — pendiente de triage");
+    const btn = [...body.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("No contar"),
+    );
+    expect(btn).toBeTruthy();
+    btn!.click();
+    expect(anulada).toBe(true);
+  });
+
+  it("sin admin no hay banner de triage", () => {
+    const body = document.createElement("div");
+    renderDetalleCarga({
+      body,
+      load: VIGENTE_RECHAZADA,
+      resolveUrl: () => "",
+      canWrite: true,
+      onValidate: () => {},
+      esAdmin: false,
+    });
+    expect(body.textContent).not.toContain("pendiente de triage");
   });
 });

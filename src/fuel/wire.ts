@@ -796,7 +796,13 @@ function renderCurrentDetail(): void {
     canWrite: canWrite(),
     onValidate: handleValidate,
     esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,
-    onAnular: () => anularCarga(load),
+    onAnular: () =>
+      anularCarga(
+        load,
+        load.review?.verdictGlobal === "rechazada"
+          ? "Rechazada en Operaciones-GPA — registro inválido (error de captura)"
+          : undefined,
+      ),
     onRestaurar: () => void restaurarCarga(load),
   });
 }
@@ -808,10 +814,11 @@ function etiquetaDe(e: FuelEntry): string {
 }
 
 /** Abre el flujo de anulación de una carga/solicitud (solo admin; enforcement en AppSync). */
-function anularCarga(load: FuelEntry): void {
+function anularCarga(load: FuelEntry, motivoInicial?: string): void {
   openAnularModal({
     etiqueta: etiquetaDe(load),
     confirmText: load.eco,
+    motivoInicial,
     onConfirm: async (motivo) => {
       if (!window.__anulaciones) throw new Error("sin sesión cloud");
       const refId = refIdCombustible(load.loadId);

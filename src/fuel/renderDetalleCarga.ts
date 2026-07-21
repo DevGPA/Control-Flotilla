@@ -313,6 +313,33 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
         banner.appendChild(rest);
       }
       body.appendChild(banner);
+    } else if (deps.esAdmin && deps.onAnular && load.review?.verdictGlobal === "rechazada") {
+      // Triage de rechazada en origen (Ops): la decisión es humana — no contar (anular) o
+      // validar el gasto real con el panel de evidencias de abajo (spec 2026-07-21).
+      const banner = document.createElement("div");
+      banner.style.cssText =
+        "display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--ln);border-left:4px solid var(--R);border-radius:8px;background:var(--bg3)";
+      const txt = document.createElement("div");
+      txt.style.cssText = "flex:1;min-width:200px;font-size:12px";
+      const t1 = document.createElement("div");
+      t1.style.fontWeight = "700";
+      t1.textContent = "🚫 Rechazada en Operaciones-GPA — pendiente de triage";
+      const t2 = document.createElement("div");
+      t2.style.cssText = "color:var(--s2);margin-top:2px";
+      t2.textContent =
+        'Si fue error de captura, exclúyela con "No contar". Si el gasto fue real, valida las evidencias abajo — tu veredicto tiene la última palabra.';
+      txt.appendChild(t1);
+      txt.appendChild(t2);
+      banner.appendChild(txt);
+      const noContar = document.createElement("button");
+      noContar.className = "fv-btn";
+      noContar.style.cssText = "color:var(--R);border-color:var(--R)";
+      noContar.textContent = "⛔ No contar…";
+      noContar.title =
+        'Crea la anulación estándar (reversible): fuera de KPIs y cálculos, visible como "Rechazada · no contada"';
+      noContar.addEventListener("click", () => deps.onAnular!());
+      banner.appendChild(noContar);
+      body.appendChild(banner);
     } else if (deps.esAdmin && deps.onAnular) {
       const bar = document.createElement("div");
       bar.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:6px";

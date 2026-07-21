@@ -64,6 +64,8 @@ export type AnularModalOpts = {
   confirmText: string;
   /** Persiste la anulación. Si lanza, el modal muestra el error y permanece abierto. */
   onConfirm: (motivo: string) => Promise<void>;
+  /** Texto precargado del motivo (p.ej. triage de rechazadas de Ops); el admin puede editarlo. */
+  motivoInicial?: string;
 };
 
 /** Modal de anulación: motivo OBLIGATORIO + confirmación escribiendo `confirmText`. */
@@ -96,6 +98,7 @@ export function openAnularModal(opts: AnularModalOpts): void {
   motivo.placeholder = "Ej.: carga duplicada — el chofer registró dos veces el mismo ticket";
   motivo.style.cssText =
     "width:100%;box-sizing:border-box;font-size:12px;padding:7px;border:1px solid var(--ln);border-radius:7px;background:var(--bg);color:var(--s1);resize:vertical";
+  if (opts.motivoInicial) motivo.value = opts.motivoInicial;
   c.appendChild(motivo);
 
   const lblC = document.createElement("label");
