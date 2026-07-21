@@ -243,7 +243,7 @@ const schema = a
       .model({
         tenantId: a.string().required(),
         loadId: a.string().required(),
-        // 'ok' | 'discrepancia' | 'pendiente'
+        // 'ok' | 'discrepancia' | 'pendiente' | 'rechazada' (rechazo en origen Ops-GPA)
         verdictGlobal: a.string(),
         porEvidencia: a.json(), // { odometro:'ok', medidor:'discrepancia', ... }
         revisadoPor: a.string(),

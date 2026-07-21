@@ -16,8 +16,8 @@ export type FuelPhoto = {
 /** Veredicto de validación por evidencia (semáforo del panel lado-a-lado). */
 export type FuelVerdict = "ok" | "warn" | "bad" | "pendiente";
 
-/** Veredicto global de una carga revisada. */
-export type FuelVerdictGlobal = "ok" | "discrepancia" | "pendiente";
+/** Veredicto global de una carga revisada. "rechazada" = rechazo en origen (Ops-GPA). */
+export type FuelVerdictGlobal = "ok" | "discrepancia" | "pendiente" | "rechazada";
 
 /** Revisión humana + (Fase E) lectura IA de una carga. Espejo de ValidacionCarga. */
 export type FuelReview = {
@@ -31,7 +31,7 @@ export type FuelReview = {
   nivelDetectado?: string;
   litrosDetectado?: number;
   confianzaVision?: number;
-  fuenteDeteccion?: "manual" | "ia";
+  fuenteDeteccion?: "manual" | "ia" | "ops-gpa";
 };
 
 /**

@@ -174,7 +174,12 @@ export function normSubmarca(s: string | null | undefined): string | undefined {
   return v || undefined;
 }
 
-const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>(["ok", "discrepancia", "pendiente"]);
+const VERDICTS_GLOBAL = new Set<FuelVerdictGlobal>([
+  "ok",
+  "discrepancia",
+  "pendiente",
+  "rechazada",
+]);
 const VERDICTS = new Set<FuelVerdict>(["ok", "warn", "bad", "pendiente"]);
 
 /** Clasifica una foto (por su dataName/col de MoreApp) a un tipo de evidencia. */
@@ -212,7 +217,12 @@ function mapReview(v: ValidacionRow | undefined): FuelReview | undefined {
     nivelDetectado: v.nivelDetectado ?? undefined,
     litrosDetectado: num(v.litrosDetectado),
     confianzaVision: num(v.confianzaVision),
-    fuenteDeteccion: v.fuenteDeteccion === "ia" ? "ia" : v.fuenteDeteccion ? "manual" : undefined,
+    fuenteDeteccion:
+      v.fuenteDeteccion === "ia" || v.fuenteDeteccion === "ops-gpa"
+        ? v.fuenteDeteccion
+        : v.fuenteDeteccion
+          ? "manual"
+          : undefined,
   };
 }
 
