@@ -101,6 +101,36 @@ describe("mapSemanal: CL real de Ops → Unit + Semanal de Fleet Command", () =>
     expect(datos.fuente).toBe("ops-gpa");
   });
 
+  it("rescata obs y golpes (foto+desc) del semanal — S-1/S-2 del addendum", () => {
+    // Forma real de prod (2026-07-17): obs con texto de mantenimiento y golpes
+    // como array de {foto, desc} (o key directa). Antes ambos se descartaban.
+    const conDanios: OpsClRecord = {
+      ...REAL_CL,
+      obs: "ya se reporto zumbido del diferencial, cambio de suspension",
+      answers: {
+        ...REAL_CL.answers,
+        golpes: [
+          { foto: "CL/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg", desc: "Abolladura" },
+          "CL/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp",
+        ],
+      },
+    };
+    const d = JSON.parse(mapSemanal(conDanios, resolve).semanal.datos) as {
+      obs: string;
+      golpes: Array<{ fname: string; desc?: string }>;
+      photos: string[];
+    };
+    expect(d.obs).toBe("ya se reporto zumbido del diferencial, cambio de suspension");
+    expect(d.golpes).toEqual([
+      { fname: "opsgpa_CL_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_jpg", desc: "Abolladura" },
+      { fname: "opsgpa_CL_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_webp" },
+    ]);
+    // Las fotos de daño entran a la galería (photos), sin duplicarse.
+    expect(d.photos).toContain("opsgpa_CL_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_jpg");
+    expect(d.photos).toContain("opsgpa_CL_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb_webp");
+    expect(d.photos.filter((p) => p.includes("aaaaaaaa")).length).toBe(1);
+  });
+
   it("rechaza mensual (no implementado) y registros sin placa", () => {
     expect(() => mapSemanal({ ...REAL_CL, tipo: "mensual" }, resolve)).toThrow(/no implementado/);
     expect(() => mapSemanal({ ...REAL_CL, placas: "" }, resolve)).toThrow(/sin placas/);

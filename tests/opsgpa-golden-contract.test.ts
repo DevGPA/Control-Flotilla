@@ -68,6 +68,14 @@ describe("contrato compartido: los golden del publisher pasan por el receptor", 
     expect(datos.aceite).toBe("Nivel Optimo");
     expect(datos.radiador).toBe("Nivel Optimo");
     expect(datos.risk).toBe("OK");
+    // S-1/S-2 (addendum 2026-07-17): obs y golpes {foto,desc} se preservan.
+    expect(datos.obs).toBe("Ninguna");
+    expect(datos.golpes).toEqual([
+      { fname: expect.stringContaining("55555555"), desc: "Abolladura" },
+      { fname: expect.stringContaining("66666666"), desc: "Rayon" },
+    ]);
+    // fotoKm + f_frente_d + f_aceite + f_radiador + 2 golpes + firma = 7 fotos.
+    expect((datos.photos as string[]).length).toBe(7);
   });
 
   it("semanal: bajar un fluido vital escala el estatus (protege el key-rename del envelope)", () => {

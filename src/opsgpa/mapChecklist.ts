@@ -103,6 +103,22 @@ export function mapSemanal(
   for (const [, v] of Object.entries(answers)) {
     if (esKeyEvidencia(v)) photos.push(resolveFname(v));
   }
+  // Golpes: daños con foto + DESCRIPCIÓN (answers.golpes = [{foto,desc}] o key directa).
+  // Antes el array se descartaba COMPLETO (S-1/S-2, addendum 2026-07-17): se perdían las
+  // fotos del daño y su descripción ("Abolladura", "Rayon"…). La foto entra a la galería
+  // y el desc viaja en datos.golpes.
+  const golpes: Array<{ fname: string; desc?: string }> = [];
+  for (const item of Array.isArray(answers.golpes) ? answers.golpes : []) {
+    if (esKeyEvidencia(item)) {
+      golpes.push({ fname: resolveFname(item) });
+    } else if (item && typeof item === "object") {
+      const o = item as Record<string, unknown>;
+      const key = Object.values(o).find(esKeyEvidencia);
+      const desc = typeof o.desc === "string" && o.desc.trim() ? o.desc.trim() : undefined;
+      if (key) golpes.push({ fname: resolveFname(key), ...(desc ? { desc } : {}) });
+    }
+  }
+  photos.push(...golpes.map((g) => g.fname));
   if (esKeyEvidencia(ops.firma)) photos.push(resolveFname(ops.firma));
 
   const economicoId = String(ops.economico ?? "").trim() || undefined;
@@ -127,6 +143,10 @@ export function mapSemanal(
     // Folio visible en el front (mismo campo que usa el flujo MoreApp).
     moreappId: opsEventoId(ops.id),
     photos,
+    // Observación del chofer (S-1): el mensual ya la guardaba; el semanal la tiraba.
+    obs: String(ops.obs ?? ""),
+    // Daños con descripción (S-2): [{fname, desc?}] — la foto también va en photos.
+    ...(golpes.length ? { golpes } : {}),
     fuente: OPS_SOURCE,
     opsId: ops.id,
     opsStatus: ops.status ?? null,
