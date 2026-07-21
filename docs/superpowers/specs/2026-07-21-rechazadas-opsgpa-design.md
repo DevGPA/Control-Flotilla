@@ -73,6 +73,16 @@ En el detalle de una **rechazada vigente**, el admin ve dos acciones:
 KPI nueva tarjeta: **"Rechazadas sin triage"** (conteo de la derivación §3.1) en los KPIs del
 módulo — el radar para que ninguna se quede sumando por olvido.
 
+**Visibilidad post-triage (decisión 2026-07-21):** anular no debe borrar la evidencia visible
+del rechazo. La tabla principal muestra las anuladas **con veredicto rechazada** como fila
+atenuada (gris, monto tachado) con pill **"Rechazada · no contada"** y motivo/quién/cuándo en
+tooltip y detalle — visible para todos los roles. En `wire.ts` el universo de la TABLA pasa a
+`vigentes + anuladas(rechazadas)`; el de CÁLCULO no cambia (sigue siendo solo vigentes), así
+que KPIs, rendimientos, alertas y exportes Excel/PDF no las incluyen. Las demás anuladas
+(duplicados, fantasmas) siguen ocultas como hoy; la vista "Anuladas" del filtro no cambia. El
+filtro "Rechazada" muestra ambas (pendientes de triage y no contadas); el contador de triage
+solo cuenta las pendientes.
+
 ### 3.5 Backfill único
 
 Script idempotente (en `scripts/`) que reclasifica las `ValidacionCarga` existentes con
@@ -95,6 +105,8 @@ el contador y se tría una sola vez.
 - **mapEntry:** `fuenteDeteccion="ops-gpa"` sobrevive la hidratación; `verdictGlobal="rechazada"`
   pasa la validación de `VERDICTS_GLOBAL`; valores desconocidos siguen cayendo a `"pendiente"`.
 - **Derivación de triage:** rechazada vigente cuenta; anulada o con veredicto manual encima no.
+- **Universo de tabla:** las anuladas-rechazadas aparecen en las filas pero NO en KPIs, gasto,
+  rendimientos ni exportes; las anuladas sin veredicto rechazada siguen fuera de la tabla.
 - **UI:** pill/filtro/orden con el veredicto nuevo (tests de tabla existentes extendidos).
 
 ## 4. Fuera de alcance (a propósito)
@@ -110,4 +122,7 @@ el contador y se tría una sola vez.
 ## 5. Interim
 
 Mientras esto no se implemente, el flujo manual vigente: anular la carga rechazada desde el
-detalle ("⛔ Anular registro…", admin) con motivo. Aplicado al caso unidad 45 del 2026-07-20.
+detalle ("⛔ Anular registro…", admin) con motivo. Limitación conocida (y origen del ajuste de
+visibilidad de §3.4): la anulada solo queda consultable en la vista "Anuladas" del filtro
+(visible para todos, pero hay que ir a buscarla), no en la vista default. Aplica al caso
+unidad 45 del 2026-07-20.
