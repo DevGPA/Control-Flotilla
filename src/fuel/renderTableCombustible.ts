@@ -45,6 +45,7 @@ export type FuelVerdictFilter =
   | "discrepancia"
   | "pendiente"
   | "historico"
+  | "rechazada"
   | "anulada";
 export type FuelSortCol =
   | "_idx"
@@ -161,6 +162,7 @@ export function filterAndSortFuel(
     return av - bv;
   };
   const VERDICT_RANK: Record<FuelDisplayVerdict, number> = {
+    rechazada: 4,
     discrepancia: 3,
     pendiente: 2,
     ok: 1,
@@ -238,6 +240,7 @@ const VERDICT_PILL: Record<FuelDisplayVerdict, { cls: string; txt: string }> = {
   discrepancia: { cls: "sw-pill-urg", txt: "Discrepancia" },
   pendiente: { cls: "sw-pill-rev", txt: "Pendiente" },
   historico: { cls: "sw-pill-hist", txt: "Histórico" },
+  rechazada: { cls: "sw-pill-rej", txt: "Rechazada · Ops" },
 };
 
 export type RenderTableCombustibleDeps = {
@@ -362,11 +365,12 @@ function verdictCell(
 ): HTMLElement {
   // Registro anulado (tombstone admin): pill gris con quién/cuándo y el motivo en tooltip.
   if (e.anulada) {
+    const rechazada = e.review?.verdictGlobal === "rechazada";
     const wrap = document.createElement("div");
     wrap.className = "sw-valcell";
     const span = document.createElement("span");
-    span.className = "sw-pill sw-pill-hist";
-    span.textContent = "Anulada";
+    span.className = rechazada ? "sw-pill sw-pill-rej" : "sw-pill sw-pill-hist";
+    span.textContent = rechazada ? "Rechazada · no contada" : "Anulada";
     span.title = e.anulada.motivo || "Sin motivo registrado";
     wrap.appendChild(span);
     const sub = document.createElement("small");
@@ -379,11 +383,14 @@ function verdictCell(
     wrap.appendChild(sub);
     return wrap;
   }
+  const p = pill(v);
+  // Origen visible: aprobación hecha EN Ops (fuenteDeteccion del puente), no por tesorería.
+  if (v === "ok" && e.review?.fuenteDeteccion === "ops-gpa") p.textContent = "Validado · Ops";
   const rev = e.review?.revisadoPor;
-  if (!rev || rev === "ui") return pill(v);
+  if (!rev || rev === "ui") return p;
   const wrap = document.createElement("div");
   wrap.className = "sw-valcell";
-  wrap.appendChild(pill(v));
+  wrap.appendChild(p);
   const sub = document.createElement("small");
   sub.className = "sw-valby";
   const nombre = nombreFn ? nombreFn(rev) : (rev.split("@")[0] ?? rev);
@@ -436,13 +443,30 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     const v = displayVerdictOf(e);
     const tr = document.createElement("tr");
     tr.dataset.loadId = e.loadId;
-    if (v === "discrepancia") tr.classList.add("sw-urg");
+    // "no contada" = rechazada Y anulada (fuera de cálculo, pero se deja visible con monto tachado).
+    const noContada = !!e.anulada && e.review?.verdictGlobal === "rechazada";
+    if (noContada) tr.classList.add("sw-nocontada");
+    else if (v === "rechazada") tr.classList.add("sw-rej");
+    else if (v === "discrepancia") tr.classList.add("sw-urg");
     else if (v === "pendiente") tr.classList.add("sw-rev");
     // "historico" no resalta la fila: estado neutro, fuera del radar de control.
     tr.tabIndex = 0;
 
     const kmpl = kmplByLoad.get(e.loadId);
     const tcap = duracionCapturaMin(e);
+    const montoTxt = esSol
+      ? e.montoEstimado != null
+        ? PESO.format(e.montoEstimado)
+        : "—"
+      : e.monto != null
+        ? PESO.format(e.monto)
+        : "—";
+    let montoCell: string | HTMLElement = montoTxt;
+    if (noContada) {
+      const s = document.createElement("s");
+      s.textContent = montoTxt;
+      montoCell = s;
+    }
     // La submarca viaja en la entry (join en hidratación) — visible en cargas Y solicitudes,
     // para que auditoría vea el tipo de unidad por fila.
     const cells: (string | HTMLElement)[] = [
@@ -459,13 +483,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
         : e.litros != null
           ? `${NUM.format(Math.round(e.litros * 10) / 10)} L`
           : "—",
-      esSol
-        ? e.montoEstimado != null
-          ? PESO.format(e.montoEstimado)
-          : "—"
-        : e.monto != null
-          ? PESO.format(e.monto)
-          : "—",
+      montoCell,
       esSol
         ? recLabel(recorridosByLoad?.get(e.loadId))
         : kmplCell(

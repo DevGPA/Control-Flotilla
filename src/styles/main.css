@@ -394,6 +394,12 @@
 :root[data-theme="dark"] .sw-table tr.sw-rev:hover td {
   background: var(--bg3);
 }
+:root[data-theme="dark"] .sw-table tr.sw-rej td {
+  background: transparent;
+}
+:root[data-theme="dark"] .sw-table tr.sw-rej:hover td {
+  background: var(--bg3);
+}
 
 /* Modal overlays (00000055 se vuelve casi invisible en dark porque ya es oscuro) */
 :root[data-theme="dark"] .pm-overlay,
@@ -5066,6 +5072,16 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 .sw-table tr.sw-rev:hover td {
   background: #fef3c7;
 }
+.sw-table tr.sw-rej td {
+  background: #fff5f5;
+}
+.sw-table tr.sw-rej:hover td {
+  background: #fee2e2;
+}
+/* Rechazada "no contada" (anulada visible): atenuada, fuera de cálculo. */
+.sw-table tr.sw-nocontada td {
+  opacity: 0.55;
+}
 /* Celda de Validación: semáforo + quién/cuándo validó en línea chica debajo. */
 .sw-valcell {
   display: flex;
@@ -5114,6 +5130,12 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   background: var(--bg2);
   color: var(--w2);
   border: 1px solid var(--ln);
+}
+.sw-pill-rej {
+  /* Rechazada en origen (Operaciones-GPA): acción pendiente de triage de tesorería. */
+  background: var(--Rd);
+  color: var(--R);
+  border: 1px dashed var(--R);
 }
 /* Pills informativos — no afectan estatus global */
 .sw-pill-info {
