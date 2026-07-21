@@ -189,6 +189,74 @@ El dato ya llega; solo promover/leer.
 
 ---
 
+## 9. Addendum 2026-07-17 — Verificación empírica contra la tabla de producción de Ops
+
+El análisis original (§0-§8) se derivó del contrato/mappers/golden visibles desde el repo FC. Este
+addendum lo contrasta contra **la tabla real** `gpa_operaciones_prod` (consultas read-only) y contra
+los mappers releídos línea a línea. Corrige, confirma y añade.
+
+### 9.1 Inventario empírico de la tabla (323 items)
+
+| Tipo en Ops                                                                                                                                                      | Items   | ¿Cruza el puente? |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------- |
+| `SOL` (solicitudes + reportes de carga)                                                                                                                          | 77      | ✅                |
+| `CL` (checklist semanal/mensual)                                                                                                                                 | 25      | ✅                |
+| **`MC` — checklist de montacargas**                                                                                                                              | **26**  | ❌                |
+| **`FRM` — inspecciones de instalaciones/equipos**                                                                                                                | **27**  | ❌                |
+| **`CAT#`** — catálogos: 66 vehículos (`VEH#`), 54 usuarios (`USR#`), 28 plantillas (`PLT#`), 7 sucursales (`SUC#`), 11 responsables (`RESP#`), 1 módulo (`MOD#`) | **167** | ❌                |
+| `CONFIG` (fechaInicio, emailLogistica, emailRiesgos)                                                                                                             | 1       | ❌                |
+
+### 9.2 Hallazgos a nivel entidad (elevan prioridades de §3)
+
+- **MC está VIVO y con hallazgos de seguridad invisibles para FC.** Registro real del 2026-07-17
+  (Cedis, eco 49): checklist de ~30 ítems con vocabulario O/P, **horómetro** (`horas: 8243.9`), foto
+  y **comentario por ítem con problema** — comentarios reales: _"No se detiene"_, _"No pita"_, _"Se
+  patina cuando sube la rampa"_. Un montacargas con frenos reportados fallando hoy no aparece en
+  ningún dashboard de FC. **Recomendación: subir el consumidor MC de P2 a decisión de producto.**
+- **FRM es un dominio completo** (instalaciones/equipos de almacén, no flotilla): 9 plantillas en uso
+  (patines 11, eléctrico-seguridad 4, transpaletas 3, carritos 3, cisternas 2, diablitos, fontanería,
+  ventilación, eléctrico-interno), con `puntaje/puntajeMax`, `resultado` con nivel (10 de 27 = "fuera
+  de servicio") y **`proximoServicio`** (fecha). Decisión de producto: módulo nuevo en FC o queda en Ops.
+- **`CAT#VEHICLE` trae justo lo que FC necesita** (por unidad): **`tanque` (capacidad L)** →
+  **desbloquea el pendiente `capacidadTanque` sin pedirle nada a Ops** (la fuente ya existe);
+  **`activo: false`** → 🆕 **brecha U-1: FC no modela unidades dadas de baja** (siguen "vivas" en su
+  catálogo); además `categoria` ("reparto"), `responsable` (área), `precio`, `producto`, `combustible`.
+- **Los catálogos canónicos del modelo unificado (§6) ya existen en Ops**: `SUC#` (7 sucursales),
+  `RESP#` (correo de responsable por área/sucursal — útil para notificaciones), `PLT#`, `CONFIG`.
+  La homologación de la Capa 1 tiene dónde anclarse hoy.
+
+### 9.3 Corte por módulo equivalente — brechas NUEVAS de campo (no estaban en las 51)
+
+Releídos los mappers contra registros reales:
+
+| #   | Módulo      | Brecha                                                                                                                                                                                                                                                                             | Evidencia                                                                           | Imp.     |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------- |
+| S-1 | **Semanal** | **`obs` se DESCARTA**: `mapSemanal` no la incluye en `datos` (el mensual sí la guarda). Registro real de hoy: _"ya se reportó zumbido del diferencial, cambio de suspensión, batería, aire acondicionado"_ — información de mantenimiento que se pierde.                           | `mapSemanal` datos (mapChecklist.ts:109-130) sin campo obs; registro `e6168cfa3019` | **Alto** |
+| S-2 | **Semanal** | **`golpes[{foto,desc}]` se descarta COMPLETO** (fotos Y descripciones): `mapSemanal` solo toma valores string de `answers`; el array `golpes` no se procesa (el mensual al menos salva las fotos vía `fotosDeGolpes`). Los semanales reales SÍ traen daños (ecos 73 y 10, 13-jul). | mapChecklist.ts:100-102 (solo `esKeyEvidencia(v)` sobre strings)                    | **Alto** |
+| C-1 | Cargas      | **`ubicacion.direccion` se pierde**: los reportes reales traen `{lat,lng,direccion}` pero `parseUbicacion` solo lee `formattedValue` (MoreApp) para el texto → `FuelEntry.ubicacion` queda vacío en cargas OPS (coordenadas sí sobreviven).                                        | mapEntry.ts:143-144; reportes reales 14-15 jul                                      | Medio    |
+| C-2 | Solicitudes | `subMarca` del registro SOL se descarta (menor: el join con `Unit` la cubre).                                                                                                                                                                                                      | mapSolicitud/mapCarga sin lectura de subMarca                                       | Bajo     |
+| U-1 | Catálogo    | `CAT#VEHICLE.activo=false` sin equivalente: FC no modela baja de unidades.                                                                                                                                                                                                         | muestra VEH#02 (activo:false)                                                       | Medio    |
+| U-2 | Catálogo    | `capacidadTanque` **re-priorizada**: la fuente (`CAT#VEHICLE.tanque`) ya existe → el pendiente FC ya no depende del dueño de Ops.                                                                                                                                                  | muestra VEH#02 (tanque:58)                                                          | —        |
+
+### 9.4 Estado de los rescates de §2 (al 2026-07-17)
+
+- ✅ `areaResponsable` → `FuelEntry.areaCarga` + drawer (commit `962c86f`).
+- ✅ Taxonomía de evidencia: `fotoAntes/Despues` → medidor (commit `dc136e9`); reportes reales verificados.
+- ✅ Golden semanal fiel a prod + aserción de riesgo (commit `358b37c`); semáforo semanal SIN bug (§5).
+- ✅ `golpes` con `desc` **confirmado en prod** (ya no condicional) — y aplica también al SEMANAL (S-2).
+- ⏭ Siguientes: S-1 y S-2 (mapper puro, sin esquema — mismo patrón que areaCarga); luego U-2
+  (`capacidadTanque` vía catálogo) y el feed de `ComplianceDoc`.
+
+### 9.5 Riesgo R2 materializado (2026-07-17)
+
+La edición de `economico` en Ops (re-atribución 52→R04 de 5 folios) **duplicó** los registros en FC
+(la llave natural incluye `economicoId` → la versión vieja no se elimina; quedaron 52 Y R04 doble-
+contando). Resolución: anulación admin de las 5 versiones de la 52 (tombstone). **Confirma la
+urgencia del P0 del brief: congelar `economico` server-side.** Pendiente: barrido de otros folios
+OPS bajo 2+ económicos.
+
+---
+
 ## Apéndice — Trazabilidad
 
 Análisis multi-agente verificado adversarialmente (43 brechas + 8 del crítico; 0 falsos positivos; 3 ajustadas). Cada brecha del resultado del workflow incluye su `evidence` (archivo:línea/golden) y su `note` de verificación. Los archivos fuente auditados: `amplify/data/resource.ts` (13 entidades), todo `src/opsgpa/`, `src/fuel/` (mapEntry, fuelAnalysis, parse, tokaLayout), `src/analyzer/` (analyzeRow, risk, constants), `src/compliance/`, `src/taller/`, `amplify/functions/moreapp-webhook/handler.ts`, y los golden de `tests/opsgpa-golden/`.
