@@ -26,10 +26,10 @@ describe("mapValidacion: aprobación en origen → ValidacionCarga (decisión 20
     });
   });
 
-  it("Rechazada → discrepancia con nota; tolera género/variantes", () => {
+  it("Rechazada → verdict 'rechazada' (primera clase, decisión 2026-07-21); tolera género/variantes", () => {
     for (const s of ["Rechazada", "Rechazado", "rechazada"]) {
       const v = mapValidacion({ status: s }, CARGA);
-      expect(v?.verdictGlobal).toBe("discrepancia");
+      expect(v?.verdictGlobal).toBe("rechazada");
       expect(v?.nota).toMatch(/Rechazada en origen/);
       expect(v?.revisadoPor).toBe("ops-gpa"); // sin autorizadoPor
     }

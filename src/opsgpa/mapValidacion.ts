@@ -6,7 +6,8 @@
  * auditoría de FC para que nadie trabaje dos veces:
  *
  *   status "Aprobada"  → verdictGlobal "ok"
- *   status "Rechazada" → verdictGlobal "discrepancia" (con nota)
+ *   status "Rechazada" → verdictGlobal "rechazada" (primera clase; decisión 2026-07-21 —
+ *                        antes se traducía a "discrepancia" y el rechazo se perdía)
  *   status "Pendiente" → null (no se escribe; el cambio_estado llegará después)
  *
  * REGLA DE NO-PISADO (la aplica el receptor): un veredicto emitido por un humano EN
@@ -22,7 +23,7 @@ export const OPS_FUENTE_DETECCION = "ops-gpa";
 export interface ValidacionCargaInput {
   tenantId: string;
   loadId: string;
-  verdictGlobal: "ok" | "discrepancia";
+  verdictGlobal: "ok" | "rechazada";
   revisadoPor: string;
   nota: string;
   ts?: string;
@@ -52,7 +53,7 @@ export function mapValidacion(
   return {
     tenantId: carga.tenantId,
     loadId: loadIdOf(carga.economicoId, carga.tipo, carga.eventoId),
-    verdictGlobal: aprobada ? "ok" : "discrepancia",
+    verdictGlobal: aprobada ? "ok" : "rechazada",
     revisadoPor: quien ? `${quien} · ops-gpa` : "ops-gpa",
     nota: aprobada
       ? "Aprobada en origen (Operaciones-GPA)"
