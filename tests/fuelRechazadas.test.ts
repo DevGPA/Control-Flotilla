@@ -7,6 +7,8 @@ import {
   type FuelTableFilter,
 } from "../src/fuel/renderTableCombustible";
 import type { FuelEntry } from "../src/fuel/types";
+import { buildKpisFuel } from "../src/fuel/renderKpis";
+import { computeFuelMetrics, buildFleetBaseline } from "../src/fuel/fuelAnalysis";
 
 const ROW = {
   economicoId: "45",
@@ -152,5 +154,23 @@ describe("rechazadasNoContadas", () => {
     const out = rechazadasNoContadas([NO_CONTADA, anuladaNormal]);
     expect(out).toHaveLength(1);
     expect(out[0]!.eventoId).toBe("r2");
+  });
+});
+
+describe("KPI Rechazadas sin triage", () => {
+  const kpis = (entries: FuelEntry[]) => {
+    const metrics = computeFuelMetrics(entries);
+    return buildKpisFuel(entries, metrics, buildFleetBaseline(metrics, entries), []);
+  };
+
+  it("cuenta las rechazadas vigentes (las anuladas nunca llegan: scoped() las excluye)", () => {
+    const card = kpis([VIGENTE_RECHAZADA, OK_OPS]).find((c) => c.key === "rechazadas");
+    expect(card?.value).toBe("1");
+    expect(card?.filter).toBe("rechazada");
+    expect(card?.tone).toBe("r");
+  });
+
+  it("la tarjeta NO aparece cuando no hay rechazadas", () => {
+    expect(kpis([OK_OPS]).find((c) => c.key === "rechazadas")).toBeUndefined();
   });
 });

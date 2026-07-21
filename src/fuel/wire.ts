@@ -284,6 +284,7 @@ function renderCombustible(): void {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
         else if (f === "pendiente") setVerdictFilter("pendiente");
         else if (f === "historico") setVerdictFilter("historico");
+        else if (f === "rechazada") setVerdictFilter("rechazada");
         // La KPI "Anomalías" filtra por alerta detectada (antes caía en "pendiente").
         else if (f === "anomalia") setFlagFilter("any");
       },

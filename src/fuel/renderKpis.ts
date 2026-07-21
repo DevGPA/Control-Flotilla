@@ -15,7 +15,7 @@ export type FuelKpiCard = {
   value: string;
   sub?: string;
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
-  filter?: "discrepancia" | "pendiente" | "anomalia" | "historico"; // clic → filtro
+  filter?: "discrepancia" | "pendiente" | "anomalia" | "historico" | "rechazada"; // clic → filtro
   title?: string; // tooltip (p.ej. desglose por motivo)
 };
 
@@ -57,6 +57,9 @@ export function buildKpisFuel(
     : kmplProm;
   // Las discrepancias siguen contando aunque sean del histórico (hallazgo real, no se oculta).
   const discrepancias = entries.filter((e) => verdictOf(e) === "discrepancia").length;
+  // Rechazadas en origen (Ops) SIN triage: siguen sumando gasto hasta que tesorería decida
+  // (anular o validar como gasto real). Las ya anuladas no llegan aquí (scoped() las excluye).
+  const rechazadas = entries.filter((e) => verdictOf(e) === "rechazada").length;
   // "Pendientes" = lo accionable: el backfill previo al corte cae a "historico", no a pendiente.
   const pendientes = entries.filter((e) => displayVerdictOf(e) === "pendiente").length;
   const historicos = entries.filter((e) => displayVerdictOf(e) === "historico").length;
@@ -117,6 +120,19 @@ export function buildKpisFuel(
       tone: discrepancias ? "r" : "g",
       filter: "discrepancia",
     },
+    // Radar de triage: solo aparece si hay rechazadas pendientes de decisión.
+    ...(rechazadas > 0
+      ? [
+          {
+            key: "rechazadas",
+            label: "Rechazadas sin triage",
+            value: NUM.format(rechazadas),
+            sub: "decidir: no contar o gasto real",
+            tone: "r" as const,
+            filter: "rechazada" as const,
+          },
+        ]
+      : []),
     {
       key: "pendientes",
       label: "Pendientes de revisar",
