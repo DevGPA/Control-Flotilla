@@ -84,6 +84,15 @@ export function verdictOf(e: FuelEntry): FuelVerdictGlobal {
 }
 
 /**
+ * Anuladas que permanecen VISIBLES en la tabla principal: las rechazadas en origen tras el
+ * triage "No contar" (spec 2026-07-21) — la evidencia del rechazo no se esconde. Siguen fuera
+ * de TODO cálculo (KPIs/rendimientos/exportes trabajan con vigentes).
+ */
+export function rechazadasNoContadas(anuladas: readonly FuelEntry[]): FuelEntry[] {
+  return anuladas.filter((e) => e.review?.verdictGlobal === "rechazada");
+}
+
+/**
  * Fecha de corte del control de validación (YYYY-MM-DD, INCLUSIVA): las cargas con
  * `fecha >= FUEL_VALIDACION_DESDE` entran al flujo de validación normal; las anteriores
  * son HISTÓRICO (backfill migrado que nadie va a revisar a mano de forma retroactiva).

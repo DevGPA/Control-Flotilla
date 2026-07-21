@@ -29,6 +29,7 @@ import {
   filterAndSortFuel,
   populateFuelSelects,
   displayVerdictOf,
+  rechazadasNoContadas,
   type FuelTableFilter,
   type FuelSortCol,
   type FuelTipoFilter,
@@ -306,7 +307,14 @@ function renderCombustible(): void {
   // TODO cálculo). El filtro de veredicto/alerta no aplica ahí (las anuladas no tienen
   // findings ni entran al flujo de validación); fechas/sucursal/tipo/búsqueda sí.
   const vistaAnuladas = filter.verdict === "anulada";
-  const tableEntries = vistaAnuladas ? scopedAnuladas() : all;
+  // Rechazadas "no contadas" (triage): anuladas (fuera de todo cálculo) pero visibles en la
+  // tabla principal para todos — la evidencia del rechazo no se esconde (spec 2026-07-21).
+  const noContadas = vistaAnuladas ? [] : rechazadasNoContadas(scopedAnuladas());
+  const tableEntries = vistaAnuladas
+    ? scopedAnuladas()
+    : noContadas.length
+      ? [...all, ...noContadas]
+      : all;
   const tableFilter = vistaAnuladas ? { ...filter, verdict: "all" as const, flag: "" } : filter;
 
   // La submarca ya viaja en cada FuelEntry (join por economicoId en cloudHydrate).

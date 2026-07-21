@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mapCargaToFuelEntry, type CargaRow, type ValidacionRow } from "../src/fuel/mapEntry";
 import {
   filterAndSortFuel,
+  rechazadasNoContadas,
   renderTableCombustible,
   type FuelTableFilter,
 } from "../src/fuel/renderTableCombustible";
@@ -138,5 +139,18 @@ describe("tabla: rechazadas (spec 2026-07-21)", () => {
     const noContada = tbody.querySelector("tr.sw-nocontada");
     expect(noContada).toBeTruthy();
     expect(noContada!.querySelector("s")).toBeTruthy(); // monto tachado
+  });
+});
+
+describe("rechazadasNoContadas", () => {
+  it("de las anuladas, solo las con veredicto rechazada quedan visibles", () => {
+    const anuladaNormal = fe({
+      eco: "10",
+      eventoId: "dup1",
+      anulada: { motivo: "duplicada", anuladoPor: "x@gpa", ts: "2026-07-01T10:00:00Z" },
+    });
+    const out = rechazadasNoContadas([NO_CONTADA, anuladaNormal]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.eventoId).toBe("r2");
   });
 });
