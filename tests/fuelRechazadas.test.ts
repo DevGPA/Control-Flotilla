@@ -212,4 +212,18 @@ describe("detalle: triage de rechazada", () => {
     });
     expect(body.textContent).not.toContain("pendiente de triage");
   });
+
+  it("una rechazada ya anulada (no contada) muestra el banner de anulada, no el de triage", () => {
+    const body = document.createElement("div");
+    renderDetalleCarga({
+      body,
+      load: NO_CONTADA,
+      resolveUrl: () => "",
+      canWrite: true,
+      onValidate: () => {},
+      esAdmin: true,
+      onAnular: () => {},
+    });
+    expect(body.textContent).not.toContain("pendiente de triage");
+  });
 });

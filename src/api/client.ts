@@ -496,6 +496,10 @@ export type ValidacionCargaInput = {
   revisadoPor?: string;
   nota?: string;
   ts?: string;
+  // Origen del veredicto ('manual' | 'ia' | 'ops-gpa'). Debe persistirse: el receptor del
+  // puente Ops-GPA lee este campo (no el local) para decidir si respeta una validación
+  // humana ya guardada — sin esto, un reenvío del webhook pisa el veredicto de tesorería.
+  fuenteDeteccion?: string;
 };
 
 export async function upsertValidacionCarga(

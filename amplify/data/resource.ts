@@ -238,7 +238,7 @@ const schema = a
     // Revisión humana de una carga (1 por carga). loadId = "economicoId|tipo|eventoId".
     // Separada de CargaCombustible: el webhook escribe los datos, el revisor escribe
     // aquí, sin que un upsert pise al otro. Espejo de CheckDone. Los campos *Detectado
-    // los llena la Lambda de visión (Fase E); fuenteDeteccion distingue manual vs ia.
+    // los llena la Lambda de visión (Fase E); fuenteDeteccion distingue 'manual' | 'ia' | 'ops-gpa'.
     ValidacionCarga: a
       .model({
         tenantId: a.string().required(),
@@ -254,7 +254,7 @@ const schema = a
         nivelDetectado: a.string(),
         litrosDetectado: a.float(),
         confianzaVision: a.float(),
-        fuenteDeteccion: a.string(), // 'manual' | 'ia'
+        fuenteDeteccion: a.string(), // 'manual' | 'ia' | 'ops-gpa'
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "loadId"])

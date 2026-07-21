@@ -32,11 +32,16 @@ const pages = paginateScan(
   { client },
   {
     TableName: table,
-    FilterExpression: "fuenteDeteccion = :f AND verdictGlobal = :d AND nota = :n",
+    // AND contains(revisadoPor, :ops): el puente escribe revisadoPor "ops-gpa" o
+    // "<quien> · ops-gpa"; un humano escribe su email. Nunca tocar filas revisadas
+    // por una persona, aunque coincidan fuenteDeteccion/verdictGlobal/nota.
+    FilterExpression:
+      "fuenteDeteccion = :f AND verdictGlobal = :d AND nota = :n AND contains(revisadoPor, :ops)",
     ExpressionAttributeValues: {
       ":f": { S: "ops-gpa" },
       ":d": { S: "discrepancia" },
       ":n": { S: NOTA },
+      ":ops": { S: "ops-gpa" },
     },
   },
 );
@@ -46,7 +51,9 @@ for await (const page of pages) {
   for (const item of page.Items ?? []) {
     const row = unmarshall(item);
     candidatas++;
-    console.log(`${apply ? "ACTUALIZA" : "haría"}: ${row.loadId} (ts=${row.ts ?? "—"})`);
+    console.log(
+      `${apply ? "ACTUALIZA" : "haría"}: ${row.loadId} (ts=${row.ts ?? "—"}, revisadoPor=${row.revisadoPor ?? "—"})`,
+    );
     if (!apply) continue;
     try {
       await client.send(
@@ -63,10 +70,16 @@ for await (const page of pages) {
       );
       actualizadas++;
     } catch (err) {
-      // No abortar el lote por un fallo puntual (p.ej. ConditionalCheckFailedException
-      // por una carrera con otro proceso): registrar y seguir con el resto.
-      console.error(`ERROR: ${row.loadId}:`, err?.name ?? err);
-      errores++;
+      // Solo se tolera ConditionalCheckFailedException (carrera con otro proceso: la fila
+      // dejó de ser discrepancia entre el Scan y el Update) — se cuenta y se sigue. Cualquier
+      // otro error (credenciales expiradas, throttling, permisos) es sistémico: abortar
+      // ruidosamente en vez de terminar "exitosamente" con datos a medio migrar.
+      if (err?.name === "ConditionalCheckFailedException") {
+        console.error(`ERROR (tolerado): ${row.loadId}:`, err.name);
+        errores++;
+        continue;
+      }
+      throw err;
     }
   }
 }
@@ -75,3 +88,4 @@ console.log(
   `\nEscaneadas: ${escaneadas} · candidatas: ${candidatas} · actualizadas: ${actualizadas} · errores: ${errores}` +
     (apply ? "" : "  (dry-run — usa --apply para escribir)"),
 );
+process.exitCode = errores > 0 ? 1 : 0;

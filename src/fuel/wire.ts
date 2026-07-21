@@ -607,7 +607,9 @@ function updateFuelNavBadge(): void {
   if (!badge) return;
   const pend = scoped().filter((e) => {
     const v = displayVerdictOf(e);
-    return v === "pendiente" || v === "discrepancia";
+    // "rechazada" ya contaba en el radar antes de esta feature (llegaba como
+    // discrepancia); se preserva explícitamente para no perder esas filas del badge.
+    return v === "pendiente" || v === "discrepancia" || v === "rechazada";
   }).length;
   badge.textContent = pend > 99 ? "99+" : pend > 0 ? String(pend) : "";
   badge.style.display = pend > 0 ? "" : "none";
@@ -942,6 +944,9 @@ function handleValidate(
     nota: nota ?? review.nota,
     revisadoPor,
     ts,
+    // Persistir el origen humano: el receptor del puente Ops-GPA lee fuenteDeteccion
+    // de la fila GUARDADA (no del objeto local) para no pisar un veredicto ya validado.
+    fuenteDeteccion: "manual",
   }).catch((e) => {
     console.warn("[fuel] upsertValidacionCarga falló:", e);
     // Rollback del update optimista: si no se guardó, revierte el estado en UI.
