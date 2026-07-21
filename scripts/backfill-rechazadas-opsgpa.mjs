@@ -26,6 +26,7 @@ const client = new DynamoDBClient({});
 let escaneadas = 0;
 let candidatas = 0;
 let actualizadas = 0;
+let errores = 0;
 
 const pages = paginateScan(
   { client },
@@ -47,21 +48,30 @@ for await (const page of pages) {
     candidatas++;
     console.log(`${apply ? "ACTUALIZA" : "haría"}: ${row.loadId} (ts=${row.ts ?? "—"})`);
     if (!apply) continue;
-    await client.send(
-      new UpdateItemCommand({
-        TableName: table,
-        Key: { id: item.id },
-        UpdateExpression: "SET verdictGlobal = :r",
-        // Guardia de idempotencia/carrera: solo si sigue siendo discrepancia.
-        ConditionExpression: "verdictGlobal = :d",
-        ExpressionAttributeValues: { ":r": { S: "rechazada" }, ":d": { S: "discrepancia" } },
-      }),
-    );
-    actualizadas++;
+    try {
+      await client.send(
+        new UpdateItemCommand({
+          TableName: table,
+          // Llave compuesta real del modelo (.identifier(["tenantId","loadId"])) — no hay
+          // atributo "id" en esta tabla.
+          Key: { tenantId: item.tenantId, loadId: item.loadId },
+          UpdateExpression: "SET verdictGlobal = :r",
+          // Guardia de idempotencia/carrera: solo si sigue siendo discrepancia.
+          ConditionExpression: "verdictGlobal = :d",
+          ExpressionAttributeValues: { ":r": { S: "rechazada" }, ":d": { S: "discrepancia" } },
+        }),
+      );
+      actualizadas++;
+    } catch (err) {
+      // No abortar el lote por un fallo puntual (p.ej. ConditionalCheckFailedException
+      // por una carrera con otro proceso): registrar y seguir con el resto.
+      console.error(`ERROR: ${row.loadId}:`, err?.name ?? err);
+      errores++;
+    }
   }
 }
 
 console.log(
-  `\nEscaneadas: ${escaneadas} · candidatas: ${candidatas} · actualizadas: ${actualizadas}` +
+  `\nEscaneadas: ${escaneadas} · candidatas: ${candidatas} · actualizadas: ${actualizadas} · errores: ${errores}` +
     (apply ? "" : "  (dry-run — usa --apply para escribir)"),
 );
