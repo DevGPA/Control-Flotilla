@@ -96,7 +96,9 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
     hint: kmHint,
     detected:
       load.review?.kmDetectado != null ? `${NUM.format(load.review.kmDetectado)} km` : undefined,
-    detectedFuente: load.review?.fuenteDeteccion,
+    // "ops-gpa" no aplica al rótulo ia/manual: el puente no emite kmDetectado.
+    detectedFuente:
+      load.review?.fuenteDeteccion === "ops-gpa" ? undefined : load.review?.fuenteDeteccion,
   });
 
   if (load.tipo === "carga") {
@@ -248,7 +250,6 @@ function buildRendimientoCard(
       cmp.textContent = `Referencia: ${refs.join(" · ")}`;
       card.appendChild(cmp);
     }
-
   } else {
     // Sin km/l: explicar el motivo (no dejar el "—" desnudo).
     const motivo = metrics?.motivoSinKmpl;
@@ -404,7 +405,13 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   }
 
   // Cómo se calcula el rendimiento (cadena de cálculo) o por qué no hay km/l.
-  const rendCard = buildRendimientoCard(load, metrics, deps.statTipo, deps.statUnidad, deps.kmplVida);
+  const rendCard = buildRendimientoCard(
+    load,
+    metrics,
+    deps.statTipo,
+    deps.statUnidad,
+    deps.kmplVida,
+  );
   if (rendCard) body.appendChild(rendCard);
 
   // Acción global (solo escritura)
