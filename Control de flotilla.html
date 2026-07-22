@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zOkSC9+BJFxDk8/uUTmYwuGsKpWnneCqE9GmyHmbovU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-d4UMtU1l5FQSYo4xYA9b9iBoeplEoco8hUWgRMDUr4E=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -235,6 +235,7 @@
 
 <!-- BARRA DE RANGO DE FECHAS (reemplaza chips de período) -->
 <div id="periodo-bar">
+  <span class="view-ttl" role="heading" aria-level="2">Inspecciones</span>
   <span class="periodo-label">Rango:</span>
   <input type="date" id="rango-desde" aria-label="Desde" class="field-input"/>
   <span style="color:var(--s2);font-size:11px">→</span>
@@ -243,7 +244,7 @@
   <span id="rango-count" style="font-size:10px;color:var(--s2);margin-left:4px"></span>
   <button class="needs-admin" data-action="abrirAnulados" data-arg1="checklist" data-arg2="Registros anulados — Inspecciones"
     title="Inspecciones anuladas (historial y restauración)"
-    style="cursor:pointer;margin-left:8px;padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10.5px;color:var(--s2);background:var(--bg2)">⛔ Anulados</button>
+    class="btn-anulados" style="margin-left:8px">⛔ Anulados</button>
   <div id="periodo-chips" style="display:none"></div>
   <button id="btn-tendencias" onclick="showTendencias()" style="display:none" title="Comparar tendencias entre períodos"><i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i> Tendencias</button>
 </div>
@@ -285,9 +286,9 @@
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('tiresCrit')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con llantas críticas">
-      <div class="hero-icon" style="background:var(--O)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-icon" style="background:var(--R)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
-        <div class="hero-val" style="color:var(--O)" id="kv4">—</div>
+        <div class="hero-val" style="color:var(--R)" id="kv4">—</div>
         <div class="hero-lbl">Unidades c/ llanta crítica</div>
         <div class="hero-sub">≤ 3mm de taco · en rango</div>
       </div>
@@ -301,9 +302,9 @@
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('taller')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades en taller">
-      <div class="hero-icon" style="background:var(--B)"><i data-lucide="wrench" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-icon" style="background:var(--violet)"><i data-lucide="wrench" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
-        <div class="hero-val" style="color:var(--B)" id="kv_taller">—</div>
+        <div class="hero-val" style="color:var(--violet)" id="kv_taller">—</div>
         <div class="hero-lbl">En Taller</div>
         <div class="hero-sub" id="ks_taller"></div>
       </div>
@@ -340,7 +341,7 @@
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Gl);box-shadow:inset 0 0 0 1px var(--G)"></span>Operativa</span>
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Al);box-shadow:inset 0 0 0 1px var(--A)"></span>Revisar</span>
     <span class="fm-lg"><span class="fm-sw" style="background:var(--Rl);box-shadow:inset 0 0 0 1.5px var(--R)"></span>Requiere atención</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Bl);box-shadow:inset 0 0 0 1px var(--B)"></span>En taller</span>
+    <span class="fm-lg"><span class="fm-sw" style="background:var(--violet-l);box-shadow:inset 0 0 0 1px var(--violet)"></span>En taller</span>
   </div>
 </div>
 
@@ -395,12 +396,13 @@
 
 <!-- ANALYTICS VIEW (4º tab — full screen, sibling de Inspecciones/Taller/Semanales) -->
 <div class="analytics-panel" id="analytics-panel" style="display:none">
+  <div class="view-ttl-bar"><span class="view-ttl" role="heading" aria-level="2">Análisis</span></div>
   <div class="analytics-content" id="analytics-content">
     <div class="analytics-grid">
       <div class="chart-card">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Sucursales por riesgo</div>
-          <div class="chart-hint">Click barra → filtrar</div>
+          <div class="chart-hint">Clic en una barra para filtrar</div>
         </div>
         <div id="chart-branches" class="chart-canvas" role="img" aria-label="Gráfica de barras: inspecciones por sucursal según nivel de riesgo (urgente, revisar, operativa)"></div>
       </div>
@@ -427,7 +429,7 @@
       <div class="chart-card" id="chart-card-heatmap">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Taller · ingresos por día</div>
-          <div class="chart-hint">90 días · hover ver count</div>
+          <div class="chart-hint">90 días · pasa el cursor para ver el detalle</div>
         </div>
         <div id="chart-heatmap" class="chart-canvas" role="img" aria-label="Mapa de calor: cantidad de ingresos a taller por día en los últimos 90 días"></div>
         <div id="chart-heatmap-empty" class="chart-empty" hidden>
@@ -457,11 +459,11 @@
 <!-- FILTER BAR -->
 <div id="tb">
   <div class="chip-row">
-    <button class="chip chip-on" id="btn-all" onclick="setF('all')">Todos <span class="chip-n" id="fc_all"></span></button>
-    <button class="chip" id="btn-Urgente" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
-    <button class="chip" id="btn-Revisar" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
-    <button class="chip" id="btn-obs" onclick="setF('obs')"><span class="chip-dot" style="background:var(--ac)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
-    <button class="chip" id="btn-svcvencido" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
+    <button class="chip chip-on" id="btn-all" aria-pressed="true" onclick="setF('all')">Todos <span class="chip-n" id="fc_all"></span></button>
+    <button class="chip" id="btn-Urgente" aria-pressed="false" onclick="setF('Urgente')"><span class="chip-dot" style="background:var(--R)"></span>Urgente <span class="chip-n" id="fc0"></span></button>
+    <button class="chip" id="btn-Revisar" aria-pressed="false" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
+    <button class="chip" id="btn-obs" aria-pressed="false" onclick="setF('obs')"><span class="chip-dot" style="background:var(--s2)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
+    <button class="chip" id="btn-svcvencido" aria-pressed="false" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
     <button class="chip" id="btn-sinmensual" onclick="openFleetModal('missingMensual')" title="Unidades de la flota sin check mensual en el rango seleccionado" style="display:none;border-style:dashed"><span class="chip-dot" style="background:var(--s2)"></span>Sin check <span class="chip-n" id="fc_missing"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
@@ -497,13 +499,13 @@
   <div id="tw" style="display:none">
     <div class="thd" id="thd">
       <div class="th th-nosort">#</div>
-      <div class="th" onclick="sortBy('plate')" id="th-plate"># Económico <span class="th-sort" id="sort-plate">↕</span></div>
-      <div class="th" onclick="sortBy('brand')" id="th-brand">Unidad / Inspector <span class="th-sort" id="sort-brand">↕</span></div>
-      <div class="th" onclick="sortBy('risk')" id="th-risk">Estado <span class="th-sort" id="sort-risk">↕</span></div>
-      <div class="th" onclick="sortBy('findings')" id="th-findings">Hallazgos <span class="th-sort" id="sort-findings">↕</span></div>
-      <div class="th" onclick="sortBy('obs')" id="th-obs"><i data-lucide="message-square" style="width:11px;height:11px;vertical-align:-2px"></i> Comentarios del responsable <span class="th-sort" id="sort-obs">↕</span></div>
-      <div class="th" onclick="sortBy('tires')" id="th-tires">Llantas <span class="th-sort" id="sort-tires">↕</span></div>
-      <div class="th" onclick="sortBy('km')" id="th-km">KM / Fecha <span class="th-sort" id="sort-km">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('plate')" id="th-plate"># Económico <span class="th-sort" id="sort-plate">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('brand')" id="th-brand">Unidad / Inspector <span class="th-sort" id="sort-brand">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('risk')" id="th-risk">Estado <span class="th-sort" id="sort-risk">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('findings')" id="th-findings">Hallazgos <span class="th-sort" id="sort-findings">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('obs')" id="th-obs"><i data-lucide="message-square" style="width:11px;height:11px;vertical-align:-2px"></i> Comentarios del responsable <span class="th-sort" id="sort-obs">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('tires')" id="th-tires">Llantas <span class="th-sort" id="sort-tires">↕</span></div>
+      <div class="th" role="button" tabindex="0" onclick="sortBy('km')" id="th-km">KM / Fecha <span class="th-sort" id="sort-km">↕</span></div>
     </div>
     <div id="tbody"></div>
   </div>
@@ -589,12 +591,13 @@
 <div id="taller-view">
   <!-- Sub-tabs de navegación -->
   <div class="tl-subnav">
-    <button class="tl-subtab on" id="tltab-activas" onclick="tlSwitch('activas')">
+    <span class="view-ttl" role="heading" aria-level="2">Taller</span>
+    <button class="tl-subtab on" id="tltab-activas" role="tab" aria-selected="true" onclick="tlSwitch('activas')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Operaciones Activas
       <span class="tl-subbadge" id="tl-act-cnt" style="display:none">0</span>
     </button>
-    <button class="tl-subtab" id="tltab-historial" onclick="tlSwitch('historial')">
+    <button class="tl-subtab" id="tltab-historial" role="tab" aria-selected="false" onclick="tlSwitch('historial')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       Historial / Expedientes
     </button>
@@ -623,8 +626,9 @@
       class="field-input" style="width:180px"
       oninput="renderTaller()"/>
     <span id="tl-rcnt" style="font-size:10px;color:var(--s2)"></span>
-    <button onclick="exportTallerActivasExcel()"
-      style="padding:4px 10px;border:1px solid var(--G);border-radius:6px;font-size:10px;color:var(--G);background:var(--bg);cursor:pointer;font-weight:600;margin-left:auto" title="Exportar unidades activas a Excel">↓ Exportar Excel</button>
+    <button onclick="exportTallerActivasExcel()" class="btn-export" style="margin-left:auto" title="Exportar unidades activas a Excel">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Exportar Excel</button>
     <!-- Importar Excel de taller OCULTO (UI removida). Input conservado: WF3 e2e lo usa. -->
     <input type="file" id="tl-xinput" accept=".xlsx,.xls" style="display:none" onchange="doTallerExcel(this.files[0]);this.value=''"/>
     <button class="tl-add" onclick="openTallerModal()" style="margin-left:0">
@@ -659,9 +663,10 @@
         class="field-input"/>
     </div>
     <button onclick="document.getElementById('tl-hist-q').value='';document.getElementById('tl-hist-desde').value='';document.getElementById('tl-hist-hasta').value='';document.getElementById('tl-hist-suc').value='all';document.getElementById('tl-hist-tipo').value='all';renderTaller()"
-      style="padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10px;color:var(--s2);background:var(--bg);cursor:pointer">✕ Limpiar</button>
-    <button onclick="exportTallerHistorialExcel()"
-      style="padding:4px 10px;border:1px solid var(--G);border-radius:6px;font-size:10px;color:var(--G);background:var(--bg);cursor:pointer;font-weight:600">↓ Exportar Excel</button>
+      class="clear-filters clear-filters--on">✕ Limpiar filtros</button>
+    <button onclick="exportTallerHistorialExcel()" class="btn-export">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Exportar Excel</button>
     <span id="tl-hist-rcnt" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Dashboard KPI del Historial -->
@@ -683,14 +688,14 @@
 <div id="usuarios-view" style="display:none">
   <div class="uv-bar">
     <div class="uv-tabs">
-      <button class="uv-tab on" id="uv-tab-lista" onclick="uvSwitch('lista')">Usuarios</button>
-      <button class="uv-tab" id="uv-tab-audit" onclick="uvSwitch('audit')">Bitácora</button>
+      <button class="uv-tab on" id="uv-tab-lista" role="tab" aria-selected="true" onclick="uvSwitch('lista')">Usuarios</button>
+      <button class="uv-tab" id="uv-tab-audit" role="tab" aria-selected="false" onclick="uvSwitch('audit')">Bitácora</button>
     </div>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="uv-srch" placeholder="Buscar por nombre, correo, sucursal…" oninput="renderUsuarios()" aria-label="Buscar usuario"/>
     </div>
-    <button class="ubtn ubtn-x" id="uv-new" onclick="openUsuarioModal()" style="margin-left:auto">
+    <button class="btn-add" id="uv-new" onclick="openUsuarioModal()" style="margin-left:auto">
       <i data-lucide="user-plus" style="width:13px;height:13px"></i> <span>Nuevo usuario</span>
     </button>
   </div>
@@ -773,7 +778,7 @@
      carga masiva) y da de alta unidades nuevas. -->
 <div id="unidades-view" style="display:none">
   <div class="uv-bar">
-    <div class="uv-tabs"><button class="uv-tab on" disabled>Unidades</button></div>
+    <span class="view-ttl" role="heading" aria-level="2">Unidades</span>
     <div class="sw sw-inline" style="display:flex;align-items:center;gap:5px;border:1px solid var(--ln);border-radius:6px;padding:3px 8px;background:var(--bg2)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="cv-srch" placeholder="Buscar por económico, placa, producto…" oninput="renderUnidades()" aria-label="Buscar unidad"/>
@@ -783,7 +788,7 @@
       title="Sube el 'Layout de carga masiva para Toka' para asignar el producto a cada unidad MoreApp por nómina">
       <i data-lucide="upload" style="width:13px;height:13px"></i> <span>Importar productos Toka</span>
     </button>
-    <button class="ubtn ubtn-x" id="cv-new" onclick="openUnidadModal()">
+    <button class="btn-add" id="cv-new" onclick="openUnidadModal()">
       <i data-lucide="plus" style="width:13px;height:13px"></i> <span>Nueva unidad</span>
     </button>
   </div>
@@ -861,15 +866,16 @@
 <div id="view-semanales">
   <!-- Selector de períodos semanales -->
   <div id="sw-periodo-bar">
+    <span class="view-ttl" role="heading" aria-level="2">Semanales</span>
     <span class="sw-periodo-label">Período:</span>
     <div id="sw-rango-controls">
-      <label>Desde <input type="date" id="sw-rango-desde" onchange="aplicarRangoSemanal()"/></label>
-      <label>Hasta <input type="date" id="sw-rango-hasta" onchange="aplicarRangoSemanal()"/></label>
+      <label>Desde <input type="date" id="sw-rango-desde" class="field-input" onchange="aplicarRangoSemanal()"/></label>
+      <label>Hasta <input type="date" id="sw-rango-hasta" class="field-input" onchange="aplicarRangoSemanal()"/></label>
       <button id="sw-btn-rango" onclick="aplicarRangoSemanal()">Aplicar</button>
       <span id="sw-rango-count" class="sw-rango-count"></span>
       <button class="needs-admin" data-action="abrirAnulados" data-arg1="semanal" data-arg2="Registros anulados — Semanales"
         title="Reportes semanales anulados (historial y restauración)"
-        style="cursor:pointer;margin-left:8px;padding:4px 10px;border:1px solid var(--ln);border-radius:6px;font-size:10.5px;color:var(--s2);background:var(--bg2)">⛔ Anulados</button>
+        class="btn-anulados" style="margin-left:8px">⛔ Anulados</button>
     </div>
     <!-- chips row legacy: oculta — vista ahora muestra todas las entries del rango -->
     <div id="sw-periodo-chips" style="display:none"></div>
@@ -881,7 +887,7 @@
   <div id="sw-kpis"></div>
   <!-- Barra de filtros -->
   <div id="sw-bar">
-    <button class="sw-filter-btn active" id="sw-f-all" onclick="swSetF('all')">Todas</button>
+    <button class="sw-filter-btn active" id="sw-f-all" aria-pressed="true" onclick="swSetF('all')">Todas</button>
     <button class="sw-filter-btn sw-urg" id="sw-f-urg" onclick="swSetF('Urgente')"><i data-lucide="zap" style="width:11px;height:11px;vertical-align:-2px"></i> Urgente <span id="sw-fc-urg" style="opacity:.65"></span></button>
     <button class="sw-filter-btn sw-rev" id="sw-f-rev" onclick="swSetF('Revisar')"><i data-lucide="alert-triangle" style="width:11px;height:11px;vertical-align:-2px"></i> Revisar <span id="sw-fc-rev" style="opacity:.65"></span></button>
     <button class="sw-filter-btn sw-ok"  id="sw-f-ok"  onclick="swSetF('OK')">✓ OK <span id="sw-fc-ok" style="opacity:.65"></span></button>
@@ -898,6 +904,7 @@
         style="border:none;background:transparent;font-size:11px;color:var(--w1);width:150px;outline:none"
         oninput="swDebouncedSearch(this.value)"/>
     </div>
+    <button id="sw-clear-filters" class="clear-filters clear-filters--on" onclick="swClearFilters()" title="Quitar estado, sucursal y búsqueda (mantiene el período)">✕ Limpiar filtros</button>
     <span id="sw-rcnt" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Tabla -->
@@ -934,9 +941,10 @@
 <div id="view-combustible">
   <!-- Rango de fechas -->
   <div id="fuel-periodo-bar">
+    <span class="view-ttl" role="heading" aria-level="2">Combustible</span>
     <span class="sw-periodo-label">Período:</span>
-    <label>Desde <input type="date" id="fuel-rango-desde"/></label>
-    <label>Hasta <input type="date" id="fuel-rango-hasta"/></label>
+    <label>Desde <input type="date" id="fuel-rango-desde" class="field-input"/></label>
+    <label>Hasta <input type="date" id="fuel-rango-hasta" class="field-input"/></label>
     <span id="fuel-rango-count" class="sw-rango-count"></span>
   </div>
   <!-- KPIs -->
@@ -973,6 +981,8 @@
       <option value="consumo">Consumo inusual</option>
       <option value="litros-implausibles">Litros implausibles</option>
       <option value="fuga">Posible fuga</option>
+      <option value="parciales-cronicos">Parciales crónicos</option>
+      <option value="economico-equivocado">¿Económico equivocado?</option>
       <option value="captura">Errores de captura</option>
     </select>
     <select id="fuel-filt-tipounidad" aria-label="Filtrar por tipo de unidad (submarca)" class="field-input">
@@ -998,23 +1008,23 @@
       <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
         aria-label="Buscar combustible por ID de unidad, placa o responsable"/>
     </div>
-    <button id="fuel-anulados" type="button" class="needs-admin"
+    <button id="fuel-clear-filters" type="button" class="clear-filters clear-filters--on"
+      title="Quitar filtros y búsqueda (mantiene el período)">✕ Limpiar filtros</button>
+    <button id="fuel-anulados" type="button" class="needs-admin btn-anulados"
       title="Registros anulados de combustible (historial y restauración)"
       aria-label="Ver registros anulados de combustible"
-      style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--ln);border-radius:6px;font-size:11px;color:var(--s2);background:var(--bg2);cursor:pointer">
+      style="margin-left:auto">
       ⛔ Anulados
     </button>
-    <button id="fuel-export-toka" type="button"
+    <button id="fuel-export-toka" type="button" class="btn-export"
       title="Descarga el layout de carga masiva Toka con las unidades del filtro actual"
-      aria-label="Descargar layout de carga masiva Toka"
-      style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--ac);border-radius:6px;font-size:11px;color:var(--ac);background:var(--bg2);cursor:pointer">
+      aria-label="Descargar layout de carga masiva Toka">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Layout Toka
     </button>
-    <button id="fuel-export-solicitudes" type="button"
+    <button id="fuel-export-solicitudes" type="button" class="btn-export"
       title="Descarga las solicitudes del filtro actual en el formato del export de MoreApp (una fila por solicitud)"
-      aria-label="Descargar solicitudes en Excel"
-      style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--ac);border-radius:6px;font-size:11px;color:var(--ac);background:var(--bg2);cursor:pointer">
+      aria-label="Descargar solicitudes en Excel">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Solicitudes (Excel)
     </button>
@@ -1090,6 +1100,7 @@
   <div id="cmp-kpis" style="padding:10px 16px 0"></div>
   <!-- Barra de filtros -->
   <div id="cmp-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--ln)">
+    <span class="view-ttl" role="heading" aria-level="2">Cumplimiento</span>
     <select id="cmp-estado" aria-label="Filtrar por estado de cumplimiento" class="field-input">
       <option value="all">Todo el cumplimiento</option>
       <option value="conIssues">Con pendientes</option>
@@ -1105,6 +1116,8 @@
       <input id="cmp-search" type="text" placeholder="ID unidad, placa…"
         aria-label="Buscar cumplimiento por ID de unidad o placa"/>
     </div>
+    <button id="cmp-clear-filters" type="button" class="clear-filters clear-filters--on"
+      title="Quitar estado, sucursal y búsqueda">✕ Limpiar filtros</button>
     <span id="cmp-count" style="font-size:10px;color:var(--s2);margin-left:auto"></span>
   </div>
   <!-- Tabla consolidada (una fila por unidad) -->
@@ -2364,6 +2377,19 @@ document.addEventListener("click", (e) => {
   try { fn(...args); }
   catch(err){ console.error("[delegator] " + action + " falló:", err); }
 });
+// Teclado para filas/celdas con data-action (auditoría UX 2026-07 H3):
+// Enter/Espacio equivalen al click en elementos enfocables no-nativos
+// (los <tr tabindex="0"> de Semanales y Taller). Los controles nativos
+// (button/input/select) ya manejan su propio teclado.
+document.addEventListener("keydown", (e) => {
+  if(e.key !== "Enter" && e.key !== " ") return;
+  const t = e.target;
+  if(!t || !t.closest || ["BUTTON","INPUT","SELECT","TEXTAREA","A"].includes(t.tagName)) return;
+  const el = t.closest('[data-action][tabindex]');
+  if(!el || el !== t) return;
+  e.preventDefault();
+  el.click();
+});
 
 // ════════════════════════════════════════════════════════════
 // FILE INPUT WIRING
@@ -2444,6 +2470,7 @@ window.scopeUnits=scopeUnits; window.scopeBySucursal=scopeBySucursal;
 function _anulacionRefresh(msg){
   if(window.notify) window.notify(msg,"ok",6000);
   const det=document.getElementById("det"); if(det) det.classList.remove("open");
+  document.body.classList.remove("det-open");
   if(window.__cloudHydrate) window.__cloudHydrate();
 }
 function anularInspeccion(uid){
@@ -3396,10 +3423,11 @@ function buildKPIs(){
     const cs = getComputedStyle(document.documentElement);
     const cR = cs.getPropertyValue("--R").trim() || "var(--R)";
     const cG = cs.getPropertyValue("--G").trim() || "var(--G)";
+    const cV = cs.getPropertyValue("--violet").trim() || "var(--violet)";
     try {
       window.renderDonutChart(donutEl, [
         { key: "Operativa", label: "Operativa", value: operativaDonut, color: cG },
-        { key: "Taller",    label: "En taller", value: tallerDonut,    color: cR },
+        { key: "Taller",    label: "En taller", value: tallerDonut,    color: cV },
       ], {
         onSegmentClick: (key) => {
           if (typeof setF === "function") setF(key === "Taller" ? "taller" : "all");
@@ -3408,7 +3436,7 @@ function buildKPIs(){
     } catch (e) { console.warn("[buildKPIs] donut ECharts falló:", e); }
   }
   // Leyenda custom al lado del donut.
-  const legRows=[["op","var(--G)","Operativa",operativaDonut],["tlr","var(--R)","En taller",tallerDonut]];
+  const legRows=[["op","var(--G)","Operativa",operativaDonut],["tlr","var(--violet)","En taller",tallerDonut]];
   const dleg=document.getElementById("dleg");
   if(dleg){
     dleg.title="Operativa = unidad no está en taller. Findings pendientes (chips arriba) NO la sacan de operativa — sigue circulando.";
@@ -3687,7 +3715,7 @@ function buildAlertsSummary(){
   // 3. Llantas críticas
   const llantasCrit=sUnits.filter(u=>u.minT!==null&&u.minT<=TCRIT);
   if(llantasCrit.length)
-    alerts.push({sev:"o",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
+    alerts.push({sev:"r",icon:"disc-3",count:llantasCrit.length,short:`Llantas ≤${TCRIT}mm`,
       detail:llantasCrit.slice(0,8).map(u=>`${u.eco||u.plate}: ${u.minT.toFixed(1)}mm`).join(", ")+(llantasCrit.length>8?` y ${llantasCrit.length-8} más`:"")});
 
   // 4. Taller: unidades >7 días
@@ -3698,7 +3726,7 @@ function buildAlertsSummary(){
     return dias>7;
   });
   if(tallerLargo.length)
-    alerts.push({sev:"ac",icon:"wrench",count:tallerLargo.length,short:"+7 días taller",
+    alerts.push({sev:"violet",icon:"wrench",count:tallerLargo.length,short:"+7 días taller",
       detail:tallerLargo.sort((a,b)=>new Date(a.fentrada)-new Date(b.fentrada)).slice(0,8).map(e=>{
         const dias=Math.round((Date.now()-new Date(e.fentrada))/86400000);
         return`${e.eco||e.plate}: ${dias}d`;
@@ -3916,7 +3944,7 @@ function renderTable(){
 
   tbody.innerHTML = "";
   if(!rows.length){
-    tbody.innerHTML = `<div class="nores">Sin resultados con los filtros actuales.</div>`;
+    tbody.innerHTML = `<div class="nores">Sin resultados con los filtros actuales.<br><button class="clear-filters clear-filters--on" onclick="clearAllFilters()" style="margin-top:10px">✕ Limpiar filtros</button></div>`;
     return;
   }
 
@@ -3930,8 +3958,13 @@ function renderTable(){
     const tr = document.createElement("div");
     tr.className = `tr ${rc}${selId === u.uid ? " sel" : ""}`;
     tr.style.animationDelay = `${Math.min(i * 12, 260)}ms`;
-    if(enTallerUnit) tr.style.outline = "1.5px solid var(--B)";
+    if(enTallerUnit) tr.style.outline = "1.5px solid var(--violet)";
     tr.onclick = () => selUnit(u.uid);
+    // Teclado (auditoría UX 2026-07 H3): fila operable con Tab + Enter/Espacio
+    // (el handler global de [role=button] hace el click).
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.setAttribute("aria-label", `Abrir expediente de la unidad ${u.eco || u.plate || i + 1}`);
 
     // # Índice
     appendSecureCell(tr, i + 1, "tc tn");
@@ -4056,11 +4089,13 @@ function selUnit(uid){
     curTab="c";
     if(det) det.classList.remove("det-overlay"); // por si quedó del drawer semanal
     if(det) det.classList.add("open");
+    document.body.classList.add("det-open"); // lado-a-lado ≥1200px (auditoría UX H11)
     initFloatPanel();
     renderDet();
   } else if(det){
     det.classList.remove("open");
     det.classList.remove("det-overlay");
+    document.body.classList.remove("det-open");
   }
   renderTable();
 }
@@ -4071,6 +4106,7 @@ function closeDet(){
     det.classList.remove("open");
     det.classList.remove("det-overlay");
   }
+  document.body.classList.remove("det-open");
   renderTable();
 }
 function toggleDetCompact(){
@@ -4731,9 +4767,9 @@ _lbWire();
 // ════════════════════════════════════════════════════════════
 function setF(f){
   curF=f;
-  document.querySelectorAll('#tb .chip').forEach(b=>b.classList.remove('chip-on'));
+  document.querySelectorAll('#tb .chip').forEach(b=>{b.classList.remove('chip-on');b.setAttribute('aria-pressed','false');});
   const active=document.getElementById(`btn-${f}`);
-  if(active) active.classList.add('chip-on');
+  if(active){ active.classList.add('chip-on'); active.setAttribute('aria-pressed','true'); }
   updateFilterIndicators();
   renderTable();
 }
@@ -4893,7 +4929,7 @@ function sortedUnits(rows){
 // ════════════════════════════════════════════════════════════
 const NOTE_TYPES={
   seguimiento: {label:"Seguimiento", color:"var(--B)"},
-  taller:      {label:"En taller",   color:"var(--O)"},
+  taller:      {label:"En taller",   color:"var(--violet)"},
   alerta:      {label:"Alerta",      color:"var(--R)"},
   info:        {label:"Info",        color:"var(--s3)"},
 };
@@ -5030,6 +5066,31 @@ function closeModal(id){
   if(_modalPrevFocus&&_modalPrevFocus.focus){try{_modalPrevFocus.focus();}catch(e){}}
   _modalPrevFocus=null;
 }
+// Auditoría UX 2026-07 H13: focus-trap para los overlays que se muestran con
+// style.display (no pasan por openModal). Solo maneja Tab — el Escape lo cubre
+// el listener global de abajo (usar _trapFocus aquí ROMPERÍA Escape: llama a
+// closeModal, que no toca style.display, y detiene la propagación).
+function _trapFocusTab(e){
+  if(e.key!=="Tab")return;
+  const modal=e.currentTarget;
+  const focusables=modal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  const vis=[...focusables].filter(el=>el.offsetParent!==null);
+  if(!vis.length)return;
+  const first=vis[0],last=vis[vis.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+}
+function wireOverlayTrap(id){
+  const el=document.getElementById(id);
+  if(!el||el.__trapWired)return;
+  el.__trapWired=true;
+  el.addEventListener("keydown",_trapFocusTab);
+}
+window.__wireOverlayTrap=wireOverlayTrap; // reutilizable desde módulos src/ (cmp-modal)
+// Al DOMContentLoaded: algunos overlays (fleet-modal) se declaran DESPUÉS de este script.
+window.addEventListener("DOMContentLoaded",()=>{
+  ["gasto-overlay","tendencias-overlay","cmp-modal","unit-card-modal","fleet-modal","pwa-install-modal","lb"].forEach(wireOverlayTrap);
+});
 // UX 2026-07 Lote 4: Escape también cierra los overlays que NO usan openModal
 // (gasto/tendencias/expediente de cumplimiento se muestran con style.display).
 document.addEventListener("keydown",function(e){
@@ -6519,6 +6580,9 @@ function tlSwitch(v){
   tlSubView = v;
   document.getElementById("tltab-activas").classList.toggle("on", v==="activas");
   document.getElementById("tltab-historial").classList.toggle("on", v==="historial");
+  // A11y (auditoría UX 2026-07 H14): estado seleccionado para el lector.
+  document.getElementById("tltab-activas").setAttribute("aria-selected", v==="activas"?"true":"false");
+  document.getElementById("tltab-historial").setAttribute("aria-selected", v==="historial"?"true":"false");
   document.getElementById("tl-bar-activas").style.display  = v==="activas"   ? "" : "none";
   document.getElementById("tl-bar-historial").style.display = v==="historial" ? "" : "none";
   document.getElementById("tl-kpis").style.display         = v==="activas"   ? "" : "none";
@@ -6560,6 +6624,8 @@ function uvSwitch(tab){
   _uvTab = tab;
   document.getElementById("uv-tab-lista").classList.toggle("on", tab==="lista");
   document.getElementById("uv-tab-audit").classList.toggle("on", tab==="audit");
+  document.getElementById("uv-tab-lista").setAttribute("aria-selected", tab==="lista"?"true":"false");
+  document.getElementById("uv-tab-audit").setAttribute("aria-selected", tab==="audit"?"true":"false");
   document.getElementById("uv-lista-wrap").style.display = tab==="lista" ? "block" : "none";
   document.getElementById("uv-audit-wrap").style.display = tab==="audit" ? "block" : "none";
   if(tab==="audit") refreshAudit();
@@ -7001,6 +7067,11 @@ function showView(view){
   if(mnComb) mnComb.classList.toggle("on", isComb);
   const mnCmp=document.getElementById("mn-cumplimiento");
   if(mnCmp) mnCmp.classList.toggle("on", isCumpl);
+  // A11y (auditoría UX 2026-07 H14): anunciar la vista activa al lector.
+  document.querySelectorAll("#mainnav .mnav").forEach(b=>{
+    if(b.classList.contains("on")) b.setAttribute("aria-current","page");
+    else b.removeAttribute("aria-current");
+  });
 
   // Contenedor principal de Inspecciones
   const main = document.getElementById("main");
@@ -7256,7 +7327,7 @@ function _fleetDetailCell(u){
     return `<span style="color:${col};font-weight:600">${lbl}</span>${ref?` <span style="color:var(--s2);font-size:10px">${escHtml(ref)}</span>`:""}`;
   }
   if(_fleetModalKind==="taller"){
-    return `<span style="color:var(--B);font-weight:600">En taller</span>`;
+    return `<span style="color:var(--violet);font-weight:600">En taller</span>`;
   }
   if(_isMissingKind(_fleetModalKind)){
     const last = _fleetModalKind==="missingSemanal" ? _missingLast.get(u.plate) : pickStrFleet(u.fecha);
@@ -7305,6 +7376,8 @@ window.openFleetModal = function(kind){
   const m = document.getElementById("fleet-modal");
   if(m) m.style.display = "flex";
   renderFleetModalRows();
+  // A11y (auditoría UX 2026-07 H13): mover el foco al diálogo al abrir.
+  if(srch) setTimeout(()=>srch.focus(), 30);
 };
 window.closeFleetModal = function(){
   const m = document.getElementById("fleet-modal");
@@ -7473,40 +7546,40 @@ function buildKPIsSemanales(){
   const pct = n => t ? Math.round((n/t)*100) : 0;
 
   kpisEl.innerHTML=`<div class="kpi-row" style="padding:10px 16px 6px">
-    <div class="kc btn" onclick="swSetF('all')">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('all')">
       <div class="ktop" style="background:var(--B)"></div>
       <div class="klbl">Total Revisadas</div>
       <div class="kval" style="color:var(--w1)">${t}</div>
       <div class="ksub">${escHtml(swRangoLabel())}</div>
     </div>
-    <div class="kc btn" onclick="swSetF('Urgente')">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('Urgente')">
       <div class="ktop" style="background:var(--R)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="zap" style="width:11px;height:11px"></i> Atención Urgente</div>
       <div class="kval" style="color:var(--R)">${nUrg}</div>
       <div class="ksub">${pct(nUrg)}% · requieren acción inmediata</div>
       <div class="kprog" style="background:var(--R);width:${pct(nUrg)}%"></div>
     </div>
-    <div class="kc btn" onclick="swSetF('Revisar')">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('Revisar')">
       <div class="ktop" style="background:var(--A)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> Preventivo</div>
       <div class="kval" style="color:var(--A)">${nRev}</div>
       <div class="ksub">${pct(nRev)}% · programar mantenimiento</div>
       <div class="kprog" style="background:var(--A);width:${pct(nRev)}%"></div>
     </div>
-    <div class="kc btn" onclick="swSetF('all')" title="Unidades que siguen operando (OK + Revisar). Solo Urgente queda fuera.">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('all')" title="Unidades que siguen operando (OK + Revisar). Solo Urgente queda fuera.">
       <div class="ktop" style="background:var(--G)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="check-circle-2" style="width:11px;height:11px"></i> Operativas</div>
       <div class="kval" style="color:var(--G)">${nOK+nRev}</div>
       <div class="ksub">${pct(nOK+nRev)}% de la flota</div>
       <div class="kprog" style="background:var(--G);width:${pct(nOK+nRev)}%"></div>
     </div>
-    <div class="kc btn" onclick="swSetF('carroceria')" title="Filtrar por daños en carrocería">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('carroceria')" title="Filtrar por daños en carrocería">
       <div class="ktop" style="background:var(--A)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="car" style="width:11px;height:11px"></i> Carrocería</div>
       <div class="kval" style="color:${nBodyUrg?"var(--R)":nBodyRev?"var(--A)":"var(--G)"}">${nBodyUrg+nBodyRev||"0"}</div>
       <div class="ksub">${nBodyUrg?'<i data-lucide="zap" style="width:9px;height:9px;vertical-align:-1px"></i> '+nBodyUrg+" grave":""} ${nBodyRev?'<i data-lucide="alert-triangle" style="width:9px;height:9px;vertical-align:-1px"></i> '+nBodyRev+" leve":(!nBodyUrg&&!nBodyRev)?"Sin daños":""}</div>
     </div>
-    <div class="kc btn" onclick="swSetF('llanta')" title="Filtrar por llanta de refacción">
+    <div class="kc btn" role="button" tabindex="0" onclick="swSetF('llanta')" title="Filtrar por llanta de refacción">
       <div class="ktop" style="background:var(--B)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="wrench" style="width:11px;height:11px"></i> Llanta Ref.</div>
       <div class="kval" style="color:${nTireRev?"var(--A)":"var(--G)"}">${nTireRev||"0"}</div>
@@ -7525,7 +7598,7 @@ function buildKPIsSemanales(){
       <div class="kval" style="color:${nRaUrg?"var(--R)":nRaRev?"var(--A)":"var(--G)"}">${nRaUrg||nRaRev||"0"}</div>
       <div class="ksub">${nRaUrg?'<i data-lucide="zap" style="width:9px;height:9px;vertical-align:-1px"></i> '+nRaUrg+" crítico ":""}${nRaRev?'<i data-lucide="alert-triangle" style="width:9px;height:9px;vertical-align:-1px"></i> '+nRaRev+" bajo":(!nRaUrg?"Sin alertas":"")}</div>
     </div>
-    ${faltanS?`<div class="kc btn" onclick="openFleetModal('missingSemanal')" title="Unidades de la flota sin check semanal en el rango">
+    ${faltanS?`<div class="kc btn" role="button" tabindex="0" onclick="openFleetModal('missingSemanal')" title="Unidades de la flota sin check semanal en el rango">
       <div class="ktop" style="background:var(--s2)"></div>
       <div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="calendar-x" style="width:11px;height:11px"></i> Sin check</div>
       <div class="kval" style="color:var(--A)">${faltanS}</div>
@@ -7597,9 +7670,13 @@ function renderTableSemanales(){
     }).join("") + `<th style="cursor:default">Acción</th>`; // columna de acción no sorteable
   }
 
+  // Semanales-2A: lo normal se silencia (texto tenue + dot), solo el hallazgo lleva
+  // pastilla de color — así los pocos problemas saltan en una tabla de mayoría OK.
+  const swOkMuted = (label)=>`<span class="sw-ok-muted"><span class="sw-ok-dot"></span>${escHtml(label)}</span>`;
   const swPill = (risk,label)=>{
-    const cls=risk==="Urgente"?"sw-pill-urg":risk==="Revisar"?"sw-pill-rev":"sw-pill-ok";
-    const ico=risk==="Urgente"?'<i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i>':risk==="Revisar"?'<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-1px"></i>':'<i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i>';
+    if(risk!=="Urgente" && risk!=="Revisar") return swOkMuted(label||risk);
+    const cls=risk==="Urgente"?"sw-pill-urg":"sw-pill-rev";
+    const ico=risk==="Urgente"?'<i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i>':'<i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:-1px"></i>';
     return `<span class="sw-pill ${cls}">${ico} ${escHtml(label||risk)}</span>`;
   };
 
@@ -7637,18 +7714,18 @@ function renderTableSemanales(){
          </button>`
       : "";
 
-    return `<tr class="${rowCls}" ${clickHandler} style="cursor:pointer">
+    return `<tr class="${rowCls}" ${clickHandler} tabindex="0" style="cursor:pointer">
       <td style="color:var(--s3);font-size:10px">${i+1}</td>
       <td style="font-weight:700;color:var(--w1);font-family:var(--fm)">${escHtml(e.eco||"—")}${camIcon}</td>
       <td style="font-weight:600;color:var(--ac);font-family:var(--fm)">${escHtml(e.plate||"—")}</td>
       <td class="sw-km">${e.km ? Number(String(e.km).replace(/[^0-9.]/g,"")).toLocaleString("es-MX")+" km" : "—"}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.branch||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.branch||"—")}</td>
       <td>${swPill(e.aceiteRisk, e.aceite||e.aceiteRisk)}</td>
       <td>${swPill(e.radiadorRisk, e.radiador||e.radiadorRisk)}</td>
       <td>${(()=>{
         // Carrocería: cosmético — OK=verde, Urgente=rojo estructural, Revisar=azul-info (no amarillo)
         if(!e.carroceriaRisk || e.carroceriaRisk==="OK")
-          return `<span class="sw-pill sw-pill-ok">✓ Sin daños</span>`;
+          return swOkMuted("Sin daños");
         if(e.carroceriaRisk==="Urgente")
           return `<span class="sw-pill sw-pill-urg"><i data-lucide="zap" style="width:10px;height:10px;vertical-align:-1px"></i> ${escHtml(e.carroceria||"Daño grave")}</span>`;
         return `<span class="sw-pill sw-pill-info">● ${escHtml(e.carroceria||"Con daños")}</span>`;
@@ -7656,14 +7733,14 @@ function renderTableSemanales(){
       <td>${(()=>{
         // Llanta refacción: accesorio — OK=verde, faltante=ámbar-note informativo
         if(!e.llantaRisk || e.llantaRisk==="OK")
-          return `<span class="sw-pill sw-pill-ok">✓ Con refacción</span>`;
+          return swOkMuted("Con refacción");
         return `<span class="sw-pill sw-pill-note">◌ Completar refacción</span>`;
       })()}</td>
       <td>${swPill(effectiveRisk, effectiveRisk==="OK"?"Operativa":effectiveRisk==="Revisar"?"Operativa · Revisar":"Urgente")}</td>
       <td><span class="sw-resp" title="${escHtml(e.responsable||"")}">${escHtml(e.responsable||"—")}</span></td>
-      <td style="font-size:10px;color:var(--s2)">
+      <td style="font-size:11px;color:var(--s2)">
         ${escHtml(e.fecha||"—")}
-        ${e._periodo?`<div style="font-size:9px;color:var(--s3);margin-top:1px">${escHtml(e._periodo)}</div>`:""}
+        ${e._periodo?`<div style="font-size:10px;color:var(--s3);margin-top:1px">${escHtml(e._periodo)}</div>`:""}
       </td>
       <td>${tallerBtn}</td>
     </tr>`;
@@ -7764,9 +7841,26 @@ function selSwUnit(swKey){
        </div>`
     : "";
 
+  // Semanales-2A: bloque "Pendientes" arriba — qué está pendiente de un vistazo
+  // (el usuario lo pidió explícitamente). El desglose completo de los 4 sistemas
+  // queda debajo como referencia.
+  const _pend = swPendientes(e);
+  const _pendBlock = _pend.length===0
+    ? `<div class="sw-det-pend sw-det-pend-ok"><span class="sw-ok-dot"></span> Sin pendientes — unidad operativa</div>`
+    : `<div class="sw-det-pend">
+         <div class="sw-det-pend-h">Pendientes (${_pend.length})</div>
+         ${_pend.map(p=>`<div class="sw-det-pend-row">
+           <span class="sw-pill ${p.cls}">${escHtml(p.nivel)}</span>
+           <span class="sw-det-pend-sis">${escHtml(p.sis)}${p.vital?"":`<span class="sw-det-pend-obs">observación</span>`}</span>
+           ${p.val?`<span class="sw-det-pend-val">${escHtml(p.val)}</span>`:""}
+         </div>`).join("")}
+       </div>`;
+
   if(dbody) dbody.innerHTML = `
     <div style="padding:14px">
       ${photoBtn}
+      ${_pendBlock}
+      <div class="sw-det-desglose-h">Desglose completo</div>
       <div style="display:flex;flex-direction:column;gap:14px">
         <div>
           <div style="font-size:10px;font-weight:700;color:var(--s2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Aceite de motor</div>
@@ -7813,6 +7907,7 @@ function selSwUnit(swKey){
   // top-right. Idempotente — initFloatPanel chequea dataset.fpInit.
   if(window.initFloatPanel) window.initFloatPanel();
   det.classList.add("open");
+  document.body.classList.add("det-open"); // lado-a-lado ≥1200px (auditoría UX H11)
   if(window.lucide && window.lucide.createIcons) window.lucide.createIcons();
 }
 window.selSwUnit = selSwUnit;
@@ -7893,6 +7988,23 @@ window.openMnPhotoForFinding = function(uid, findingText){
   }
 })();
 
+// Semanales-2A: fuente ÚNICA de "qué está pendiente" por unidad — la usan el
+// detalle (bloque Pendientes de selSwUnit) y la nota automática de Taller, para
+// que nunca digan cosas distintas. vital=true (aceite/radiador) inmoviliza;
+// carrocería/llanta son observaciones (no cambian el estatus). Llanta nunca es
+// Urgente (normTireRisk). Ordena Urgente antes que Revisar.
+function swPendientes(e){
+  if(!e) return [];
+  const out=[];
+  const add=(sis,nivel,val,vital,cls)=>{ if(nivel && nivel!=="OK") out.push({sis,nivel,val,vital,cls}); };
+  add("Aceite de motor",     e.aceiteRisk,    e.aceite,     true,  e.aceiteRisk==="Urgente"?"sw-pill-urg":"sw-pill-rev");
+  add("Líquido de radiador", e.radiadorRisk,  e.radiador,   true,  e.radiadorRisk==="Urgente"?"sw-pill-urg":"sw-pill-rev");
+  add("Carrocería",          e.carroceriaRisk,e.carroceria, false, e.carroceriaRisk==="Urgente"?"sw-pill-urg":"sw-pill-info");
+  add("Llanta de refacción", e.llantaRisk,    e.llanta,     false, "sw-pill-note");
+  out.sort((a,b)=>(a.nivel==="Urgente"?0:1)-(b.nivel==="Urgente"?0:1));
+  return out;
+}
+
 // ════════════════════════════════════════════════════════════
 // Enviar unidad urgente al módulo Taller desde Semanales
 // Pre-llena el modal de Taller con la información de la inspección
@@ -7904,12 +8016,9 @@ function enviarATallerDesdeInspeccion(uid){
   const e = all.find(x=>x.aceiteRisk==="Urgente"||x.radiadorRisk==="Urgente") || all[0];
   if(!e) return;
 
-  // Construir nota automática con las anomalías detectadas
-  const issues = [];
-  if(e.aceiteRisk!=="OK")     issues.push(`Aceite motor: ${e.aceite||e.aceiteRisk}`);
-  if(e.radiadorRisk!=="OK")   issues.push(`Radiador: ${e.radiador||e.radiadorRisk}`);
-  if(e.carroceriaRisk!=="OK") issues.push(`Carrocería: ${e.carroceria||e.carroceriaRisk}`);
-  if(e.llantaRisk!=="OK")     issues.push(`Llanta refacción: ${e.llanta||e.llantaRisk}`);
+  // Construir nota automática con las anomalías detectadas (misma fuente que el
+  // bloque Pendientes del detalle — swPendientes).
+  const issues = swPendientes(e).map(p=>`${p.sis}: ${p.val||p.nivel}`);
   const nota = `[Inspección Semanal · ${e._periodo || "rango actual"}]\n${issues.join("\n")}`;
 
   // Abrir modal de Taller en modo "Nuevo registro" pre-rellenado
@@ -7942,7 +8051,7 @@ function swSetF(f){
   // Desactivar todos los botones de filtro principales
   ["all","Urgente","Revisar","OK"].forEach(k=>{
     const btn=document.getElementById(`sw-f-${k==="all"?"all":k==="Urgente"?"urg":k==="Revisar"?"rev":"ok"}`);
-    if(btn) btn.classList.toggle("active", k===f);
+    if(btn){ btn.classList.toggle("active", k===f); btn.setAttribute("aria-pressed", k===f?"true":"false"); }
   });
   // Los filtros 'carroceria' y 'llanta' se activan desde los KPI,
   // no tienen botón dedicado en la barra — limpiamos los botones en ese caso
@@ -7953,6 +8062,14 @@ function swSetF(f){
     });
   }
   renderTableSemanales();
+}
+// Auditoría UX 2026-07 H9: limpiar estado + sucursal + búsqueda de Semanales
+// (el período no se toca: es la ventana de trabajo, no un filtro).
+function swClearFilters(){
+  swCurS="";
+  const srch=document.getElementById("sw-srch"); if(srch) srch.value="";
+  const suc=document.getElementById("sw-filt-suc"); if(suc) suc.value="all";
+  swSetF("all");
 }
 function swSort(col){
   if(swSortCol===col) swSortDir*=-1;
@@ -8092,14 +8209,14 @@ function renderActivas(){
       <div class="ksub">${tlPct(nRev)}% de activos</div>
       <div class="kprog" style="background:var(--A);width:${tlPct(nRev)}%"></div>
     </div>
-    <div class="kc" style="cursor:pointer" onclick="document.getElementById('tl-filt-tipo').value='Correctivo';renderTaller()">
+    <div class="kc" role="button" tabindex="0" style="cursor:pointer" onclick="document.getElementById('tl-filt-tipo').value='Correctivo';renderTaller()">
       <div class="ktop" style="background:var(--R)"></div>
       ${_klbl("wrench","Mtto Correctivo")}
       <div class="kval" style="color:var(--R)">${nCorr}</div>
       <div class="ksub">${tlPct(nCorr)}% de activos</div>
       <div class="kprog" style="background:var(--R);width:${tlPct(nCorr)}%"></div>
     </div>
-    <div class="kc" style="cursor:pointer" onclick="document.getElementById('tl-filt-tipo').value='Preventivo';renderTaller()">
+    <div class="kc" role="button" tabindex="0" style="cursor:pointer" onclick="document.getElementById('tl-filt-tipo').value='Preventivo';renderTaller()">
       <div class="ktop" style="background:var(--B)"></div>
       ${_klbl("shield-check","Mtto Preventivo")}
       <div class="kval" style="color:var(--B)">${nPrev}</div>
@@ -8217,17 +8334,17 @@ ${tlAlert}`;
     // Lookup economicoId desde window.units por placa (MoreApp Excel ID numerico).
     const _u = window.units?.find(u=>u.plate&&e.plate&&u.plate===e.plate);
     const _ecoDisplay = _u?.eco || e.eco || "—";
-    return `<tr style="${rowBg};cursor:pointer" data-action="openTallerModal" data-arg1="${escAttr(e.id)}" title="Clic para editar">
+    return `<tr style="${rowBg};cursor:pointer" data-action="openTallerModal" data-arg1="${escAttr(e.id)}" tabindex="0" title="Clic para editar">
       <td style="font-weight:700;color:var(--w1)">${escHtml(_ecoDisplay)}${histBadge}</td>
       <td style="font-weight:600;color:var(--ac)">${escHtml(e.plate||"—")}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.sucursal||"—")}</td>
-      <td style="font-size:10px;color:var(--s2)">${escHtml(e.area||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.sucursal||"—")}</td>
+      <td style="font-size:11px;color:var(--s2)">${escHtml(e.area||"—")}</td>
       <td>${e.tipo?`<span class="tl-tipo ${tipoCls}">${escHtml(e.tipo)}</span>`:"—"}</td>
       <td>${fmtDate(e.fentrada)}</td>
       <td style="text-align:center">${diasTag}</td>
       <td>${fmtDate(e.fsalidaEst)}</td>
-      <td style="font-size:10px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
-      <td style="max-width:200px;color:var(--s1);font-size:10px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
+      <td style="font-size:11px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
+      <td style="max-width:200px;color:var(--s1);font-size:11px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
       <td onclick="event.stopPropagation()">
         <button class="tl-fin-btn" data-action="finalizarUnidad" data-arg1="${escAttr(e.id)}" data-stop-propagation="1" title="Marcar como Finalizado">✓ Salida</button>
       </td>

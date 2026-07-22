@@ -153,13 +153,25 @@ export type TableSemanalesSummary = {
   empty: boolean;
 };
 
+/** Semanales-2A: celda OK silenciada (texto tenue + dot, sin pastilla ni icono). */
+function okMuted(label: string): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "sw-ok-muted";
+  const dot = document.createElement("span");
+  dot.className = "sw-ok-dot";
+  span.appendChild(dot);
+  span.appendChild(document.createTextNode(label));
+  return span;
+}
+
 function pill(
   risk: RiskLevel | undefined,
   label: string,
   iconKey: "zap" | "alert-triangle" | "check",
 ): HTMLElement {
-  const cls =
-    risk === "Urgente" ? "sw-pill-urg" : risk === "Revisar" ? "sw-pill-rev" : "sw-pill-ok";
+  // Solo Urgente/Revisar llevan pastilla; lo normal se silencia (2A).
+  if (risk !== "Urgente" && risk !== "Revisar") return okMuted(label);
+  const cls = risk === "Urgente" ? "sw-pill-urg" : "sw-pill-rev";
   const span = document.createElement("span");
   span.className = `sw-pill ${cls}`;
   const i = document.createElement("i");
@@ -178,10 +190,7 @@ function riskPill(risk: RiskLevel | undefined, label: string): HTMLElement {
 
 function carroceriaCell(entry: WeeklyEntry): HTMLElement {
   if (!entry.carroceriaRisk || entry.carroceriaRisk === "OK") {
-    const s = document.createElement("span");
-    s.className = "sw-pill sw-pill-ok";
-    s.textContent = "✓ Sin daños";
-    return s;
+    return okMuted("Sin daños");
   }
   if (entry.carroceriaRisk === "Urgente") {
     return riskPill("Urgente", entry.carroceria || "Daño grave");
@@ -194,10 +203,7 @@ function carroceriaCell(entry: WeeklyEntry): HTMLElement {
 
 function llantaCell(entry: WeeklyEntry): HTMLElement {
   if (!entry.llantaRisk || entry.llantaRisk === "OK") {
-    const s = document.createElement("span");
-    s.className = "sw-pill sw-pill-ok";
-    s.textContent = "✓ Con refacción";
-    return s;
+    return okMuted("Con refacción");
   }
   const s = document.createElement("span");
   s.className = "sw-pill sw-pill-note";

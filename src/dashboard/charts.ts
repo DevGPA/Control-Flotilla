@@ -573,7 +573,9 @@ function buildHeatmapOption(data: DayCount[]): echarts.EChartsCoreOption {
       },
       yearLabel: { show: false },
       monthLabel: { color: p.textSub, fontSize: 9 },
-      dayLabel: { color: p.textSub, fontSize: 9, nameMap: "es" },
+      // nameMap:"es" NO es un locale integrado de ECharts (caía a inglés
+      // S/M/T/W/T/F/S). Array explícito, domingo primero (auditoría UX H20).
+      dayLabel: { color: p.textSub, fontSize: 9, nameMap: ["D", "L", "M", "M", "J", "V", "S"] },
     },
     series: [
       {

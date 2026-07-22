@@ -82,9 +82,10 @@
   --s1: #475569;
   --s2: #64748b;
   --s3: #6b7280;
-  /* UX Fase 1: #9ca3af daba ~3.8:1 sobre blanco (falla WCAG AA); #75808e ≈4.5:1
-     conservando la jerarquía s3 > s4. */
-  --s4: #75808e;
+  /* Frente 1 (2026-07-14): #75808e daba 4.01:1 real (el "≈4.5" anterior era un
+     cálculo optimista). #6c7683 = 4.6:1 sobre blanco. --s4 es el peldaño más
+     tenue: solo para DECORACIÓN (dots); el texto usa --s2/--s3. */
+  --s4: #6c7683;
 
   /* Semantic colors — Tremor palette (rose/amber/emerald/blue/orange-600) */
   --R: #e11d48;
@@ -138,7 +139,9 @@
   --r2: 12px;
   --r3: 12px;
   --r4: 16px;
-  --col-tpl: 36px 96px 148px 110px 92px 1fr 76px 86px;
+  /* Nombre de unidad fluido (auditoría UX H12): a 1920 la col fija de 148px
+     truncaba nombres mientras Comentarios (1fr) iba casi vacía. */
+  --col-tpl: 36px 96px minmax(148px, 230px) 110px 92px minmax(170px, 1fr) 76px 86px;
 
   /* ── Escala tipográfica (UX 2026-06-19) ─────────────────────────────────────
      Antes había ~367 font-size mágicos dispersos (CSS + inline) sin escala y con
@@ -966,7 +969,7 @@ select {
   border-radius: var(--r2) var(--r2) 0 0;
 }
 .klbl {
-  font-size: var(--text-2xs);
+  font-size: 10.5px; /* piso escritorio — espeja .hero-lbl (auditoría UX 2026-07 H6) */
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 700;
@@ -1525,6 +1528,18 @@ select.filter-active {
   box-shadow: 0 10px 40px #0003;
   overflow: hidden;
 }
+/* Auditoría UX 2026-07 H5 — tabla Combustible legible a 1366px:
+   fecha en una línea; responsable con elipsis (nombre completo en title). */
+#fuel-table td.fv-td-fecha {
+  white-space: nowrap;
+}
+#fuel-table td.fv-td-resp {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fleet-mod-hdr {
   display: flex;
   justify-content: space-between;
@@ -1598,8 +1613,8 @@ select.filter-active {
   content: "";
 }
 .th-sort {
-  font-size: 9px;
-  color: var(--s4);
+  font-size: 10px;
+  color: var(--s2); /* --s4 era 4.0:1 claro / 2.5:1 dark — ilegible (frente 1) */
   margin-left: 3px;
   font-family: var(--fm, monospace);
   user-select: none;
@@ -1632,7 +1647,7 @@ select.filter-active {
 }
 .tcmt-empty {
   font-size: 11px;
-  color: var(--s4);
+  color: var(--s2); /* --s4 fallaba AA; --s4 queda solo decorativo (frente 1) */
 }
 .tr {
   display: grid;
@@ -1746,19 +1761,19 @@ select.filter-active {
   font-weight: 600;
 }
 .tinsp {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s1);
   margin-top: 1px;
 }
 .tkm {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--s1);
   font-variant-numeric: tabular-nums;
   font-family: var(--fm);
   font-weight: 500;
 }
 .tdt {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--s1);
 }
 .pill {
@@ -1767,7 +1782,7 @@ select.filter-active {
   gap: 4px;
   border-radius: 5px;
   padding: 3px 8px;
-  font-size: 9px;
+  font-size: 10px; /* badge de severidad: 9→10px (auditoría UX H6) */
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -2264,7 +2279,7 @@ select.filter-active {
 }
 .pg-hint {
   font-size: 10px;
-  color: var(--s2);
+  color: var(--s1); /* sobre --bg2/--bg3 los s2/s3 caen bajo 4.5:1 (frente 1) */
 }
 .pg-cats {
   display: flex;
@@ -3306,7 +3321,7 @@ select.filter-active {
 }
 .pm-hint {
   font-size: 10px;
-  color: var(--s2);
+  color: var(--s1); /* sobre paneles tintados (frente 1) */
   line-height: 1.5;
 }
 .pm-ftr {
@@ -3749,6 +3764,9 @@ select.filter-active {
 .aq-card.sev-ac::before {
   background: var(--ac);
 }
+.aq-card.sev-violet::before {
+  background: var(--violet);
+}
 .aq-top {
   display: flex;
   align-items: center;
@@ -3805,6 +3823,10 @@ select.filter-active {
 .aq-card.sev-ac .ac-ico,
 .aq-card.sev-ac .aq-n {
   color: var(--ac);
+}
+.aq-card.sev-violet .ac-ico,
+.aq-card.sev-violet .aq-n {
+  color: var(--violet);
 }
 .aq-detail {
   font-size: var(--text-xs);
@@ -3902,6 +3924,38 @@ select.filter-active {
   .hero-sub {
     display: none;
   }
+  /* Auditoría UX 2026-07 H4: comprimir también el chrome fijo de las DEMÁS
+     vistas (KPIs .kc compartidos por Taller/Semanales/Combustible/Cumplimiento
+     y sus barras) — antes solo Inspecciones se adaptaba a laptops ≤800px. */
+  .kc {
+    padding: 7px 12px;
+  }
+  .kval {
+    font-size: 17px;
+  }
+  .ksub {
+    display: none;
+  }
+  .kprog {
+    margin-top: 5px;
+  }
+  #sw-kpis {
+    padding: 6px 16px 2px;
+  }
+  .kpi-row {
+    gap: 8px;
+  }
+  #sw-bar,
+  #fuel-bar {
+    padding: 5px 16px;
+  }
+  #sw-periodo-bar,
+  #fuel-periodo-bar {
+    padding: 4px 20px;
+  }
+  #cmp-kpis {
+    padding: 6px 16px 0 !important; /* padding inline en el markup */
+  }
 }
 
 /* ════ MAPA DE FLOTA (Híbrido B×C H4) ════════════════════════
@@ -3917,9 +3971,9 @@ select.filter-active {
   letter-spacing: 0.8px;
 }
 .fm-hint {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs); /* 9→10px (frente 1) */
   font-weight: 500;
-  color: var(--s3);
+  color: var(--s1); /* --s3 sobre --bg2 = 4.28:1, fallaba AA (frente 1) */
   text-transform: none;
   letter-spacing: 0.2px;
 }
@@ -3968,8 +4022,8 @@ select.filter-active {
   box-shadow: inset 0 0 0 1px var(--A);
 }
 .fm-taller {
-  background: var(--Bl);
-  box-shadow: inset 0 0 0 1px var(--B);
+  background: var(--violet-l);
+  box-shadow: inset 0 0 0 1px var(--violet);
 }
 /* Perf F1-9: fmPulse animaba box-shadow (no compositable) → repaint por frame en
    CADA tile urgente del mapa. Ahora el anillo expansivo es un ::after con borde
@@ -4086,6 +4140,11 @@ select.filter-active {
   background: var(--acd);
   border-color: var(--ac);
   color: var(--ac);
+}
+.alert-chip.sev-violet {
+  background: var(--violet-d);
+  border-color: var(--violet);
+  color: var(--violet);
 }
 .alert-chip.sev-n {
   background: var(--bg3);
@@ -4669,7 +4728,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   }
 }
 .fv-collbl {
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs); /* 9→10px: etiquetas de dato del drawer (auditoría UX H6) */
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--s2);
@@ -4962,6 +5021,53 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   background: var(--bg2);
   padding: 10px 16px 6px;
 }
+/* Semanales-2A: KPIs como CHIPS en una sola línea escaneable (lo primero que
+   mira el usuario). Scopeado a #sw-kpis: NO toca .kpi-row/.kc de las otras vistas. */
+#sw-kpis .kpi-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+#sw-kpis .kpi-chips .kc {
+  flex: 0 0 auto;
+  min-width: 0; /* neutraliza el min-width:120px base y el 50%/100% de los breakpoints móviles */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 14px;
+  border-radius: 999px;
+}
+#sw-kpis .kpi-chips .kc.btn:hover {
+  transform: none; /* sin salto vertical; el chip vive en una fila con scroll */
+  box-shadow: var(--card-sh-hover);
+}
+/* Acento de color: la barra superior .ktop pasa a franja IZQUIERDA del chip
+   (conserva el código de color por severidad sin tocar buildCard). */
+#sw-kpis .kpi-chips .ktop {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  width: 3px;
+  height: auto;
+  border-radius: 999px 0 0 999px;
+}
+#sw-kpis .kpi-chips .klbl {
+  margin: 0;
+  white-space: nowrap;
+}
+/* El conteo (.kval) queda como badge a la derecha del label. */
+#sw-kpis .kpi-chips .kval {
+  font-size: 15px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+/* En una línea no caben subtítulo ni barra de progreso — se ocultan
+   (siguen en el DOM: los tests leen su textContent). */
+#sw-kpis .kpi-chips .ksub,
+#sw-kpis .kpi-chips .kprog {
+  display: none;
+}
 /* Toolbar semanales */
 #sw-bar,
 #fuel-bar {
@@ -5090,7 +5196,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   gap: 2px;
 }
 .sw-valby {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s2);
   font-weight: 600;
   max-width: 160px;
@@ -5105,9 +5211,94 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   gap: 3px;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 11px; /* pills de estado: piso de datos en escritorio (auditoría UX H6) */
   font-weight: 700;
   white-space: nowrap;
+}
+/* Semanales-2A: estado normal (OK) silenciado — texto tenue + dot verde suave,
+   sin fondo ni pastilla. Clase NUEVA (no toca .sw-pill-ok, que reusan
+   Cumplimiento/Combustible/detalle). Theme-aware vía --s2/--G. */
+.sw-ok-muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--s2);
+  white-space: nowrap;
+}
+.sw-ok-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--G);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+/* Semanales-2A: bloque "Pendientes" del detalle. */
+.sw-det-pend {
+  border: 1px solid var(--ln);
+  border-radius: var(--r2);
+  background: var(--bg2);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+.sw-det-pend-ok {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--s1);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sw-det-pend-h {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--s2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+.sw-det-pend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sw-det-pend-row + .sw-det-pend-row {
+  border-top: 1px solid var(--ln);
+}
+.sw-det-pend-sis {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--w1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sw-det-pend-obs {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--s2);
+  background: var(--bg3);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.sw-det-pend-val {
+  font-size: 11px;
+  color: var(--s2);
+  margin-left: auto;
+  text-align: right;
+}
+.sw-det-desglose-h {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--s2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 10px;
 }
 .sw-pill-ok {
   background: var(--Gd);
@@ -5229,7 +5420,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 }
 /* Celda de responsable / verificador */
 .sw-resp {
-  font-size: 10px;
+  font-size: 11px; /* piso de datos en escritorio (auditoría UX H6) */
   color: var(--s1);
   max-width: 130px;
   overflow: hidden;
@@ -5830,7 +6021,7 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 .chart-hint {
   font-size: var(--text-xs); /* 9.5px → 10px */
   font-weight: 500;
-  color: var(--s3);
+  color: var(--s1); /* --s3 sobre tarjetas tintadas fallaba AA (frente 1) */
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -5912,4 +6103,127 @@ body:not([data-view="inspecciones"]) #alerts-panel {
    body.is-admin (applyRolePermissions). El enforcement real es AppSync. */
 body:not(.is-admin) .needs-admin {
   display: none !important;
+}
+
+/* ════ AUDITORÍA UX 2026-07 · F3 — feedback y wayfinding ══════════ */
+/* Rótulo de vista (H8): cada vista anuncia su nombre en su primera barra. */
+.view-ttl {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--w1);
+  letter-spacing: 0.2px;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+.view-ttl-bar {
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+/* Variante siempre-visible del botón limpiar (Semanales/Combustible/Cumplimiento):
+   el de Inspecciones lo muestra/oculta JS; estos son estáticos (H9). */
+.clear-filters--on {
+  display: inline-flex;
+}
+/* Estado de carga compartido (H7): mientras hidrata desde la nube, los
+   empty-states dicen "Cargando…" en vez de un "Sin datos" engañoso. */
+body[data-hydrating] .sw-empty > *,
+body[data-hydrating] .uv-empty > * {
+  display: none;
+}
+body[data-hydrating] .sw-empty::before,
+body[data-hydrating] .uv-empty::before {
+  content: "Cargando datos de la nube…";
+  display: block;
+  color: var(--s2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ════ AUDITORÍA UX 2026-07 · F5 — consistencia ═══════════════════ */
+/* H11: expediente lado-a-lado en pantallas anchas — la tabla cede espacio
+   en vez de quedar tapada por el panel flotante (#det, 500px + margen). */
+@media (min-width: 1200px) {
+  body.det-open #tw {
+    margin-right: 536px;
+  }
+}
+/* H10/H16: botón canónico de exportar (accent outline + ícono de descarga)
+   y botón canónico de "Anulados" — antes 3 estilos inline divergentes. */
+.btn-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ac);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ac);
+  background: var(--bg2);
+  cursor: pointer;
+}
+.btn-export:hover {
+  background: var(--acd);
+}
+.btn-anulados {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--ln);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--s2);
+  background: var(--bg2);
+  cursor: pointer;
+}
+/* H10: acción "agregar" con el mismo peso primario en todas las vistas. */
+.btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ac);
+  cursor: pointer;
+}
+.btn-add:hover {
+  background: var(--ac2);
+}
+
+/* ════ FRENTE 2 (2026-07-14) — aprovechamiento en monitores grandes ═══════ */
+/* Las gráficas y el grid de Análisis estaban dimensionados para 1366; en
+   1920×1080 dejaban media pantalla vacía (auditoría UX H22/F6). El alto de
+   .chart-empty debe espejear el del canvas (mismo patrón que el base). */
+@media (min-width: 1700px) {
+  .analytics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .chart-canvas {
+    --chart-h: 330px;
+  }
+  .chart-card-wide .chart-canvas,
+  #analytics-panel .chart-canvas {
+    --chart-h: 390px;
+  }
+  .chart-empty {
+    margin-top: -330px;
+    height: 330px;
+  }
+  .chart-card-wide .chart-empty,
+  #analytics-panel .chart-empty {
+    margin-top: -390px;
+    height: 390px;
+  }
+}
+/* Mapa de flota: con altura de sobra (1080p+) caben más unidades sin scroll
+   interno; el tope de 150px era para laptops. */
+@media (min-height: 1000px) {
+  #fleet-map {
+    max-height: 280px;
+  }
 }

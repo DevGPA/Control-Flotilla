@@ -16,6 +16,8 @@ import type {
   FuelFinding,
 } from "./types";
 import {
+  computeKmplVida,
+  type KmplVida,
   computeFuelMetrics,
   buildFleetBaseline,
   detectFuelAnomalies,
@@ -81,6 +83,12 @@ const filter: FuelTableFilter = {
 let sortCol: FuelSortCol = "_idx";
 let sortDir: 1 | -1 = -1;
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+// Perf lag 2026-07-13: tope de filas en DOM (el dataset creció a ~2,750 y cada
+// render completo congelaba ~2s el hilo). Cada render normal resetea al base;
+// "Mostrar más" lo amplía solo para su propio re-render.
+const FUEL_ROW_LIMIT = 300;
+let fuelRowLimit = FUEL_ROW_LIMIT;
+let fuelKeepRowLimit = false;
 // Detalle/validación
 let lastMetricsByLoad = new Map<string, FuelMetrics>();
 let detailOrder: string[] = [];
@@ -175,6 +183,7 @@ let _memoDataset: {
   allMetrics: FuelMetrics[];
   metricsByLoad: Map<string, FuelMetrics>;
   recorridosByLoad: Map<string, RecorridoInfo>;
+  kmplVidaByEco: Map<string, KmplVida>;
 } | null = null;
 
 /** Invalida el memo del dataset (llamar tras mutar e.anulada en sitio: anular/restaurar). */
@@ -193,6 +202,7 @@ function fuelDatasetMemo(): {
   allMetrics: FuelMetrics[];
   metricsByLoad: Map<string, FuelMetrics>;
   recorridosByLoad: Map<string, RecorridoInfo>;
+  kmplVidaByEco: Map<string, KmplVida>;
 } {
   const ref = window.fuelEntries ?? EMPTY_FUEL;
   if (_memoDataset && _memoRef === ref && _memoVersion === _fuelDatasetVersion) {
@@ -202,9 +212,10 @@ function fuelDatasetMemo(): {
   const allMetrics = computeFuelMetrics(all);
   const metricsByLoad = new Map<string, FuelMetrics>(allMetrics.map((m) => [m.loadId, m]));
   const recorridosByLoad = computeRecorridos(all);
+  const kmplVidaByEco = computeKmplVida(all);
   _memoRef = ref;
   _memoVersion = _fuelDatasetVersion;
-  _memoDataset = { all, allMetrics, metricsByLoad, recorridosByLoad };
+  _memoDataset = { all, allMetrics, metricsByLoad, recorridosByLoad, kmplVidaByEco };
   return _memoDataset;
 }
 
@@ -226,7 +237,9 @@ function computeCtx(): FuelCtx {
   const preIds = new Set(preFiltered.map((e) => e.loadId));
   const preMetrics = allMetrics.filter((m) => preIds.has(m.loadId));
   const baseline = buildFleetBaseline(preMetrics, preFiltered);
-  const anomaliesPre = detectFuelAnomalies(preMetrics, baseline);
+  // `all` (histórico scopeado completo, no solo el set filtrado) para que el cross-match de
+  // económico-equivocado vea el odómetro de TODAS las unidades de la sucursal.
+  const anomaliesPre = detectFuelAnomalies(preMetrics, baseline, undefined, all);
   const findingsByLoad = groupFindingsByLoad(anomaliesPre);
   // FASE 2 — aplica el filtro por alerta (subconjunto consistente para KPIs/tabla/dashboard).
   const filtered = filter.flag
@@ -256,6 +269,8 @@ function computeCtx(): FuelCtx {
 function renderCombustible(): void {
   const tbody = $("fuel-tbody");
   if (!tbody) return; // vista no montada aún
+  if (!fuelKeepRowLimit) fuelRowLimit = FUEL_ROW_LIMIT;
+  fuelKeepRowLimit = false;
   // Perf F1-3: si la vista Combustible NO está activa, solo refresca el badge de nav
   // (barato: 1 pasada) y NO recomputes el pipeline analítico ni reconstruyas
   // tabla/KPIs/dashboard (hasta 9 ECharts). Antes cloudHydrate llamaba renderCombustible
@@ -333,6 +348,12 @@ function renderCombustible(): void {
     findingsByLoad: ctx.findingsByLoad,
     nombreValidador,
     onRowClick: (loadId, order) => window.openFuelDetail?.(loadId, order),
+    rowLimit: fuelRowLimit,
+    onShowMore: () => {
+      fuelRowLimit += 700;
+      fuelKeepRowLimit = true;
+      renderCombustible();
+    },
   });
 
   if (dashShown) void renderFuelDash();
@@ -498,6 +519,16 @@ async function exportTokaLayout(): Promise<void> {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(tokaLayoutToAoa(result));
     ws["!cols"] = [{ wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 32 }, { wch: 18 }];
+    // Nómina (columna B) como TEXTO: el valor ya es string (celda tipo 's'), y
+    // además fijamos el formato "@" para que Excel/Toka la traten como texto y no
+    // reconviertan "06"→6 al abrir (petición de Tesorería 2026-07-14).
+    for (let r = 1; r <= result.rows.length; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ c: 1, r })];
+      if (cell) {
+        cell.t = "s";
+        cell.z = "@";
+      }
+    }
     XLSX.utils.book_append_sheet(wb, ws, "Hoja1");
     const fecha = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `layout_carga_toka_${fecha}.xlsx`);
@@ -626,6 +657,7 @@ function initRangoFuel(): void {
   if (dEl && hEl && dEl.value && hEl.value) {
     filter.desde = dEl.value;
     filter.hasta = hEl.value;
+    ensureVentanaFuel(filter.desde);
     return;
   }
   // Rango sobre el universo COMPLETO (incl. anuladas): una anulada más reciente que
@@ -646,10 +678,26 @@ function initRangoFuel(): void {
     yy -= 1;
   }
   const desde = `${yy}-${String(mm).padStart(2, "0")}-01`;
-  filter.desde = desde < fechas[0]! ? fechas[0]! : desde;
+  // Perf boot 2026-07-14: el default sigue siendo 3 meses, pero la HIDRATACIÓN
+  // inicial solo trae ~1 mes (FUEL_WINDOW_DAYS=31). Ya NO se recorta el desde al
+  // mínimo hidratado: la ampliación se pide bajo demanda al ENTRAR a la vista.
+  filter.desde = desde;
   filter.hasta = max;
   if (dEl) dEl.value = filter.desde;
   if (hEl) hEl.value = filter.hasta;
+  ensureVentanaFuel(desde);
+}
+
+/**
+ * Amplía la ventana de hidratación hasta cubrir `desde` SOLO si la vista de
+ * Combustible está activa (initRangoFuel también corre en cada hidratación de
+ * fondo; sin este guard el boot re-pagaría los 3 meses que la ventana de 31
+ * días ahorra). No-op si ya está cubierta; re-renderiza al llegar el tramo.
+ */
+function ensureVentanaFuel(desde?: string): void {
+  if (!desde || document.body.dataset.view !== "combustible") return;
+  const w = window as unknown as { __fuelEnsureWindow?: (f: string) => Promise<boolean> };
+  if (typeof w.__fuelEnsureWindow === "function") void w.__fuelEnsureWindow(desde);
 }
 
 /** Cablea los listeners de los controles de la vista. Llamar una vez al montar. */
@@ -715,6 +763,33 @@ function mountControls(): void {
       sortCol = col;
       sortDir = 1;
     }
+    renderCombustible();
+  });
+  // Limpiar filtros (auditoría UX 2026-07 H9): resetea los 7 selects + búsqueda
+  // (NO el rango de fechas, que es el período de trabajo, no un filtro).
+  $("fuel-clear-filters")?.addEventListener("click", () => {
+    filter.tipo = "all";
+    filter.verdict = "all";
+    filter.sucursal = "";
+    filter.responsable = "";
+    filter.search = "";
+    filter.flag = "";
+    filter.area = "";
+    filter.submarca = "";
+    for (const id of [
+      "fuel-filt-tipo",
+      "fuel-filt-verdict",
+      "fuel-filt-suc",
+      "fuel-filt-resp",
+      "fuel-filt-flag",
+      "fuel-filt-area",
+      "fuel-filt-tipounidad",
+    ]) {
+      const sel = $(id) as HTMLSelectElement | null;
+      if (sel) sel.selectedIndex = 0;
+    }
+    const s = $("fuel-srch") as HTMLInputElement | null;
+    if (s) s.value = "";
     renderCombustible();
   });
   // Toggle segmentado Lista | Dashboard.
@@ -797,6 +872,8 @@ function renderCurrentDetail(): void {
     },
     canWrite: canWrite(),
     onValidate: handleValidate,
+    onKmDetectado: handleKmDetectado,
+    kmplVida: fuelDatasetMemo().kmplVidaByEco.get(load.eco),
     esAdmin: typeof window.esAdmin === "function" ? window.esAdmin() : false,
     onAnular: () =>
       anularCarga(
@@ -900,6 +977,59 @@ function navDetail(delta: number): void {
   if (detailOrder.length === 0) return;
   detailIndex = (detailIndex + delta + detailOrder.length) % detailOrder.length;
   renderCurrentDetail();
+}
+
+/**
+ * Guarda la CORRECCIÓN de odómetro leída de la foto (kmDetectado, fuente manual) y
+ * recalcula el rendimiento: computeFuelMetrics usa este valor como odómetro efectivo
+ * (caso eco 86: typo del chofer anulaba el km/l propio y el de la siguiente carga).
+ * El dato crudo del chofer no se toca. km=null quita la corrección.
+ */
+function handleKmDetectado(loadId: string, km: number | null): void {
+  const load = loadById(loadId);
+  if (!load) return;
+  const prevReview = load.review;
+  const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
+  const sess = window.__cloudSession;
+  const tenantId = (sess && sess.tenantId) || "gpa";
+  const revisadoPor = (sess && sess.email) || "";
+  const ts = new Date().toISOString();
+  load.review = {
+    ...review,
+    kmDetectado: km ?? undefined,
+    fuenteDeteccion: "manual",
+    revisadoPor,
+    ts,
+  };
+  // El memo de métricas ahora depende de kmDetectado y la mutación fue in-situ.
+  bumpFuelDatasetVersion();
+  void upsertValidacionCarga({
+    tenantId,
+    loadId,
+    verdictGlobal: review.verdictGlobal,
+    porEvidencia: review.porEvidencia,
+    nota: review.nota,
+    revisadoPor,
+    ts,
+    kmDetectado: km,
+    fuenteDeteccion: "manual",
+  }).catch((e) => {
+    console.warn("[fuel] no se pudo guardar la corrección de odómetro:", e);
+    load.review = prevReview;
+    bumpFuelDatasetVersion();
+    renderCurrentDetail();
+    renderCombustible();
+    window.notify?.("No se pudo guardar la corrección de odómetro.", "error", 4000);
+  });
+  renderCurrentDetail();
+  renderCombustible();
+  window.notify?.(
+    km != null
+      ? `Odómetro corregido a ${km.toLocaleString("es-MX")} km — rendimiento recalculado.`
+      : "Corrección de odómetro eliminada — rendimiento recalculado.",
+    "ok",
+    4500,
+  );
 }
 
 /** Aplica un veredicto (por evidencia o global) y persiste en ValidacionCarga. */

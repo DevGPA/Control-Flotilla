@@ -1,10 +1,13 @@
 /**
  * Motor PURO de rendimiento y anomalías de combustible. Sin DOM ni red.
  *
- * km/l por evento = (km de esta carga − km de la carga anterior de la MISMA unidad)
- * / litros cargados. Supuesto tanque-lleno: si una carga no llenó el tanque el evento
- * es ruidoso → el baseline por unidad recorta outliers (IQR) y los KPIs/alertas
- * priorizan el promedio por unidad sobre el km/l de un evento aislado.
+ * km/l por VENTANA entre tanques llenos: entre un lleno en km A y el siguiente lleno
+ * en km B, TODOS los litros cargados en medio (parciales incluidos) son exactamente el
+ * consumo de la distancia B−A (conservación de combustible). Así las cargas parciales
+ * —47% de la flota— dejan de perder el rendimiento: suman su combustible a la ventana
+ * y la lectura aparece en la carga que vuelve a llenar el tanque. El intervalo por
+ * SEGMENTO (carga→carga) se conserva solo para las alertas de odómetro
+ * (retroceso/salto) vía `kmDesdeAnterior`.
  */
 import type {
   FuelEntry,
@@ -36,7 +39,21 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   // Carga al tope del tanque (auditoría): litros > 95% de la capacidad nominal ⇒ la unidad
   // llegó casi vacía (contra política de recarga) o hay cargas segregadas/desvío.
   TANK_FILL_PCT: 0.95,
+  // Parciales crónicos: ≥60% de las últimas 8 cargas sin tanque lleno (con mínimo 6 para
+  // juzgar) ⇒ la unidad no puede medir su rendimiento — corregir el hábito en campo.
+  PARTIAL_WINDOW_N: 8,
+  PARTIAL_MIN_N: 6,
+  PARTIAL_PCT: 0.6,
 };
+
+/**
+ * Inferencia de tanque LLENO para el motor de ventanas: si el chofer marcó "No" pero los
+ * litros del llenado son ≥ TANK_FILL_PCT (95%) de la capacidad del tanque, físicamente fue
+ * un llenado (caso real: cargas de ~49 L marcadas "No" en tanque de 58 L). Corrige el campo
+ * mal marcado y recupera ventanas medibles; la UI lo señala como "lleno inferido".
+ * Decisión de Navares 2026-07-13; apagar aquí si el criterio cambia.
+ */
+export const VENTANA_INFIERE_LLENO = true;
 
 /**
  * Rango físico plausible de km/l para vehículos de combustión interna de la flota. Un km/l
@@ -46,6 +63,18 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
  */
 export const KMPL_FISICO_MIN = 1.5;
 export const KMPL_FISICO_MAX = 40;
+
+/**
+ * Detector de ECONÓMICO EQUIVOCADO: cuando una carga es "huérfana" para su unidad
+ * (retroceso o salto de odómetro) pero su lectura cae EXACTAMENTE donde debería estar la
+ * de OTRA unidad de la MISMA sucursal (captura con el económico mal seleccionado, típico
+ * del piloto Operaciones-GPA). Para evitar cruzar dos camiones parecidos por coincidencia,
+ * el match exige ajuste ESTRECHO: o la lectura queda ENTRE dos cargas consecutivas de la
+ * otra unidad (bracket) muy juntas en km, o es la continuación inmediata de su última
+ * carga (cola) a pocos días y pocos km. Caso real 32→73: 172 km en 1 día.
+ */
+export const ECO_MATCH_MAX_DIAS = 12; // ventana temporal del ancla (cada lado)
+export const ECO_MATCH_GAP_KM = 700; // salto de km máximo para considerar "continuación"
 
 /** Explicación larga del motivo por el que una carga no tiene km/l (para el detalle). */
 export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
@@ -64,6 +93,12 @@ export const MOTIVO_SIN_KMPL_LABEL: Record<MotivoSinKmpl, string> = {
     "Rendimiento fuera del rango físico posible — dato no verídico (odómetro truncado o salto de captura).",
   odometro_no_fiable:
     "Odómetro no fiable: la unidad captura el kilometraje crónicamente roto (placeholder o congelado) — su km/l no es confiable.",
+  parcial_en_ventana:
+    "Carga parcial: sus litros se acumulan a la ventana entre tanques llenos — el rendimiento aparecerá en la siguiente carga a tanque lleno.",
+  sin_lleno_previo:
+    "Sin tanque lleno anterior fiable: no hay ventana abierta que medir. Abre una nueva ventana si esta carga llenó el tanque.",
+  ventana_rota:
+    "La ventana entre llenos se invalidó (salto de odómetro o carga sin litros en medio) — revisa la carga intermedia señalada; esta carga abre una ventana nueva.",
 };
 
 /** Etiqueta corta (chip/tooltip de la tabla) del motivo sin km/l. */
@@ -77,6 +112,9 @@ export const MOTIVO_SIN_KMPL_CORTO: Record<MotivoSinKmpl, string> = {
   llenado_partido: "Llenado partido",
   kmpl_implausible: "Valor implausible",
   odometro_no_fiable: "Odómetro no fiable",
+  parcial_en_ventana: "Suma a ventana",
+  sin_lleno_previo: "Sin lleno previo",
+  ventana_rota: "Ventana reiniciada",
 };
 
 /**
@@ -93,6 +131,12 @@ export const MOTIVO_SIN_KMPL_ACCIONABLE: Record<MotivoSinKmpl, boolean> = {
   salto_improbable: true,
   kmpl_implausible: true,
   odometro_no_fiable: true,
+  // Ventanas: estructurales (el dato está bien; el rendimiento vive en el cierre de la
+  // ventana). ventana_rota tampoco es accionable: la carga intermedia culpable ya carga
+  // su propio motivo/alerta accionable — contarla aquí doble-contaría en el KPI.
+  parcial_en_ventana: false,
+  sin_lleno_previo: false,
+  ventana_rota: false,
 };
 
 /**
@@ -147,6 +191,19 @@ function cronoCmp(
  * Calcula métricas km/l por evento de CARGA. Ignora solicitudes (sin litros reales).
  * La primera carga de cada unidad no tiene km/l (sin carga anterior).
  */
+/**
+ * Odómetro EFECTIVO de una carga: el corregido en la validación con la foto
+ * (`review.kmDetectado`, caso eco 86 2026-07-13: capturaron 1,682 en vez de ~16,8xx)
+ * o, si no hay corrección, el capturado por el chofer. El dato crudo NUNCA se toca
+ * (overlay auditable, mismo principio que la anulación); la tabla sigue mostrando
+ * `FuelEntry.km` y el drawer ambos valores.
+ */
+function kmEfectivo(e: Pick<FuelEntry, "km" | "review">): number | null {
+  const det = e.review?.kmDetectado;
+  if (typeof det === "number" && Number.isFinite(det) && det > 0) return det;
+  return typeof e.km === "number" && Number.isFinite(e.km) ? e.km : null;
+}
+
 export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[] {
   const cargas = entries.filter((e) => e.tipo === "carga");
   const byUnit = groupByUnit(cargas);
@@ -161,7 +218,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
     const sorted = [...arr].sort(cronoCmp);
     const kms: number[] = [];
     for (const c of sorted) {
-      const km = typeof c.km === "number" && Number.isFinite(c.km) ? c.km : null;
+      const km = kmEfectivo(c);
       if (km == null) continue;
       if (kms.length && kms[kms.length - 1] === km) continue; // mismo odómetro = llenado partido
       kms.push(km);
@@ -180,10 +237,20 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
   const out: FuelMetrics[] = [];
   for (const arr of byUnit.values()) {
     const sorted = [...arr].sort(cronoCmp);
-    // Ancla de distancia = el ÚLTIMO llenado con odómetro distinto.
+    // Ancla de distancia = el ÚLTIMO llenado con odómetro FIABLE (un retroceso no
+    // ancla; queda pendiente por si fue un reset real de tablero).
     let prevFillKm: number | null = null;
     let prevFillMonta = false;
-    let prevFillLleno = false;
+    let pendingResetKm: number | null = null;
+    let pendingResetLlenoEf = false;
+    let pendingResetInferido = false;
+    // ── Ventana entre LLENOS ── abre en un lleno-efectivo con odómetro adoptado,
+    // acumula litros de los grupos siguientes y cierra en el próximo lleno-efectivo.
+    let winStartKm: number | null = null;
+    let winLitros = 0;
+    let winCargas = 0;
+    let winRota = false; // salto adoptado / carga sin litros invalidó la conservación
+    let winInferida = false; // la apertura fue un lleno INFERIDO
     let prevEmitted: FuelEntry | null = null;
     let i = 0;
     while (i < sorted.length) {
@@ -192,10 +259,10 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       // para que el km/l use la SUMA de litros del llenado (y no la distancia ÷ una sola
       // transacción chica, que dispara un km/l absurdo). Sin km → grupo de 1.
       const head = sorted[i]!;
-      const gKm = typeof head.km === "number" && Number.isFinite(head.km) ? head.km : null;
+      const gKm = kmEfectivo(head);
       let j = i + 1;
       if (gKm != null) {
-        while (j < sorted.length && typeof sorted[j]!.km === "number" && sorted[j]!.km === gKm) j++;
+        while (j < sorted.length && kmEfectivo(sorted[j]!) === gKm) j++;
       }
       const group = sorted.slice(i, j);
 
@@ -206,46 +273,130 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       const grupoMonta = group.some((g) => g.esMontacargas);
       // ¿El llenado fue a tanque lleno? (alguna transacción del grupo con seLlenoTanque='Si').
       const grupoLleno = group.some((g) => g.seLlenoTanque === "Si");
+      // Lleno INFERIDO: el chofer marcó "No" pero cargó ≥95% del tanque — físicamente
+      // fue un llenado (campo mal marcado). Recupera ventanas medibles; la UI lo señala.
+      const tanqueGrupoNum = parseFloat(String(head.tanque ?? ""));
+      const tanqueCapGrupo =
+        Number.isFinite(tanqueGrupoNum) && tanqueGrupoNum > 0 ? tanqueGrupoNum : undefined;
+      const llenoInferido =
+        !grupoLleno &&
+        VENTANA_INFIERE_LLENO &&
+        !grupoMonta &&
+        tanqueCapGrupo != null &&
+        litrosGrupo >= DEFAULT_FUEL_THRESHOLDS.TANK_FILL_PCT * tanqueCapGrupo;
+      const llenoEf = grupoLleno || llenoInferido;
+      const primeraDeUnidad = prevFillKm == null;
 
-      // Distancia y km/l del LLENADO (una sola vez, sobre los litros sumados).
-      // Montacargas Gas LP: su `km` es horómetro → no se computa km/l (ruido para baseline).
+      // Distancia del SEGMENTO (carga→carga) — alimenta las alertas de odómetro
+      // (retroceso/salto) vía kmDesdeAnterior. El km/l ya NO se mide aquí: lo mide la
+      // ventana entre llenos (abajo). Montacargas: horómetro → nada de esto aplica.
       let fillKmDesde: number | null = null;
-      let fillKmpl: number | null = null;
+      let desdePendiente = false;
       if (prevFillKm != null && gKm != null && !grupoMonta && !prevFillMonta) {
         fillKmDesde = gKm - prevFillKm;
-        // km/l solo si el tramo es plausible: >0 y por debajo del salto improbable (un salto
-        // > MAX_KM_JUMP suele ser cargas intermedias no registradas → inflaría el km/l).
-        // `kmDesdeAnterior` queda poblado en la fila representativa para que la alerta km-salto
-        // / km-retrocede siga disparando.
+        // Reset REAL de tablero: retrocede vs la ancla pero es coherente con la
+        // lectura rechazada anterior (pendiente) → se mide contra ella y el tren
+        // nuevo se adopta como ancla. Un typo aislado NO cumple esto (su siguiente
+        // lectura vuelve a ser plausible vs la ancla fiable).
         if (
-          litrosGrupo > 0 &&
-          fillKmDesde > 0 &&
-          fillKmDesde <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
-        )
-          fillKmpl = fillKmDesde / litrosGrupo;
+          fillKmDesde <= 0 &&
+          pendingResetKm != null &&
+          gKm - pendingResetKm > 0 &&
+          gKm - pendingResetKm <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+        ) {
+          fillKmDesde = gKm - pendingResetKm;
+          desdePendiente = true;
+        }
       }
+      // Retroceso NO adoptado (typo probable): su odómetro no ancla ni cierra ventana.
+      const retrocesoSinAdoptar =
+        prevFillKm != null &&
+        gKm != null &&
+        !desdePendiente &&
+        !grupoMonta &&
+        !prevFillMonta &&
+        gKm - prevFillKm <= 0;
 
-      // Piso físico de validez: un km/l fuera de [MIN,MAX] es dato NO verídico (odómetro
-      // truncado o salto) — se anula para no contaminar baseline/flota ni mostrarse como número.
+      // ── VENTANA entre llenos: acumulación, cierre y reapertura ──
+      let kmplVentana: number | null = null;
       let kmplImplausible = false;
-      if (fillKmpl != null && (fillKmpl < KMPL_FISICO_MIN || fillKmpl > KMPL_FISICO_MAX)) {
-        fillKmpl = null;
-        kmplImplausible = true;
+      let ventanaLitrosOut: number | undefined;
+      let ventanaKmDesdeOut: number | undefined;
+      let ventanaDesdeKmOut: number | undefined;
+      let ventanaCargasOut: number | undefined;
+      let ventanaInferidaOut: boolean | undefined;
+      let motivoVentana: MotivoSinKmpl | undefined;
+      if (!grupoMonta && !prevFillMonta) {
+        // Reset real ADOPTADO: la ventana del tren viejo muere; si la lectura pendiente
+        // era un lleno, la ventana reabre ahí (el tren nuevo se mide desde la pendiente).
+        if (desdePendiente) {
+          winStartKm = pendingResetLlenoEf ? pendingResetKm : null;
+          winInferida = pendingResetLlenoEf ? pendingResetInferido : false;
+          winLitros = 0;
+          winCargas = 0;
+          winRota = false;
+        }
+        // Conservación de combustible: TODO litro cargado entre los dos llenos se
+        // consumió en esa distancia — aunque el odómetro intermedio traiga typo
+        // (retroceso no adoptado) o falte. Sin litros → conservación rota.
+        if (winStartKm != null) {
+          if (litrosGrupo > 0) {
+            winLitros += litrosGrupo;
+            winCargas++;
+          } else {
+            winRota = true;
+          }
+          // Salto ADOPTADO = cargas no registradas en medio → litros faltantes.
+          if (
+            !retrocesoSinAdoptar &&
+            fillKmDesde != null &&
+            fillKmDesde > DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+          )
+            winRota = true;
+        }
+        // Cierre: lleno efectivo con odómetro adoptable.
+        if (llenoEf && gKm != null && !retrocesoSinAdoptar) {
+          if (winStartKm != null && !winRota) {
+            const delta = gKm - winStartKm;
+            if (delta > 0 && winLitros > 0) {
+              const kmpl = delta / winLitros;
+              // Piso físico: fuera de [MIN,MAX] es dato no verídico — no se emite.
+              if (kmpl < KMPL_FISICO_MIN || kmpl > KMPL_FISICO_MAX) kmplImplausible = true;
+              else {
+                kmplVentana = kmpl;
+                ventanaLitrosOut = winLitros;
+                ventanaKmDesdeOut = delta;
+                ventanaDesdeKmOut = winStartKm;
+                ventanaCargasOut = winCargas;
+                ventanaInferidaOut = winInferida || llenoInferido || undefined;
+              }
+            } else motivoVentana = "ventana_rota";
+          } else if (winStartKm != null) motivoVentana = "ventana_rota";
+          else motivoVentana = "sin_lleno_previo";
+          // Reabrir SIEMPRE en este lleno (aunque el cierre fallara): es ancla llena válida.
+          winStartKm = gKm;
+          winLitros = 0;
+          winCargas = 0;
+          winRota = false;
+          winInferida = llenoInferido;
+        } else if (!llenoEf) {
+          motivoVentana = winStartKm != null && !winRota ? "parcial_en_ventana" : "sin_lleno_previo";
+        }
       }
 
-      // Motivo del km/l ausente del LLENADO (para explicar el "—"); undefined si sí hay km/l.
-      // Mismo orden que las guardas de arriba: monta → sin odómetro → sin ancla previa →
-      // sin litros → retroceso → salto improbable.
+      // Motivo del km/l ausente (para explicar el "—"); undefined si sí hay km/l de ventana.
+      // Los motivos DUROS (captura mala) ganan sobre los estructurales de ventana.
       let motivoFill: MotivoSinKmpl | undefined;
-      if (fillKmpl == null) {
+      if (kmplVentana == null) {
         if (kmplImplausible) motivoFill = "kmpl_implausible";
         else if (grupoMonta || prevFillMonta) motivoFill = "montacargas";
         else if (gKm == null) motivoFill = "sin_odometro";
-        else if (prevFillKm == null) motivoFill = "primera_carga";
+        else if (primeraDeUnidad) motivoFill = "primera_carga";
         else if (litrosGrupo <= 0) motivoFill = "sin_litros";
         else if (fillKmDesde != null && fillKmDesde <= 0) motivoFill = "odometro_retroceso";
         else if (fillKmDesde != null && fillKmDesde > DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP)
           motivoFill = "salto_improbable";
+        else motivoFill = motivoVentana;
       }
 
       // Fila representativa = la de MÁS litros (la carga "principal"); muestra el km/l del
@@ -287,16 +438,21 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           // El llenado aporta su distancia/km/l a UNA fila (la de más litros). Las demás
           // cargas del grupo (mismo odómetro) → 0 km y km/l "—".
           kmDesdeAnterior: esRep ? fillKmDesde : multi ? 0 : fillKmDesde,
-          kmPorLitro: esRep ? fillKmpl : null,
+          kmPorLitro: esRep ? kmplVentana : null,
           // Filas no representativas de un llenado partido → "llenado_partido" (su km/l vive en
           // la fila principal); el resto hereda el motivo calculado del llenado.
           motivoSinKmpl: esRep ? motivoFill : multi ? "llenado_partido" : motivoFill,
-          // Fiel = ancla Y llenado actual a tanque lleno. Solo aplica a la fila con km/l real.
-          cargaParcial: esRep && fillKmpl != null ? !(prevFillLleno && grupoLleno) : undefined,
           esMontacargas: e.esMontacargas,
-          // Solo en llenados partidos: la fila representativa carga la SUMA de litros como
-          // denominador del km/l (para que el baseline pondere el llenado una sola vez).
-          litrosFill: esRep && multi ? litrosGrupo : undefined,
+          // Denominador del km/l de VENTANA (Σ litros de todas sus cargas) en la fila que
+          // cierra; en llenados partidos sin cierre conserva la suma del grupo (informativa).
+          litrosFill: esRep
+            ? (ventanaLitrosOut ?? (multi ? litrosGrupo : undefined))
+            : undefined,
+          ventanaKmDesde: esRep ? ventanaKmDesdeOut : undefined,
+          ventanaDesdeKm: esRep ? ventanaDesdeKmOut : undefined,
+          ventanaCargas: esRep ? ventanaCargasOut : undefined,
+          ventanaInferida: esRep ? ventanaInferidaOut : undefined,
+          llenoEfectivo: esRep && !grupoMonta ? llenoEf : undefined,
           precioPorLitro,
           diasDesdeAnterior,
           tanqueCap,
@@ -305,9 +461,19 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
       }
 
       if (gKm != null) {
-        prevFillKm = gKm;
-        prevFillMonta = grupoMonta;
-        prevFillLleno = grupoLleno;
+        // Ancla RESISTENTE: un odómetro que retrocede no se promueve a ancla (un
+        // typo contaminaría también la SIGUIENTE carga con "salto improbable").
+        // Queda pendiente: si la próxima lectura es coherente con él, era un reset
+        // real y se adopta (arriba); si vuelve a medir bien vs la ancla, se limpia.
+        if (retrocesoSinAdoptar) {
+          pendingResetKm = gKm;
+          pendingResetLlenoEf = llenoEf;
+          pendingResetInferido = llenoInferido;
+        } else {
+          prevFillKm = gKm;
+          prevFillMonta = grupoMonta;
+          pendingResetKm = null;
+        }
       }
       i = j;
     }
@@ -319,9 +485,12 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
     for (const m of out) {
       if (ecosOdometroNoFiable.has(m.eco) && !m.esMontacargas) {
         m.kmPorLitro = null;
-        m.cargaParcial = undefined;
         m.motivoSinKmpl = "odometro_no_fiable";
         m.odometroNoFiable = true;
+        m.ventanaKmDesde = undefined;
+        m.ventanaDesdeKm = undefined;
+        m.ventanaCargas = undefined;
+        m.ventanaInferida = undefined;
       }
     }
   }
@@ -331,6 +500,72 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
 /** Métricas agrupadas por unidad (para historial y comparativos). */
 export function groupMetricsByUnit(metrics: readonly FuelMetrics[]): Map<string, FuelMetrics[]> {
   return groupByUnit(metrics);
+}
+
+/** km/L "de vida" de una unidad: referencia robusta sobre TODO su histórico. */
+export type KmplVida = {
+  kmpl: number;
+  km: number; // Σ km de segmentos fiables
+  litros: number; // Σ litros de las cargas de esos segmentos
+  n: number; // cargas que aportaron
+};
+
+/**
+ * km/L de VIDA por unidad = Σ km de segmentos fiables / Σ litros de sus cargas — la
+ * referencia más robusta cuando la unidad casi nunca llena el tanque (sin ventanas
+ * medibles). Ignora el estado de llenado por completo; error acotado ~±1 tanque sobre
+ * el histórico. Usa la misma ancla resistente del motor (typos no cuentan; un reset de
+ * tablero se adopta con la segunda lectura coherente). Guards: no montacargas, ≥5
+ * cargas aportando y ≥500 km (evita referencias de muestra chica).
+ */
+export function computeKmplVida(entries: readonly FuelEntry[]): Map<string, KmplVida> {
+  const cargas = entries.filter((e) => e.tipo === "carga" && !e.esMontacargas);
+  const byUnit = groupByUnit(cargas);
+  const out = new Map<string, KmplVida>();
+  for (const [eco, arr] of byUnit) {
+    const sorted = [...arr].sort(cronoCmp);
+    let prevKm: number | null = null;
+    let pendiente: number | null = null;
+    let km = 0;
+    let litros = 0;
+    let n = 0;
+    for (const c of sorted) {
+      const k = kmEfectivo(c);
+      const l = typeof c.litros === "number" && c.litros > 0 ? c.litros : null;
+      if (k == null) continue;
+      if (prevKm == null) {
+        prevKm = k;
+        continue;
+      }
+      let delta = k - prevKm;
+      if (delta <= 0) {
+        // Retroceso: typo (se ignora) o reset de tablero (lo adopta la siguiente coherente).
+        if (pendiente != null && k - pendiente > 0 && k - pendiente <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) {
+          delta = k - pendiente;
+        } else {
+          pendiente = k;
+          continue;
+        }
+      }
+      pendiente = null;
+      if (delta > DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) {
+        prevKm = k; // salto: el tramo no cuenta, pero la lectura alta es creíble
+        continue;
+      }
+      prevKm = k;
+      if (l != null) {
+        km += delta;
+        litros += l;
+        n++;
+      }
+    }
+    if (n >= 5 && km >= 500 && litros > 0) {
+      const kmpl = km / litros;
+      if (kmpl >= KMPL_FISICO_MIN && kmpl <= KMPL_FISICO_MAX)
+        out.set(eco, { kmpl, km, litros, n });
+    }
+  }
+  return out;
 }
 
 /** Recorrido del ciclo de combustible de una solicitud. */
@@ -452,14 +687,14 @@ export function buildFleetBaseline(
     // En llenados partidos, el denominador del km/l es la SUMA de litros del llenado
     // (`litrosFill`), no los de una sola transacción → el ponderado cuenta el llenado una vez.
     const litrosKmpl = m.litrosFill ?? m.litros;
-    if (m.kmDesdeAnterior == null || litrosKmpl == null || !(litrosKmpl > 0)) continue;
-    const ev: KmEvent = { km: m.kmDesdeAnterior, litros: litrosKmpl, kmpl: m.kmPorLitro };
-    // Flota (KPI de cabecera): incluye eventos parciales — el ponderado por volumen los
-    // sub-pesa y quitarlos daría sesgo de supervivencia (ocultaría la mitad sedienta).
+    // La distancia del evento es la de la VENTANA entre llenos (numerador real del km/l);
+    // kmDesdeAnterior (segmento) queda de fallback para métricas legadas.
+    const kmEvento = m.ventanaKmDesde ?? m.kmDesdeAnterior;
+    if (kmEvento == null || litrosKmpl == null || !(litrosKmpl > 0)) continue;
+    const ev: KmEvent = { km: kmEvento, litros: litrosKmpl, kmpl: m.kmPorLitro };
+    // Flota (KPI de cabecera): todos los cierres de ventana ponderan (los litros de las
+    // cargas parciales ya viven en el denominador de su ventana — nada se descarta).
     allEv.push(ev);
-    // Por unidad / tipo (ranking y comparativo "vs su tipo"): SOLO eventos fieles (tanque
-    // lleno en ambos extremos). Un evento parcial no representa la eficiencia real de la unidad.
-    if (m.cargaParcial) continue;
     pushInto(evByUnit, m.eco, ev);
     pushInto(evByTipo, tipoOf.get(m.eco) ?? "(sin tipo)", ev);
   }
@@ -507,6 +742,8 @@ export const FUEL_RULE_LABEL: Record<string, string> = {
   "captura-monto": "Captura: monto",
   "captura-km": "Captura: km",
   "captura-precio": "Captura: precio",
+  "parciales-cronicos": "Parciales crónicos",
+  "economico-equivocado": "¿Económico equivocado?",
 };
 
 /**
@@ -538,10 +775,94 @@ export function worstRisk(findings: readonly { lv: RiskLevel }[]): RiskLevel {
  * discrepancia de km (odómetro retrocede / salto improbable), cargas demasiado
  * frecuentes, errores de captura, posible fuga/uso indebido sostenido.
  */
+/**
+ * Cross-match de odómetro para detectar económico equivocado. Candidatas = cargas
+ * huérfanas para su unidad (retroceso/salto vs su propio histórico). Para cada una busca,
+ * entre las OTRAS unidades de su misma sucursal (no montacargas), un ancla con km ≤ K
+ * cercano en tiempo y con salto plausible; si encaja, la lectura "pertenece" a esa unidad.
+ * Devuelve un finding por candidata con match, nombrando la unidad/placa que sí encaja.
+ */
+function detectEconomicoEquivocado(
+  entries: readonly FuelEntry[],
+  metrics: readonly FuelMetrics[],
+  cfg: FuelThresholds,
+): FuelFinding[] {
+  const out: FuelFinding[] = [];
+  const entryByLoad = new Map<string, FuelEntry>();
+  for (const e of entries) entryByLoad.set(e.loadId, e);
+
+  // Histórico de odómetro por unidad (cargas no-montacargas con km fiable), ordenado.
+  type OdoLoad = { fecha: string; km: number; placa: string; sucursal: string };
+  const odoByUnit = new Map<string, OdoLoad[]>();
+  for (const e of entries) {
+    if (e.tipo !== "carga" || e.esMontacargas) continue;
+    if (typeof e.km !== "number" || !Number.isFinite(e.km)) continue;
+    pushInto(odoByUnit, e.eco, {
+      fecha: e.fecha,
+      km: e.km,
+      placa: e.placa ?? "",
+      sucursal: e.sucursal ?? "",
+    });
+  }
+  for (const arr of odoByUnit.values()) arr.sort((a, b) => toTime(a) - toTime(b));
+
+  for (const m of metrics) {
+    // Candidata: huérfana para SU unidad (retroceso o salto vs su propio odómetro).
+    const esHuerfana =
+      m.kmDesdeAnterior != null &&
+      (m.kmDesdeAnterior < 0 || m.kmDesdeAnterior > cfg.MAX_KM_JUMP);
+    if (!esHuerfana) continue;
+    const c = entryByLoad.get(m.loadId);
+    if (!c || c.esMontacargas || typeof c.km !== "number") continue;
+    const K = c.km;
+    const D = toTime({ fecha: c.fecha });
+    const S = c.sucursal ?? "";
+
+    // Busca la OTRA unidad (misma sucursal) donde K encaje ESTRECHO: bracket (entre dos
+    // cargas consecutivas de Y muy juntas) o cola (continuación inmediata de su última).
+    let best: { eco: string; placa: string; gapKm: number; bracket: boolean } | null = null;
+    for (const [ecoY, loadsY] of odoByUnit) {
+      if (ecoY === c.eco) continue;
+      const mismaSuc = loadsY.filter((y) => y.sucursal === S); // no cruzar sucursales
+      // Ancla inferior: carga de Y con km ≤ K más cercana por debajo, ≤ pocos días de D.
+      let low: OdoLoad | null = null;
+      // Ancla superior: carga de Y con km ≥ K más cercana por arriba, ≤ pocos días de D.
+      let high: OdoLoad | null = null;
+      for (const y of mismaSuc) {
+        const dias = Math.abs(D - toTime({ fecha: y.fecha })) / 86400000;
+        if (dias > ECO_MATCH_MAX_DIAS) continue;
+        if (y.km <= K && (!low || y.km > low.km)) low = y;
+        if (y.km >= K && (!high || y.km < high.km)) high = y;
+      }
+      if (!low) continue; // sin ancla inferior cercana no hay match
+      const gapLow = K - low.km;
+      if (gapLow > ECO_MATCH_GAP_KM) continue; // demasiado lejos por debajo → no es continuación
+      // Bracket: además una carga por arriba cercana en km (K cae DENTRO del tramo real de Y).
+      const bracket = high != null && high.km - low.km <= 2 * ECO_MATCH_GAP_KM;
+      // Cola: K es (casi) el tope de Y — no hay carga por arriba dentro de la ventana.
+      const cola = high == null;
+      if (!bracket && !cola) continue; // hay algo por arriba pero lejos → ajuste flojo, se descarta
+      if (!best || gapLow < best.gapKm)
+        best = { eco: ecoY, placa: low.placa, gapKm: gapLow, bracket };
+    }
+    if (best)
+      out.push({
+        cat: "Combustible",
+        text: `¿Económico equivocado? El odómetro ${K.toLocaleString("es-MX")} km encaja con la unidad ${best.eco}${best.placa ? ` (${best.placa})` : ""} — verifica la captura`,
+        lv: "Revisar",
+        key: `Fuel:economico-equivocado:${m.loadId}`,
+        loadId: m.loadId,
+        eco: m.eco,
+      });
+  }
+  return out;
+}
+
 export function detectFuelAnomalies(
   metrics: readonly FuelMetrics[],
   baseline: FleetBaseline,
   cfg: FuelThresholds = DEFAULT_FUEL_THRESHOLDS,
+  entries?: readonly FuelEntry[],
 ): FuelFinding[] {
   const out: FuelFinding[] = [];
   const push = (m: FuelMetrics, rule: string, text: string, lv: RiskLevel) =>
@@ -624,12 +945,11 @@ export function detectFuelAnomalies(
           "Revisar",
         );
 
-      // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Solo eventos FIELES:
-      // un km/l bajo por carga parcial es artefacto de medición, no una caída real.
+      // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Todo km/l
+      // emitido por el motor de ventanas es fiel por construcción (lleno→lleno).
       const stat = baseline.porUnidad.get(m.eco);
       if (
         m.kmPorLitro != null &&
-        !m.cargaParcial &&
         stat &&
         stat.n >= cfg.MIN_BASELINE_N &&
         stat.mean > 0
@@ -691,7 +1011,6 @@ export function detectFuelAnomalies(
       const leakRef = stat ? (stat.median ?? stat.mean) : null;
       const leakNow =
         m.kmPorLitro != null &&
-        !m.cargaParcial &&
         stat != null &&
         stat.n >= cfg.LEAK_MIN_N &&
         leakRef != null &&
@@ -706,6 +1025,30 @@ export function detectFuelAnomalies(
         );
       prevLeak = !!leakNow;
     }
+
+    // 9. Parciales CRÓNICOS (por unidad): si la mayoría de sus cargas recientes no llenan
+    // el tanque, la unidad no puede medir su rendimiento — es la palanca para corregir el
+    // hábito en campo (causa raíz observada en la unidad 47: 47% de cargas parciales).
+    // Anclada a la carga MÁS RECIENTE: el chip vive en la fila nueva y la key se re-ancla
+    // sola al llegar la siguiente carga (los findings no se persisten).
+    const reps = arr.filter((m) => m.llenoEfectivo !== undefined); // filas representativas no-monta
+    const recientes = reps.slice(-cfg.PARTIAL_WINDOW_N);
+    if (recientes.length >= cfg.PARTIAL_MIN_N) {
+      const parciales = recientes.filter((m) => m.llenoEfectivo !== true).length;
+      if (parciales / recientes.length >= cfg.PARTIAL_PCT)
+        push(
+          recientes[recientes.length - 1]!,
+          "parciales-cronicos",
+          `Hábito de cargas parciales: ${parciales} de las últimas ${recientes.length} sin tanque lleno — pedir cargar a tanque lleno para poder medir su rendimiento`,
+          "Revisar",
+        );
+    }
   }
+
+  // 10. Económico equivocado (cross-match de odómetro entre unidades de la misma sucursal).
+  // Requiere `entries` (km/fecha/sucursal/placa de TODAS las unidades) — opcional para no
+  // romper llamadas que solo pasan métricas.
+  if (entries && entries.length) out.push(...detectEconomicoEquivocado(entries, metrics, cfg));
+
   return out;
 }

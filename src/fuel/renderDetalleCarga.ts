@@ -13,6 +13,7 @@ import type {
   FuelStat,
 } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import type { KmplVida } from "./fuelAnalysis";
 import { MOTIVO_SIN_KMPL_LABEL, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { evidenceKindOf } from "./mapEntry";
 
@@ -50,6 +51,10 @@ export type RenderDetalleCargaDeps = {
     verdict: FuelVerdict,
     nota?: string,
   ) => void;
+  /** Corrección del odómetro leída de la foto (kmDetectado); null = quitar. */
+  onKmDetectado?: (loadId: string, km: number | null) => void;
+  /** km/L de VIDA de la unidad (Σkm/Σlitros del histórico) — referencia robusta. */
+  kmplVida?: KmplVida;
   onPhotoClick?: (url: string) => void;
   /** ¿La sesión es admin? (muestra Anular/Restaurar; el enforcement real es AppSync). */
   esAdmin?: boolean;
@@ -72,6 +77,8 @@ type Slot = {
   value: string;
   hint?: string;
   detected?: string;
+  /** Origen del valor detectado: "ia" (visión) o "manual" (corregido en validación). */
+  detectedFuente?: "manual" | "ia";
 };
 
 /** Construye los slots de evidencia (valor capturado + tipo de foto). */
@@ -89,6 +96,7 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
     hint: kmHint,
     detected:
       load.review?.kmDetectado != null ? `${NUM.format(load.review.kmDetectado)} km` : undefined,
+    detectedFuente: load.review?.fuenteDeteccion,
   });
 
   if (load.tipo === "carga") {
@@ -166,6 +174,7 @@ function buildRendimientoCard(
   metrics: FuelMetrics | undefined,
   statTipo: FuelStat | undefined,
   statUnidad: FuelStat | undefined,
+  kmplVida?: KmplVida,
 ): HTMLElement | null {
   if (load.tipo !== "carga") return null; // las solicitudes no tienen km/l
   const card = document.createElement("div");
@@ -178,9 +187,13 @@ function buildRendimientoCard(
   const kmpl = metrics?.kmPorLitro ?? null;
   if (kmpl != null && metrics) {
     const litros = metrics.litrosFill ?? metrics.litros ?? null;
-    const recorrido = metrics.kmDesdeAnterior;
+    // Motor de ventanas: la distancia/odómetro de referencia son los EXTREMOS de la
+    // ventana entre llenos (no el segmento carga→carga).
+    const recorrido = metrics.ventanaKmDesde ?? metrics.kmDesdeAnterior;
     const odoActual = metrics.km;
-    const odoAnterior = odoActual != null && recorrido != null ? odoActual - recorrido : null;
+    const odoAnterior =
+      metrics.ventanaDesdeKm ??
+      (odoActual != null && recorrido != null ? odoActual - recorrido : null);
 
     const chain = document.createElement("div");
     chain.className = "fv-calc";
@@ -197,11 +210,20 @@ function buildRendimientoCard(
       r.appendChild(b);
       chain.appendChild(r);
     };
-    addRow("Odómetro anterior", odoAnterior != null ? `${NUM.format(odoAnterior)} km` : "—");
-    addRow("Odómetro de esta carga", odoActual != null ? `${NUM.format(odoActual)} km` : "—");
-    addRow("Recorrido", recorrido != null ? `${NUM.format(recorrido)} km` : "—");
+    const nVentana = metrics.ventanaCargas ?? 1;
     addRow(
-      `Litros${metrics.litrosFill != null ? " (llenado completo)" : ""}`,
+      nVentana > 1 ? "Odómetro del lleno anterior" : "Odómetro anterior",
+      odoAnterior != null ? `${NUM.format(odoAnterior)} km` : "—",
+    );
+    addRow("Odómetro de esta carga", odoActual != null ? `${NUM.format(odoActual)} km` : "—");
+    addRow(
+      nVentana > 1 ? "Recorrido de la ventana" : "Recorrido",
+      recorrido != null ? `${NUM.format(recorrido)} km` : "—",
+    );
+    addRow(
+      nVentana > 1
+        ? `Litros de la ventana (${nVentana} cargas${metrics.ventanaInferida ? " · lleno inferido" : ""})`
+        : `Litros${metrics.ventanaInferida ? " (lleno inferido)" : ""}`,
       litros != null ? `${NUM1.format(litros)} L` : "—",
     );
     addRow("Rendimiento", `${kmpl.toFixed(2)} km/l`, true);
@@ -213,6 +235,7 @@ function buildRendimientoCard(
     const tipoVol = statTipo?.kmplVol ?? statTipo?.mean;
     if (uniVol != null && Number.isFinite(uniVol))
       refs.push(`esta unidad ${uniVol.toFixed(2)} km/l`);
+    if (kmplVida) refs.push(`de vida ${kmplVida.kmpl.toFixed(2)} km/l`);
     if (tipoVol != null && Number.isFinite(tipoVol) && tipoVol > 0) {
       const pct = Math.round(((kmpl - tipoVol) / tipoVol) * 100);
       refs.push(
@@ -225,15 +248,7 @@ function buildRendimientoCard(
       cmp.textContent = `Referencia: ${refs.join(" · ")}`;
       card.appendChild(cmp);
     }
-    // Evento con km/l pero NO fiel (tanque no lleno): se muestra el número, pero se avisa que
-    // no representa la eficiencia real (el supuesto tanque-lleno → tanque-lleno no se cumple).
-    if (metrics.cargaParcial) {
-      const nf = document.createElement("div");
-      nf.className = "fv-calc-action";
-      nf.textContent =
-        "⚠ Rendimiento no fiel: carga parcial (tanque no lleno) — no cuenta para el ranking ni las alertas.";
-      card.appendChild(nf);
-    }
+
   } else {
     // Sin km/l: explicar el motivo (no dejar el "—" desnudo).
     const motivo = metrics?.motivoSinKmpl;
@@ -253,6 +268,12 @@ function buildRendimientoCard(
       tag.className = "fv-calc-action";
       tag.textContent = "⚠ Dato por revisar (captura)";
       box.appendChild(tag);
+    }
+    if (kmplVida) {
+      const vida = document.createElement("div");
+      vida.className = "fv-calc-cmp";
+      vida.textContent = `Referencia — km/L de vida de la unidad: ${kmplVida.kmpl.toFixed(2)} (${NUM.format(kmplVida.km)} km / ${NUM.format(Math.round(kmplVida.litros))} L)`;
+      box.appendChild(vida);
     }
     card.appendChild(box);
   }
@@ -383,7 +404,7 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   }
 
   // Cómo se calcula el rendimiento (cadena de cálculo) o por qué no hay km/l.
-  const rendCard = buildRendimientoCard(load, metrics, deps.statTipo, deps.statUnidad);
+  const rendCard = buildRendimientoCard(load, metrics, deps.statTipo, deps.statUnidad, deps.kmplVida);
   if (rendCard) body.appendChild(rendCard);
 
   // Acción global (solo escritura)
@@ -425,7 +446,10 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     if (slot.detected) {
       const det = document.createElement("div");
       det.className = "fv-detected";
-      det.textContent = `IA detectó: ${slot.detected}`;
+      det.textContent =
+        slot.detectedFuente === "ia"
+          ? `IA detectó: ${slot.detected}`
+          : `Corregido en validación: ${slot.detected}`;
       formCol.appendChild(det);
     }
     if (slot.hint) {
@@ -433,6 +457,45 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
       h.className = "fv-hint";
       h.textContent = slot.hint;
       formCol.appendChild(h);
+    }
+    // Corrección de odómetro desde la foto (solo cargas, con permiso de escritura):
+    // alimenta kmDetectado → computeFuelMetrics lo usa como odómetro efectivo.
+    if (slot.kind === "odometro" && load.tipo === "carga" && canWrite && deps.onKmDetectado) {
+      const fix = document.createElement("div");
+      fix.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center";
+      const lbl = document.createElement("label");
+      lbl.style.cssText = "font-size:11px;color:var(--s2);flex-basis:100%";
+      lbl.textContent = "Odómetro real (según foto) — corrige el km/l sin tocar lo capturado:";
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.min = "1";
+      inp.step = "1";
+      inp.placeholder = "km reales";
+      inp.value = load.review?.kmDetectado != null ? String(load.review.kmDetectado) : "";
+      inp.style.cssText =
+        "width:130px;padding:4px 8px;border:1px solid var(--ln);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px";
+      const save = document.createElement("button");
+      save.className = "fv-btn fv-btn-ok-sm";
+      save.textContent = "Corregir";
+      const aplicar = () => {
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v) && v > 0) deps.onKmDetectado!(load.loadId, v);
+      };
+      save.addEventListener("click", aplicar);
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") aplicar();
+      });
+      fix.appendChild(lbl);
+      fix.appendChild(inp);
+      fix.appendChild(save);
+      if (load.review?.kmDetectado != null) {
+        const quitar = document.createElement("button");
+        quitar.className = "fv-btn";
+        quitar.textContent = "Quitar corrección";
+        quitar.addEventListener("click", () => deps.onKmDetectado!(load.loadId, null));
+        fix.appendChild(quitar);
+      }
+      formCol.appendChild(fix);
     }
     grid.appendChild(formCol);
 

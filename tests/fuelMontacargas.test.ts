@@ -58,6 +58,7 @@ function carga(
     litros,
     monto: litros * 12,
     esMontacargas,
+    seLlenoTanque: "Si", // eventos llenos: la ventana equivale al intervalo clásico
     photos: [],
   };
 }

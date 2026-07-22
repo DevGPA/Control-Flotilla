@@ -128,7 +128,11 @@ export type MotivoSinKmpl =
   | "salto_improbable"
   | "llenado_partido"
   | "kmpl_implausible"
-  | "odometro_no_fiable";
+  | "odometro_no_fiable"
+  // Motor de VENTANAS entre tanques llenos (estructurales, NO accionables):
+  | "parcial_en_ventana" // carga parcial: sus litros suman a la ventana abierta
+  | "sin_lleno_previo" // sin tanque lleno fiable anterior que abra ventana
+  | "ventana_rota"; // la ventana se invalidó (salto/sin litros) antes de este cierre
 
 /** Métricas de rendimiento de una carga (km/l del evento). Solo aplica a tipo=carga. */
 export type FuelMetrics = {
@@ -138,16 +142,25 @@ export type FuelMetrics = {
   km: number | null;
   litros: number | null;
   monto: number | null;
-  kmDesdeAnterior: number | null; // km[i] - km[i-1]
-  kmPorLitro: number | null; // kmDesdeAnterior / litros (sobre litrosFill si es llenado partido)
+  kmDesdeAnterior: number | null; // km[i] - km[i-1] (SEGMENTO; alimenta alertas retroceso/salto)
+  /**
+   * km/l de la VENTANA entre tanques llenos que CIERRA esta carga: (odómetro de este
+   * lleno − odómetro del lleno anterior) / Σ litros cargados en medio (parciales
+   * incluidos). null en cargas que no cierran ventana (parciales, intermedias, rotas).
+   */
+  kmPorLitro: number | null;
   /** Si kmPorLitro es null, POR QUÉ (para explicar el "—"). undefined cuando sí hay km/l. */
   motivoSinKmpl?: MotivoSinKmpl;
-  /**
-   * true si el evento SÍ tiene km/l pero NO es fiel: la carga o su ancla no fue a tanque lleno.
-   * Se excluye del ranking por-unidad y de las alertas, pero se CONSERVA en el KPI de flota
-   * (quitarlo daría sesgo de supervivencia). Se muestra marcado "no fiel · carga parcial".
-   */
-  cargaParcial?: boolean;
+  /** Distancia de la VENTANA que cierra esta carga (= numerador del km/l). */
+  ventanaKmDesde?: number;
+  /** Odómetro del lleno que ABRIÓ la ventana (extremo A, para la cadena del detalle). */
+  ventanaDesdeKm?: number;
+  /** Nº de cargas cuyos litros suman a la ventana (incluye la de cierre). */
+  ventanaCargas?: number;
+  /** true si algún extremo de la ventana fue lleno INFERIDO (litros ≥ 95% del tanque). */
+  ventanaInferida?: boolean;
+  /** ¿Este llenado dejó el tanque lleno? ("Si" del chofer o inferido por litros). */
+  llenoEfectivo?: boolean;
   /** true si la carga es de un montacargas (Gas LP): km = horómetro, no odómetro. */
   esMontacargas?: boolean;
   /** true si la UNIDAD tiene odómetro crónicamente no fiable (placeholder/congelado) — km/l anulado. */
@@ -205,6 +218,9 @@ export type FuelThresholds = {
   LEAK_MIN_N: number; // n mínimo de eventos fieles para juzgar la caída de una unidad
   MIN_BASELINE_N: number; // n mínimo para confiar en el baseline por unidad
   TANK_FILL_PCT: number; // fracción de la capacidad nominal del tanque que marca la carga a revisar
+  PARTIAL_WINDOW_N: number; // parciales crónicos: tamaño de la ventana de cargas recientes a evaluar
+  PARTIAL_MIN_N: number; // parciales crónicos: mínimo de cargas recientes para juzgar a la unidad
+  PARTIAL_PCT: number; // parciales crónicos: fracción de cargas sin tanque lleno que dispara la alerta
 };
 
 /**

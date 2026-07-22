@@ -8,7 +8,6 @@ import type {
   FuelFinding,
   FuelMetrics,
   FuelVerdictGlobal,
-  MotivoSinKmpl,
 } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
 import { duracionCapturaMin } from "./fuelAggregates";
@@ -263,6 +262,11 @@ export type RenderTableCombustibleDeps = {
   sortDir: 1 | -1;
   metricsByLoad?: Map<string, FuelMetrics>;
   onRowClick?: (loadId: string, visibleOrder: string[]) => void;
+  /** Tope de FILAS EN DOM (perf lag 2026-07-13: render de 2,754 filas = ~2s de
+   *  freeze por cambio de filtro). Los datos/conteos/orden NO se acotan. */
+  rowLimit?: number;
+  /** Click en la fila "Mostrar más" (solo aparece si rowLimit truncó). */
+  onShowMore?: () => void;
   /** loadId → recorrido del ciclo (vista Solicitudes). */
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>;
   /** loadId → anomalías detectadas (columna Alertas y filtro por alerta). */
@@ -283,26 +287,41 @@ function recLabel(rec: RecorridoInfo | undefined): string {
   return `${NUM.format(rec.km)} km ${rec.viaCarga ? "✓" : "⚠"}`;
 }
 
-/** Celda km/l: el número, o "—" con el MOTIVO debajo (chip gris) cuando no hay rendimiento. */
-function kmplCell(
-  kmpl: number | null | undefined,
-  motivo?: MotivoSinKmpl,
-  parcial?: boolean,
-): string | HTMLElement {
+/**
+ * Celda km/l (motor de VENTANAS): el número con chip "ventana N" cuando el cierre agrupó
+ * varias cargas (y "lleno inferido" si un extremo se infirió por litros), o "—" con el
+ * MOTIVO debajo (chip gris) cuando la carga no cierra ventana.
+ */
+function kmplCell(m: FuelMetrics | undefined): string | HTMLElement {
+  const kmpl = m?.kmPorLitro;
+  const motivo = m?.motivoSinKmpl;
   if (kmpl != null) {
     const num = (Math.round(kmpl * 100) / 100).toFixed(2);
-    if (!parcial) return num;
-    // km/l NO fiel (carga parcial): se muestra el número con marca; no cuenta para ranking/alertas.
+    const chips: { txt: string; title: string }[] = [];
+    if (m?.ventanaCargas != null && m.ventanaCargas > 1)
+      chips.push({
+        txt: `ventana ${m.ventanaCargas}`,
+        title: `Medido entre tanques llenos: de ${NUM.format(m.ventanaDesdeKm ?? 0)} a ${NUM.format(m.km ?? 0)} km — ${m.ventanaCargas} cargas, ${(m.litrosFill ?? 0).toFixed(1)} L en total.`,
+      });
+    if (m?.ventanaInferida)
+      chips.push({
+        txt: "lleno inferido",
+        title:
+          "Un extremo de la ventana se marcó 'No' pero cargó ≥95% del tanque: físicamente fue un llenado.",
+      });
+    if (!chips.length) return num;
     const w = document.createElement("div");
     w.className = "fuel-kmpl-none";
     const v = document.createElement("span");
     v.textContent = num;
-    const t = document.createElement("small");
-    t.className = "fuel-kmpl-motivo";
-    t.textContent = "no fiel";
-    t.title = "Carga parcial (tanque no lleno): no cuenta para el ranking ni las alertas.";
     w.appendChild(v);
-    w.appendChild(t);
+    for (const ch of chips) {
+      const t = document.createElement("small");
+      t.className = "fuel-kmpl-motivo";
+      t.textContent = ch.txt;
+      t.title = ch.title;
+      w.appendChild(t);
+    }
     return w;
   }
   if (!motivo) return "—";
@@ -447,7 +466,9 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
   }
 
   tbody.replaceChildren();
-  for (let i = 0; i < rows.length; i++) {
+  const cap =
+    deps.rowLimit != null && deps.rowLimit > 0 ? Math.min(deps.rowLimit, rows.length) : rows.length;
+  for (let i = 0; i < cap; i++) {
     const e = rows[i]!;
     const v = displayVerdictOf(e);
     const tr = document.createElement("tr");
@@ -461,7 +482,6 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     // "historico" no resalta la fila: estado neutro, fuera del radar de control.
     tr.tabIndex = 0;
 
-    const kmpl = kmplByLoad.get(e.loadId);
     const tcap = duracionCapturaMin(e);
     const montoTxt = esSol
       ? e.montoEstimado != null
@@ -495,11 +515,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
       montoCell,
       esSol
         ? recLabel(recorridosByLoad?.get(e.loadId))
-        : kmplCell(
-            kmpl,
-            metricsByLoad?.get(e.loadId)?.motivoSinKmpl,
-            metricsByLoad?.get(e.loadId)?.cargaParcial,
-          ),
+        : kmplCell(metricsByLoad?.get(e.loadId)),
       tcap != null ? `${tcap} min` : "—",
       alertasCell(findingsByLoad?.get(e.loadId)),
       verdictCell(e, v, nombreValidador),
@@ -512,6 +528,15 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
       else td.appendChild(c);
       tr.appendChild(td);
     }
+    // Auditoría UX 2026-07 H5: fecha en una línea y responsable con elipsis —
+    // los nombres completos partían la fila a 3-4 renglones en 1366px.
+    // Índices atados al orden de `cells` (4=fecha, 6=responsable).
+    tr.children.item(4)?.classList.add("fv-td-fecha");
+    const tdResp = tr.children.item(6);
+    if (tdResp) {
+      tdResp.classList.add("fv-td-resp");
+      if (e.responsable) (tdResp as HTMLElement).title = e.responsable;
+    }
     if (deps.onRowClick) {
       const handler = () => deps.onRowClick!(e.loadId, order);
       tr.addEventListener("click", handler);
@@ -523,6 +548,23 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
         }
       });
     }
+    tbody.appendChild(tr);
+  }
+
+  // Fila "Mostrar más" cuando el tope truncó el DOM (los datos siguen completos).
+  if (cap < rows.length && deps.onShowMore) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 16;
+    td.style.textAlign = "center";
+    td.style.padding = "10px";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fv-show-more btn-export";
+    btn.textContent = `Mostrar más (${rows.length - cap} restantes)`;
+    btn.addEventListener("click", () => deps.onShowMore!());
+    td.appendChild(btn);
+    tr.appendChild(td);
     tbody.appendChild(tr);
   }
 

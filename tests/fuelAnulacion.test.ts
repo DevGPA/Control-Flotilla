@@ -51,6 +51,7 @@ describe("efecto en métricas al excluir una carga anulada", () => {
       fecha,
       km,
       litros,
+      seLlenoTanque: "Si", // eventos llenos: la ventana equivale al intervalo clásico
       photos: [],
     }) as FuelEntry;
 
