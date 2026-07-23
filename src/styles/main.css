@@ -117,6 +117,12 @@
   /* Cian de marca para FILLS/acentos grandes (sin requisito de contraste de texto). */
   --cyan-ink: #0e7aac; /* cian oscuro contrast-safe: 4.78:1 sobre blanco → texto/UI AA */
 
+  /* Producto Vivo (spec 2026-07-23): paleta mensual categórica validada + sombra */
+  --mes1: #047857;
+  --mes2: #1e4fa3;
+  --mes3: #b45309;
+  --vivo-shadow: 0 10px 30px -12px rgba(30, 79, 163, 0.18);
+
   /* Shadows — Tremor shadow-xs / shadow-sm / shadow / shadow-md / shadow-xl */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
@@ -227,6 +233,13 @@
   --O: #fb923c;
   --Od: rgba(251, 146, 60, 0.08);
   --Ol: rgba(251, 146, 60, 0.22);
+
+  /* Producto Vivo (spec 2026-07-23): paleta mensual categórica dark + sombra */
+  --mes1: #45a87e;
+  --mes2: #3d8fd6;
+  --mes3: #bd8426;
+  --vivo-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.5);
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
@@ -942,13 +955,13 @@ select {
   flex: 1;
   min-width: 120px;
   background: var(--bg);
-  border-radius: var(--r2);
+  border-radius: 12px;
   padding: 12px 14px;
   position: relative;
   overflow: hidden;
   /* Piel B: tarjeta en capas */
   border: var(--card-bd);
-  box-shadow: var(--card-sh);
+  box-shadow: var(--vivo-shadow);
   transition:
     transform 0.16s ease,
     box-shadow 0.16s ease;
@@ -5980,11 +5993,11 @@ body:not([data-view="inspecciones"]) #alerts-panel {
      body var(--bg2) + borde var(--ln). Antes usaba --bg2/--ln2, que en tema CLARO
      quedaban del mismo color que la página (delta de luminancia ~nulo) → la tarjeta
      se veía invisible y los títulos flotaban sueltos. En dark sigue contrastando. */
-  background: var(--bg);
+  background: linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 96%, var(--ac) 4%));
   /* Piel B: tarjeta en capas (mismo trío de tokens que .kc/.hero-card) */
   border: var(--card-bd);
-  border-radius: var(--r2);
-  box-shadow: var(--card-sh);
+  border-radius: 18px;
+  box-shadow: var(--vivo-shadow);
   padding: 12px 14px 10px;
   min-width: 0;
 }
@@ -6225,5 +6238,103 @@ body[data-hydrating] .uv-empty::before {
 @media (min-height: 1000px) {
   #fleet-map {
     max-height: 280px;
+  }
+}
+
+/* ── Producto Vivo — gráfica unificada de consumo ─────────────────────── */
+.fuel-seg {
+  display: inline-flex;
+  background: var(--bg3);
+  border: 1px solid var(--ln);
+  border-radius: 999px;
+  padding: 2px;
+}
+.fuel-seg button {
+  border: 0;
+  background: transparent;
+  padding: 5px 13px;
+  cursor: pointer;
+  color: var(--s2);
+  border-radius: 999px;
+  font: 600 12px var(--fb);
+  min-height: 30px;
+}
+.fuel-seg button.on {
+  background: var(--ac);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--ac) 40%, transparent);
+}
+.fuel-crumb {
+  border: 1px solid var(--ln);
+  background: var(--bg3);
+  color: var(--w1);
+  border-radius: 999px;
+  padding: 3px 12px;
+  cursor: pointer;
+  font: 500 13px var(--fb);
+}
+.fuel-crumb:hover {
+  border-color: var(--ac);
+  color: var(--ac);
+}
+.consumo-kpis {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin: 10px 2px 2px;
+}
+.consumo-kpis .ckpi .v {
+  font: 650 18px/1.2 var(--fb);
+  letter-spacing: -0.02em;
+  color: var(--w1);
+}
+.consumo-kpis .ckpi .l {
+  font: 400 11px var(--fb);
+  color: var(--s2);
+}
+.chart-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.chart-card-foot .hintline {
+  color: var(--s2);
+  font-size: 11.5px;
+}
+.ghost-btn {
+  background: none;
+  border: 1px solid var(--ln);
+  color: var(--s2);
+  font: 500 11.5px var(--fb);
+  padding: 5px 11px;
+  border-radius: 9px;
+  cursor: pointer;
+  min-height: 30px;
+}
+.ghost-btn:hover {
+  color: var(--ac);
+  border-color: var(--ac);
+}
+.kdelta {
+  font: 600 11px var(--fb);
+  margin-left: 6px;
+}
+.kdelta.buena {
+  color: var(--G);
+}
+.kdelta.mala {
+  color: var(--R);
+}
+.kdelta.neutra {
+  color: var(--s2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chart-card,
+  .kc,
+  .fuel-seg button {
+    transition: none !important;
   }
 }
