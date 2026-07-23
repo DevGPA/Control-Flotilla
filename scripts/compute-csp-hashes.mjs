@@ -50,12 +50,12 @@ function buildCspDirective(hashes) {
   // HTML legado). NO permite inline <script> blocks (esos requieren hash).
   // Defense-in-depth: inline handlers escapan via escAttr/escHtml en generación;
   // external origins bloqueadas por script-src 'self'.
-  return `default-src 'self'; script-src ${scriptSrc}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' ${AWS_ENDPOINTS}; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'`;
+  return `default-src 'self'; script-src ${scriptSrc}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' ${AWS_ENDPOINTS}; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'`;
 }
 
 function buildCspNginx(hashes) {
   const scriptSrc = ["'self'", ...hashes].join(" ");
-  return `default-src 'self'; script-src ${scriptSrc}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' ${AWS_ENDPOINTS}; font-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`;
+  return `default-src 'self'; script-src ${scriptSrc}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' ${AWS_ENDPOINTS}; font-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'`;
 }
 
 function updateHtml(html, hashes) {
