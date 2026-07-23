@@ -6,6 +6,7 @@ import {
   ejesVivo,
   tooltipVivo,
   gradBar,
+  gradBarH,
 } from "../src/dashboard/chartVivo";
 import type { TremorPalette } from "../src/dashboard/chartTheme";
 
@@ -92,5 +93,10 @@ describe("ejesVivo / tooltipVivo / gradBar", () => {
     expect(g.colorStops[0]!.color).not.toBe("#1e4fa3");
     expect(g.colorStops[1]!.color).toBe("#1e4fa3");
     expect(g.y2).toBe(1);
+  });
+  it("gradBarH es horizontal (x2=1, y2=0)", () => {
+    const g = gradBarH("#1e4fa3") as unknown as { x2: number; y2: number };
+    expect(g.x2).toBe(1);
+    expect(g.y2).toBe(0);
   });
 });

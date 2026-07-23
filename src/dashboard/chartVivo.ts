@@ -25,6 +25,14 @@ export function gradBar(hex: string): echarts.graphic.LinearGradient {
   ]);
 }
 
+/** Variante horizontal (barras hbar): claro a la izquierda. */
+export function gradBarH(hex: string): echarts.graphic.LinearGradient {
+  return new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0, color: aclarar(hex, 0.28) },
+    { offset: 1, color: hex },
+  ]);
+}
+
 /** Rampa secuencial de un hue (claro→base) para apiladas de 4+ meses. */
 export function rampaSecuencial(hex: string, n: number): string[] {
   const out: string[] = [];

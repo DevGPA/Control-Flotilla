@@ -8,6 +8,7 @@ import { BarChart, LineChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange, type TremorPalette } from "../dashboard/chartTheme";
+import { gradBar, gradBarH, ejesVivo, tooltipVivo, animVivo } from "../dashboard/chartVivo";
 import type { UnitRank, GroupConsumo, ConsumoPorGrupoMes, DuracionGrupo } from "./fuelAggregates";
 import { mountConsumo, type ConsumoEls } from "./consumoUnificado";
 
@@ -35,8 +36,8 @@ function makeChart(
   const existing = echarts.getInstanceByDom(container);
   if (existing) existing.dispose();
   const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(build(getTremorPalette()));
-  const off = onThemeChange(() => chart.setOption(build(getTremorPalette())));
+  chart.setOption({ ...animVivo(), ...build(getTremorPalette()) });
+  const off = onThemeChange(() => chart.setOption({ ...animVivo(), ...build(getTremorPalette()) }));
   const ro = new ResizeObserver(() => chart.resize());
   ro.observe(container);
   const origDispose = chart.dispose.bind(chart);
@@ -47,11 +48,7 @@ function makeChart(
   };
 }
 
-const axisCommon = (p: TremorPalette) => ({
-  axisLine: { lineStyle: { color: p.ln } },
-  axisLabel: { color: p.textSub, fontSize: 10 },
-  splitLine: { lineStyle: { color: p.ln, opacity: 0.4 } },
-});
+const axisCommon = (p: TremorPalette) => ejesVivo(p);
 
 const pct1 = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(1)}%`;
 
@@ -74,9 +71,7 @@ function hbar(
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        backgroundColor: p.bg2,
-        borderColor: p.ln,
-        textStyle: { color: p.text },
+        ...tooltipVivo(p),
         formatter: (ps: unknown) => {
           // Lookup por dataIndex (no por name: con sucursal la etiqueta del eje es "44 · MTY").
           const a = (ps as { name: string; value: number; dataIndex: number }[])[0]!;
@@ -115,7 +110,7 @@ function hbar(
               ? Math.round(Math.abs((d.desviacion ?? 0) * 100) * 10) / 10
               : Math.round(d.kmpl * 100) / 100,
           ),
-          itemStyle: { color: color(p), borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: gradBarH(color(p)), borderRadius: [0, 5, 5, 0] },
           label: {
             show: true,
             position: "right",
@@ -140,9 +135,7 @@ function consumoBar(container: HTMLElement, groups: GroupConsumo[], p0: TremorPa
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text },
+      ...tooltipVivo(p),
       formatter: (ps: unknown) => {
         const a = (ps as { name: string; dataIndex: number }[])[0]!;
         const g = groups[a.dataIndex]!;
@@ -160,8 +153,8 @@ function consumoBar(container: HTMLElement, groups: GroupConsumo[], p0: TremorPa
       {
         type: "bar",
         data: groups.map((g) => Math.round(g.gasto)),
-        itemStyle: { color: p.ac, borderRadius: [4, 4, 0, 0] },
-        barMaxWidth: 40,
+        itemStyle: { color: gradBar(p.ac), borderRadius: [5, 5, 0, 0] },
+        barMaxWidth: 26,
       },
     ],
   }));
@@ -179,9 +172,7 @@ function duracionBar(container: HTMLElement, groups: DuracionGrupo[]): void {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        backgroundColor: p.bg2,
-        borderColor: p.ln,
-        textStyle: { color: p.text },
+        ...tooltipVivo(p),
         formatter: (ps: unknown) => {
           const a = (ps as { dataIndex: number }[])[0]!;
           const g = data[a.dataIndex]!;
@@ -198,7 +189,7 @@ function duracionBar(container: HTMLElement, groups: DuracionGrupo[]): void {
         {
           type: "bar",
           data: data.map((g) => g.medianaMin),
-          itemStyle: { color: p.ac, borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: gradBarH(p.ac), borderRadius: [0, 5, 5, 0] },
           label: {
             show: true,
             position: "right",
