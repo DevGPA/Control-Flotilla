@@ -12,7 +12,7 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/moreapp-webhook";
 import { analyzeRow } from "../../../src/analyzer/analyzeRow";
-import type { ExcelRow } from "../../../src/types";
+import { buildRow, dataNamesLlantaNoMapeados } from "../../../src/moreapp/mensualRow";
 import type { Schema } from "../../data/resource";
 import {
   parseNum,
@@ -60,51 +60,9 @@ async function getDataClient() {
   return dataClient;
 }
 
-// dataName (MoreApp) → nombre de columna Excel que espera analyzeRow.
-const FIELD_MAP: Record<string, string> = {
-  kilometraje: "Kilometraje",
-  kilometrajeDelSiguienteServicio: "Kilometraje del siguiente servicio",
-  fechaEstimadaDelSiguienteServicio: "Fecha estimada del siguiente servicio",
-  nivelTACODeLlantaPilotoDelantera: "Nivel TACO de llanta piloto delantera",
-  nivelTACODeLlantaCopilotoDelantera: "Nivel TACO de llanta copiloto delantera",
-  nivelTACODeLlantaPilotoTrasera: "Nivel TACO de llanta piloto trasera",
-  nivelTACODeLlantaPilotoTraseraINTERNA: "Nivel TACO de llanta piloto trasera INTERNA",
-  nivelTACODeLlantaCopilotoTrasera: "Nivel TACO de llanta copiloto trasera",
-  nivelTACODeLlantaCopilotoTraseraINTERNA: "Nivel TACO de llanta copiloto trasera INTERNA",
-  nivelTACODeLlantaREFACCION: "Nivel TACO de llanta REFACCION",
-  cuentaConLlantaDeRefaccin: "Cuenta con llanta de Refacción?",
-  cuentaConLlantaPilotoTraseraINTERNA: "¿Cuenta con Llanta Piloto trasera INTERNA?",
-  cuentaConLlantaCopilotoTraseraINTERNA: "¿Cuenta con Llanta Copiloto trasera INTERNA?",
-  lucesYCuartosDelanterosFuncionando: "Luces y cuartos delanteros funcionando",
-  cinturonesDeSeguridadFuncionandoTodos: "Cinturones de seguridad funcionando (todos)",
-  carroceriaSinGolpesORaspaduras: "Carroceria con golpes o raspaduras",
-  espejosLateralesEnBuenEstado: "Espejos laterales en buen estado",
-  cristalesEnBuenasCondiciones: "Cristales en buenas condiciones",
-  taponDeLaGasolina: "Tapon de la gasolina",
-  bocinaDelClaxonFuncionando: "Bocina del claxon funcionando",
-  limpiaParaBrisasFuncionandoCorrectamente: "Limpia parabrisas funcionando correctamente",
-  tacometroEnBuenasCondiciones: "Tacometro en buenas condiciones",
-  espejoRetrovisorEnBuenasCondiciones: "Espejo retrovisor en buenas condiciones",
-  lucesInterioresFuncionando: "Luces interiores funcionando",
-  asientosEnBuenEstado: "Asientos en buen estado",
-  tapetesCompletos: "Tapetes completos",
-  gatoAdecuadoParaElVehiculoYSuPalanca: "Gato adecuado para el vehiculo y su palanca",
-  llaveDeCruzOPalancaAcordeALosBirlosDeLasLlantas:
-    "Llave de cruz o palanca acorde a los birlos de las llantas",
-  trianguloDeSeguridad: "Triangulo de seguridad",
-  cablesPasaCorriente: "Cables pasa corriente",
-  nivelDeLiquidoDeFrenosMax: "Nivel de liquido de frenos max",
-  nivelDeAceiteDeMotorMax: "Nivel de aceite de motor max",
-  nivelDeLiquidoDeRadiadorMax: "Nivel de liquido de radiador max",
-  nivelDeAceiteDeDireccionMax: "Nivel de aceite de direccion max",
-  licenciaDeChoferAcordeAVehiculoVigente: 'Licencia de "chofer" acorde a vehiculo vigente',
-  tarjetaDeCirculacionVigente: "Tarjeta de circulacion vigente",
-  polizaDeSeguroVigente: "Poliza de seguro vigente",
-  calcomoniaDeRefrendoVehicular: "Calcomonia de refrendo vehicular",
-  tarjetacalcamoniaDeVerificacionAmbientalVigente:
-    "Tarjeta/calcamonia de verificacion ambiental vigente",
-  calcamoniaDeUltimoServicioEnParabrisas: "Calcamonia de ultimo servicio (en parabrisas)",
-};
+// FIELD_MAP + buildRow viven en src/moreapp/mensualRow.ts (puros y testeados) —
+// incluye los dataNames RENOMBRADOS por MoreApp (sufijo "1", bug internas jun-jul
+// 2026) y el detector de drift para futuros renames del formulario.
 
 function res(status: number, body: unknown): APIGatewayProxyResultV2 {
   return {
@@ -149,25 +107,6 @@ function pickStr(v: unknown): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "object") return "";
   return String(v).trim();
-}
-
-/** Construye un ExcelRow desde data.data usando FIELD_MAP + lookup economico. */
-function buildRow(answers: Record<string, unknown>): ExcelRow {
-  const row: ExcelRow = {};
-  for (const [dn, col] of Object.entries(FIELD_MAP)) {
-    const v = answers[dn];
-    if (v === null || v === undefined) continue;
-    row[col] = typeof v === "object" ? JSON.stringify(v) : (v as string | number);
-  }
-  const eco = answers.economico;
-  if (eco && typeof eco === "object") {
-    const e = eco as Record<string, unknown>;
-    if (e.PLACAS) row["# Economico - PLACAS"] = String(e.PLACAS);
-    if (e.id) row["# Economico - id"] = String(e.id);
-    if (e.SUBMARCA) row["# Economico - SUBMARCA"] = String(e.SUBMARCA);
-    if (e.SUCURSAL) row["# Economico - SUCURSAL"] = String(e.SUCURSAL);
-  }
-  return row;
 }
 
 function isConditionalCheckFailed(
@@ -510,6 +449,14 @@ async function processMensual(
   }
 
   // 2. Checklist (1 por unidad por fecha). Reusa analyzeRow (canon).
+  // Drift de dataNames: MoreApp los regenera al editar el form (bug internas
+  // jun-jul 2026, sufijo "1") — visible en CloudWatch, no otro mes en silencio.
+  const drift = dataNamesLlantaNoMapeados(answers);
+  if (drift.length) {
+    console.warn(
+      `[moreapp-webhook] dataNames de llantas NO mapeados (¿form editado?): ${drift.join(", ")}`,
+    );
+  }
   const row = buildRow(answers);
   const analyzed = analyzeRow(row as Parameters<typeof analyzeRow>[0]);
   const fechaRaw = pickStr(answers.dateAndTime);
