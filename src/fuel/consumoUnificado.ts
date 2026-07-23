@@ -127,13 +127,21 @@ export function buildComparativoOption(
       axisPointer: { type: "shadow", shadowStyle: { color: p.bg3, opacity: 0.5 } },
       ...tooltipVivo(p),
       formatter: (ps: unknown) => {
-        const arr = ps as { dataIndex: number; seriesName: string; marker: string }[];
+        const arr = ps as {
+          dataIndex: number;
+          seriesName: string;
+          marker: string;
+          seriesIndex: number;
+        }[];
         const g = m.grupos[arr[0]!.dataIndex]!;
         if (!porMes)
           return `<b>${g}</b><br/>${celdaTxt(m.totalesGrupo[g]!)}<br/><span style="opacity:.6">Click para ver detalle mensual</span>`;
+        // ECharts compacta `ps` cuando se des-selecciona una serie en la leyenda: el
+        // índice posicional deja de corresponder al mes. Usar seriesIndex (estable,
+        // provisto por ECharts por param) en vez de la posición en el arreglo.
         const lineas = arr.map(
-          (a, i) =>
-            `${a.marker} ${a.seriesName}&nbsp;&nbsp;${celdaTxt(m.celdas[g]![m.meses[i]!]!)}`,
+          (a) =>
+            `${a.marker} ${a.seriesName}&nbsp;&nbsp;${celdaTxt(m.celdas[g]![m.meses[a.seriesIndex]!]!)}`,
         );
         return `<b>${g}</b><br/>${lineas.join("<br/>")}<br/><span style="opacity:.6">Click para ver detalle mensual</span>`;
       },
