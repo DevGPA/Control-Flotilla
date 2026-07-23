@@ -52,6 +52,19 @@ describe("animVivo", () => {
   it("devuelve 700ms cubicOut (en node, sin matchMedia, no truena)", () => {
     expect(animVivo()).toEqual({ animationDuration: 700, animationEasing: "cubicOut" });
   });
+  it("con prefers-reduced-motion: reduce devuelve animationDuration 0", () => {
+    const orig = window.matchMedia;
+    window.matchMedia = ((q: string) =>
+      ({
+        matches: q.includes("prefers-reduced-motion"),
+        media: q,
+      }) as MediaQueryList) as typeof window.matchMedia;
+    try {
+      expect(animVivo()).toEqual({ animationDuration: 0, animationEasing: "cubicOut" });
+    } finally {
+      window.matchMedia = orig;
+    }
+  });
 });
 
 describe("ejesVivo / tooltipVivo / gradBar", () => {
@@ -60,13 +73,23 @@ describe("ejesVivo / tooltipVivo / gradBar", () => {
     expect(e.axisLine.show).toBe(false);
     expect(e.axisTick.show).toBe(false);
     expect(e.splitLine.lineStyle.opacity).toBeCloseTo(0.55);
+    expect(e.axisLabel).toEqual({ color: "#666", fontSize: 10.5 });
   });
   it("tooltip usa superficie del tema", () => {
-    expect(tooltipVivo(P).backgroundColor).toBe("#fff");
+    expect(tooltipVivo(P)).toEqual({
+      backgroundColor: "#fff",
+      borderColor: "#ccc",
+      borderWidth: 1,
+      padding: [8, 12],
+      textStyle: { color: "#000", fontSize: 12 },
+      extraCssText: "border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.16)",
+    });
   });
   it("gradBar produce LinearGradient vertical con 2 stops", () => {
     const g = gradBar("#1e4fa3") as unknown as { colorStops: { color: string }[]; y2: number };
     expect(g.colorStops).toHaveLength(2);
+    expect(g.colorStops[0]!.color).toBe(aclarar("#1e4fa3", 0.28));
+    expect(g.colorStops[0]!.color).not.toBe("#1e4fa3");
     expect(g.colorStops[1]!.color).toBe("#1e4fa3");
     expect(g.y2).toBe(1);
   });
