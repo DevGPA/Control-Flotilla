@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-d4UMtU1l5FQSYo4xYA9b9iBoeplEoco8hUWgRMDUr4E=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Esf1vFirssbzbeOON1eaP56w/WD0E3kxbvIu2dtHKOE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4609,10 +4609,20 @@ function renderPhotos(u,body){
 
   for(const[grp,items]of Object.entries(grouped)){
     const thumbs=items.map(p=>{
+      // Video (fix 2026-07-23): reproduce inline con controles — sin lightbox (es de
+      // imágenes) y sin lbImgs. Regex en sync con esVideoFname (src/moreapp/media.ts).
+      if(/\.(mp4|mov|webm)$/i.test(p.fname||"")){
+        return`<div class="pgitem">
+          <video data-src="${escAttr(p.fname)}" data-fname="${escAttr(p.fname)}" controls preload="metadata" playsinline
+            style="opacity:0;transition:opacity .3s ease;width:100%;height:100%;object-fit:cover;background:#000"
+            class="lazy-img" onerror="photoImgErr(this)"></video>
+          <div class="pglbl">${escHtml(shortLbl(p.col))}</div>
+        </div>`;
+      }
       const lbIdx2=lbImgs.length;
       // We push a "pending" object to lbImgs, url will be resolved on open if needed
-      lbImgs.push({fname: p.fname, label:p.col}); 
-      
+      lbImgs.push({fname: p.fname, label:p.col});
+
       return`<div class="pgitem" data-action="lbOpen" data-arg1="${lbIdx2}">
         <img data-src="${escAttr(p.fname)}" data-fname="${escAttr(p.fname)}" alt="${escAttr(p.col)}" style="opacity:0;transition:opacity .3s ease"
           class="lazy-img" onerror="photoImgErr(this)"/>

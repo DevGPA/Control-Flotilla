@@ -13,6 +13,7 @@ import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtim
 import { env } from "$amplify/env/moreapp-webhook";
 import { analyzeRow } from "../../../src/analyzer/analyzeRow";
 import { buildRow, dataNamesLlantaNoMapeados } from "../../../src/moreapp/mensualRow";
+import { extFromContentType } from "../../../src/moreapp/media";
 import type { Schema } from "../../data/resource";
 import {
   parseNum,
@@ -160,11 +161,21 @@ async function downloadPhotos(
           .toLowerCase()
           .replace(/[^a-z0-9._-]/g, "_");
         const key = `photos/${tenantId}/${baseName}`;
-        // Idempotencia: si la foto ya está en S3 (retry de MoreApp o re-backfill),
-        // no la re-descargamos. El ext queda implícito en baseName si ya existe.
+        // Idempotencia: si el medio ya está en S3 (retry de MoreApp o re-backfill),
+        // no lo re-descargamos. Videos primero (fix 2026-07-23); un ".jpg" cuyo
+        // ContentType sea video/* es de ANTES del fix → cae a re-descargar con la
+        // extensión correcta (el .jpg roto queda como basura inofensiva).
+        try {
+          const hv = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: `${key}.mp4` }));
+          if (hv) return { group, col: dn, fname: `${baseName}.mp4` };
+        } catch {
+          /* no hay video con ese nombre */
+        }
         try {
           const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: `${key}.jpg` }));
-          if (head) return { group, col: dn, fname: `${baseName}.jpg` };
+          if (head && !(head.ContentType ?? "").startsWith("video/")) {
+            return { group, col: dn, fname: `${baseName}.jpg` };
+          }
         } catch {
           /* no existe → descargar */
         }
@@ -177,7 +188,7 @@ async function downloadPhotos(
           return null;
         }
         const ct = r.headers.get("content-type") || "image/jpeg";
-        const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+        const ext = extFromContentType(ct);
         const buf = Buffer.from(await r.arrayBuffer());
         const fname = `${baseName}.${ext}`;
         await s3.send(

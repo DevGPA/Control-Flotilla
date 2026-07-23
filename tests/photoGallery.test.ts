@@ -47,6 +47,31 @@ describe("shortLbl", () => {
   });
 });
 
+describe("renderPhotoGallery — videos (fix 2026-07-23)", () => {
+  it("un archivo de video se renderiza con <video controls>, no con <img>", () => {
+    const c = setup();
+    renderPhotoGallery(c, {
+      unit: makeUnit({
+        photos: [
+          { group: "Inspección Mensual", col: "video", fname: "moreapp_x_ab12cd34_video.mp4" },
+          {
+            group: "Inspección Mensual",
+            col: "fotoVehiculo",
+            fname: "moreapp_x_ab12cd34_foto.jpg",
+          },
+        ],
+      }),
+      hasZip: true,
+    });
+    const video = c.querySelector("video.lazy-img") as HTMLVideoElement;
+    expect(video).not.toBeNull();
+    expect(video.dataset.src).toBe("moreapp_x_ab12cd34_video.mp4");
+    expect(video.hasAttribute("controls")).toBe(true);
+    // La foto normal sigue siendo <img>; el video NO se duplica como <img>.
+    expect(c.querySelectorAll("img.lazy-img").length).toBe(1);
+  });
+});
+
 describe("renderPhotoGallery — empty states", () => {
   beforeEach(() => {
     document.body.replaceChildren();
