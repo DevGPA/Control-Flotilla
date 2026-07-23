@@ -38,6 +38,7 @@ import {
   type FuelVerdictFilter,
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
+import { totalesCargas, rangoAnterior } from "./kpiDeltas";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
 import {
   rankUnitsByDeviation,
@@ -284,6 +285,15 @@ function renderCombustible(): void {
   const ctx = computeCtx();
   cargarNombresValidadores(); // no bloquea; re-pinta al llegar la lista
 
+  // Deltas de KPI vs periodo anterior: solo con rango acotado en AMBOS extremos (si el
+  // usuario limpia desde/hasta → "histórico completo", sin base honesta de comparación).
+  // `all` es el mismo universo (post-anulaciones, sucursal-lock) que alimenta el filtro de
+  // fecha en computeCtx (ver fuelDatasetMemo/scoped), ANTES de aplicar el resto de filtros.
+  const prev =
+    filter.desde && filter.hasta
+      ? totalesCargas(all, rangoAnterior({ from: filter.desde, to: filter.hasta }))
+      : undefined;
+
   const kpisEl = $("fuel-kpis");
   if (kpisEl)
     renderKpisFuel(
@@ -294,6 +304,7 @@ function renderCombustible(): void {
         ctx.baseline,
         ctx.anomalies,
         ctx.recorridosByLoad,
+        prev,
       ),
       (f) => {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
