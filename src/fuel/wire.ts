@@ -289,8 +289,20 @@ function renderCombustible(): void {
   // usuario limpia desde/hasta → "histórico completo", sin base honesta de comparación).
   // `all` es el mismo universo (post-anulaciones, sucursal-lock) que alimenta el filtro de
   // fecha en computeCtx (ver fuelDatasetMemo/scoped), ANTES de aplicar el resto de filtros.
+  // Deltas solo con comparación honesta: mismo universo, solo cambia la ventana de fechas.
+  // Con filtros de subconjunto activos (verdict/tipo/búsqueda/etc.) el periodo anterior no
+  // es comparable y el delta se omite (mismo principio que deltaKpi con anterior<=0).
+  const soloFecha =
+    filter.tipo === "all" &&
+    filter.verdict === "all" &&
+    filter.sucursal === "" &&
+    filter.responsable === "" &&
+    filter.search === "" &&
+    filter.flag === "" &&
+    filter.area === "" &&
+    filter.submarca === "";
   const prev =
-    filter.desde && filter.hasta
+    filter.desde && filter.hasta && soloFecha
       ? totalesCargas(all, rangoAnterior({ from: filter.desde, to: filter.hasta }))
       : undefined;
 
