@@ -43,7 +43,7 @@
 
 **Interfaces:**
 
-- Produces: CSS vars `--mes1 --mes2 --mes3 --vivo-shadow`; clases `.fuel-seg`, `.fuel-crumb`, `.consumo-kpis`, `.kdelta`, `.ghost-btn`, `.chart-card-foot`.
+- Produces: CSS vars `--mes1 --mes2 --mes3 --vivo-shadow`; clases `.vivo-seg`, `.fuel-crumb`, `.consumo-kpis`, `.kdelta`, `.ghost-btn`, `.chart-card-foot`.
 
 - [ ] **Step 1: Agregar tokens al `:root` claro (junto a --ac, ~L112):**
 
@@ -83,14 +83,14 @@ box-shadow: var(--vivo-shadow);
 
 ```css
 /* ── Producto Vivo — gráfica unificada de consumo ─────────────────────── */
-.fuel-seg {
+.vivo-seg {
   display: inline-flex;
   background: var(--bg3);
   border: 1px solid var(--ln);
   border-radius: 999px;
   padding: 2px;
 }
-.fuel-seg button {
+.vivo-seg button {
   border: 0;
   background: transparent;
   padding: 5px 13px;
@@ -100,7 +100,7 @@ box-shadow: var(--vivo-shadow);
   font: 600 12px var(--fb);
   min-height: 30px;
 }
-.fuel-seg button.on {
+.vivo-seg button.on {
   background: var(--ac);
   color: #fff;
   box-shadow: 0 2px 6px color-mix(in srgb, var(--ac) 40%, transparent);
@@ -175,7 +175,7 @@ box-shadow: var(--vivo-shadow);
 @media (prefers-reduced-motion: reduce) {
   .chart-card,
   .kc,
-  .fuel-seg button {
+  .vivo-seg button {
     transition: none !important;
   }
 }
@@ -962,10 +962,10 @@ export function buildDetalleOption(
       Consumo por sucursal
     </div>
     <span style="display:flex;gap:8px;align-items:center"
-      ><span class="fuel-seg" id="fuel-consumo-metrica" role="group" aria-label="Métrica"
+      ><span class="vivo-seg" id="fuel-consumo-metrica" role="group" aria-label="Métrica"
         ><button data-m="gasto" class="on">Gasto $</button
         ><button data-m="litros">Litros</button></span
-      ><span class="fuel-seg" id="fuel-consumo-modo" role="group" aria-label="Desglose"
+      ><span class="vivo-seg" id="fuel-consumo-modo" role="group" aria-label="Desglose"
         ><button data-mo="total">Total</button
         ><button data-mo="mes" class="on">Por mes</button></span
       ></span
