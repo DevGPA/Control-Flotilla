@@ -8,7 +8,8 @@ import { BarChart, LineChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange, type TremorPalette } from "../dashboard/chartTheme";
-import type { UnitRank, GroupConsumo, MonthConsumo, DuracionGrupo } from "./fuelAggregates";
+import type { UnitRank, GroupConsumo, ConsumoPorGrupoMes, DuracionGrupo } from "./fuelAggregates";
+import { mountConsumo, type ConsumoEls } from "./consumoUnificado";
 
 echarts.use([
   BarChart,
@@ -212,60 +213,12 @@ function duracionBar(container: HTMLElement, groups: DuracionGrupo[]): void {
   });
 }
 
-/** Línea de tendencia mensual: litros + gasto (doble eje). */
-function tendencia(container: HTMLElement, meses: MonthConsumo[]): void {
-  makeChart(container, (p) => ({
-    grid: { left: 8, right: 8, top: 30, bottom: 8, containLabel: true },
-    legend: { data: ["Litros", "Gasto"], textStyle: { color: p.textSub, fontSize: 10 }, top: 0 },
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text },
-      formatter: (ps: unknown) => {
-        const arr = ps as { axisValue: string; seriesName: string; value: number }[];
-        if (!arr.length) return "";
-        const lines = arr.map((a) =>
-          a.seriesName === "Gasto"
-            ? `Gasto: <b>${PESO.format(a.value)}</b>`
-            : `Litros: <b>${NUM.format(a.value)} L</b>`,
-        );
-        return `${arr[0]!.axisValue}<br/>${lines.join("<br/>")}`;
-      },
-    },
-    xAxis: { type: "category", data: meses.map((m) => m.mes), ...axisCommon(p) },
-    yAxis: [
-      { type: "value", name: "L", ...axisCommon(p) },
-      { type: "value", name: "$", ...axisCommon(p), splitLine: { show: false } },
-    ],
-    series: [
-      {
-        name: "Litros",
-        type: "bar",
-        data: meses.map((m) => Math.round(m.litros)),
-        itemStyle: { color: p.B, borderRadius: [3, 3, 0, 0] },
-        barMaxWidth: 30,
-      },
-      {
-        name: "Gasto",
-        type: "line",
-        yAxisIndex: 1,
-        data: meses.map((m) => Math.round(m.gasto)),
-        smooth: true,
-        itemStyle: { color: p.ac },
-        lineStyle: { color: p.ac, width: 2 },
-      },
-    ],
-  }));
-}
-
 export type FuelDashboardData = {
   peores: UnitRank[];
   mejores: UnitRank[];
-  porSucursal: GroupConsumo[];
+  consumo: ConsumoPorGrupoMes;
   porResponsable: GroupConsumo[];
   porTipo: GroupConsumo[];
-  meses: MonthConsumo[];
   /** Unidades de la submarca seleccionada, km/l absoluto, peor primero (obs. 1 auditoría). */
   unidadesDeTipo?: UnitRank[];
   /** Tiempo de captura por responsable, mediana DESC (obs. 4 auditoría). */
@@ -277,10 +230,9 @@ export type FuelDashboardData = {
 export type FuelDashboardEls = {
   peores: HTMLElement | null;
   mejores: HTMLElement | null;
-  sucursal: HTMLElement | null;
+  consumo: ConsumoEls | null;
   responsable: HTMLElement | null;
   tipo: HTMLElement | null;
-  tendencia: HTMLElement | null;
   tipoUnidad?: HTMLElement | null;
   tcaptura?: HTMLElement | null;
   area?: HTMLElement | null;
@@ -291,10 +243,9 @@ export function renderFuelDashboard(els: FuelDashboardEls, data: FuelDashboardDa
   const p = getTremorPalette();
   if (els.peores) hbar(els.peores, data.peores, (pp) => pp.R);
   if (els.mejores) hbar(els.mejores, data.mejores, (pp) => pp.G);
-  if (els.sucursal) consumoBar(els.sucursal, data.porSucursal, p);
+  if (els.consumo) mountConsumo(els.consumo, data.consumo);
   if (els.responsable) consumoBar(els.responsable, data.porResponsable, p);
   if (els.tipo) consumoBar(els.tipo, data.porTipo, p);
-  if (els.tendencia) tendencia(els.tendencia, data.meses);
   if (els.tipoUnidad) hbar(els.tipoUnidad, data.unidadesDeTipo ?? [], (pp) => pp.B);
   if (els.tcaptura) duracionBar(els.tcaptura, data.tcaptura ?? []);
   if (els.area) consumoBar(els.area, data.porArea ?? [], p);

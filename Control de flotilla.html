@@ -1069,12 +1069,46 @@
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Peor rendimiento vs. su tipo</div></div><div id="fchart-peores" class="chart-canvas" role="img" aria-label="Gráfica de barras: unidades con peor rendimiento de combustible comparado con su tipo de unidad"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Mejor rendimiento vs. su tipo</div></div><div id="fchart-mejores" class="chart-canvas" role="img" aria-label="Gráfica de barras: unidades con mejor rendimiento de combustible comparado con su tipo de unidad"></div></div>
       <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Rendimiento por tipo de unidad (km/l)</div><select id="fuel-dash-tipo-unidad" aria-label="Elegir tipo de unidad a comparar" class="field-input"></select></div><div id="fchart-tipo-unidad" class="chart-canvas" role="img" aria-label="Gráfica de barras: km por litro de cada unidad del tipo seleccionado, peor primero, con su sucursal"></div></div>
-      <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por sucursal ($)</div></div><div id="fchart-sucursal" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por sucursal"></div></div>
+      <div class="chart-card chart-card-wide">
+        <div class="chart-card-header">
+          <button
+            id="fuel-consumo-back"
+            class="fuel-crumb"
+            hidden
+            aria-label="Regresar al comparativo de sucursales"
+          >
+            ←
+          </button>
+          <div class="chart-title" role="heading" aria-level="2" id="fuel-consumo-title">
+            Consumo por sucursal
+          </div>
+          <span style="display:flex;gap:8px;align-items:center"
+            ><span class="vivo-seg" id="fuel-consumo-metrica" role="group" aria-label="Métrica"
+              ><button data-m="gasto" class="on">Gasto $</button
+              ><button data-m="litros">Litros</button></span
+            ><span class="vivo-seg" id="fuel-consumo-modo" role="group" aria-label="Desglose"
+              ><button data-mo="total">Total</button
+              ><button data-mo="mes" class="on">Por mes</button></span
+            ></span
+          >
+        </div>
+        <div id="fuel-consumo-kpis" class="consumo-kpis"></div>
+        <div
+          id="fchart-consumo"
+          class="chart-canvas"
+          role="img"
+          aria-label="Gráfica de consumo de combustible: comparativo por sucursal con desglose mensual; click en una sucursal para ver su evolución de litros y gasto"
+        ></div>
+        <div class="chart-card-foot">
+          <span class="hintline" id="fuel-consumo-hint"
+            >Click en una sucursal para ver su detalle mensual</span
+          ><button class="ghost-btn" id="fuel-consumo-global">📈 Evolución global</button>
+        </div>
+      </div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por responsable ($)</div></div><div id="fchart-responsable" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por responsable"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tiempo de captura por responsable (mediana, min)</div></div><div id="fchart-tcaptura" class="chart-canvas" role="img" aria-label="Gráfica de barras: minutos entre abrir y guardar el formulario de MoreApp, por responsable, quien más tarda primero"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Consumo por tipo de combustible ($)</div></div><div id="fchart-tipo" class="chart-canvas" role="img" aria-label="Gráfica: gasto en pesos por tipo de combustible (magna, premium, diésel)"></div></div>
       <div class="chart-card"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Gasto por área ($)</div></div><div id="fchart-area" class="chart-canvas" role="img" aria-label="Gráfica de barras: gasto de combustible en pesos por área operativa (logística, almacén, postventa, administración)"></div></div>
-      <div class="chart-card chart-card-wide"><div class="chart-card-header"><div class="chart-title" role="heading" aria-level="2">Tendencia mensual (litros y gasto)</div></div><div id="fchart-tendencia" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia mensual de litros cargados y gasto en pesos"></div></div>
     </div>
   </div>
 </div>

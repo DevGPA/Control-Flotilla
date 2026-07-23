@@ -234,3 +234,139 @@ export function buildDetalleOption(
     ],
   };
 }
+
+// ── Componente interactivo (estado + DOM). Módulo-level state, mismo patrón que
+// dashSubmarca en wire.ts: el drill-down sobrevive re-renders del dashboard. ──
+import * as echarts from "echarts/core";
+import { getTremorPalette, onThemeChange } from "../dashboard/chartTheme";
+
+export type ConsumoEls = {
+  chart: HTMLElement;
+  kpis: HTMLElement;
+  titulo: HTMLElement;
+  hint: HTMLElement;
+  back: HTMLButtonElement;
+  global: HTMLButtonElement;
+  segMetrica: HTMLElement;
+  segModo: HTMLElement;
+};
+
+type Nivel = { tipo: "comparativo" } | { tipo: "detalle"; grupo: string | null };
+let nivel: Nivel = { tipo: "comparativo" };
+let metrica: MetricaConsumo = "gasto";
+let porMes = true;
+let matrizActual: ConsumoPorGrupoMes | null = null;
+let elsActual: ConsumoEls | null = null;
+let wired = false;
+
+function pintarKpis(): void {
+  if (!elsActual || !matrizActual) return;
+  const m = matrizActual;
+  const total = (sel: string | null): CeldaConsumo => {
+    if (sel) return m.totalesGrupo[sel] ?? { litros: 0, gasto: 0, cargas: 0 };
+    const t = { litros: 0, gasto: 0, cargas: 0 };
+    for (const g of m.grupos) {
+      const c = m.totalesGrupo[g]!;
+      t.litros += c.litros;
+      t.gasto += c.gasto;
+      t.cargas += c.cargas;
+    }
+    return t;
+  };
+  const sel = nivel.tipo === "detalle" ? nivel.grupo : null;
+  const c = total(sel);
+  elsActual.kpis.replaceChildren();
+  for (const [v, l] of [
+    [PESO.format(Math.round(c.gasto)), "Gasto del periodo"],
+    [`${NUM.format(Math.round(c.litros))} L`, "Litros"],
+    [NUM.format(c.cargas), "Cargas"],
+  ] as const) {
+    const d = document.createElement("div");
+    d.className = "ckpi";
+    const dv = document.createElement("div");
+    dv.className = "v";
+    dv.textContent = v;
+    const dl = document.createElement("div");
+    dl.className = "l";
+    dl.textContent = l;
+    d.append(dv, dl);
+    elsActual.kpis.appendChild(d);
+  }
+}
+
+function pintar(): void {
+  if (!elsActual || !matrizActual) return;
+  const els = elsActual,
+    m = matrizActual,
+    p = getTremorPalette();
+  const oculto = modoDesglose(m.meses.length) === "oculto";
+  const enDetalle = nivel.tipo === "detalle";
+  els.back.hidden = !enDetalle;
+  els.segModo.style.display = enDetalle || oculto ? "none" : "";
+  els.segMetrica.style.display = enDetalle ? "none" : "";
+  els.global.style.display = enDetalle ? "none" : "";
+  if (enDetalle) {
+    const g = (nivel as { grupo: string | null }).grupo;
+    els.titulo.textContent = `${g ?? "Todas las sucursales"} — evolución mensual`;
+    els.hint.textContent = "«←» para regresar al comparativo de sucursales";
+  } else {
+    els.titulo.textContent = "Consumo por sucursal";
+    els.hint.textContent = "Click en una sucursal para ver su detalle mensual";
+  }
+  const chart =
+    echarts.getInstanceByDom(els.chart) ?? echarts.init(els.chart, null, { renderer: "canvas" });
+  chart.setOption(
+    enDetalle
+      ? buildDetalleOption(p, m, (nivel as { grupo: string | null }).grupo)
+      : buildComparativoOption(p, m, { porMes, metrica }),
+    true,
+  );
+  pintarKpis();
+}
+
+/** Monta/actualiza la gráfica unificada. Idempotente: listeners se cablean una vez. */
+export function mountConsumo(els: ConsumoEls, matriz: ConsumoPorGrupoMes): void {
+  elsActual = els;
+  matrizActual = matriz;
+  // Si la sucursal drilleada desapareció del rango filtrado, regresar al comparativo.
+  if (nivel.tipo === "detalle" && nivel.grupo && !matriz.grupos.includes(nivel.grupo))
+    nivel = { tipo: "comparativo" };
+  if (!wired) {
+    wired = true;
+    const chart = echarts.init(els.chart, null, { renderer: "canvas" });
+    chart.on("click", (pt) => {
+      if (nivel.tipo !== "comparativo" || !matrizActual) return;
+      const g = matrizActual.grupos[(pt as { dataIndex: number }).dataIndex];
+      if (g) {
+        nivel = { tipo: "detalle", grupo: g };
+        pintar();
+      }
+    });
+    new ResizeObserver(() => chart.resize()).observe(els.chart);
+    onThemeChange(() => pintar());
+    els.back.addEventListener("click", () => {
+      nivel = { tipo: "comparativo" };
+      pintar();
+    });
+    els.global.addEventListener("click", () => {
+      nivel = { tipo: "detalle", grupo: null };
+      pintar();
+    });
+    const seg = (cont: HTMLElement, on: (b: HTMLButtonElement) => void): void =>
+      cont.addEventListener("click", (ev) => {
+        const b = (ev.target as HTMLElement).closest("button");
+        if (!b) return;
+        cont.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        on(b as HTMLButtonElement);
+      });
+    seg(els.segMetrica, (b) => {
+      metrica = (b.dataset.m as MetricaConsumo) ?? "gasto";
+      pintar();
+    });
+    seg(els.segModo, (b) => {
+      porMes = b.dataset.mo === "mes";
+      pintar();
+    });
+  }
+  pintar();
+}

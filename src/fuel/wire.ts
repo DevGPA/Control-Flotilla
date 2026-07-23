@@ -45,7 +45,7 @@ import {
   duracionPorResponsable,
   splitRanking,
   aggByGroup,
-  aggByMonth,
+  aggByGroupAndMonth,
 } from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
 import { buildSolicitudesVista } from "./solicitudesLayout";
@@ -422,10 +422,9 @@ async function renderFuelDash(): Promise<void> {
   const data = {
     peores,
     mejores,
-    porSucursal: aggByGroup(ctx.filtered, (e) => e.sucursal),
+    consumo: aggByGroupAndMonth(ctx.filtered, (e) => e.sucursal ?? "(sin dato)"),
     porResponsable: aggByGroup(ctx.filtered, (e) => e.responsable ?? "").slice(0, 12),
     porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
-    meses: aggByMonth(ctx.filtered),
     unidadesDeTipo: porSubmarca.get(tipoSeleccionado) ?? [],
     tcaptura: duracionPorResponsable(ctx.filtered).slice(0, 12),
     porArea: aggByGroup(ctx.filtered, (e) => e.area ?? "(sin área)"),
@@ -433,10 +432,30 @@ async function renderFuelDash(): Promise<void> {
   const els = {
     peores: $("fchart-peores"),
     mejores: $("fchart-mejores"),
-    sucursal: $("fchart-sucursal"),
+    consumo: (() => {
+      const chart = $("fchart-consumo"),
+        kpis = $("fuel-consumo-kpis"),
+        titulo = $("fuel-consumo-title"),
+        hint = $("fuel-consumo-hint"),
+        back = $("fuel-consumo-back"),
+        global = $("fuel-consumo-global"),
+        segMetrica = $("fuel-consumo-metrica"),
+        segModo = $("fuel-consumo-modo");
+      return chart && kpis && titulo && hint && back && global && segMetrica && segModo
+        ? {
+            chart,
+            kpis,
+            titulo,
+            hint,
+            back: back as HTMLButtonElement,
+            global: global as HTMLButtonElement,
+            segMetrica,
+            segModo,
+          }
+        : null;
+    })(),
     responsable: $("fchart-responsable"),
     tipo: $("fchart-tipo"),
-    tendencia: $("fchart-tendencia"),
     tipoUnidad: $("fchart-tipo-unidad"),
     tcaptura: $("fchart-tcaptura"),
     area: $("fchart-area"),
