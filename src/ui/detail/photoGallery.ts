@@ -3,6 +3,7 @@
 // Combina fotos de ZIP (con lazy loading) + fotos manuales (con delete).
 // DOM-API puro. Lightbox se pasa como dependencia (ver ./lightbox.ts).
 
+import { esVideoFname } from "../../moreapp/media";
 import type { Unit } from "../../types";
 import type { LightboxApi, LightboxItem } from "./lightbox";
 
@@ -174,6 +175,34 @@ function buildZipThumb(
 ): HTMLElement {
   const item = document.createElement("div");
   item.className = "pgitem";
+
+  // Video (fix 2026-07-23): reproduce inline con controles — sin lightbox (es de
+  // imágenes) y el click debe operar el player, no abrir un modal.
+  if (esVideoFname(entry.fname)) {
+    const video = document.createElement("video");
+    video.dataset.src = entry.fname;
+    video.className = "lazy-img";
+    video.controls = true;
+    video.preload = "metadata";
+    video.setAttribute("playsinline", "");
+    video.style.cssText =
+      "opacity:0;transition:opacity .3s ease;width:100%;height:100%;object-fit:cover;background:#000";
+    item.appendChild(video);
+    if (lazyObserver) lazyObserver.observe(video);
+    else {
+      const u = resolveZipUrl?.(entry.fname);
+      if (u) {
+        video.src = u;
+        video.style.opacity = "1";
+      }
+    }
+    const label = document.createElement("div");
+    label.className = "pglbl";
+    label.textContent = shortLbl(entry.col);
+    item.appendChild(label);
+    return item;
+  }
+
   if (lightbox) {
     item.addEventListener("click", () => lightbox.open(items, lbIdx));
   }
