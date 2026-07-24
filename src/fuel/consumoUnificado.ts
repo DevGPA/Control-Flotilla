@@ -202,6 +202,9 @@ export function buildDetalleOption(
     yAxis: [
       {
         type: "value",
+        name: "Litros",
+        nameTextStyle: { color: p.textSub, fontSize: 10 },
+        nameGap: 8,
         ...ejesVivo(p),
         axisLabel: {
           color: p.textSub,
@@ -211,6 +214,9 @@ export function buildDetalleOption(
       },
       {
         type: "value",
+        name: "Gasto $",
+        nameTextStyle: { color: p.textSub, fontSize: 10 },
+        nameGap: 8,
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { show: false },

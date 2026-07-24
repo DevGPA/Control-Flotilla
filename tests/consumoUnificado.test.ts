@@ -170,4 +170,9 @@ describe("formato de ejes (fix Producto Vivo: sin '$3k $3k' ni '0k L')", () => {
     };
     expect(opt.yAxis.axisLabel.formatter(2500)).toBe("$2.5k");
   });
+  it("detalle: el doble eje está rotulado (Litros a la izquierda, Gasto $ a la derecha)", () => {
+    const opt = buildDetalleOption(P, MATRIZ, "Guadalajara") as { yAxis: { name?: string }[] };
+    expect(opt.yAxis[0]!.name).toBe("Litros");
+    expect(opt.yAxis[1]!.name).toBe("Gasto $");
+  });
 });
