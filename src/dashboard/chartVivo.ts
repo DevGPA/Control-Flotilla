@@ -69,7 +69,9 @@ const round1 = (x: number): number => Math.round(x * 10) / 10;
 export function compactNumber(v: number): string {
   const a = Math.abs(v);
   if (a < 1000) return NF_COMPACT.format(Math.round(v));
-  if (a < 1_000_000) return `${NF_COMPACT.format(round1(v / 1000))}k`;
+  // Re-bucketiza TRAS redondear: 999_950 → k=1000.0, que debe leerse "1M", no "1,000k".
+  const k = round1(v / 1000);
+  if (Math.abs(k) < 1000) return `${NF_COMPACT.format(k)}k`;
   return `${NF_COMPACT.format(round1(v / 1_000_000))}M`;
 }
 

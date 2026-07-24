@@ -124,6 +124,10 @@ describe("compactNumber / fmtMoneda / fmtLitros", () => {
     expect(compactNumber(1_000_000)).toBe("1M");
     expect(compactNumber(2_300_000)).toBe("2.3M");
   });
+  it("borde: valores que redondean a 1000k saltan a M (no '1,000k')", () => {
+    expect(compactNumber(999_950)).toBe("1M");
+    expect(compactNumber(999_000)).toBe("999k");
+  });
   it("conserva el signo en negativos", () => {
     expect(compactNumber(-2500)).toBe("-2.5k");
   });

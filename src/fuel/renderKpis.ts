@@ -232,7 +232,9 @@ export function renderKpisFuel(
     const esChip = c.grupo === "estado";
     const kc = document.createElement("div");
     kc.className = "kc";
+    // El chip oculta su .ksub (CSS): conserva ese contexto en el tooltip al pasar el cursor.
     if (c.title) kc.title = c.title;
+    else if (esChip && c.sub) kc.title = c.sub;
     if (c.filter && onFilter) {
       kc.style.cursor = "pointer";
       kc.tabIndex = 0;
