@@ -234,3 +234,61 @@ export function aggByMonth(entries: readonly FuelEntry[]): MonthConsumo[] {
   }
   return [...m.values()].sort((a, b) => a.mes.localeCompare(b.mes));
 }
+
+export type CeldaConsumo = { litros: number; gasto: number; cargas: number };
+
+export type ConsumoPorGrupoMes = {
+  meses: string[];
+  grupos: string[];
+  celdas: Record<string, Record<string, CeldaConsumo>>;
+  totalesGrupo: Record<string, CeldaConsumo>;
+  totalesMes: Record<string, CeldaConsumo>;
+};
+
+const celdaCero = (): CeldaConsumo => ({ litros: 0, gasto: 0, cargas: 0 });
+const sumar = (c: CeldaConsumo, litros: number, gasto: number): void => {
+  c.litros += litros;
+  c.gasto += gasto;
+  c.cargas += 1;
+};
+
+/**
+ * Matriz grupo×mes de consumo (solo cargas) para la gráfica unificada (spec
+ * Producto Vivo 2026-07-23). Todas las celdas del producto cartesiano existen
+ * (0s en huecos) — los charts no manejan undefined. Grupos por gasto DESC.
+ */
+export function aggByGroupAndMonth(
+  entries: readonly FuelEntry[],
+  keyOf: (e: FuelEntry) => string,
+): ConsumoPorGrupoMes {
+  const filas = new Map<string, Map<string, CeldaConsumo>>();
+  const totalesGrupo: Record<string, CeldaConsumo> = {};
+  const totalesMes: Record<string, CeldaConsumo> = {};
+  const mesesSet = new Set<string>();
+  for (const e of entries) {
+    if (e.tipo !== "carga") continue;
+    const mes = (e.fecha || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(mes)) continue;
+    const grupo = keyOf(e) || "(sin dato)";
+    mesesSet.add(mes);
+    let fila = filas.get(grupo);
+    if (!fila) filas.set(grupo, (fila = new Map()));
+    let celda = fila.get(mes);
+    if (!celda) fila.set(mes, (celda = celdaCero()));
+    const litros = e.litros ?? 0;
+    const gasto = montoEfectivo(e);
+    sumar(celda, litros, gasto);
+    sumar((totalesGrupo[grupo] ??= celdaCero()), litros, gasto);
+    sumar((totalesMes[mes] ??= celdaCero()), litros, gasto);
+  }
+  const meses = [...mesesSet].sort();
+  const grupos = [...filas.keys()].sort(
+    (a, b) => (totalesGrupo[b]?.gasto ?? 0) - (totalesGrupo[a]?.gasto ?? 0),
+  );
+  const celdas: Record<string, Record<string, CeldaConsumo>> = {};
+  for (const g of grupos) {
+    celdas[g] = {};
+    for (const m of meses) celdas[g][m] = filas.get(g)?.get(m) ?? celdaCero();
+  }
+  return { meses, grupos, celdas, totalesGrupo, totalesMes };
+}

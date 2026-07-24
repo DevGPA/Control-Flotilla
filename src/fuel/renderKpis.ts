@@ -8,6 +8,8 @@ import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysi
 import { verdictOf, displayVerdictOf, FUEL_VALIDACION_DESDE } from "./renderTableCombustible";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
+import type { DeltaKpi } from "./kpiDeltas";
+import { deltaKpi } from "./kpiDeltas";
 
 export type FuelKpiCard = {
   key: string;
@@ -17,6 +19,7 @@ export type FuelKpiCard = {
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
   filter?: "discrepancia" | "pendiente" | "anomalia" | "historico" | "rechazada"; // clic → filtro
   title?: string; // tooltip (p.ej. desglose por motivo)
+  delta?: DeltaKpi | null; // vs periodo anterior de la misma duración (sin `prev` → undefined)
 };
 
 const PESO = new Intl.NumberFormat("es-MX", {
@@ -33,6 +36,7 @@ export function buildKpisFuel(
   baseline: FleetBaseline,
   anomalies: readonly FuelFinding[],
   recorridosByLoad?: ReadonlyMap<string, RecorridoInfo>,
+  prev?: { litros: number; gasto: number; cargas: number },
 ): FuelKpiCard[] {
   const cargas = entries.filter((e) => e.tipo === "carga");
   const solicitudes = entries.filter((e) => e.tipo === "solicitud");
@@ -90,12 +94,14 @@ export function buildKpisFuel(
       value: NUM.format(cargas.length),
       sub: `${NUM.format(solicitudes.length)} solicitudes`,
       tone: "n",
+      delta: prev ? deltaKpi(cargas.length, prev.cargas, "neutral") : undefined,
     },
     {
       key: "litros",
       label: "Litros cargados",
       value: `${NUM.format(Math.round(litros))} L`,
       tone: "n",
+      delta: prev ? deltaKpi(litros, prev.litros, "neutral") : undefined,
     },
     {
       key: "kmpl",
@@ -117,7 +123,13 @@ export function buildKpisFuel(
       tone: porRevisar > 0 ? "a" : "n",
       title: desgloseSinRend || undefined,
     },
-    { key: "gasto", label: "Gasto", value: PESO.format(gasto), tone: "n" },
+    {
+      key: "gasto",
+      label: "Gasto",
+      value: PESO.format(gasto),
+      tone: "n",
+      delta: prev ? deltaKpi(gasto, prev.gasto, "costo") : undefined,
+    },
     {
       key: "discrepancias",
       label: "Discrepancias",
@@ -233,6 +245,14 @@ export function renderKpisFuel(
     kval.className = "kval";
     kval.style.color = TONE_COLOR[c.tone];
     kval.textContent = c.value;
+    if (c.delta) {
+      const kd = document.createElement("span");
+      kd.className = `kdelta ${c.delta.tone}`;
+      const flecha = c.delta.direccion === "up" ? "▲" : c.delta.direccion === "down" ? "▼" : "•";
+      kd.textContent = ` ${flecha} ${Math.abs(c.delta.pct).toFixed(1)}%`;
+      kd.title = "vs periodo anterior de la misma duración";
+      kval.appendChild(kd);
+    }
     kc.appendChild(kval);
 
     if (c.sub) {

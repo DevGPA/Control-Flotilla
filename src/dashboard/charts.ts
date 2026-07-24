@@ -17,6 +17,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange } from "./chartTheme";
+import { gradBar, gradBarH, ejesVivo, tooltipVivo, animVivo } from "./chartVivo";
 
 echarts.use([
   PieChart,
@@ -144,13 +145,11 @@ function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
   const operativa = sorted.map((d) => d.operativa);
 
   return {
+    ...animVivo(),
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
-      padding: [8, 12],
+      ...tooltipVivo(p),
     },
     legend: {
       top: 0,
@@ -164,10 +163,7 @@ function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
     grid: { left: 8, right: 12, top: 26, bottom: 4, containLabel: true },
     xAxis: {
       type: "value",
-      axisLabel: { color: p.textSub, fontSize: 10 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: p.ln } },
+      ...ejesVivo(p),
     },
     yAxis: {
       type: "category",
@@ -183,7 +179,7 @@ function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
         type: "bar",
         stack: "total",
         data: urgente,
-        itemStyle: { color: p.R, borderRadius: [3, 0, 0, 3] },
+        itemStyle: { color: gradBarH(p.R), borderRadius: [5, 0, 0, 5] },
         emphasis: { focus: "series" },
         cursor: "pointer",
       },
@@ -192,7 +188,7 @@ function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
         type: "bar",
         stack: "total",
         data: revisar,
-        itemStyle: { color: p.A },
+        itemStyle: { color: gradBarH(p.A) },
         emphasis: { focus: "series" },
         cursor: "pointer",
       },
@@ -201,7 +197,7 @@ function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
         type: "bar",
         stack: "total",
         data: operativa,
-        itemStyle: { color: p.G, borderRadius: [0, 3, 3, 0] },
+        itemStyle: { color: gradBarH(p.G), borderRadius: [0, 5, 5, 0] },
         emphasis: { focus: "series" },
         cursor: "pointer",
       },
@@ -249,13 +245,11 @@ function buildCategoriesOption(data: CategoryStat[]): echarts.EChartsCoreOption 
   const completar = data.map((d) => d.completar);
 
   return {
+    ...animVivo(),
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
-      padding: [8, 12],
+      ...tooltipVivo(p),
     },
     legend: {
       top: 0,
@@ -276,31 +270,28 @@ function buildCategoriesOption(data: CategoryStat[]): echarts.EChartsCoreOption 
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: p.textSub, fontSize: 10 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: p.ln } },
+      ...ejesVivo(p),
     },
     series: [
       {
         name: "Urgente",
         type: "bar",
         data: urgente,
-        itemStyle: { color: p.R, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: gradBar(p.R), borderRadius: [5, 5, 0, 0] },
         emphasis: { focus: "series" },
       },
       {
         name: "Revisar",
         type: "bar",
         data: revisar,
-        itemStyle: { color: p.A, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: gradBar(p.A), borderRadius: [5, 5, 0, 0] },
         emphasis: { focus: "series" },
       },
       {
         name: "Completar",
         type: "bar",
         data: completar,
-        itemStyle: { color: p.B, borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: gradBar(p.B), borderRadius: [5, 5, 0, 0] },
         emphasis: { focus: "series" },
       },
     ],
@@ -319,11 +310,10 @@ function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {
   const dominantPct = total && dominant ? Math.round((dominant.value / total) * 100) : 0;
 
   return {
+    ...animVivo(),
     tooltip: {
       trigger: "item",
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
+      ...tooltipVivo(p),
       padding: [6, 10],
       formatter: (params: unknown) => {
         const pp = params as { name: string; value: number; percent: number };
@@ -360,7 +350,7 @@ function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {
         itemStyle: {
           borderColor: p.bg,
           borderWidth: 2,
-          borderRadius: 3,
+          borderRadius: 5,
         },
         data: visible.map((s) => ({
           name: s.label,
@@ -415,12 +405,10 @@ function buildTrendOption(data: PeriodTrend[]): echarts.EChartsCoreOption {
   const pctOperativa = data.map((d) => (d.total ? +((d.operativa / d.total) * 100).toFixed(1) : 0));
 
   return {
+    ...animVivo(),
     tooltip: {
       trigger: "axis",
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
-      padding: [8, 12],
+      ...tooltipVivo(p),
       valueFormatter: (v: unknown) => `${v}%`,
     },
     legend: {
@@ -443,10 +431,8 @@ function buildTrendOption(data: PeriodTrend[]): echarts.EChartsCoreOption {
     },
     yAxis: {
       type: "value",
+      ...ejesVivo(p),
       axisLabel: { color: p.textSub, fontSize: 10, formatter: "{value}%" },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: p.ln } },
       max: 100,
     },
     series: [
@@ -531,11 +517,9 @@ function buildHeatmapOption(data: DayCount[]): echarts.EChartsCoreOption {
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   return {
+    ...animVivo(),
     tooltip: {
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
-      padding: [8, 12],
+      ...tooltipVivo(p),
       formatter: (params: unknown) => {
         const pp = params as { value: [string, number] };
         const d = pp.value[0];
@@ -639,12 +623,10 @@ function buildKmScatterOption(data: KmScatterPoint[]): echarts.EChartsCoreOption
   const axisMax = maxKm > 0 ? Math.ceil((maxKm * 1.1) / 1000) * 1000 : 100000;
 
   return {
+    ...animVivo(),
     tooltip: {
       trigger: "item",
-      backgroundColor: p.bg2,
-      borderColor: p.ln,
-      textStyle: { color: p.text, fontSize: 11 },
-      padding: [8, 12],
+      ...tooltipVivo(p),
       formatter: (params: unknown) => {
         const pp = params as { seriesName: string; value: [number, number, string] };
         const [km, kmNext, label] = pp.value;
@@ -674,14 +656,12 @@ function buildKmScatterOption(data: KmScatterPoint[]): echarts.EChartsCoreOption
       nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
       min: 0,
       max: axisMax,
+      ...ejesVivo(p),
       axisLabel: {
         color: p.textSub,
         fontSize: 10,
         formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
       },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: p.ln } },
     },
     yAxis: {
       type: "value",
@@ -691,14 +671,12 @@ function buildKmScatterOption(data: KmScatterPoint[]): echarts.EChartsCoreOption
       nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
       min: 0,
       max: axisMax,
+      ...ejesVivo(p),
       axisLabel: {
         color: p.textSub,
         fontSize: 10,
         formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
       },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: p.ln } },
     },
     series: (Object.keys(byRisk) as Array<keyof typeof byRisk>).map((risk, idx) => {
       const s = byRisk[risk];

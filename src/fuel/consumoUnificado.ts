@@ -1,0 +1,380 @@
+/**
+ * Gráfica unificada de consumo (spec Producto Vivo 2026-07-23): comparativo por
+ * sucursal ⇄ detalle mensual (drill-down) ⇄ evolución global. Esta mitad del
+ * módulo es PURA (option-builders testeables); el estado/DOM va en mountConsumo
+ * (misma file, Task 6).
+ */
+import type { TremorPalette } from "../dashboard/chartTheme";
+import { ejesVivo, tooltipVivo, gradBar, rampaSecuencial, animVivo } from "../dashboard/chartVivo";
+import type { ConsumoPorGrupoMes, CeldaConsumo } from "./fuelAggregates";
+
+const NUM = new Intl.NumberFormat("es-MX");
+const PESO = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  maximumFractionDigits: 0,
+});
+
+export type ModoDesglose = "oculto" | "agrupadas" | "apiladas";
+export type MetricaConsumo = "gasto" | "litros";
+
+/** 1 mes → sin desglose · 2-3 → agrupadas (paleta categórica de 3) · 4+ → apiladas. */
+export function modoDesglose(nMeses: number): ModoDesglose {
+  if (nMeses <= 1) return "oculto";
+  return nMeses <= 3 ? "agrupadas" : "apiladas";
+}
+
+const CODIGOS: Record<string, string> = {
+  "ciudad de mexico": "CDMX",
+  "ciudad de méxico": "CDMX",
+  guadalajara: "GDL",
+  monterrey: "MTY",
+  cancun: "CUN",
+  cancún: "CUN",
+  cabos: "CSL",
+  vallarta: "PVR",
+  cedis: "CEDIS",
+};
+export function codigoSucursal(nombre: string): string {
+  const k = nombre.trim().toLowerCase();
+  return CODIGOS[k] ?? nombre.trim().slice(0, 4).toUpperCase();
+}
+
+const MES_NOMBRE = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+export function mesCorto(yyyymm: string): string {
+  const [y, m] = yyyymm.split("-");
+  return `${MES_NOMBRE[Number(m) - 1] ?? yyyymm} ${String(y).slice(2)}`;
+}
+
+const fmtK = (metrica: MetricaConsumo, v: number): string =>
+  metrica === "gasto" ? `$${Math.round(v / 1000)}k` : `${NUM.format(Math.round(v / 1000))}k L`;
+const celdaTxt = (c: CeldaConsumo): string =>
+  `${PESO.format(Math.round(c.gasto))} · ${NUM.format(Math.round(c.litros))} L · ${c.cargas} cargas`;
+
+/** Nivel 1 — comparativo por sucursal (Total | Por mes). */
+export function buildComparativoOption(
+  p: TremorPalette,
+  m: ConsumoPorGrupoMes,
+  o: { porMes: boolean; metrica: MetricaConsumo },
+): Record<string, unknown> {
+  const modo = modoDesglose(m.meses.length);
+  const porMes = o.porMes && modo !== "oculto";
+  const val = (c: CeldaConsumo) =>
+    o.metrica === "gasto" ? Math.round(c.gasto) : Math.round(c.litros);
+  const colores =
+    modo === "apiladas" ? rampaSecuencial(p.ac, m.meses.length) : [p.mes1, p.mes2, p.mes3];
+  const series = porMes
+    ? m.meses.map((mes, i) => ({
+        name: mesCorto(mes),
+        type: "bar",
+        ...(modo === "apiladas" ? { stack: "meses" } : {}),
+        barMaxWidth: modo === "apiladas" ? 26 : 13,
+        barGap: "25%",
+        itemStyle: {
+          color: gradBar(colores[i]!),
+          borderRadius: modo === "apiladas" && i < m.meses.length - 1 ? [0, 0, 0, 0] : [5, 5, 0, 0],
+          borderColor: p.bg,
+          borderWidth: 1,
+        },
+        data: m.grupos.map((g) => val(m.celdas[g]![mes]!)),
+        label: { show: false },
+      }))
+    : [
+        {
+          name: "Total",
+          type: "bar",
+          barMaxWidth: 26,
+          itemStyle: { color: gradBar(p.ac), borderRadius: [5, 5, 0, 0] },
+          label: {
+            show: true,
+            position: "top",
+            color: p.textSub,
+            fontSize: 10,
+            formatter: (pt: { value: number }) => fmtK(o.metrica, pt.value),
+          },
+          data: m.grupos.map((g) => val(m.totalesGrupo[g]!)),
+        },
+      ];
+  return {
+    ...animVivo(),
+    grid: { left: 6, right: 6, top: porMes ? 30 : 26, bottom: 4, containLabel: true },
+    legend: porMes
+      ? {
+          top: 0,
+          left: 0,
+          itemWidth: 10,
+          itemHeight: 10,
+          icon: "roundRect",
+          itemGap: 14,
+          textStyle: { color: p.textSub, fontSize: 11 },
+        }
+      : { show: false },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow", shadowStyle: { color: p.bg3, opacity: 0.5 } },
+      ...tooltipVivo(p),
+      formatter: (ps: unknown) => {
+        const arr = ps as {
+          dataIndex: number;
+          seriesName: string;
+          marker: string;
+          seriesIndex: number;
+        }[];
+        const g = m.grupos[arr[0]!.dataIndex]!;
+        if (!porMes)
+          return `<b>${g}</b><br/>${celdaTxt(m.totalesGrupo[g]!)}<br/><span style="opacity:.6">Click para ver detalle mensual</span>`;
+        // ECharts compacta `ps` cuando se des-selecciona una serie en la leyenda: el
+        // índice posicional deja de corresponder al mes. Usar seriesIndex (estable,
+        // provisto por ECharts por param) en vez de la posición en el arreglo.
+        const lineas = arr.map(
+          (a) =>
+            `${a.marker} ${a.seriesName}&nbsp;&nbsp;${celdaTxt(m.celdas[g]![m.meses[a.seriesIndex]!]!)}`,
+        );
+        return `<b>${g}</b><br/>${lineas.join("<br/>")}<br/><span style="opacity:.6">Click para ver detalle mensual</span>`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: m.grupos.map(codigoSucursal),
+      ...ejesVivo(p),
+      axisLabel: { color: p.textSub, fontSize: 10.5, interval: 0 },
+    },
+    yAxis: {
+      type: "value",
+      ...ejesVivo(p),
+      axisLabel: { color: p.textSub, fontSize: 10.5, formatter: (v: number) => fmtK(o.metrica, v) },
+    },
+    series,
+  };
+}
+
+/** Nivel 2 — detalle mensual (grupo, o null = todas): barras litros + línea gasto (formato actual de la app, decisión del usuario). */
+export function buildDetalleOption(
+  p: TremorPalette,
+  m: ConsumoPorGrupoMes,
+  grupo: string | null,
+): Record<string, unknown> {
+  const celda = (mes: string): CeldaConsumo =>
+    grupo ? m.celdas[grupo]![mes]! : (m.totalesMes[mes] ?? { litros: 0, gasto: 0, cargas: 0 });
+  const nombre = grupo ?? "Todas las sucursales";
+  return {
+    ...animVivo(),
+    grid: { left: 6, right: 6, top: 30, bottom: 4, containLabel: true },
+    legend: {
+      top: 0,
+      left: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 14,
+      textStyle: { color: p.textSub, fontSize: 11 },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow", shadowStyle: { color: p.bg3, opacity: 0.5 } },
+      ...tooltipVivo(p),
+      formatter: (ps: unknown) => {
+        const i = (ps as { dataIndex: number }[])[0]!.dataIndex;
+        return `<b>${nombre} · ${mesCorto(m.meses[i]!)}</b><br/>${celdaTxt(celda(m.meses[i]!))}`;
+      },
+    },
+    xAxis: { type: "category", data: m.meses.map(mesCorto), ...ejesVivo(p) },
+    yAxis: [
+      {
+        type: "value",
+        ...ejesVivo(p),
+        axisLabel: {
+          color: p.textSub,
+          fontSize: 10.5,
+          formatter: (v: number) => `${NUM.format(Math.round(v / 1000))}k L`,
+        },
+      },
+      {
+        type: "value",
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: {
+          color: p.textSub,
+          fontSize: 10.5,
+          formatter: (v: number) => `$${Math.round(v / 1000)}k`,
+        },
+      },
+    ],
+    series: [
+      {
+        name: "Litros",
+        type: "bar",
+        barMaxWidth: 44,
+        itemStyle: { color: gradBar(p.ac), borderRadius: [5, 5, 0, 0] },
+        data: m.meses.map((mes) => Math.round(celda(mes).litros)),
+      },
+      {
+        name: "Gasto",
+        type: "line",
+        yAxisIndex: 1,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 8,
+        lineStyle: { width: 2.5, color: p.mes3 },
+        itemStyle: { color: p.mes3, borderColor: p.bg, borderWidth: 2 },
+        label: {
+          show: true,
+          position: "top",
+          color: p.textSub,
+          fontSize: 10.5,
+          formatter: (pt: { value: number }) => `$${Math.round(pt.value / 1000)}k`,
+        },
+        data: m.meses.map((mes) => Math.round(celda(mes).gasto)),
+      },
+    ],
+  };
+}
+
+// ── Componente interactivo (estado + DOM). Módulo-level state, mismo patrón que
+// dashSubmarca en wire.ts: el drill-down sobrevive re-renders del dashboard. ──
+import * as echarts from "echarts/core";
+import { getTremorPalette, onThemeChange } from "../dashboard/chartTheme";
+
+export type ConsumoEls = {
+  chart: HTMLElement;
+  kpis: HTMLElement;
+  titulo: HTMLElement;
+  hint: HTMLElement;
+  back: HTMLButtonElement;
+  global: HTMLButtonElement;
+  segMetrica: HTMLElement;
+  segModo: HTMLElement;
+};
+
+type Nivel = { tipo: "comparativo" } | { tipo: "detalle"; grupo: string | null };
+let nivel: Nivel = { tipo: "comparativo" };
+let metrica: MetricaConsumo = "gasto";
+let porMes = true;
+let matrizActual: ConsumoPorGrupoMes | null = null;
+let elsActual: ConsumoEls | null = null;
+let wired = false;
+
+function pintarKpis(): void {
+  if (!elsActual || !matrizActual) return;
+  const m = matrizActual;
+  const total = (sel: string | null): CeldaConsumo => {
+    if (sel) return m.totalesGrupo[sel] ?? { litros: 0, gasto: 0, cargas: 0 };
+    const t = { litros: 0, gasto: 0, cargas: 0 };
+    for (const g of m.grupos) {
+      const c = m.totalesGrupo[g]!;
+      t.litros += c.litros;
+      t.gasto += c.gasto;
+      t.cargas += c.cargas;
+    }
+    return t;
+  };
+  const sel = nivel.tipo === "detalle" ? nivel.grupo : null;
+  const c = total(sel);
+  elsActual.kpis.replaceChildren();
+  for (const [v, l] of [
+    [PESO.format(Math.round(c.gasto)), "Gasto del periodo"],
+    [`${NUM.format(Math.round(c.litros))} L`, "Litros"],
+    [NUM.format(c.cargas), "Cargas"],
+  ] as const) {
+    const d = document.createElement("div");
+    d.className = "ckpi";
+    const dv = document.createElement("div");
+    dv.className = "v";
+    dv.textContent = v;
+    const dl = document.createElement("div");
+    dl.className = "l";
+    dl.textContent = l;
+    d.append(dv, dl);
+    elsActual.kpis.appendChild(d);
+  }
+}
+
+function pintar(): void {
+  if (!elsActual || !matrizActual) return;
+  const els = elsActual,
+    m = matrizActual,
+    p = getTremorPalette();
+  const oculto = modoDesglose(m.meses.length) === "oculto";
+  const enDetalle = nivel.tipo === "detalle";
+  els.back.hidden = !enDetalle;
+  els.segModo.style.display = enDetalle || oculto ? "none" : "";
+  els.segMetrica.style.display = enDetalle ? "none" : "";
+  els.global.style.display = enDetalle ? "none" : "";
+  if (enDetalle) {
+    const g = (nivel as { grupo: string | null }).grupo;
+    els.titulo.textContent = `${g ?? "Todas las sucursales"} — evolución mensual`;
+    els.hint.textContent = "«←» para regresar al comparativo de sucursales";
+  } else {
+    els.titulo.textContent = "Consumo por sucursal";
+    els.hint.textContent = "Click en una sucursal para ver su detalle mensual";
+  }
+  const chart =
+    echarts.getInstanceByDom(els.chart) ?? echarts.init(els.chart, null, { renderer: "canvas" });
+  chart.setOption(
+    enDetalle
+      ? buildDetalleOption(p, m, (nivel as { grupo: string | null }).grupo)
+      : buildComparativoOption(p, m, { porMes, metrica }),
+    true,
+  );
+  pintarKpis();
+}
+
+/** Monta/actualiza la gráfica unificada. Idempotente: listeners se cablean una vez. */
+export function mountConsumo(els: ConsumoEls, matriz: ConsumoPorGrupoMes): void {
+  elsActual = els;
+  matrizActual = matriz;
+  // Si la sucursal drilleada desapareció del rango filtrado, regresar al comparativo.
+  if (nivel.tipo === "detalle" && nivel.grupo && !matriz.grupos.includes(nivel.grupo))
+    nivel = { tipo: "comparativo" };
+  if (!wired) {
+    wired = true;
+    const chart = echarts.init(els.chart, null, { renderer: "canvas" });
+    chart.on("click", (pt) => {
+      if (nivel.tipo !== "comparativo" || !matrizActual) return;
+      const g = matrizActual.grupos[(pt as { dataIndex: number }).dataIndex];
+      if (g) {
+        nivel = { tipo: "detalle", grupo: g };
+        pintar();
+      }
+    });
+    new ResizeObserver(() => chart.resize()).observe(els.chart);
+    onThemeChange(() => pintar());
+    els.back.addEventListener("click", () => {
+      nivel = { tipo: "comparativo" };
+      pintar();
+    });
+    els.global.addEventListener("click", () => {
+      nivel = { tipo: "detalle", grupo: null };
+      pintar();
+    });
+    const seg = (cont: HTMLElement, on: (b: HTMLButtonElement) => void): void =>
+      cont.addEventListener("click", (ev) => {
+        const b = (ev.target as HTMLElement).closest("button");
+        if (!b) return;
+        cont.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        on(b as HTMLButtonElement);
+      });
+    seg(els.segMetrica, (b) => {
+      metrica = (b.dataset.m as MetricaConsumo) ?? "gasto";
+      pintar();
+    });
+    seg(els.segModo, (b) => {
+      porMes = b.dataset.mo === "mes";
+      pintar();
+    });
+  }
+  pintar();
+}
