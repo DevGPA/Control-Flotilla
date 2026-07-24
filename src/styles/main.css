@@ -5122,6 +5122,49 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 #fuel-kpis .kpi-chips .ksub {
   display: none;
 }
+/* Fuel (fix Producto Vivo #3): filtros secundarios agrupados en un popover "Más
+   filtros" para bajar la densidad de la barra; validación, sucursal y búsqueda quedan
+   siempre visibles. `<details>` nativo — sin JS ni CSP. */
+.fuel-more {
+  position: relative;
+}
+.fuel-more > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ln);
+  background: var(--bg);
+  color: var(--s1);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fuel-more > summary::-webkit-details-marker {
+  display: none;
+}
+.fuel-more[open] > summary {
+  border-color: var(--ac);
+  color: var(--ac);
+}
+.fuel-more-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  min-width: 230px;
+  background: var(--bg);
+  border: 1px solid var(--ln);
+  border-radius: 12px;
+  box-shadow: var(--vivo-shadow);
+}
 /* Toolbar semanales */
 #sw-bar,
 #fuel-bar {

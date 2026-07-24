@@ -956,11 +956,6 @@
       <button class="fuel-seg-btn" id="fuel-seg-dash" role="tab" aria-selected="false">📊 Dashboard</button>
     </div>
     <span class="fuel-seg-divdr"></span>
-    <select id="fuel-filt-tipo" aria-label="Filtrar por tipo" class="field-input">
-      <option value="all">Cargas y solicitudes</option>
-      <option value="carga">Solo cargas</option>
-      <option value="solicitud">Solo solicitudes</option>
-    </select>
     <select id="fuel-filt-verdict" aria-label="Filtrar por estado de validación" class="field-input">
       <option value="all">Toda validación</option>
       <option value="ok">Validado</option>
@@ -970,39 +965,49 @@
       <option value="rechazada">Rechazadas · Ops</option>
       <option value="anulada">Anuladas</option>
     </select>
-    <select id="fuel-filt-flag" aria-label="Filtrar por alerta detectada" class="field-input">
-      <option value="">Toda alerta</option>
-      <option value="any">Con alertas</option>
-      <option value="frecuencia">2ª carga en el día</option>
-      <option value="tanque-95">≥95% del tanque</option>
-      <option value="km-retrocede">Odómetro retrocede</option>
-      <option value="km-salto">Salto de odómetro</option>
-      <option value="rendimiento">Rendimiento bajo</option>
-      <option value="consumo">Consumo inusual</option>
-      <option value="litros-implausibles">Litros implausibles</option>
-      <option value="fuga">Posible fuga</option>
-      <option value="parciales-cronicos">Parciales crónicos</option>
-      <option value="economico-equivocado">¿Económico equivocado?</option>
-      <option value="captura">Errores de captura</option>
-    </select>
-    <select id="fuel-filt-tipounidad" aria-label="Filtrar por tipo de unidad (submarca)" class="field-input">
-      <option value="">Todos los tipos de unidad</option>
-    </select>
     <select id="fuel-filt-suc" aria-label="Filtrar combustible por sucursal" class="field-input">
       <option value="">Todas las sucursales</option>
     </select>
-    <select id="fuel-filt-area" aria-label="Filtrar combustible por área operativa" class="field-input">
-      <option value="">Todas las áreas</option>
-      <option>Logística</option>
-      <option>Almacén</option>
-      <option>Servicio Técnico</option>
-      <option>Mantenimiento</option>
-      <option>Administración</option>
-      <option value="(sin área)">Sin área</option>
-    </select>
-    <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable" class="field-input">
-      <option value="">Todos los responsables</option>
-    </select>
+    <details class="fuel-more">
+      <summary aria-label="Más filtros">⚙ Más filtros</summary>
+      <div class="fuel-more-pop">
+        <select id="fuel-filt-tipo" aria-label="Filtrar por tipo" class="field-input">
+          <option value="all">Cargas y solicitudes</option>
+          <option value="carga">Solo cargas</option>
+          <option value="solicitud">Solo solicitudes</option>
+        </select>
+        <select id="fuel-filt-flag" aria-label="Filtrar por alerta detectada" class="field-input">
+          <option value="">Toda alerta</option>
+          <option value="any">Con alertas</option>
+          <option value="frecuencia">2ª carga en el día</option>
+          <option value="tanque-95">≥95% del tanque</option>
+          <option value="km-retrocede">Odómetro retrocede</option>
+          <option value="km-salto">Salto de odómetro</option>
+          <option value="rendimiento">Rendimiento bajo</option>
+          <option value="consumo">Consumo inusual</option>
+          <option value="litros-implausibles">Litros implausibles</option>
+          <option value="fuga">Posible fuga</option>
+          <option value="parciales-cronicos">Parciales crónicos</option>
+          <option value="economico-equivocado">¿Económico equivocado?</option>
+          <option value="captura">Errores de captura</option>
+        </select>
+        <select id="fuel-filt-tipounidad" aria-label="Filtrar por tipo de unidad (submarca)" class="field-input">
+          <option value="">Todos los tipos de unidad</option>
+        </select>
+        <select id="fuel-filt-area" aria-label="Filtrar combustible por área operativa" class="field-input">
+          <option value="">Todas las áreas</option>
+          <option>Logística</option>
+          <option>Almacén</option>
+          <option>Servicio Técnico</option>
+          <option>Mantenimiento</option>
+          <option>Administración</option>
+          <option value="(sin área)">Sin área</option>
+        </select>
+        <select id="fuel-filt-resp" aria-label="Filtrar combustible por responsable" class="field-input">
+          <option value="">Todos los responsables</option>
+        </select>
+      </div>
+    </details>
     <div class="sw sw-inline bar-search">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--s3)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="fuel-srch" type="text" placeholder="ID unidad, placa, responsable…"
