@@ -38,6 +38,7 @@ import {
   type FuelVerdictFilter,
 } from "./renderTableCombustible";
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
+import { totalesCargas, rangoAnterior } from "./kpiDeltas";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
 import {
   rankUnitsByDeviation,
@@ -45,7 +46,7 @@ import {
   duracionPorResponsable,
   splitRanking,
   aggByGroup,
-  aggByMonth,
+  aggByGroupAndMonth,
 } from "./fuelAggregates";
 import { buildTokaLayout, tokaLayoutToAoa, ecoKey, type TokaSkipMotivo } from "./tokaLayout";
 import { buildSolicitudesVista } from "./solicitudesLayout";
@@ -284,6 +285,27 @@ function renderCombustible(): void {
   const ctx = computeCtx();
   cargarNombresValidadores(); // no bloquea; re-pinta al llegar la lista
 
+  // Deltas de KPI vs periodo anterior: solo con rango acotado en AMBOS extremos (si el
+  // usuario limpia desde/hasta → "histórico completo", sin base honesta de comparación).
+  // `all` es el mismo universo (post-anulaciones, sucursal-lock) que alimenta el filtro de
+  // fecha en computeCtx (ver fuelDatasetMemo/scoped), ANTES de aplicar el resto de filtros.
+  // Deltas solo con comparación honesta: mismo universo, solo cambia la ventana de fechas.
+  // Con filtros de subconjunto activos (verdict/tipo/búsqueda/etc.) el periodo anterior no
+  // es comparable y el delta se omite (mismo principio que deltaKpi con anterior<=0).
+  const soloFecha =
+    filter.tipo === "all" &&
+    filter.verdict === "all" &&
+    filter.sucursal === "" &&
+    filter.responsable === "" &&
+    filter.search === "" &&
+    filter.flag === "" &&
+    filter.area === "" &&
+    filter.submarca === "";
+  const prev =
+    filter.desde && filter.hasta && soloFecha
+      ? totalesCargas(all, rangoAnterior({ from: filter.desde, to: filter.hasta }))
+      : undefined;
+
   const kpisEl = $("fuel-kpis");
   if (kpisEl)
     renderKpisFuel(
@@ -294,6 +316,7 @@ function renderCombustible(): void {
         ctx.baseline,
         ctx.anomalies,
         ctx.recorridosByLoad,
+        prev,
       ),
       (f) => {
         if (f === "discrepancia") setVerdictFilter("discrepancia");
@@ -422,10 +445,9 @@ async function renderFuelDash(): Promise<void> {
   const data = {
     peores,
     mejores,
-    porSucursal: aggByGroup(ctx.filtered, (e) => e.sucursal),
+    consumo: aggByGroupAndMonth(ctx.filtered, (e) => e.sucursal ?? "(sin dato)"),
     porResponsable: aggByGroup(ctx.filtered, (e) => e.responsable ?? "").slice(0, 12),
     porTipo: aggByGroup(ctx.filtered, (e) => e.tipoUnidad ?? e.combustible ?? "(sin tipo)"),
-    meses: aggByMonth(ctx.filtered),
     unidadesDeTipo: porSubmarca.get(tipoSeleccionado) ?? [],
     tcaptura: duracionPorResponsable(ctx.filtered).slice(0, 12),
     porArea: aggByGroup(ctx.filtered, (e) => e.area ?? "(sin área)"),
@@ -433,10 +455,30 @@ async function renderFuelDash(): Promise<void> {
   const els = {
     peores: $("fchart-peores"),
     mejores: $("fchart-mejores"),
-    sucursal: $("fchart-sucursal"),
+    consumo: (() => {
+      const chart = $("fchart-consumo"),
+        kpis = $("fuel-consumo-kpis"),
+        titulo = $("fuel-consumo-title"),
+        hint = $("fuel-consumo-hint"),
+        back = $("fuel-consumo-back"),
+        global = $("fuel-consumo-global"),
+        segMetrica = $("fuel-consumo-metrica"),
+        segModo = $("fuel-consumo-modo");
+      return chart && kpis && titulo && hint && back && global && segMetrica && segModo
+        ? {
+            chart,
+            kpis,
+            titulo,
+            hint,
+            back: back as HTMLButtonElement,
+            global: global as HTMLButtonElement,
+            segMetrica,
+            segModo,
+          }
+        : null;
+    })(),
     responsable: $("fchart-responsable"),
     tipo: $("fchart-tipo"),
-    tendencia: $("fchart-tendencia"),
     tipoUnidad: $("fchart-tipo-unidad"),
     tcaptura: $("fchart-tcaptura"),
     area: $("fchart-area"),

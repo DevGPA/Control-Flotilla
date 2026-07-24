@@ -19,6 +19,9 @@ export type TremorPalette = {
   O: string; // orange-600
   ac: string; // blue-600 primary
   ac2: string; // blue-700 hover
+  mes1: string; // paleta mensual categórica validada (dataviz) — orden fijo
+  mes2: string;
+  mes3: string;
 };
 
 function readVar(name: string): string {
@@ -55,6 +58,9 @@ export function getTremorPalette(): TremorPalette {
     O: readVar("--O"),
     ac: readVar("--ac"),
     ac2: readVar("--ac2"),
+    mes1: readVar("--mes1"),
+    mes2: readVar("--mes2"),
+    mes3: readVar("--mes3"),
   };
   return _paletteCache;
 }
