@@ -7,6 +7,9 @@ import {
   tooltipVivo,
   gradBar,
   gradBarH,
+  compactNumber,
+  fmtMoneda,
+  fmtLitros,
 } from "../src/dashboard/chartVivo";
 import type { TremorPalette } from "../src/dashboard/chartTheme";
 
@@ -98,5 +101,36 @@ describe("ejesVivo / tooltipVivo / gradBar", () => {
     const g = gradBarH("#1e4fa3") as unknown as { x2: number; y2: number };
     expect(g.x2).toBe(1);
     expect(g.y2).toBe(0);
+  });
+});
+
+describe("compactNumber / fmtMoneda / fmtLitros", () => {
+  it("bajo mil: entero, sin sufijo k", () => {
+    expect(compactNumber(0)).toBe("0");
+    expect(compactNumber(375)).toBe("375");
+    expect(compactNumber(999)).toBe("999");
+  });
+  it("miles: sufijo k con decimal cuando aporta — sin duplicar por redondeo de 500", () => {
+    expect(compactNumber(1000)).toBe("1k");
+    expect(compactNumber(1500)).toBe("1.5k");
+    expect(compactNumber(3000)).toBe("3k");
+    expect(compactNumber(3500)).toBe("3.5k");
+    expect(compactNumber(17100)).toBe("17.1k");
+    // El bug viejo (Math.round(v/1000)): 2500→"3k" y 3500→"4k" (o 2500/3500 ambos raros).
+    // Ahora 2500 y 3500 son etiquetas DISTINTAS → el eje deja de mostrar "$3k $3k".
+    expect(compactNumber(2500)).not.toBe(compactNumber(3500));
+  });
+  it("millones: sufijo M", () => {
+    expect(compactNumber(1_000_000)).toBe("1M");
+    expect(compactNumber(2_300_000)).toBe("2.3M");
+  });
+  it("conserva el signo en negativos", () => {
+    expect(compactNumber(-2500)).toBe("-2.5k");
+  });
+  it("wrappers: moneda con $, litros con ' L' — los litros pequeños NO colapsan a '0k L'", () => {
+    expect(fmtMoneda(3000)).toBe("$3k");
+    expect(fmtMoneda(375)).toBe("$375");
+    expect(fmtLitros(375)).toBe("375 L"); // el bug viejo daba "0k L"
+    expect(fmtLitros(1200)).toBe("1.2k L");
   });
 });

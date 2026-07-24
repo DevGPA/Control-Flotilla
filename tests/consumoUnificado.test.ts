@@ -145,3 +145,29 @@ describe("buildDetalleOption", () => {
     expect(opt.series[1]!.data).toEqual([1000, 200, 100]); // gasto por mes global
   });
 });
+
+describe("formato de ejes (fix Producto Vivo: sin '$3k $3k' ni '0k L')", () => {
+  it("detalle: el eje de litros muestra unidades reales, nunca '0k L'", () => {
+    const opt = buildDetalleOption(P, MATRIZ, "Guadalajara") as {
+      yAxis: { axisLabel: { formatter: (v: number) => string } }[];
+    };
+    const fmt = opt.yAxis[0]!.axisLabel.formatter;
+    expect(fmt(375)).toBe("375 L");
+    expect(fmt(0)).toBe("0 L");
+  });
+  it("detalle: el eje de gasto no colapsa valores cercanos en la misma etiqueta", () => {
+    const opt = buildDetalleOption(P, MATRIZ, "Guadalajara") as {
+      yAxis: { axisLabel: { formatter: (v: number) => string } }[];
+    };
+    const fmt = opt.yAxis[1]!.axisLabel.formatter;
+    expect(fmt(3000)).toBe("$3k");
+    // El bug viejo (Math.round(v/1000)) mapeaba 2500 y 2600 a "$3k" (etiqueta duplicada).
+    expect(fmt(2500)).not.toBe(fmt(2600));
+  });
+  it("comparativo: el eje usa el formato compacto de la métrica ($ o litros)", () => {
+    const opt = buildComparativoOption(P, MATRIZ, { porMes: false, metrica: "gasto" }) as {
+      yAxis: { axisLabel: { formatter: (v: number) => string } };
+    };
+    expect(opt.yAxis.axisLabel.formatter(2500)).toBe("$2.5k");
+  });
+});

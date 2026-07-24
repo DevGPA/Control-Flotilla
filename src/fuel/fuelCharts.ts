@@ -8,7 +8,14 @@ import { BarChart, LineChart } from "echarts/charts";
 import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange, type TremorPalette } from "../dashboard/chartTheme";
-import { gradBar, gradBarH, ejesVivo, tooltipVivo, animVivo } from "../dashboard/chartVivo";
+import {
+  gradBar,
+  gradBarH,
+  ejesVivo,
+  tooltipVivo,
+  animVivo,
+  fmtMoneda,
+} from "../dashboard/chartVivo";
 import type { UnitRank, GroupConsumo, ConsumoPorGrupoMes, DuracionGrupo } from "./fuelAggregates";
 import { mountConsumo, type ConsumoEls } from "./consumoUnificado";
 
@@ -148,7 +155,11 @@ function consumoBar(container: HTMLElement, groups: GroupConsumo[], p0: TremorPa
       ...axisCommon(p),
       axisLabel: { color: p.textSub, fontSize: 9, interval: 0, rotate: groups.length > 5 ? 28 : 0 },
     },
-    yAxis: { type: "value", ...axisCommon(p) },
+    yAxis: {
+      type: "value",
+      ...axisCommon(p),
+      axisLabel: { color: p.textSub, fontSize: 10, formatter: (v: number) => fmtMoneda(v) },
+    },
     series: [
       {
         type: "bar",

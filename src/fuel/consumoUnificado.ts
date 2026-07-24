@@ -5,7 +5,15 @@
  * (misma file, Task 6).
  */
 import type { TremorPalette } from "../dashboard/chartTheme";
-import { ejesVivo, tooltipVivo, gradBar, rampaSecuencial, animVivo } from "../dashboard/chartVivo";
+import {
+  ejesVivo,
+  tooltipVivo,
+  gradBar,
+  rampaSecuencial,
+  animVivo,
+  fmtMoneda,
+  fmtLitros,
+} from "../dashboard/chartVivo";
 import type { ConsumoPorGrupoMes, CeldaConsumo } from "./fuelAggregates";
 
 const NUM = new Intl.NumberFormat("es-MX");
@@ -60,7 +68,7 @@ export function mesCorto(yyyymm: string): string {
 }
 
 const fmtK = (metrica: MetricaConsumo, v: number): string =>
-  metrica === "gasto" ? `$${Math.round(v / 1000)}k` : `${NUM.format(Math.round(v / 1000))}k L`;
+  metrica === "gasto" ? fmtMoneda(v) : fmtLitros(v);
 const celdaTxt = (c: CeldaConsumo): string =>
   `${PESO.format(Math.round(c.gasto))} · ${NUM.format(Math.round(c.litros))} L · ${c.cargas} cargas`;
 
@@ -198,7 +206,7 @@ export function buildDetalleOption(
         axisLabel: {
           color: p.textSub,
           fontSize: 10.5,
-          formatter: (v: number) => `${NUM.format(Math.round(v / 1000))}k L`,
+          formatter: (v: number) => fmtLitros(v),
         },
       },
       {
@@ -209,7 +217,7 @@ export function buildDetalleOption(
         axisLabel: {
           color: p.textSub,
           fontSize: 10.5,
-          formatter: (v: number) => `$${Math.round(v / 1000)}k`,
+          formatter: (v: number) => fmtMoneda(v),
         },
       },
     ],
@@ -235,7 +243,7 @@ export function buildDetalleOption(
           position: "top",
           color: p.textSub,
           fontSize: 10.5,
-          formatter: (pt: { value: number }) => `$${Math.round(pt.value / 1000)}k`,
+          formatter: (pt: { value: number }) => fmtMoneda(pt.value),
         },
         data: m.meses.map((mes) => Math.round(celda(mes).gasto)),
       },

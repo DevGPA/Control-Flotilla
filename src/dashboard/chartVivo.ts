@@ -58,6 +58,27 @@ export const ejesVivo = (p: TremorPalette) => ({
   splitLine: { lineStyle: { color: p.ln, opacity: 0.55 } },
 });
 
+const NF_COMPACT = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1 });
+const round1 = (x: number): number => Math.round(x * 10) / 10;
+
+/**
+ * Número compacto y legible para ejes/etiquetas de charts: 375→"375", 3500→"3.5k",
+ * 2_300_000→"2.3M". Sustituye al viejo `Math.round(v/1000)+"k"`, que colapsaba los
+ * ticks de 500 en etiquetas duplicadas ("$3k $3k") y los cientos de litros en "0k L".
+ */
+export function compactNumber(v: number): string {
+  const a = Math.abs(v);
+  if (a < 1000) return NF_COMPACT.format(Math.round(v));
+  if (a < 1_000_000) return `${NF_COMPACT.format(round1(v / 1000))}k`;
+  return `${NF_COMPACT.format(round1(v / 1_000_000))}M`;
+}
+
+/** Moneda compacta para ejes/etiquetas: 3000→"$3k", 375→"$375". */
+export const fmtMoneda = (v: number): string => `$${compactNumber(v)}`;
+
+/** Litros compactos para ejes/etiquetas: 375→"375 L", 1200→"1.2k L" (nunca "0k L"). */
+export const fmtLitros = (v: number): string => `${compactNumber(v)} L`;
+
 /** Tooltip flotante con la superficie del tema. */
 export const tooltipVivo = (p: TremorPalette) => ({
   backgroundColor: p.bg,
