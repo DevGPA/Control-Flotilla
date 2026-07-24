@@ -70,3 +70,24 @@ describe("buildKpisFuel — deltas con `prev` (Task 10)", () => {
     expect(byKey.gasto!.delta).toBeNull();
   });
 });
+
+describe("buildKpisFuel — jerarquía de grupos (fix Producto Vivo #2)", () => {
+  const entries = [
+    entry({ eco: "U1", tipo: "carga", fecha: "2026-03-01", km: 0, litros: 50, monto: 1350 }),
+    entry({ eco: "U1", tipo: "carga", fecha: "2026-03-10", km: 500, litros: 50, monto: 1350 }),
+  ];
+  const metrics = computeFuelMetrics(entries);
+  const baseline = buildFleetBaseline(metrics, entries);
+  const anomalies = detectFuelAnomalies(metrics, baseline);
+
+  it("núcleo = cargas/litros/rendimiento/gasto; estado = alertas accionables", () => {
+    const kpis = buildKpisFuel(entries, metrics, baseline, anomalies);
+    const byKey = Object.fromEntries(kpis.map((k) => [k.key, k]));
+    for (const k of ["cargas", "litros", "kmpl", "gasto"]) {
+      expect(byKey[k]!.grupo, `${k} debe ser núcleo`).toBe("nucleo");
+    }
+    for (const k of ["sin-rendimiento", "discrepancias", "pendientes", "anomalias"]) {
+      expect(byKey[k]!.grupo, `${k} debe ser estado`).toBe("estado");
+    }
+  });
+});

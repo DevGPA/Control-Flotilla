@@ -5081,6 +5081,47 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 #sw-kpis .kpi-chips .kprog {
   display: none;
 }
+/* Combustible (fix Producto Vivo #2/#4): misma jerarquía que Semanales — las 4 métricas
+   núcleo en tarjetas grandes (valor en tinta) y las de estado/alerta como chips en una
+   línea escaneable, con color solo por severidad. Scopeado a #fuel-kpis. */
+#fuel-kpis .kpi-row-nucleo {
+  margin-bottom: 8px;
+}
+#fuel-kpis .kpi-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+#fuel-kpis .kpi-chips .kc {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 14px;
+  border-radius: 999px;
+}
+#fuel-kpis .kpi-chips .ktop {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  width: 3px;
+  height: auto;
+  border-radius: 999px 0 0 999px;
+}
+#fuel-kpis .kpi-chips .klbl {
+  margin: 0;
+  white-space: nowrap;
+}
+#fuel-kpis .kpi-chips .kval {
+  font-size: 15px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+#fuel-kpis .kpi-chips .ksub {
+  display: none;
+}
 /* Toolbar semanales */
 #sw-bar,
 #fuel-bar {

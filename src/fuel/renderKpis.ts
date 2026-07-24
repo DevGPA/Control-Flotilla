@@ -17,6 +17,7 @@ export type FuelKpiCard = {
   value: string;
   sub?: string;
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
+  grupo: "nucleo" | "estado"; // jerarquía: núcleo (métricas grandes) vs estado (chips de alerta)
   filter?: "discrepancia" | "pendiente" | "anomalia" | "historico" | "rechazada"; // clic → filtro
   title?: string; // tooltip (p.ej. desglose por motivo)
   delta?: DeltaKpi | null; // vs periodo anterior de la misma duración (sin `prev` → undefined)
@@ -90,6 +91,7 @@ export function buildKpisFuel(
   return [
     {
       key: "cargas",
+      grupo: "nucleo",
       label: "Cargas",
       value: NUM.format(cargas.length),
       sub: `${NUM.format(solicitudes.length)} solicitudes`,
@@ -98,6 +100,7 @@ export function buildKpisFuel(
     },
     {
       key: "litros",
+      grupo: "nucleo",
       label: "Litros cargados",
       value: `${NUM.format(Math.round(litros))} L`,
       tone: "n",
@@ -105,6 +108,7 @@ export function buildKpisFuel(
     },
     {
       key: "kmpl",
+      grupo: "nucleo",
       label: "Rendimiento flota",
       value: Number.isFinite(kmplFlota) ? `${kmplFlota.toFixed(2)} km/l` : "—",
       sub: "ponderado por litros",
@@ -112,6 +116,7 @@ export function buildKpisFuel(
     },
     {
       key: "sin-rendimiento",
+      grupo: "estado",
       label: "Sin rendimiento",
       value: NUM.format(sinKmpl.length),
       sub:
@@ -125,6 +130,7 @@ export function buildKpisFuel(
     },
     {
       key: "gasto",
+      grupo: "nucleo",
       label: "Gasto",
       value: PESO.format(gasto),
       tone: "n",
@@ -132,6 +138,7 @@ export function buildKpisFuel(
     },
     {
       key: "discrepancias",
+      grupo: "estado",
       label: "Discrepancias",
       value: NUM.format(discrepancias),
       tone: discrepancias ? "r" : "g",
@@ -142,6 +149,7 @@ export function buildKpisFuel(
       ? [
           {
             key: "rechazadas",
+            grupo: "estado" as const,
             label: "Rechazadas sin triage",
             value: NUM.format(rechazadas),
             sub: "decidir: no contar o gasto real",
@@ -152,6 +160,7 @@ export function buildKpisFuel(
       : []),
     {
       key: "pendientes",
+      grupo: "estado",
       label: "Pendientes de revisar",
       value: NUM.format(pendientes),
       tone: pendientes ? "a" : "g",
@@ -163,6 +172,7 @@ export function buildKpisFuel(
       ? [
           {
             key: "historico",
+            grupo: "estado" as const,
             label: "Histórico",
             value: NUM.format(historicos),
             sub: `sin validar · previo a ${FUEL_VALIDACION_DESDE}`,
@@ -175,6 +185,7 @@ export function buildKpisFuel(
       ? [
           {
             key: "sin-carga",
+            grupo: "estado" as const,
             label: "Solicitudes sin carga",
             value: NUM.format(sinCarga),
             sub: "ciclo cerrado, sin consumo",
@@ -184,6 +195,7 @@ export function buildKpisFuel(
       : []),
     {
       key: "anomalias",
+      grupo: "estado",
       label: "Anomalías",
       value: NUM.format(anomalies.length),
       sub: unidadesAfectadas ? `${unidadesAfectadas} unidades` : undefined,
@@ -206,12 +218,18 @@ export function renderKpisFuel(
   onFilter?: (f: NonNullable<FuelKpiCard["filter"]>) => void,
 ): void {
   container.replaceChildren();
-  // .kc usa flex:1 → DEBE ir dentro de un contenedor flex .kpi-row (igual que Semanales),
-  // si no, cada tarjeta se apila a ancho completo y empuja la tabla fuera del viewport.
-  const row = document.createElement("div");
-  row.className = "kpi-row";
-  container.appendChild(row);
-  for (const c of cards) {
+  // Jerarquía (fix Producto Vivo #2/#4): las métricas NÚCLEO (cargas, litros, rendimiento,
+  // gasto) van en tarjetas grandes con el valor en tinta; las de ESTADO/alerta van como
+  // chips compactos que solo "encienden" color cuando hay algo que atender. El color deja
+  // de ser decoración uniforme y pasa a señalar severidad. Mismo patrón que #sw-kpis.
+  const rowNucleo = document.createElement("div");
+  rowNucleo.className = "kpi-row kpi-row-nucleo";
+  const rowEstado = document.createElement("div");
+  rowEstado.className = "kpi-row kpi-chips";
+  container.append(rowNucleo, rowEstado);
+
+  const make = (c: FuelKpiCard): HTMLElement => {
+    const esChip = c.grupo === "estado";
     const kc = document.createElement("div");
     kc.className = "kc";
     if (c.title) kc.title = c.title;
@@ -233,7 +251,8 @@ export function renderKpisFuel(
     }
     const ktop = document.createElement("div");
     ktop.className = "ktop";
-    ktop.style.background = TONE_COLOR[c.tone];
+    // Núcleo: franja de acento neutro de marca. Estado: color por severidad.
+    ktop.style.background = esChip ? TONE_COLOR[c.tone] : "var(--ac)";
     kc.appendChild(ktop);
 
     const klbl = document.createElement("div");
@@ -243,7 +262,8 @@ export function renderKpisFuel(
 
     const kval = document.createElement("div");
     kval.className = "kval";
-    kval.style.color = TONE_COLOR[c.tone];
+    // El valor del núcleo va en tinta (sobrio); el color se reserva para los chips de estado.
+    if (esChip) kval.style.color = TONE_COLOR[c.tone];
     kval.textContent = c.value;
     if (c.delta) {
       const kd = document.createElement("span");
@@ -261,6 +281,8 @@ export function renderKpisFuel(
       ksub.textContent = c.sub;
       kc.appendChild(ksub);
     }
-    row.appendChild(kc);
-  }
+    return kc;
+  };
+
+  for (const c of cards) (c.grupo === "nucleo" ? rowNucleo : rowEstado).appendChild(make(c));
 }
