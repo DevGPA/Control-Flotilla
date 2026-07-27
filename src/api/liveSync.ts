@@ -12,8 +12,22 @@
  */
 import { getClient } from "./amplifyClient";
 
-/** Modelos que alimenta el puente Ops→FC (los que cambian sin acción del usuario local). */
-const MODELOS_VIVOS = ["CargaCombustible", "ValidacionCarga", "Semanal", "Unit"] as const;
+/**
+ * Modelos que alimenta el puente Ops→FC (los que cambian sin acción del usuario local).
+ *
+ * `Anulacion` entró con las reasignaciones de Ops (2026-07-27): el receptor la escribe al
+ * recibir un registro con status "Anulado", y sin suscripción el registro anulado seguía
+ * contando en KPIs hasta el poll de 4 min. Cubre además las anulaciones que hace otro
+ * admin en otra pestaña. ⚠️ NO va en `FUEL_MODELS` de cloudWire: debe forzar hydrate
+ * completo (afecta checklists y semanales, no solo combustible).
+ */
+const MODELOS_VIVOS = [
+  "CargaCombustible",
+  "ValidacionCarga",
+  "Semanal",
+  "Unit",
+  "Anulacion",
+] as const;
 
 type Sub = { unsubscribe(): void };
 type StreamFactory = () => { subscribe(h: { next: () => void; error: (e: unknown) => void }): Sub };

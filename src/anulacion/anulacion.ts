@@ -70,3 +70,28 @@ export function buildAnuladasActivas(rows: readonly AnulacionRow[]): Map<string,
   }
   return m;
 }
+
+/**
+ * Predicados de exclusión de checklist/semanal.
+ *
+ * Viven aquí y no inline en la hidratación por una razón concreta: el `refId` lo componen
+ * DOS lados (quien anula y quien hidrata), y si divergen la anulación se guarda pero no
+ * excluye nada — falla EN SILENCIO. Teniendo un solo predicado, las pruebas ejercitan el
+ * mismo código que corre en producción en vez de una copia del criterio.
+ *
+ * (Combustible no necesita predicado: `buildFuelEntries` ya etiqueta con `refIdCombustible`
+ * y la exclusión la decide el consumidor — `wire.scoped()`.)
+ */
+export function esChecklistAnulado(
+  row: { unitUid?: unknown; fecha?: unknown },
+  anuladas: ReadonlyMap<string, AnulacionInfo>,
+): boolean {
+  return anuladas.has(refIdChecklist(String(row.unitUid ?? ""), String(row.fecha ?? "")));
+}
+
+export function esSemanalAnulado(
+  row: { periodoId?: unknown; unitUid?: unknown },
+  anuladas: ReadonlyMap<string, AnulacionInfo>,
+): boolean {
+  return anuladas.has(refIdSemanal(String(row.periodoId ?? ""), String(row.unitUid ?? "")));
+}

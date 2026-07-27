@@ -389,9 +389,12 @@ const schema = a
         allow.groupDefinedIn("tenantId").to(["read"]),
       ]),
 
-    // Bitacora de auditoria de acciones administrativas. La escribe SOLO la
-    // Lambda admin-users (el cliente NO puede crear/editar); 'admin' solo LEE.
-    // id = ts + sufijo aleatorio (lo genera la Lambda). detalleCambios = diff JSON.
+    // Bitacora de auditoria de acciones administrativas. La escriben SOLO Lambdas
+    // (el cliente NO puede crear/editar); 'admin' solo LEE. Escritores hoy:
+    //   - admin-users: id = ts + sufijo aleatorio, detalleCambios = diff JSON.
+    //   - opsgpa-receptor: accion "opsgpa.reasignacion", id = refId de la Anulacion
+    //     (idempotente). Deja consultable el par viejo<->sustituto para detectar
+    //     anulaciones huerfanas por QUERY en vez de parsear el motivo.
     AuditEvent: a
       .model({
         tenantId: a.string().required(),

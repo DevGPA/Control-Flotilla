@@ -33,6 +33,14 @@ import {
   type UnitInput,
 } from "../../../src/opsgpa/mapChecklist";
 import {
+  debeMantenerCatalogo,
+  esStatusAnulado,
+  esStatusPorCorregir,
+  mapAnulacionOps,
+  metaAnulacionDeOps,
+  type AnulacionOpsInput,
+} from "../../../src/opsgpa/mapAnulacion";
+import {
   runBackfill,
   type BackfillRequest,
   type BackfillResumen,
@@ -77,6 +85,9 @@ function res(status: number, body: unknown): APIGatewayProxyResultV2 {
     body: JSON.stringify(body),
   };
 }
+
+/** Reloj del receptor — respaldo del `ts` obligatorio de Anulacion cuando Ops no lo manda. */
+const ahoraIso = (): string => new Date().toISOString();
 
 type GraphqlErrors = Array<{ errorType?: string; message?: string }> | undefined;
 function isConditionalCheckFailed(errors: GraphqlErrors): boolean {
@@ -182,6 +193,119 @@ async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
   if (upd.errors) throw new Error(`ValidacionCarga.update: ${JSON.stringify(upd.errors)}`);
 }
 
+/**
+ * Anulación desde el puente: CREATE-IF-ABSENT (no create→update).
+ *
+ * `Anulacion` no tiene campo de fuente, así que saber si la existente es de un humano
+ * exigiría snifear strings de `anuladoPor` — justo la fragilidad que `fuenteDeteccion`
+ * existe para evitar en ValidacionCarga. Con create-if-absent, gratis:
+ *  - una anulación humana ACTIVA no se pisa (su motivo se conserva);
+ *  - una re-entrega o un backfill son no-op idempotente, sin lecturas;
+ *  - y NO se revierte una RESTAURACIÓN explícita de un admin. Si hiciéramos update, cada
+ *    backfill desharía su decisión en un bucle sin salida.
+ * El puente gana el MOTIVO; el admin gana la RESTAURACIÓN.
+ */
+async function upsertAnulacionOps(input: AnulacionOpsInput): Promise<void> {
+  const client = await getDataClient();
+  const model = client.models.Anulacion as unknown as {
+    create: (i: never) => Promise<{ errors?: GraphqlErrors }>;
+  };
+  const created = await model.create(input as never);
+  if (!created.errors) return;
+  if (isConditionalCheckFailed(created.errors)) {
+    console.log(`anulación ya existente, se respeta (create-if-absent): ${input.refId}`);
+    return;
+  }
+  throw new Error(`Anulacion.create: ${JSON.stringify(created.errors)}`);
+}
+
+/**
+ * Traza CONSULTABLE del par de reasignación (registro viejo ↔ sustituto).
+ *
+ * Va en `AuditEvent` y NO en el `motivo` de la Anulacion para que detectar huérfanas
+ * (un anulado cuyo sustituto nunca llegó) sea una QUERY y no un parseo de strings. El
+ * `motivo` queda como texto humano para el panel de anulados. `id = refId` → idempotente
+ * por [tenantId, id]. NO es fatal: la traza es secundaria y no debe tumbar la ingesta.
+ */
+async function registrarReasignacion(
+  anulacion: AnulacionOpsInput,
+  evento: GpaOpsEvento,
+  folioNuevo: string,
+): Promise<void> {
+  console.warn(
+    JSON.stringify({
+      evt: "opsgpa_reasignacion",
+      refId: anulacion.refId,
+      modulo: anulacion.modulo,
+      folioViejo: evento.folio,
+      folioNuevo: folioNuevo || null,
+      por: anulacion.anuladoPor,
+    }),
+  );
+  try {
+    const client = await getDataClient();
+    const model = client.models.AuditEvent as unknown as {
+      create: (i: never) => Promise<{ errors?: GraphqlErrors }>;
+    };
+    await model.create({
+      tenantId: anulacion.tenantId,
+      id: anulacion.refId,
+      actor: "opsgpa-receptor",
+      accion: "opsgpa.reasignacion",
+      detalleCambios: JSON.stringify({
+        refId: anulacion.refId,
+        modulo: anulacion.modulo,
+        folioViejo: evento.folio,
+        folioNuevo: folioNuevo || null,
+        statusOps: evento.status ?? null,
+      }),
+      timestamp: anulacion.ts,
+    } as never);
+  } catch (e) {
+    console.error(
+      `AuditEvent de reasignación no registrado (${anulacion.refId}): ${(e as Error).message}`,
+    );
+  }
+}
+
+/** Anula el registro viejo y deja la traza del par. Orden: anular ANTES del upsert. */
+async function anularPorReasignacion(
+  anulacion: AnulacionOpsInput,
+  evento: GpaOpsEvento,
+  folioNuevo: string,
+): Promise<void> {
+  await upsertAnulacionOps(anulacion);
+  await registrarReasignacion(anulacion, evento, folioNuevo);
+}
+
+/**
+ * Única defensa contra la DERIVA DE VOCABULARIO: si Ops añade un status nuevo, hoy el
+ * receptor lo ignora en silencio (mapValidacion devuelve null) y el registro queda vivo.
+ * El log lo hace visible sin romper la ingesta.
+ */
+function avisarStatusDesconocido(evento: GpaOpsEvento): void {
+  const st = String(evento.status ?? "")
+    .trim()
+    .toLowerCase();
+  const conocido =
+    !st ||
+    st.startsWith("aproba") ||
+    st.startsWith("rechaza") ||
+    st.startsWith("pendiente") ||
+    esStatusAnulado(st) ||
+    esStatusPorCorregir(st);
+  if (!conocido) {
+    console.warn(
+      JSON.stringify({
+        evt: "ops_status_desconocido",
+        status: evento.status,
+        folio: evento.folio,
+        tipo: evento.tipo,
+      }),
+    );
+  }
+}
+
 // nombreEvidencia vive en src/opsgpa/contract.ts (pura, testeable) — SIEMPRE lowercase
 // desde el fix 2026-07-14: el pipeline de fotos del front minusculiza antes de firmar
 // y S3 es case-sensitive (fotos de Ops con camelCase salían rotas en el drawer).
@@ -245,17 +369,25 @@ async function ejecutarBackfill(req: BackfillRequest): Promise<BackfillResumen> 
     copiarEvidencia: (tipo, unidad, campo, key) => copiarEvidencia(tipo, unidad, campo, key),
     persistirCarga: async (input: CargaCombustibleInput) =>
       upsert("CargaCombustible", input as unknown as Record<string, unknown>),
-    persistirSemanal: async (unit: UnitInput, semanal: SemanalInput) => {
-      await estampaArea(unit);
-      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+    persistirSemanal: async (unit: UnitInput, semanal: SemanalInput, { mantenerCatalogo }) => {
+      if (mantenerCatalogo) {
+        await estampaArea(unit);
+        await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+      }
       await upsert("Semanal", semanal as unknown as Record<string, unknown>);
     },
-    persistirChecklist: async (unit, checklist) => {
-      await estampaArea(unit);
-      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+    persistirChecklist: async (unit, checklist, { mantenerCatalogo }) => {
+      if (mantenerCatalogo) {
+        await estampaArea(unit);
+        await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+      }
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
     },
     persistirValidacion: (input) => upsertValidacion(input),
+    // Cierra el backlog histórico: los registros ya reasignados en Ops antes del despliegue
+    // nunca reciben un cambio_estado, así que solo el backfill puede anularlos.
+    persistirAnulacion: (input) => upsertAnulacionOps(input),
+    ahora: ahoraIso,
   });
 }
 
@@ -329,11 +461,30 @@ export const handler = async (
 
     // 5) Mapear con los adaptadores probados y persistir con upsert idempotente.
     const plano = toOpsRecord(evento);
+    // Reasignación en Ops → el registro viejo llega con status "Anulado" y hay que anularlo
+    // aquí. Se despacha por STATUS, nunca por `evento.evento`: el backfill lee la tabla
+    // directo y no tiene ese campo, así que gatearlo por evento dejaría los ya-reasignados
+    // contando para siempre. Sin esto, la reasignación DUPLICA el registro en silencio.
+    avisarStatusDesconocido(evento);
+    const meta = metaAnulacionDeOps(plano as unknown as Record<string, unknown>, ahoraIso());
+    const folioNuevo = String(meta.folioNuevo ?? "");
+    // Un registro invalidado NO manda sobre el catálogo de unidades: la fila `Unit` no se
+    // filtra por anulación, así que escribirla podría crear una unidad fantasma o pisar
+    // economicoId/marca/area de la unidad correcta.
+    const mantenerCatalogo = debeMantenerCatalogo(evento.status);
+
     if (evento.tipo === "SOL") {
       const input = mapCombustible(plano as OpsSolRecord | OpsCargaRecord, resolver);
+      // La anulación va ANTES del upsert: si el upsert falla y se reintenta, el registro
+      // nunca queda visible-y-contado. Una Anulacion sin su registro es inerte (la
+      // hidratación itera registros y consulta el mapa, no al revés) → el orden de llegada
+      // del par viejo/nuevo, que DynamoDB Streams no garantiza, deja de importar.
+      const anulacion = mapAnulacionOps({ modulo: "combustible", carga: input }, meta);
+      if (anulacion) await anularPorReasignacion(anulacion, evento, folioNuevo);
       await upsert("CargaCombustible", input as unknown as Record<string, unknown>);
       // Validación en origen (decisión 2026-07-10): la aprobación de Ops ES la
-      // validación de FC. Con regla de no-pisado de veredictos humanos.
+      // validación de FC. Con regla de no-pisado de veredictos humanos. "Anulado" devuelve
+      // null (la Anulacion ya excluye; degradar destruiría el veredicto real).
       const validacion = mapValidacion(plano as Record<string, unknown>, input);
       if (validacion) await upsertValidacion(validacion);
       return res(200, {
@@ -341,23 +492,42 @@ export const handler = async (
         evento: evento.evento,
         destino: `CargaCombustible/${input.tipo}`,
         validada: validacion ? validacion.verdictGlobal : "pendiente",
+        anulada: anulacion ? anulacion.refId : null,
       });
     }
     // CL mensual (2026-07-13): Unit + Checklist con analyzeRow (mismo pipeline que
     // el mensual de MoreApp — aparece en Inspecciones con riesgo/hallazgos/llantas).
     if ((plano as OpsClRecord).tipo === "mensual") {
       const { unit, checklist } = mapMensual(plano as OpsClRecord, resolver);
-      await estampaArea(unit);
-      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+      const anulacion = mapAnulacionOps({ modulo: "checklist", checklist }, meta);
+      if (anulacion) await anularPorReasignacion(anulacion, evento, folioNuevo);
+      if (mantenerCatalogo) {
+        await estampaArea(unit);
+        await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+      }
       await upsert("Checklist", checklist as unknown as Record<string, unknown>);
-      return res(200, { folio: evento.folio, evento: evento.evento, destino: "Checklist/mensual" });
+      return res(200, {
+        folio: evento.folio,
+        evento: evento.evento,
+        destino: "Checklist/mensual",
+        anulada: anulacion ? anulacion.refId : null,
+      });
     }
     // CL semanal (subtipos desconocidos → throw de mapSemanal → 422 visible en DLQ).
     const { unit, semanal } = mapSemanal(plano as OpsClRecord, resolver);
-    await estampaArea(unit);
-    await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+    const anulacionSem = mapAnulacionOps({ modulo: "semanal", semanal }, meta);
+    if (anulacionSem) await anularPorReasignacion(anulacionSem, evento, folioNuevo);
+    if (mantenerCatalogo) {
+      await estampaArea(unit);
+      await upsert("Unit", unit as unknown as Record<string, unknown>, ["sucursal"]);
+    }
     await upsert("Semanal", semanal as unknown as Record<string, unknown>);
-    return res(200, { folio: evento.folio, evento: evento.evento, destino: "Semanal" });
+    return res(200, {
+      folio: evento.folio,
+      evento: evento.evento,
+      destino: "Semanal",
+      anulada: anulacionSem ? anulacionSem.refId : null,
+    });
   } catch (e) {
     const msg = (e as Error).message ?? String(e);
     // Errores de negocio (sin económico/placa, tipo no implementado) → 422 reintentable

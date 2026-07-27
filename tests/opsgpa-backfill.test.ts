@@ -54,6 +54,16 @@ const CL_ITEM = {
   answers: { radiador: "Nivel Optimo", f_radiador: "CL/edab420e3fd949af96b77e9477518dd0.jpg" },
 };
 const CL_MENSUAL_ITEM = { ...CL_ITEM, PK: "CL#otro", id: "otro", tipo: "mensual" };
+/** Reasignados: Ops los deja con status "Anulado" y un rastro hacia el sustituto. */
+const SOL_ANULADO = {
+  ...SOL_ITEM,
+  PK: "SOL#anul1234anul",
+  id: "anul1234anul",
+  status: "Anulado",
+  reasignacion: { en: "2026-07-24T10:51:51-06:00", por: "admin@gpa.com.mx" },
+  reasignadoA: { folio: "OPS-nuevo1234nue", registroId: "nuevo1234nue" },
+};
+const CL_ANULADO = { ...CL_ITEM, PK: "CL#anulcl", id: "anulcl", status: "Anulado" };
 const SOL_ROTO = {
   PK: "SOL#roto",
   SK: "META",
@@ -63,26 +73,32 @@ const SOL_ROTO = {
   economico: "",
 };
 
-function depsMock() {
+function depsMock(paginasOverride?: Record<string, Array<Array<Record<string, unknown>>>>) {
   const escritos: {
     carga: unknown[];
     semanal: unknown[];
     mensual: unknown[];
     copiadas: string[];
     validaciones: unknown[];
+    anulaciones: Array<{ refId: string; modulo: string; motivo: string; anuladoPor: string }>;
+    /** Registro de si cada persistencia de CL pidió mantener el catálogo de unidades. */
+    catalogo: boolean[];
   } = {
     carga: [],
     semanal: [],
     mensual: [],
     copiadas: [],
     validaciones: [],
+    anulaciones: [],
+    catalogo: [],
   };
-  const paginas: Record<string, Array<Array<Record<string, unknown>>>> = {
+  const paginas: Record<string, Array<Array<Record<string, unknown>>>> = paginasOverride ?? {
     // SOL en 2 páginas (prueba la paginación por cursor)
     SOL: [[SOL_ITEM, REPORTE_ITEM], [SOL_ROTO]],
     CL: [[CL_ITEM, CL_MENSUAL_ITEM]],
   };
   const deps: BackfillDeps = {
+    ahora: () => "2026-07-27T12:00:00.000Z",
     leerPagina: async (tipo, cursor) => {
       const idx = (cursor?.pagina as number) ?? 0;
       const items = paginas[tipo]?.[idx] ?? [];
@@ -96,14 +112,19 @@ function depsMock() {
     persistirCarga: async (input) => {
       escritos.carga.push(input);
     },
-    persistirSemanal: async (unit, semanal) => {
+    persistirSemanal: async (unit, semanal, opts) => {
       escritos.semanal.push({ unit, semanal });
+      escritos.catalogo.push(opts.mantenerCatalogo);
     },
-    persistirChecklist: async (unit, checklist) => {
+    persistirChecklist: async (unit, checklist, opts) => {
       escritos.mensual.push({ unit, checklist });
+      escritos.catalogo.push(opts.mantenerCatalogo);
     },
     persistirValidacion: async (input) => {
       escritos.validaciones.push(input);
+    },
+    persistirAnulacion: async (input) => {
+      escritos.anulaciones.push(input);
     },
   };
   return { deps, escritos };
@@ -170,6 +191,53 @@ describe("helpers de contract", () => {
     expect(plano.GSI1PK).toBeUndefined();
     expect(plano.id).toBe("34354ae5d278");
     expect(plano.km).toBe(77777);
+  });
+
+  /**
+   * Sin esto quedaría un BACKLOG PERMANENTE: el backfill lee la tabla de Ops directamente
+   * (no hay campo `evento`), así que los registros ya reasignados ANTES del despliegue
+   * nunca reciben un `cambio_estado` — si el backfill no los anula, siguen contando para
+   * siempre. Por eso el despacho va por `status`, nunca por `evento`.
+   */
+  it("un registro Anulado escribe la Anulacion y NO toca el catálogo de unidades", async () => {
+    const { deps, escritos } = depsMock({
+      SOL: [[SOL_ANULADO]],
+      CL: [[CL_ANULADO]],
+    });
+    const r = await runBackfill({ backfill: true }, deps);
+
+    expect(r.anuladas).toBe(2);
+    expect(escritos.anulaciones).toHaveLength(2);
+    // El folio del sustituto viaja al motivo (texto humano del panel de anulados).
+    const comb = escritos.anulaciones.find((a) => a.modulo === "combustible")!;
+    expect(comb.refId).toBe("combustible|10|solicitud|OPS-anul1234anul");
+    expect(comb.motivo).toContain("OPS-nuevo1234nue");
+    expect(comb.anuladoPor).toBe("admin@gpa.com.mx · ops-gpa");
+    const sem = escritos.anulaciones.find((a) => a.modulo === "semanal")!;
+    expect(sem.refId).toMatch(/^semanal\|\d{4}-W\d{2}\|PR3430A$/);
+
+    // El registro se sigue persistiendo (queda consultable en la vista "Anuladas")...
+    expect(escritos.carga).toHaveLength(1);
+    expect(escritos.semanal).toHaveLength(1);
+    // ...pero un registro invalidado NO manda sobre el catálogo de unidades.
+    expect(escritos.catalogo).toEqual([false]);
+    // Y "Anulado" no produce veredicto: la exclusión la hace la Anulacion.
+    expect(escritos.validaciones).toHaveLength(0);
+  });
+
+  it("un registro del flujo normal SÍ mantiene el catálogo y no anula nada", async () => {
+    const { deps, escritos } = depsMock({ SOL: [[SOL_ITEM]], CL: [[CL_ITEM]] });
+    const r = await runBackfill({ backfill: true }, deps);
+    expect(r.anuladas).toBe(0);
+    expect(escritos.anulaciones).toHaveLength(0);
+    expect(escritos.catalogo).toEqual([true]);
+  });
+
+  it("dryRun no escribe anulaciones pero las cuenta", async () => {
+    const { deps, escritos } = depsMock({ SOL: [[SOL_ANULADO]], CL: [[]] });
+    const r = await runBackfill({ backfill: true, dryRun: true }, deps);
+    expect(r.anuladas).toBe(1);
+    expect(escritos.anulaciones).toHaveLength(0);
   });
 
   it("extraerEvidencias recorre top-level y answers", () => {

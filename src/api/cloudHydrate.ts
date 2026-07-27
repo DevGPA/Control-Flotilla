@@ -26,8 +26,8 @@ import {
 } from "./client";
 import {
   buildAnuladasActivas,
-  refIdChecklist,
-  refIdSemanal,
+  esChecklistAnulado,
+  esSemanalAnulado,
   type AnulacionInfo,
 } from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
@@ -322,9 +322,7 @@ async function fetchFuelRangeParallel(
 ): Promise<Schema["CargaCombustible"]["type"][]> {
   const parts = splitFuelRange(fromISO, toISO);
   if (parts.length === 1) return listCombustibleRange(tenantId, fromISO, toISO);
-  const results = await Promise.all(
-    parts.map(([a, b]) => listCombustibleRange(tenantId, a, b)),
-  );
+  const results = await Promise.all(parts.map(([a, b]) => listCombustibleRange(tenantId, a, b)));
   const seen = new Set<string>();
   const out: Schema["CargaCombustible"]["type"][] = [];
   for (const arr of results)
@@ -405,18 +403,24 @@ export function refreshFuelOnly(): Promise<boolean> {
       if (!fuelDeps || fuelWindowFrom === null) return false;
       const deps = fuelDeps;
       try {
-        const [combustible, validaciones] = await Promise.all([
+        // Las anulaciones se RE-LEEN: el receptor del puente escribe `Anulacion` y
+        // `CargaCombustible` en la misma invocación (reasignación de Ops), y reusar el mapa
+        // de `deps` dejaba la carga anulada CONTANDO en KPIs hasta el poll de 4 min.
+        const [combustible, validaciones, anulaciones] = await Promise.all([
           fetchFuelRangeParallel(deps.tenantId, fuelWindowFrom, FUEL_WINDOW_TO),
           listValidaciones(deps.tenantId),
+          listAnulaciones(deps.tenantId).catch(() => null),
         ]);
+        // Si la lectura de anulaciones falla, se conserva el mapa anterior (nunca se
+        // "desanula" un registro por un error de red).
+        const anuladasActivas = anulaciones
+          ? buildAnuladasActivas(anulaciones)
+          : deps.anuladasActivas;
         fuelRaw = [...combustible];
-        fuelDeps = { ...deps, validaciones };
-        const entries = buildFuelEntries(
-          fuelRaw,
-          validaciones,
-          deps.unidadPorEco,
-          deps.anuladasActivas,
-        );
+        fuelDeps = { ...deps, validaciones, anuladasActivas };
+        // También en window: lo consumen los módulos legacy y el overlay optimista de wire.
+        window.__anuladasActivas = anuladasActivas;
+        const entries = buildFuelEntries(fuelRaw, validaciones, deps.unidadPorEco, anuladasActivas);
         window.fuelEntries = entries;
         if (typeof window.updateFuelNavBadge === "function") window.updateFuelNavBadge();
         if (typeof window.renderCombustible === "function") window.renderCombustible();
@@ -502,9 +506,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Checklists VIGENTES: los anulados por admin salen de TODA construcción de vistas
   // (inspecciones por rango, última inspección por unidad, flota, fallback). Combustible
   // etiqueta en vez de filtrar (tiene vista "Anuladas" propia); semanales filtra en su loop.
-  const checklistsVigentes = checklists.filter(
-    (c) => !anuladasActivas.has(refIdChecklist(String(c.unitUid), String(c.fecha ?? ""))),
-  );
+  const checklistsVigentes = checklists.filter((c) => !esChecklistAnulado(c, anuladasActivas));
 
   if (
     units.length === 0 &&
@@ -665,7 +667,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     const periodoMap = new Map<string, WeeklyEntry[]>();
     for (const s of semanales) {
       // Reporte semanal anulado por admin → fuera de KPIs/tabla/badges del módulo.
-      if (anuladasActivas.has(refIdSemanal(String(s.periodoId), String(s.unitUid)))) continue;
+      if (esSemanalAnulado(s, anuladasActivas)) continue;
       const datos = safeParseObj(s.datos);
       // economicoId desde datos JSON (Excel "# Economico - id"). Fallback a
       // placa si upload viejo no lo guardó.
