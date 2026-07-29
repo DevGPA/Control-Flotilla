@@ -69,6 +69,16 @@ export type FuelEntry = {
    * llega en cargas de origen OPS. Se guarda tal cual (sin canonicalizar a AREAS_FLOTILLA).
    */
   areaCarga?: string;
+  /**
+   * Folio de la SOLICITUD que autorizó esta carga, en la convención de FC ("OPS-<id>").
+   * Solo en cargas de origen OPS y solo desde el 2026-07-28, cuando Ops habilitó el
+   * vínculo 1-a-1 (antes de esa fecha emparejar solicitud↔carga era indecidible: el 69 %
+   * de los intentos por económico+fecha daba múltiples candidatas). MoreApp no lo manda.
+   *
+   * ⚠️ Se deriva del `solicitudId` crudo, NO del `folioSolicitud` de Ops — ese viene como
+   * "SOL-<ID EN MAYÚSCULAS>" y no casa con ningún eventoId de FC (ver folioSolicitudOrigen).
+   */
+  solicitudFolio?: string;
   combustible?: string;
   /**
    * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no

@@ -272,6 +272,10 @@ export function mapCargaToFuelEntry(
     area: unidad?.area || undefined,
     // Área que SOLICITÓ la carga (por-evento, de Ops); distinta de `area` (dueña de la unidad).
     areaCarga: str(datos.areaResponsable),
+    // Vínculo con la solicitud de origen. `mapCarga` ya lo guardó en la convención de FC,
+    // así que aquí solo se promueve: sin esta línea el dato existe en `datos` pero no
+    // existe para la aplicación.
+    solicitudFolio: str(datos.solicitudFolio),
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,

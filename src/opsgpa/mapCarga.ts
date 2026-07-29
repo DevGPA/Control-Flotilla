@@ -16,6 +16,7 @@ import {
   OPS_TENANT_ID,
   opsEventoId,
   esReporteDeCarga,
+  folioSolicitudOrigen,
   type CargaCombustibleInput,
   type EvidenceResolver,
   type FcPhotoRef,
@@ -63,6 +64,11 @@ export function mapCarga(
     opsId: ops.id,
     opsStatus: ops.status ?? null,
     mail: String(ops.mail ?? ""),
+    // Vínculo 1-a-1 con la solicitud que autorizó esta carga (Ops, 2026-07-28). Se guarda
+    // YA CONVERTIDO a la convención de folios de FC — ver folioSolicitudOrigen: el
+    // `folioSolicitud` que manda Ops viene con prefijo SOL- y en mayúsculas, y usarlo tal
+    // cual no casa con nada en FC sin producir ningún error.
+    solicitudFolio: folioSolicitudOrigen(ops as unknown as Record<string, unknown>),
   };
 
   return {

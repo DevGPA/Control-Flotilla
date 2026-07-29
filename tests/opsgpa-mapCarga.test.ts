@@ -98,3 +98,54 @@ describe("mapCombustible: despacha solicitud vs carga por `formato`", () => {
     expect(mapCombustible(REPORTE, resolve).tipo).toBe("carga");
   });
 });
+
+/**
+ * Vínculo solicitud ↔ carga (Ops lo implementó el 2026-07-28; verificado en prod: 11/11
+ * reportes nuevos apuntan a una solicitud existente). Resuelve EN EL ORIGEN el 69 % de
+ * emparejamientos ambiguos que medimos al intentar casarlos por económico y fecha.
+ *
+ * ⚠️ LA TRAMPA: Ops manda DOS campos y el más cómodo es el equivocado.
+ *      solicitudId    = "08f0553fee77"        ← este
+ *      folioSolicitud = "SOL-08F0553FEE77"    ← este NO
+ * `folioSolicitud` falla por partida doble contra la convención de FC: prefijo `SOL-` en
+ * vez de `OPS-`, y MAYÚSCULAS. Verificado contra prod: `OPS-08f0553fee77` existe,
+ * `OPS-08F0553FEE77` y `SOL-08F0553FEE77` no. Usarlo tal cual no encuentra nada y no
+ * levanta ningún error — falla en silencio.
+ */
+describe("mapCarga: enlace con la solicitud de origen", () => {
+  const conEnlace = (extra: Record<string, unknown>): Record<string, unknown> => {
+    const datos = JSON.parse(
+      mapCarga({ ...REPORTE, ...extra } as OpsCargaRecord, resolve).datos,
+    ) as Record<string, unknown>;
+    return datos;
+  };
+
+  it("estampa el folio en la convención de FC, derivado del id crudo", () => {
+    const datos = conEnlace({
+      solicitudId: "08f0553fee77",
+      folioSolicitud: "SOL-08F0553FEE77",
+    });
+    expect(datos.solicitudFolio).toBe("OPS-08f0553fee77");
+  });
+
+  it("NO adopta el folioSolicitud de Ops (prefijo y caja incompatibles con FC)", () => {
+    const datos = conEnlace({
+      solicitudId: "08f0553fee77",
+      folioSolicitud: "SOL-08F0553FEE77",
+    });
+    expect(datos.solicitudFolio).not.toBe("SOL-08F0553FEE77");
+    expect(String(datos.solicitudFolio)).not.toMatch(/^SOL-/);
+    expect(String(datos.solicitudFolio)).not.toMatch(/[A-Z]{4}/); // sin tramos en mayúsculas
+  });
+
+  it("una carga sin solicitud de origen no inventa el campo", () => {
+    const datos = conEnlace({});
+    expect(datos.solicitudFolio).toBeUndefined();
+  });
+
+  it("tolera que solo venga folioSolicitud, normalizando prefijo y caja", () => {
+    // Defensa por si algún día mandan el folio sin el id crudo.
+    const datos = conEnlace({ folioSolicitud: "SOL-08F0553FEE77" });
+    expect(datos.solicitudFolio).toBe("OPS-08f0553fee77");
+  });
+});

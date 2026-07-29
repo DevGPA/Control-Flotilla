@@ -70,50 +70,71 @@ export function debeMantenerCatalogo(status: unknown): boolean {
 }
 
 /**
- * Nombres posibles del campo que lleva el folio del registro SUSTITUTO.
+ * Nombres posibles del campo que lleva el rastro hacia el registro SUSTITUTO.
  *
- * El brief de Ops (2026-07-27) menciona `reasignadoDe` en el registro nuevo y `reasignadoA`
- * en el anulado, pero el campo NO está en el contrato ni en los golden — nadie fijó el
- * nombre ni el nivel. Se prueban varios y, si ninguno aparece, el motivo degrada con
- * gracia. Confirmar el nombre exacto con Ops y podar esta lista.
+ * Confirmado por el brief de Ops del 2026-07-29: el rastro es `answers.reasignadoA` en el
+ * registro anulado (y `reasignadoDe` en el nuevo), con la forma
+ * `{ id, folio, vehicleId, economico, sucursal, por, en }`. Los otros dos nombres quedan
+ * como red de seguridad barata hasta ver el primer evento real en producción.
  */
-const CANDIDATOS_FOLIO_SUSTITUTO = [
-  "reasignadoA",
-  "reasignadoDe",
-  "folioNuevo",
-  "nuevoFolio",
-] as const;
+const CANDIDATOS_RASTRO = ["reasignadoA", "reasignadoDe", "folioNuevo", "nuevoFolio"] as const;
 
-/** Folio del sustituto: acepta el candidato como string suelto o como objeto {folio,registroId}. */
-function folioSustituto(ops: Record<string, unknown>): string | undefined {
-  for (const campo of CANDIDATOS_FOLIO_SUSTITUTO) {
+interface RastroReasignacion {
+  /** Folio del sustituto en la convención de FC ("OPS-<id>"). */
+  folio?: string;
+  /** Quién hizo la reasignación en Ops. */
+  por?: unknown;
+  /** Cuándo la hizo. */
+  en?: unknown;
+}
+
+/**
+ * Rastro de la reasignación. Acepta el candidato como string suelto o como objeto.
+ *
+ * ⚠️ La llave del registro dentro del objeto se llama **`id`** (así lo documenta Ops), no
+ * `registroId`; se aceptan ambos por robustez. El folio derivado usa el prefijo de FC —
+ * NO se toma el `folioSolicitud`/`folio` de Ops si viniera con otra convención.
+ */
+function rastroReasignacion(ops: Record<string, unknown>): RastroReasignacion | null {
+  for (const campo of CANDIDATOS_RASTRO) {
     const v = ops[campo];
-    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "string" && v.trim()) return { folio: v.trim() };
     if (v && typeof v === "object" && !Array.isArray(v)) {
       const o = v as Record<string, unknown>;
       const folio = String(o.folio ?? "").trim();
-      if (folio) return folio;
-      const reg = String(o.registroId ?? "").trim();
-      if (reg) return `${OPS_EVENT_PREFIX}${reg}`;
+      const id = String(o.id ?? o.registroId ?? "").trim();
+      return {
+        folio: folio || (id ? `${OPS_EVENT_PREFIX}${id}` : undefined),
+        por: o.por,
+        en: o.en,
+      };
     }
   }
-  return undefined;
+  return null;
 }
 
 /**
  * Metadatos de la anulación a partir del registro plano de Ops.
  *
- * `reasignacion` existe en producción con la forma `{en, por, de:{…}}` y es la fuente
- * preferente de quién/cuándo; `autorizadoPor`/`fechaAut` son el respaldo. `ahora` se
- * inyecta para que la función quede pura y el `ts` (obligatorio) nunca salga vacío.
+ * Quién/cuándo se buscan en tres lugares, en este orden:
+ *  1. DENTRO del rastro (`reasignadoA.por` / `.en`) — la forma que documenta Ops y la que
+ *     de verdad describe la reasignación.
+ *  2. El campo `reasignacion` viejo (`{en, por, de:{…}}`), que existe en registros de prod
+ *     anteriores al cambio.
+ *  3. `autorizadoPor` / `fechaAut` — último respaldo; describen la aprobación, no la
+ *     reasignación, así que solo se usan si no hay nada mejor.
+ *
+ * `ahora` se inyecta para que la función quede pura y el `ts` (obligatorio en el modelo)
+ * nunca salga vacío.
  */
 export function metaAnulacionDeOps(ops: Record<string, unknown>, ahora: string): AnulacionOpsMeta {
+  const rastro = rastroReasignacion(ops);
   const rea = (ops.reasignacion ?? {}) as Record<string, unknown>;
   return {
     status: ops.status,
-    anuladoPor: rea.por ?? ops.autorizadoPor,
-    ts: rea.en ?? ops.fechaAut,
-    folioNuevo: folioSustituto(ops),
+    anuladoPor: rastro?.por ?? rea.por ?? ops.autorizadoPor,
+    ts: rastro?.en ?? rea.en ?? ops.fechaAut,
+    folioNuevo: rastro?.folio,
     ahora,
   };
 }

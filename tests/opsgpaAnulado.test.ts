@@ -158,4 +158,56 @@ describe("metaAnulacionDeOps", () => {
     expect(m.folioNuevo).toBeUndefined();
     expect(m.status).toBe("Anulado");
   });
+
+  /**
+   * Forma CONFIRMADA por el brief de Ops del 2026-07-29: el rastro es
+   * `answers.reasignadoA` = { id, folio, vehicleId, economico, sucursal, por, en }.
+   * Ojo con las dos diferencias frente a lo que asumíamos: `por`/`en` viven DENTRO del
+   * rastro (no en el campo `reasignacion` viejo), y la llave del registro se llama `id`
+   * (no `registroId`).
+   */
+  it("toma quién y cuándo de DENTRO del rastro (forma confirmada por Ops)", () => {
+    const m = metaAnulacionDeOps(
+      {
+        status: "Anulado",
+        reasignadoA: {
+          id: "nuevo1234nue",
+          folio: "OPS-nuevo1234nue",
+          vehicleId: "92",
+          economico: "92",
+          sucursal: "Monterrey",
+          por: "admin@gpa.com.mx",
+          en: "2026-07-29T09:15:00-06:00",
+        },
+        // Estos NO deben ganar: son el respaldo, no la fuente.
+        autorizadoPor: "OTRO",
+        fechaAut: "2026-01-01T00:00:00Z",
+      },
+      AHORA,
+    );
+    expect(m.folioNuevo).toBe("OPS-nuevo1234nue");
+    expect(m.anuladoPor).toBe("admin@gpa.com.mx");
+    expect(m.ts).toBe("2026-07-29T09:15:00-06:00");
+  });
+
+  it("deriva el folio de `id` cuando el rastro no trae `folio`", () => {
+    const m = metaAnulacionDeOps(
+      { status: "Anulado", reasignadoA: { id: "cafe12345678", por: "x@gpa.com.mx" } },
+      AHORA,
+    );
+    expect(m.folioNuevo).toBe("OPS-cafe12345678");
+    expect(m.anuladoPor).toBe("x@gpa.com.mx");
+  });
+
+  it("el campo `reasignacion` viejo sigue sirviendo de respaldo", () => {
+    const m = metaAnulacionDeOps(
+      {
+        status: "Anulado",
+        reasignacion: { en: "2026-07-24T10:51:51-06:00", por: "viejo@gpa.com.mx" },
+      },
+      AHORA,
+    );
+    expect(m.anuladoPor).toBe("viejo@gpa.com.mx");
+    expect(m.ts).toBe("2026-07-24T10:51:51-06:00");
+  });
 });

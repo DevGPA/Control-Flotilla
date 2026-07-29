@@ -59,6 +59,33 @@ export function opsEventoId(opsId: string): string {
 }
 
 /**
+ * Folio de la SOLICITUD de origen de un reporte de carga, en la convención de FC.
+ *
+ * Ops implementó el vínculo 1-a-1 el 2026-07-28 y manda DOS campos — el más cómodo es el
+ * equivocado:
+ *   solicitudId    = "08f0553fee77"       ← el id crudo, este sirve
+ *   folioSolicitud = "SOL-08F0553FEE77"   ← NO usar tal cual
+ *
+ * ⚠️ `folioSolicitud` incumple la convención de FC por partida doble: prefijo `SOL-` en vez
+ * de `OPS-`, y MAYÚSCULAS. Verificado contra producción: `OPS-08f0553fee77` existe;
+ * `OPS-08F0553FEE77` y `SOL-08F0553FEE77` no. Usarlo directo no encuentra nada y **no
+ * levanta ningún error** — por eso siempre se deriva del id.
+ *
+ * El `solicitudId` se usa VERBATIM (es el mismo id con el que `mapSolicitud` compuso el
+ * eventoId de la solicitud). Solo el respaldo desde `folioSolicitud` normaliza caja, porque
+ * ahí sabemos que Ops la altera.
+ */
+export function folioSolicitudOrigen(ops: Record<string, unknown>): string | undefined {
+  const crudo = String(ops.solicitudId ?? "").trim();
+  if (crudo) return opsEventoId(crudo);
+  const desdeFolio = String(ops.folioSolicitud ?? "")
+    .trim()
+    .replace(/^SOL-/i, "")
+    .toLowerCase();
+  return desdeFolio ? opsEventoId(desdeFolio) : undefined;
+}
+
+/**
  * Registro SOL (solicitud de combustible) tal como se PERSISTE en Operaciones-GPA.
  * Campos de negocio planos; claves S3 en `photo`/`firma`.
  */
