@@ -6440,3 +6440,15 @@ body[data-hydrating] .uv-empty::before {
 .kpi-contexto-link:focus-visible {
   color: var(--ac);
 }
+
+/* Aviso de escritura bloqueada por el candado de Ops (spec 2026-07-30 C5b). */
+.fv-bloqueo {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ln);
+  border-left: 3px solid var(--A);
+  border-radius: 6px;
+  background: var(--bg2);
+  font-size: 12px;
+  color: var(--s2);
+}

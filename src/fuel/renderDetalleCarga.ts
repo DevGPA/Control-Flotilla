@@ -16,6 +16,7 @@ import type { RecorridoInfo } from "./fuelAnalysis";
 import type { KmplVida } from "./fuelAnalysis";
 import { MOTIVO_SIN_KMPL_LABEL, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { evidenceKindOf } from "./mapEntry";
+import { puedeCorregirKm, puedeValidarManual, motivoBloqueo } from "./opsGuard";
 
 const PESO = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -282,7 +283,12 @@ function buildRendimientoCard(
 }
 
 export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
-  const { body, load, metrics, canWrite, onValidate } = deps;
+  const { body, load, metrics, onValidate } = deps;
+  // C5b (spec 2026-07-30 §2.5-2): mientras Ops no decida, NADA de escritura de veredicto.
+  // Un `canWrite` derivado apaga de una vez los tres bloques que lo consultan (:418, :470, :541)
+  // en vez de repetir la condición en cada uno y arriesgar que un sitio quede sin candado.
+  const bloqueo = motivoBloqueo(load);
+  const canWrite = deps.canWrite && puedeValidarManual(load);
 
   // Encabezado
   if (deps.titleEl) {
@@ -302,6 +308,13 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   }
 
   body.replaceChildren();
+
+  if (bloqueo) {
+    const av = document.createElement("div");
+    av.className = "fv-bloqueo";
+    av.textContent = bloqueo;
+    body.appendChild(av);
+  }
 
   // Anulación admin: banner si el registro está anulado (con Restaurar para admin),
   // o botón discreto de anular para admin en registros vigentes.
@@ -467,7 +480,13 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     }
     // Corrección de odómetro desde la foto (solo cargas, con permiso de escritura):
     // alimenta kmDetectado → computeFuelMetrics lo usa como odómetro efectivo.
-    if (slot.kind === "odometro" && load.tipo === "carga" && canWrite && deps.onKmDetectado) {
+    if (
+      slot.kind === "odometro" &&
+      load.tipo === "carga" &&
+      canWrite &&
+      puedeCorregirKm(load) &&
+      deps.onKmDetectado
+    ) {
       const fix = document.createElement("div");
       fix.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center";
       const lbl = document.createElement("label");
@@ -503,6 +522,15 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
         fix.appendChild(quitar);
       }
       formCol.appendChild(fix);
+    }
+    // Registro de Ops: la corrección de odómetro se pide a Ops (kmForzadoPor), que es la
+    // fuente de verdad y deja autoría. Corregir aquí crearía una divergencia invisible (R10).
+    if (slot.kind === "odometro" && load.tipo === "carga" && !puedeCorregirKm(load)) {
+      const h = document.createElement("div");
+      h.className = "fv-hint";
+      h.textContent =
+        "El odómetro de un registro de Operaciones-GPA se corrige en Ops (km forzado), no aquí.";
+      formCol.appendChild(h);
     }
     grid.appendChild(formCol);
 
