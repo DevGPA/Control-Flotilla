@@ -17,7 +17,12 @@ export type FuelKpiCard = {
   value: string;
   sub?: string;
   tone: "n" | "r" | "a" | "g"; // neutro / rojo / ámbar / verde
-  grupo: "nucleo" | "estado"; // jerarquía: núcleo (métricas grandes) vs estado (chips de alerta)
+  /**
+   * Jerarquía: núcleo (métricas grandes) vs estado (chips de alerta) vs contexto (archivo y
+   * huecos estructurales — spec 2026-07-30 C2/C3: datos que NO se esconden pero que no deben
+   * pesar como trabajo pendiente; van en una línea al pie, no como tarjeta).
+   */
+  grupo: "nucleo" | "estado" | "contexto";
   filter?: "discrepancia" | "pendiente" | "anomalia" | "historico" | "rechazada"; // clic → filtro
   title?: string; // tooltip (p.ej. desglose por motivo)
   delta?: DeltaKpi | null; // vs periodo anterior de la misma duración (sin `prev` → undefined)
@@ -185,7 +190,8 @@ export function buildKpisFuel(
       ? [
           {
             key: "historico",
-            grupo: "estado" as const,
+            // C2: 70 % del universo y nadie lo validará retroactivamente → contexto, no alerta.
+            grupo: "contexto" as const,
             label: "Histórico",
             value: NUM.format(historicos),
             sub: `sin validar · previo a ${FUEL_VALIDACION_DESDE}`,
@@ -299,5 +305,41 @@ export function renderKpisFuel(
     return kc;
   };
 
-  for (const c of cards) (c.grupo === "nucleo" ? rowNucleo : rowEstado).appendChild(make(c));
+  // C2/C3: lo que es archivo o estructural no compite con el trabajo pendiente. No se
+  // esconde: baja a una línea al pie, conservando su clic al filtro.
+  const contexto = cards.filter((c) => c.grupo === "contexto");
+  for (const c of cards) {
+    if (c.grupo === "contexto") continue;
+    (c.grupo === "nucleo" ? rowNucleo : rowEstado).appendChild(make(c));
+  }
+  if (contexto.length) {
+    const linea = document.createElement("div");
+    linea.className = "kpi-contexto";
+    contexto.forEach((c, i) => {
+      if (i > 0) linea.appendChild(document.createTextNode(" · "));
+      const txt = `${c.value} ${c.label.toLowerCase()}${c.sub ? ` (${c.sub})` : ""}`;
+      if (c.filter && onFilter) {
+        // Accionable: mismo contrato de a11y que las tarjetas (role + Enter/Espacio).
+        const b = document.createElement("span");
+        b.className = "kpi-contexto-link";
+        b.textContent = txt;
+        b.setAttribute("role", "button");
+        b.tabIndex = 0;
+        b.setAttribute("aria-label", `Filtrar por ${c.label}`);
+        const h = () => onFilter(c.filter!);
+        b.addEventListener("click", h);
+        b.addEventListener("keydown", (ev) => {
+          const k = (ev as KeyboardEvent).key;
+          if (k === "Enter" || k === " ") {
+            ev.preventDefault();
+            h();
+          }
+        });
+        linea.appendChild(b);
+      } else {
+        linea.appendChild(document.createTextNode(txt));
+      }
+    });
+    container.appendChild(linea);
+  }
 }

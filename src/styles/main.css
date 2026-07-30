@@ -6422,3 +6422,21 @@ body[data-hydrating] .uv-empty::before {
     transition: none !important;
   }
 }
+
+/* Línea de contexto bajo los KPIs (spec 2026-07-30 C2): archivo y huecos
+   estructurales — datos que NO se esconden pero que no deben pesar como pendientes. */
+.kpi-contexto {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--s2);
+  line-height: 1.5;
+}
+.kpi-contexto-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.kpi-contexto-link:hover,
+.kpi-contexto-link:focus-visible {
+  color: var(--ac);
+}
