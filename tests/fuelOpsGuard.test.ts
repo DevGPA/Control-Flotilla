@@ -82,18 +82,33 @@ function carga(over: Partial<FuelEntry> = {}): FuelEntry {
   } as FuelEntry;
 }
 
-function render(load: FuelEntry): HTMLElement {
+/** Km pasados a `onKmDetectado` por el render en curso (para probar el botón de retirar). */
+const kmVistos: Array<number | null> = [];
+
+function render(load: FuelEntry, canWrite = true): HTMLElement {
+  kmVistos.length = 0;
   const body = document.createElement("div");
   renderDetalleCarga({
     body,
     load,
-    canWrite: true,
+    canWrite,
     resolveUrl: () => null,
     onValidate: () => {},
-    onKmDetectado: () => {},
+    onKmDetectado: (_id: string, km: number | null) => kmVistos.push(km),
   } as never);
   return body;
 }
+
+/** Botón por su texto exacto (el DOM se construye con textContent, sin innerHTML). */
+const boton = (root: HTMLElement, txt: string): HTMLButtonElement | undefined =>
+  [...root.querySelectorAll("button")].find((b) => b.textContent === txt) as
+    | HTMLButtonElement
+    | undefined;
+
+/** Corrección manual heredada (escrita antes de que existiera el candado). */
+const CON_CORRECCION = {
+  review: { verdictGlobal: "pendiente", porEvidencia: {}, kmDetectado: 999 },
+} as Partial<FuelEntry>;
 
 describe("aplicación del candado en el detalle de la carga", () => {
   it("un registro de Ops pendiente muestra el aviso y no ofrece corregir el odómetro", () => {
@@ -113,5 +128,56 @@ describe("aplicación del candado en el detalle de la carga", () => {
     const body = render(carga({ loadId: "45|carga|3809", eventoId: "3809" }));
     expect(body.querySelector(".fv-bloqueo")).toBeNull();
     expect(body.textContent).toContain("Odómetro real (según foto)");
+  });
+});
+
+describe("el candado bloquea CREAR la corrección, nunca RETIRARLA", () => {
+  it("un registro de Ops con corrección heredada sí puede retirarla", () => {
+    // Sin esta salida, `kmDetectado` seguiría ganando en `kmEfectivo` y la corrección
+    // quedaría irreversible desde la UI: la divergencia que el candado existe para evitar.
+    const body = render(carga({ fuente: "ops-gpa", opsStatus: "Pendiente", ...CON_CORRECCION }));
+    const quitar = boton(body, "Quitar corrección");
+    expect(quitar, "debe ofrecerse la salida de emergencia").toBeDefined();
+    // Pero NO el input de crear/cambiar: eso sigue siendo de Ops.
+    expect(body.textContent).not.toContain("Odómetro real (según foto)");
+    expect(body.querySelector('input[type="number"]')).toBeNull();
+    expect(boton(body, "Corregir")).toBeUndefined();
+    quitar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(kmVistos).toEqual([null]);
+  });
+
+  it("un registro de Ops SIN corrección no ofrece nada que retirar", () => {
+    const body = render(carga({ fuente: "ops-gpa", opsStatus: "Aprobada" }));
+    expect(boton(body, "Quitar corrección")).toBeUndefined();
+    expect(body.textContent).not.toContain("Corrección de odómetro heredada");
+  });
+
+  it("un registro de MoreApp con corrección conserva crear Y retirar", () => {
+    const body = render(carga({ loadId: "45|carga|3809", eventoId: "3809", ...CON_CORRECCION }));
+    expect(body.textContent).toContain("Odómetro real (según foto)");
+    expect(boton(body, "Corregir")).toBeDefined();
+    expect(boton(body, "Quitar corrección")).toBeDefined();
+  });
+
+  it("un rol de solo lectura no recibe ningún botón de escritura", () => {
+    const body = render(
+      carga({ fuente: "ops-gpa", opsStatus: "Pendiente", ...CON_CORRECCION }),
+      false,
+    );
+    expect(boton(body, "Quitar corrección")).toBeUndefined();
+    expect(boton(body, "Corregir")).toBeUndefined();
+    expect(boton(body, "Validar")).toBeUndefined();
+  });
+});
+
+describe("el aviso de bloqueo se dirige a quien podría haber escrito", () => {
+  it("no se le muestra a un rol de solo lectura: nunca pudo validar", () => {
+    const body = render(carga({ fuente: "ops-gpa", opsStatus: "Pendiente" }), false);
+    expect(body.querySelector(".fv-bloqueo")).toBeNull();
+  });
+
+  it("sí se le muestra a quien tiene permiso de escritura", () => {
+    const body = render(carga({ fuente: "ops-gpa", opsStatus: "Pendiente" }), true);
+    expect(body.querySelector(".fv-bloqueo")?.textContent).toContain("congelaría");
   });
 });

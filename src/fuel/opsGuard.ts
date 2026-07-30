@@ -5,6 +5,7 @@
  * Puro, sin DOM ni red → testeable con vitest.
  */
 import type { FuelEntry } from "./types";
+import { OPS_SOURCE } from "../opsgpa/contract";
 
 /**
  * Statuses de Ops que ya son FINALES: no llegará otro veredicto por el puente.
@@ -13,9 +14,15 @@ import type { FuelEntry } from "./types";
  */
 const OPS_STATUS_FINAL = /^(aproba|rechaza)/i;
 
-/** ¿Lo escribió el puente de Ops? Sin `fuente` ⇒ MoreApp (nunca la estampó). */
+/**
+ * ¿Lo escribió el puente de Ops? Sin `fuente` ⇒ MoreApp (nunca la estampó).
+ *
+ * Compara contra `OPS_SOURCE`, la MISMA constante que el puente escribe en `datos.fuente`
+ * (`src/opsgpa/contract.ts`). Con un literal duplicado, cambiar el valor del contrato haría
+ * que el candado dejara de aplicar en silencio: fallo ABIERTO, sin que nada se rompa.
+ */
 export function esOrigenOps(e: Pick<FuelEntry, "fuente">): boolean {
-  return e.fuente === "ops-gpa";
+  return e.fuente === OPS_SOURCE;
 }
 
 /** ¿El status de Ops ya es definitivo? Se decide por NEGACIÓN de la lista de finales. */

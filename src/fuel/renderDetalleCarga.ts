@@ -285,8 +285,10 @@ function buildRendimientoCard(
 export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
   const { body, load, metrics, onValidate } = deps;
   // C5b (spec 2026-07-30 §2.5-2): mientras Ops no decida, NADA de escritura de veredicto.
-  // Un `canWrite` derivado apaga de una vez los tres bloques que lo consultan (:418, :470, :541)
-  // en vez de repetir la condición en cada uno y arriesgar que un sitio quede sin candado.
+  // Un `canWrite` derivado apaga de una vez los tres bloques que lo consultan —la acción
+  // global ("Validar carga completa"), el corrector de odómetro y el veredicto por
+  // evidencia— en vez de repetir la condición en cada uno y arriesgar que un sitio quede sin
+  // candado. Se nombran los bloques y NO se citan líneas: la siguiente inserción las podría.
   const bloqueo = motivoBloqueo(load);
   const canWrite = deps.canWrite && puedeValidarManual(load);
 
@@ -309,7 +311,9 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
 
   body.replaceChildren();
 
-  if (bloqueo) {
+  // Solo a quien PODRÍA haber escrito de no ser por el candado: a un rol de solo-lectura
+  // explicarle que validar "lo congelaría" no tiene sentido — nunca pudo validar.
+  if (bloqueo && deps.canWrite) {
     const av = document.createElement("div");
     av.className = "fv-bloqueo";
     av.textContent = bloqueo;
@@ -480,44 +484,54 @@ export function renderDetalleCarga(deps: RenderDetalleCargaDeps): void {
     }
     // Corrección de odómetro desde la foto (solo cargas, con permiso de escritura):
     // alimenta kmDetectado → computeFuelMetrics lo usa como odómetro efectivo.
-    if (
-      slot.kind === "odometro" &&
-      load.tipo === "carga" &&
-      canWrite &&
-      puedeCorregirKm(load) &&
-      deps.onKmDetectado
-    ) {
+    //
+    // El candado de Ops (C5b/R10) bloquea CREAR o CAMBIAR la corrección, nunca RETIRARLA.
+    // Si apagara el bloque entero, un registro de Ops con un `kmDetectado` manual heredado
+    // quedaría con esa corrección irretirable desde la UI mientras sigue ganando en
+    // `kmEfectivo` — que es exactamente la divergencia que el candado existe para evitar.
+    // La salida de emergencia se mide contra `deps.canWrite` (el permiso real del rol), no
+    // contra el `canWrite` derivado: un registro de Ops en `Pendiente` es justo el caso.
+    const tieneCorreccionKm = load.review?.kmDetectado != null;
+    const puedeEditarKm = canWrite && puedeCorregirKm(load) && deps.onKmDetectado != null;
+    const puedeQuitarKm = deps.canWrite && tieneCorreccionKm && deps.onKmDetectado != null;
+    if (slot.kind === "odometro" && load.tipo === "carga" && (puedeEditarKm || puedeQuitarKm)) {
       const fix = document.createElement("div");
       fix.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center";
       const lbl = document.createElement("label");
       lbl.style.cssText = "font-size:11px;color:var(--s2);flex-basis:100%";
-      lbl.textContent = "Odómetro real (según foto) — corrige el km/l sin tocar lo capturado:";
-      const inp = document.createElement("input");
-      inp.type = "number";
-      inp.min = "1";
-      inp.step = "1";
-      inp.placeholder = "km reales";
-      inp.value = load.review?.kmDetectado != null ? String(load.review.kmDetectado) : "";
-      inp.style.cssText =
-        "width:130px;padding:4px 8px;border:1px solid var(--ln);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px";
-      const save = document.createElement("button");
-      save.className = "fv-btn fv-btn-ok-sm";
-      save.textContent = "Corregir";
-      const aplicar = () => {
-        const v = parseFloat(inp.value);
-        if (Number.isFinite(v) && v > 0) deps.onKmDetectado!(load.loadId, v);
-      };
-      save.addEventListener("click", aplicar);
-      inp.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") aplicar();
-      });
+      lbl.textContent = puedeEditarKm
+        ? "Odómetro real (según foto) — corrige el km/l sin tocar lo capturado:"
+        : "Corrección de odómetro heredada — no se puede cambiar aquí, solo retirar:";
       fix.appendChild(lbl);
-      fix.appendChild(inp);
-      fix.appendChild(save);
-      if (load.review?.kmDetectado != null) {
+      if (puedeEditarKm) {
+        const inp = document.createElement("input");
+        inp.type = "number";
+        inp.min = "1";
+        inp.step = "1";
+        inp.placeholder = "km reales";
+        inp.value = tieneCorreccionKm ? String(load.review!.kmDetectado) : "";
+        inp.style.cssText =
+          "width:130px;padding:4px 8px;border:1px solid var(--ln);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px";
+        const save = document.createElement("button");
+        save.className = "fv-btn fv-btn-ok-sm";
+        save.textContent = "Corregir";
+        const aplicar = () => {
+          const v = parseFloat(inp.value);
+          if (Number.isFinite(v) && v > 0) deps.onKmDetectado!(load.loadId, v);
+        };
+        save.addEventListener("click", aplicar);
+        inp.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") aplicar();
+        });
+        fix.appendChild(inp);
+        fix.appendChild(save);
+      }
+      if (puedeQuitarKm) {
         const quitar = document.createElement("button");
         quitar.className = "fv-btn";
         quitar.textContent = "Quitar corrección";
+        quitar.title =
+          "Devuelve el km/l al odómetro capturado en origen (no toca el dato del chofer)";
         quitar.addEventListener("click", () => deps.onKmDetectado!(load.loadId, null));
         fix.appendChild(quitar);
       }

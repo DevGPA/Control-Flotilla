@@ -40,6 +40,7 @@ import {
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { totalesCargas, rangoAnterior } from "./kpiDeltas";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
+import { puedeCorregirKm, puedeValidarManual, motivoBloqueo } from "./opsGuard";
 import {
   rankUnitsByDeviation,
   rankUnitsBySubmarca,
@@ -1030,6 +1031,18 @@ function navDetail(delta: number): void {
 function handleKmDetectado(loadId: string, km: number | null): void {
   const load = loadById(loadId);
   if (!load) return;
+  // C5b (spec 2026-07-30 §2.5-5): el candado se aplica AQUÍ, no solo en el render. Que hoy
+  // el único camino sea el drawer es una coincidencia, no una garantía: cualquier atajo,
+  // acción masiva o llamada futura entra por esta función. RETIRAR la corrección (km=null)
+  // sigue permitido — es la salida de emergencia de una corrección manual ya escrita.
+  if (km !== null && !puedeCorregirKm(load)) {
+    window.notify?.(
+      "El odómetro de un registro de Operaciones-GPA se corrige en Ops (km forzado), no aquí: hacerlo en Flotilla crearía una divergencia que nadie vería.",
+      "error",
+      5000,
+    );
+    return;
+  }
   const prevReview = load.review;
   const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
   const sess = window.__cloudSession;
@@ -1083,6 +1096,14 @@ function handleValidate(
 ): void {
   const load = loadById(loadId);
   if (!load) return;
+  // C5b (spec 2026-07-30 §2.5-2): mismo candado que el render, en el handler. Validar a mano
+  // un registro que Ops aún no ha resuelto escribe `fuenteDeteccion: "manual"` y activa el
+  // no-pisado del receptor: el veredicto quedaría congelado y la decisión de Ops nunca
+  // entraría. Reusa `motivoBloqueo` para que el aviso diga lo mismo que el drawer.
+  if (!puedeValidarManual(load)) {
+    window.notify?.(motivoBloqueo(load), "error", 5000);
+    return;
+  }
   const prevReview = load.review; // para rollback si falla la persistencia
   const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
   const por: Partial<Record<FuelEvidenceKind, FuelVerdict>> = { ...review.porEvidencia };
