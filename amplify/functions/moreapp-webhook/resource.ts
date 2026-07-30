@@ -17,7 +17,7 @@ export const moreappWebhook = defineFunction({
   // 300s para soportar lotes de backfill (descarga de fotos de varios envíos).
   timeoutSeconds: 300,
   environment: {
-    WEBHOOK_TOKEN: "gpa-moreapp-268066bd8f7868cc06d2edd6bfefe5b1",
+    WEBHOOK_TOKEN: "WEBHOOK-TOKEN",
     // Tenant Cognito al que se asignan los datos de MoreApp (customerId 14922).
     MOREAPP_TENANT_ID: "gpa",
     // API key de MoreApp (secret de Amplify) — descarga de fotos vía API.
