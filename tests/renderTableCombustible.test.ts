@@ -430,7 +430,7 @@ describe("buildKpisFuel", () => {
     expect(byKey.gasto).toContain("2,700");
   });
 
-  it("KPI 'Solicitudes sin carga' cuenta ciclos cerrados sin carga (no la última solicitud)", () => {
+  it("KPI 'Tasa de comprobación' cuenta ciclos cerrados sin carga (no la última solicitud)", () => {
     // U1: sol→sol SIN carga (ciclo cerrado sin carga = 1); la 2ª solicitud queda en curso.
     // U2: sol→carga→sol (ciclo cerrado CON carga = no cuenta).
     const entries = [
@@ -445,14 +445,14 @@ describe("buildKpisFuel", () => {
     const anomalies = detectFuelAnomalies(metrics, baseline);
     const rec = computeRecorridos(entries);
     const kpis = buildKpisFuel(entries, metrics, baseline, anomalies, rec);
-    const sin = kpis.find((k) => k.key === "sin-carga");
-    expect(sin).toBeTruthy();
-    expect(sin!.value).toBe("1");
+    const tasa = kpis.find((k) => k.key === "tasa-comprobacion");
+    expect(tasa).toBeTruthy();
+    expect(tasa!.sub).toContain("1 sin reporte");
   });
 
-  it("sin recorridosByLoad NO incluye la tarjeta 'sin-carga'", () => {
+  it("sin recorridosByLoad NO incluye la tarjeta 'tasa-comprobacion'", () => {
     const kpis = buildKpisFuel([], [], buildFleetBaseline([], []), []);
-    expect(kpis.find((k) => k.key === "sin-carga")).toBeUndefined();
+    expect(kpis.find((k) => k.key === "tasa-comprobacion")).toBeUndefined();
   });
 
   it("KPI 'Errores de captura' cuenta solo lo accionable, no estructurales", () => {

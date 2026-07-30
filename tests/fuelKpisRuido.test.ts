@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { buildKpisFuel, renderKpisFuel } from "../src/fuel/renderKpis";
-import { buildFleetBaseline } from "../src/fuel/fuelAnalysis";
+import { buildFleetBaseline, type RecorridoInfo } from "../src/fuel/fuelAnalysis";
 import type { FuelEntry, FuelMetrics, FleetBaseline } from "../src/fuel/types";
 
 /** loadId determinista: un contador, para que un fallo sea reproducible. */
@@ -121,5 +121,64 @@ describe("C2 — el histórico es contexto, no una alarma", () => {
     const cont = document.createElement("div");
     renderKpisFuel(cont, buildKpisFuel([entry()], [], BASELINE, []));
     expect(cont.querySelector(".kpi-contexto")).toBeNull();
+  });
+});
+
+/** Ciclo CERRADO sin carga de por medio = solicitud sin comprobante de consumo. */
+const CERRADO_SIN_CARGA = { cerrado: true, viaCarga: false } as RecorridoInfo;
+
+describe("C3 — tasa de comprobación separando montacargas de vehículos", () => {
+  it("la tasa se calcula solo con vehículos y reporta el dinero sin comprobante", () => {
+    const solVeh = entry({ tipo: "solicitud", montoEstimado: 1000 });
+    const solVeh2 = entry({ tipo: "solicitud", montoEstimado: 500 });
+    const cargaVeh = entry({ tipo: "carga" });
+    const rec = new Map([
+      [solVeh.loadId, CERRADO_SIN_CARGA],
+      [solVeh2.loadId, CERRADO_SIN_CARGA],
+    ]);
+    const cards = buildKpisFuel([solVeh, solVeh2, cargaVeh], [], BASELINE, [], rec);
+    const t = card(cards, "tasa-comprobacion");
+    // 1 carga de vehículo / 2 solicitudes de vehículo = 50 %. Un decimal: la tasa real de
+    // producción es 42.5 % y redondearla a entero borra el movimiento mes a mes.
+    expect(t?.value).toBe("50.0 %");
+    expect(t?.sub).toContain("2 sin reporte");
+    expect(t?.sub).toContain("$1,500");
+    expect(card(cards, "sin-carga")).toBeUndefined();
+  });
+
+  it("los montacargas NO entran en la tasa: van a contexto con su propio monto", () => {
+    const mc = entry({ tipo: "solicitud", esMontacargas: true, montoEstimado: 700 });
+    const sol = entry({ tipo: "solicitud", montoEstimado: 1000 });
+    const carga = entry({ tipo: "carga" });
+    const rec = new Map([
+      [mc.loadId, CERRADO_SIN_CARGA],
+      [sol.loadId, CERRADO_SIN_CARGA],
+    ]);
+    const cards = buildKpisFuel([mc, sol, carga], [], BASELINE, [], rec);
+    // La tasa ignora al montacargas: 1 carga / 1 solicitud de vehículo = 100 %
+    expect(card(cards, "tasa-comprobacion")?.value).toBe("100.0 %");
+    expect(card(cards, "tasa-comprobacion")?.sub).toContain("1 sin reporte");
+    const mcCard = card(cards, "montacargas-sin-carga");
+    expect(mcCard?.value).toBe("1");
+    expect(mcCard?.grupo).toBe("contexto");
+    expect(mcCard?.tone).toBe("n");
+  });
+
+  it("un ciclo en curso (no cerrado) o con carga no cuenta como sin comprobante", () => {
+    const enCurso = entry({ tipo: "solicitud", montoEstimado: 900 });
+    const conCarga = entry({ tipo: "solicitud", montoEstimado: 900 });
+    const rec = new Map([
+      [enCurso.loadId, { cerrado: false, viaCarga: false } as RecorridoInfo],
+      [conCarga.loadId, { cerrado: true, viaCarga: true } as RecorridoInfo],
+    ]);
+    const cards = buildKpisFuel([enCurso, conCarga], [], BASELINE, [], rec);
+    expect(card(cards, "tasa-comprobacion")?.sub).toContain("0 sin reporte");
+    expect(card(cards, "montacargas-sin-carga")).toBeUndefined();
+  });
+
+  it("sin datos de recorrido la métrica se omite por completo", () => {
+    const cards = buildKpisFuel([entry({ tipo: "solicitud" })], [], BASELINE, []);
+    expect(card(cards, "tasa-comprobacion")).toBeUndefined();
+    expect(card(cards, "montacargas-sin-carga")).toBeUndefined();
   });
 });

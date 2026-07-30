@@ -47,14 +47,26 @@ export function buildKpisFuel(
   const cargas = entries.filter((e) => e.tipo === "carga");
   const solicitudes = entries.filter((e) => e.tipo === "solicitud");
   // Solicitudes con ciclo CERRADO (hay una solicitud posterior) y SIN carga de por medio:
-  // dinero cargado a la tarjeta sin comprobante de consumo. La última solicitud de cada unidad
+  // dinero autorizado sin comprobante de consumo. La última solicitud de cada unidad
   // (ciclo en curso) no cuenta. Si no hay datos de recorrido, la métrica se omite.
-  const sinCarga = recorridosByLoad
-    ? solicitudes.filter((e) => {
-        const r = recorridosByLoad.get(e.loadId);
-        return r != null && r.cerrado && !r.viaCarga;
-      }).length
+  //
+  // C3 (spec 2026-07-30 §2.5): montacargas y vehículos NO se mezclan. Un montacargas Gas LP
+  // no emite reporte de carga con odómetro (su km es horómetro), así que contarlo como
+  // incumplimiento es ruido: 1,020 de los 2,932 en producción. `esMontacargas` se deriva de
+  // `producto`, el campo fiable — los montacargas traen combustible "Gasolina".
+  const sinComprobante = (e: FuelEntry): boolean => {
+    const r = recorridosByLoad?.get(e.loadId);
+    return r != null && r.cerrado && !r.viaCarga;
+  };
+  const solVehiculos = solicitudes.filter((e) => !e.esMontacargas);
+  const sinCargaVeh = recorridosByLoad ? solVehiculos.filter(sinComprobante) : null;
+  const sinCargaMc = recorridosByLoad
+    ? solicitudes.filter((e) => e.esMontacargas).filter(sinComprobante)
     : null;
+  // El dinero de una solicitud vive en montoEstimado (montoTotal es de la carga).
+  const montoAutorizado = (arr: readonly FuelEntry[]): number =>
+    arr.reduce((a, e) => a + (e.montoEstimado ?? 0), 0);
+  const cargasVeh = cargas.filter((e) => !e.esMontacargas).length;
   const litros = cargas.reduce((a, e) => a + (e.litros ?? 0), 0);
   const gasto = cargas.reduce((a, e) => a + montoEfectivo(e), 0);
   const kmplVals = metrics.map((m) => m.kmPorLitro).filter((x): x is number => x != null && x > 0);
@@ -200,15 +212,31 @@ export function buildKpisFuel(
           } as FuelKpiCard,
         ]
       : []),
-    ...(sinCarga !== null
+    ...(sinCargaVeh !== null
       ? [
           {
-            key: "sin-carga",
-            grupo: "estado" as const,
-            label: "Solicitudes sin carga",
-            value: NUM.format(sinCarga),
-            sub: "ciclo cerrado, sin consumo",
-            tone: sinCarga ? "a" : "g",
+            key: "tasa-comprobacion",
+            // Salud: una tasa pertenece al núcleo, no a los chips de alerta.
+            grupo: "nucleo" as const,
+            label: "Tasa de comprobación",
+            value: solVehiculos.length
+              ? `${((cargasVeh / solVehiculos.length) * 100).toFixed(1)} %`
+              : "—",
+            sub: `${NUM.format(sinCargaVeh.length)} sin reporte · ${PESO.format(montoAutorizado(sinCargaVeh))}`,
+            tone: "n",
+          } as FuelKpiCard,
+        ]
+      : []),
+    ...(sinCargaMc && sinCargaMc.length > 0
+      ? [
+          {
+            key: "montacargas-sin-carga",
+            // Estructural: no es incumplimiento, es que un montacargas no lleva odómetro.
+            grupo: "contexto" as const,
+            label: "Montacargas sin reporte",
+            value: NUM.format(sinCargaMc.length),
+            sub: `${PESO.format(montoAutorizado(sinCargaMc))} · estructural (horómetro)`,
+            tone: "n",
           } as FuelKpiCard,
         ]
       : []),
