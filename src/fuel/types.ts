@@ -79,6 +79,18 @@ export type FuelEntry = {
    * "SOL-<ID EN MAYÚSCULAS>" y no casa con ningún eventoId de FC (ver folioSolicitudOrigen).
    */
   solicitudFolio?: string;
+  /**
+   * Origen del registro: "ops-gpa" cuando lo escribió el puente de Operaciones-GPA;
+   * `undefined` para los de MoreApp (que nunca estamparon `datos.fuente`).
+   * Lo consume opsGuard: de él depende quién manda en el veredicto y en el odómetro.
+   */
+  fuente?: string;
+  /**
+   * Status VIVO del registro en Operaciones-GPA ("Aprobada"/"Aprobado"/"Rechazada"/
+   * "Pendiente"/"Por corregir"). Solo existe en registros del puente. Comparar SIEMPRE
+   * por prefijo: conviven las dos grafías de género.
+   */
+  opsStatus?: string;
   combustible?: string;
   /**
    * Montacargas (Gas LP): su `km` es HORÓMETRO (horas), no odómetro → el km/l no
