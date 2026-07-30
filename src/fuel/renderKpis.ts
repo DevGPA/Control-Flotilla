@@ -6,6 +6,7 @@ import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding, MotivoSinKmpl 
 import type { RecorridoInfo } from "./fuelAnalysis";
 import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { verdictOf, displayVerdictOf, FUEL_VALIDACION_DESDE } from "./renderTableCombustible";
+import { puedeValidarManual } from "./opsGuard";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
 import type { DeltaKpi } from "./kpiDeltas";
@@ -23,6 +24,12 @@ export type FuelKpiCard = {
    * pesar como trabajo pendiente; van en una línea al pie, no como tarjeta).
    */
   grupo: "nucleo" | "estado" | "contexto";
+  /**
+   * Frase completa —con el valor ya dentro— para la línea de contexto. Solo la usan las
+   * tarjetas `grupo: "contexto"`: concatenar `label` + `sub` produce copy agramatical con
+   * paréntesis anidados. Sin ella se cae a `value + label` en minúsculas.
+   */
+  frase?: string;
   filter?: "discrepancia" | "pendiente" | "anomalia" | "historico" | "rechazada"; // clic → filtro
   title?: string; // tooltip (p.ej. desglose por motivo)
   delta?: DeltaKpi | null; // vs periodo anterior de la misma duración (sin `prev` → undefined)
@@ -34,6 +41,10 @@ const PESO = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 0,
 });
 const NUM = new Intl.NumberFormat("es-MX");
+
+/** Frase de contexto: el número al frente y con la concordancia de número correcta. */
+const frasePlural = (n: number, singular: string, plural: string): string =>
+  `${NUM.format(n)} ${n === 1 ? singular : plural}`;
 
 /** Calcula los KPIs a partir de las entradas (ya scopeadas/filtradas por período). */
 export function buildKpisFuel(
@@ -58,15 +69,26 @@ export function buildKpisFuel(
     const r = recorridosByLoad?.get(e.loadId);
     return r != null && r.cerrado && !r.viaCarga;
   };
+  // La tasa de comprobación se mide sobre UNA SOLA población: los ciclos CERRADOS de
+  // vehículos. Numerador (los que terminaron en carga) y denominador salen del mismo
+  // conjunto, así que la tasa queda acotada a 0-100 %, reconcilia exactamente con su sub
+  // (los "sin reporte" son el complemento) y es estable ante el filtro de tipo de la vista,
+  // porque `recorridosByLoad` se calcula sobre el dataset completo. Dividir cargas entre
+  // solicitudes mezclaba poblaciones: daba 0 % con el filtro "Solo solicitudes" (numerador
+  // vacío) y podía pasar de 100 % en ventanas con cargas de MoreApp sin solicitud previa.
+  const cicloCerrado = (e: FuelEntry): boolean => recorridosByLoad?.get(e.loadId)?.cerrado === true;
+  const conComprobante = (e: FuelEntry): boolean =>
+    recorridosByLoad?.get(e.loadId)?.viaCarga === true;
   const solVehiculos = solicitudes.filter((e) => !e.esMontacargas);
-  const sinCargaVeh = recorridosByLoad ? solVehiculos.filter(sinComprobante) : null;
+  const cerradosVeh = recorridosByLoad ? solVehiculos.filter(cicloCerrado) : null;
+  const comprobadosVeh = cerradosVeh ? cerradosVeh.filter(conComprobante).length : 0;
+  const sinCargaVeh = cerradosVeh ? cerradosVeh.filter((e) => !conComprobante(e)) : null;
   const sinCargaMc = recorridosByLoad
     ? solicitudes.filter((e) => e.esMontacargas).filter(sinComprobante)
     : null;
   // El dinero de una solicitud vive en montoEstimado (montoTotal es de la carga).
   const montoAutorizado = (arr: readonly FuelEntry[]): number =>
     arr.reduce((a, e) => a + (e.montoEstimado ?? 0), 0);
-  const cargasVeh = cargas.filter((e) => !e.esMontacargas).length;
   const litros = cargas.reduce((a, e) => a + (e.litros ?? 0), 0);
   const gasto = cargas.reduce((a, e) => a + montoEfectivo(e), 0);
   const kmplVals = metrics.map((m) => m.kmPorLitro).filter((x): x is number => x != null && x > 0);
@@ -83,7 +105,16 @@ export function buildKpisFuel(
   // (anular o validar como gasto real). Las ya anuladas no llegan aquí (scoped() las excluye).
   const rechazadas = entries.filter((e) => verdictOf(e) === "rechazada").length;
   // "Pendientes" = lo accionable: el backfill previo al corte cae a "historico", no a pendiente.
-  const pendientes = entries.filter((e) => displayVerdictOf(e) === "pendiente").length;
+  //
+  // C5 (spec 2026-07-30 §2.5-2): la cola está partida por ORIGEN y una mitad no es de
+  // Tesorería. Un registro de Ops sin veredicto NO se puede tocar —el candado de `opsGuard`
+  // lo impide y validarlo congelaría el veredicto que el puente aún debe mandar—, así que
+  // contarlo en la bandeja de trabajo es invitar a trabajo prohibido. Mismo predicado que
+  // aplica el detalle, y por NEGACIÓN de los statuses finales: entran `Pendiente`,
+  // `Por corregir` y cualquier status que Ops invente en el futuro.
+  const pendientesTodos = entries.filter((e) => displayVerdictOf(e) === "pendiente");
+  const pendientesTesoreria = pendientesTodos.filter((e) => puedeValidarManual(e)).length;
+  const pendientesOps = pendientesTodos.length - pendientesTesoreria;
   const historicos = entries.filter((e) => displayVerdictOf(e) === "historico").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
 
@@ -99,10 +130,19 @@ export function buildKpisFuel(
   const porMotivo = new Map<MotivoSinKmpl, number>();
   for (const m of sinKmpl)
     if (m.motivoSinKmpl) porMotivo.set(m.motivoSinKmpl, (porMotivo.get(m.motivoSinKmpl) ?? 0) + 1);
-  const desgloseSinRend = [...porMotivo.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([mo, n]) => `${MOTIVO_SIN_KMPL_CORTO[mo]}: ${n}`)
-    .join(" · ");
+  const desglose = (soloAccionables: boolean): string =>
+    [...porMotivo.entries()]
+      .filter(([mo]) => !soloAccionables || MOTIVO_SIN_KMPL_ACCIONABLE[mo])
+      .sort((a, b) => b[1] - a[1])
+      .map(([mo, n]) => `${MOTIVO_SIN_KMPL_CORTO[mo]}: ${n}`)
+      .join(" · ");
+  // Dos desgloses, uno por tarjeta: el `sub` de un chip está oculto por CSS
+  // (`#fuel-kpis .kpi-chips .ksub { display: none }`), así que su `title` es la ÚNICA
+  // explicación que recibe el usuario. Poner ahí el desglose completo hacía que un chip
+  // que dice 32 mostrara una lista que suma 635. El completo pertenece a "Cobertura de
+  // km/l", que sí abarca todos los motivos.
+  const desgloseSinRend = desglose(false);
+  const desgloseAccionable = desglose(true);
 
   return [
     {
@@ -143,7 +183,7 @@ export function buildKpisFuel(
             value: NUM.format(porRevisar),
             sub: "odómetro por corregir",
             tone: "a" as const,
-            title: desgloseSinRend || undefined,
+            title: desgloseAccionable || undefined,
           } as FuelKpiCard,
         ]
       : []),
@@ -152,7 +192,9 @@ export function buildKpisFuel(
       // Salud, no alerta: una tasa va en el núcleo con el valor en tinta.
       grupo: "nucleo",
       label: "Cobertura de km/l",
-      value: metrics.length ? `${((conKmpl / metrics.length) * 100).toFixed(0)} %` : "—",
+      // Un decimal, igual que la tasa de comprobación: comparten fila y el mismo argumento
+      // (ver el movimiento mes a mes) — dos precisiones distintas se leen como un error.
+      value: metrics.length ? `${((conKmpl / metrics.length) * 100).toFixed(1)} %` : "—",
       sub: `${NUM.format(conKmpl)} de ${NUM.format(metrics.length)} cargas`,
       tone: "n",
       // El desglose completo (cuántas por cada motivo) explica el hueco sin gritar.
@@ -191,11 +233,32 @@ export function buildKpisFuel(
     {
       key: "pendientes",
       grupo: "estado",
-      label: "Pendientes de revisar",
-      value: NUM.format(pendientes),
-      tone: pendientes ? "a" : "g",
+      label: "Por revisar",
+      value: NUM.format(pendientesTesoreria),
+      tone: pendientesTesoreria ? "a" : "g",
       filter: "pendiente",
     },
+    // Los pendientes que esperan a Ops NO son trabajo de Tesorería: bajan a la línea de
+    // contexto y en tono neutro, porque el chip se vacía solo cuando Ops aprueba (se
+    // verificaron 3 desapariciones entre dos corridas del mismo día). Sin `filter`: la
+    // tabla filtra por "pendiente" sin distinguir origen, así que un clic mentiría.
+    ...(pendientesOps > 0
+      ? [
+          {
+            key: "esperando-ops",
+            grupo: "contexto" as const,
+            label: "Esperando a Ops",
+            value: NUM.format(pendientesOps),
+            sub: "el veredicto llega por el puente de Operaciones-GPA",
+            tone: "n" as const,
+            frase: frasePlural(
+              pendientesOps,
+              "registro espera el veredicto de Operaciones-GPA",
+              "registros esperan el veredicto de Operaciones-GPA",
+            ),
+          } as FuelKpiCard,
+        ]
+      : []),
     // Histórico (backfill migrado, previo al corte): se muestra para no esconder los datos,
     // en tono NEUTRO para que no pese como pendiente. Solo aparece si hay alguno.
     ...(historicos > 0
@@ -209,6 +272,7 @@ export function buildKpisFuel(
             sub: `sin validar · previo a ${FUEL_VALIDACION_DESDE}`,
             tone: "n",
             filter: "historico",
+            frase: `${frasePlural(historicos, "registro histórico", "registros históricos")} (antes de ${FUEL_VALIDACION_DESDE}) fuera del control de validación`,
           } as FuelKpiCard,
         ]
       : []),
@@ -219,9 +283,11 @@ export function buildKpisFuel(
             // Salud: una tasa pertenece al núcleo, no a los chips de alerta.
             grupo: "nucleo" as const,
             label: "Tasa de comprobación",
-            value: solVehiculos.length
-              ? `${((cargasVeh / solVehiculos.length) * 100).toFixed(1)} %`
-              : "—",
+            // Sin ciclos cerrados de vehículos no hay tasa que medir: "—", no un 0.0 % falso.
+            value:
+              cerradosVeh && cerradosVeh.length
+                ? `${((comprobadosVeh / cerradosVeh.length) * 100).toFixed(1)} %`
+                : "—",
             sub: `${NUM.format(sinCargaVeh.length)} sin reporte · ${PESO.format(montoAutorizado(sinCargaVeh))}`,
             tone: "n",
           } as FuelKpiCard,
@@ -237,6 +303,7 @@ export function buildKpisFuel(
             value: NUM.format(sinCargaMc.length),
             sub: `${PESO.format(montoAutorizado(sinCargaMc))} · estructural (horómetro)`,
             tone: "n",
+            frase: `${frasePlural(sinCargaMc.length, "solicitud de montacargas", "solicitudes de montacargas")} (${PESO.format(montoAutorizado(sinCargaMc))}) sin reporte de carga: su medidor es horómetro, no odómetro`,
           } as FuelKpiCard,
         ]
       : []),
@@ -275,6 +342,27 @@ export function renderKpisFuel(
   rowEstado.className = "kpi-row kpi-chips";
   container.append(rowNucleo, rowEstado);
 
+  /**
+   * Cablea un elemento como control de filtro: role + tabIndex + aria-label + Enter/Espacio
+   * (WCAG 4.1.2). Lo usan la tarjeta y la línea de contexto — un solo sitio para que los dos
+   * contratos de a11y no se desincronicen.
+   */
+  const wireFiltro = (el: HTMLElement, c: FuelKpiCard): void => {
+    if (!c.filter || !onFilter) return;
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", `Filtrar por ${c.label}`);
+    const h = () => onFilter(c.filter!);
+    el.addEventListener("click", h);
+    el.addEventListener("keydown", (ev) => {
+      const k = (ev as KeyboardEvent).key;
+      if (k === "Enter" || k === " ") {
+        ev.preventDefault();
+        h();
+      }
+    });
+  };
+
   const make = (c: FuelKpiCard): HTMLElement => {
     const esChip = c.grupo === "estado";
     const kc = document.createElement("div");
@@ -284,19 +372,7 @@ export function renderKpisFuel(
     else if (esChip && c.sub) kc.title = c.sub;
     if (c.filter && onFilter) {
       kc.style.cursor = "pointer";
-      kc.tabIndex = 0;
-      // A11y: es un control interactivo — role + Enter/Espacio (WCAG 4.1.2)
-      kc.setAttribute("role", "button");
-      kc.setAttribute("aria-label", `Filtrar por ${c.label}`);
-      const h = () => onFilter(c.filter!);
-      kc.addEventListener("click", h);
-      kc.addEventListener("keydown", (ev) => {
-        const k = (ev as KeyboardEvent).key;
-        if (k === "Enter" || k === " ") {
-          ev.preventDefault();
-          h();
-        }
-      });
+      wireFiltro(kc, c);
     }
     const ktop = document.createElement("div");
     ktop.className = "ktop";
@@ -345,24 +421,15 @@ export function renderKpisFuel(
     linea.className = "kpi-contexto";
     contexto.forEach((c, i) => {
       if (i > 0) linea.appendChild(document.createTextNode(" · "));
-      const txt = `${c.value} ${c.label.toLowerCase()}${c.sub ? ` (${c.sub})` : ""}`;
+      // `frase` es copy escrito para leerse; el fallback solo cubre una tarjeta de contexto
+      // que se añada sin frase (concatenar label + sub daba paréntesis anidados).
+      const txt = c.frase ?? `${c.value} ${c.label.toLowerCase()}`;
       if (c.filter && onFilter) {
         // Accionable: mismo contrato de a11y que las tarjetas (role + Enter/Espacio).
         const b = document.createElement("span");
         b.className = "kpi-contexto-link";
         b.textContent = txt;
-        b.setAttribute("role", "button");
-        b.tabIndex = 0;
-        b.setAttribute("aria-label", `Filtrar por ${c.label}`);
-        const h = () => onFilter(c.filter!);
-        b.addEventListener("click", h);
-        b.addEventListener("keydown", (ev) => {
-          const k = (ev as KeyboardEvent).key;
-          if (k === "Enter" || k === " ") {
-            ev.preventDefault();
-            h();
-          }
-        });
+        wireFiltro(b, c);
         linea.appendChild(b);
       } else {
         linea.appendChild(document.createTextNode(txt));
