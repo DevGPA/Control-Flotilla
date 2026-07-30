@@ -6,7 +6,6 @@ import type { FuelEntry, FuelMetrics, FleetBaseline, FuelFinding, MotivoSinKmpl 
 import type { RecorridoInfo } from "./fuelAnalysis";
 import { MOTIVO_SIN_KMPL_CORTO, MOTIVO_SIN_KMPL_ACCIONABLE } from "./fuelAnalysis";
 import { verdictOf, displayVerdictOf, FUEL_VALIDACION_DESDE } from "./renderTableCombustible";
-import { puedeValidarManual } from "./opsGuard";
 import { montoEfectivo } from "./fuelAggregates";
 import { mean, clampOutliers } from "../analyzer/statistics";
 import type { DeltaKpi } from "./kpiDeltas";
@@ -104,17 +103,13 @@ export function buildKpisFuel(
   // Rechazadas en origen (Ops) SIN triage: siguen sumando gasto hasta que tesorería decida
   // (anular o validar como gasto real). Las ya anuladas no llegan aquí (scoped() las excluye).
   const rechazadas = entries.filter((e) => verdictOf(e) === "rechazada").length;
-  // "Pendientes" = lo accionable: el backfill previo al corte cae a "historico", no a pendiente.
-  //
-  // C5 (spec 2026-07-30 §2.5-2): la cola está partida por ORIGEN y una mitad no es de
-  // Tesorería. Un registro de Ops sin veredicto NO se puede tocar —el candado de `opsGuard`
-  // lo impide y validarlo congelaría el veredicto que el puente aún debe mandar—, así que
-  // contarlo en la bandeja de trabajo es invitar a trabajo prohibido. Mismo predicado que
-  // aplica el detalle, y por NEGACIÓN de los statuses finales: entran `Pendiente`,
-  // `Por corregir` y cualquier status que Ops invente en el futuro.
-  const pendientesTodos = entries.filter((e) => displayVerdictOf(e) === "pendiente");
-  const pendientesTesoreria = pendientesTodos.filter((e) => puedeValidarManual(e)).length;
-  const pendientesOps = pendientesTodos.length - pendientesTesoreria;
+  // C5 (spec 2026-07-30 §2.5-2): la cola de "pendiente" está partida por ORIGEN y una mitad
+  // no es de Tesorería. Los dos buckets se leen del veredicto DERIVADO
+  // (`displayVerdictOf`), que es también el que filtra la tabla y alimenta el badge de la
+  // pestaña: así el chip, su clic y el badge no pueden discrepar. El criterio de origen vive
+  // en un solo sitio (`puedeValidarManual`, dentro de `displayVerdictOf`).
+  const pendientesTesoreria = entries.filter((e) => displayVerdictOf(e) === "pendiente").length;
+  const pendientesOps = entries.filter((e) => displayVerdictOf(e) === "esperando").length;
   const historicos = entries.filter((e) => displayVerdictOf(e) === "historico").length;
   const unidadesAfectadas = new Set(anomalies.map((a) => a.eco)).size;
 
@@ -174,14 +169,20 @@ export function buildKpisFuel(
     // estructurales (ventana, montacargas, 1ª carga, llenado partido) son correctos y no
     // son trabajo: su sitio es el desglose de "Cobertura de km/l". Se auto-oculta en 0
     // porque es deuda FINITA de la era MoreApp, no un KPI permanente.
+    //
+    // NO se llama "Errores de captura": ese nombre ya lo usa el filtro `captura` del HTML
+    // (reglas `captura-*` de matchesFlag), que es una población DISTINTA y más chica — el
+    // chip diría 32 y la lista mostraría 2. Y el copy no puede prometer odómetro: la
+    // población incluye `sin_litros` y `odometro_no_fiable`, que no se arreglan con
+    // `kmDetectado` (no hay corrector de litros en FC). Lo que las une es el efecto.
     ...(porRevisar > 0
       ? [
           {
             key: "errores-captura",
             grupo: "estado" as const,
-            label: "Errores de captura",
+            label: "Capturas por revisar",
             value: NUM.format(porRevisar),
-            sub: "odómetro por corregir",
+            sub: "bloquean el cálculo de km/l",
             tone: "a" as const,
             title: desgloseAccionable || undefined,
           } as FuelKpiCard,

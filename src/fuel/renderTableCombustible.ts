@@ -3,13 +3,9 @@
  * `renderTableCombustible` construye el DOM con la API segura (createElement/textContent,
  * sin innerHTML con datos — regla anti-XSS del proyecto).
  */
-import type {
-  FuelEntry,
-  FuelFinding,
-  FuelMetrics,
-  FuelVerdictGlobal,
-} from "./types";
+import type { FuelEntry, FuelFinding, FuelMetrics, FuelVerdictGlobal } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
+import { puedeValidarManual } from "./opsGuard";
 import { duracionCapturaMin } from "./fuelAggregates";
 import {
   MOTIVO_SIN_KMPL_CORTO,
@@ -100,8 +96,12 @@ export function rechazadasNoContadas(anuladas: readonly FuelEntry[]): FuelEntry[
  */
 export const FUEL_VALIDACION_DESDE = "2026-06-01";
 
-/** Veredicto MOSTRADO: añade "historico" al veredicto persistido (derivado, nunca se guarda). */
-export type FuelDisplayVerdict = FuelVerdictGlobal | "historico";
+/**
+ * Veredicto MOSTRADO: añade al veredicto persistido dos estados DERIVADOS (nunca se guardan)
+ * que dicen *de quién es* un "pendiente" — "historico" (de nadie: previo al corte) y
+ * "esperando" (de Ops: el veredicto llega por el puente).
+ */
+export type FuelDisplayVerdict = FuelVerdictGlobal | "historico" | "esperando";
 
 /** ¿La carga es anterior al corte del control? (solo por fecha; no mira la validación). */
 export function esHistorico(e: FuelEntry, desde: string = FUEL_VALIDACION_DESDE): boolean {
@@ -109,16 +109,32 @@ export function esHistorico(e: FuelEntry, desde: string = FUEL_VALIDACION_DESDE)
 }
 
 /**
- * Veredicto para mostrar/contar. "historico" SOLO reemplaza a "pendiente" en cargas previas
- * al corte: una validación real ya hecha (ok/discrepancia) se RESPETA aunque sea vieja — no
- * borramos el trabajo del revisor ni ocultamos una discrepancia auténtica del histórico.
+ * Veredicto para mostrar/contar. Los dos estados derivados SOLO reemplazan a "pendiente":
+ * una validación real ya hecha (ok/discrepancia/rechazada) se RESPETA aunque sea vieja o de
+ * Ops — no borramos el trabajo del revisor ni ocultamos una discrepancia auténtica.
+ *
+ * PRECEDENCIA: "historico" gana sobre "esperando". Tres razones:
+ *  1. "historico" es una afirmación sobre el CONTROL de validación de Fleet Command, no sobre
+ *     la cola de Ops: lo previo a `FUEL_VALIDACION_DESDE` está fuera del flujo por diseño, y
+ *     que Ops apruebe después no lo mete dentro.
+ *  2. Mantiene el histórico anclado a una perilla reversible (la fecha de corte) en vez de
+ *     hacerlo depender del estado vivo de la cola de Ops, que cambia cada día.
+ *  3. Toda fila sigue siendo alcanzable por un filtro: "historico" tiene su <option>;
+ *     "esperando" NO es seleccionable por decisión de producto, así que si ganara dejaría
+ *     filas que ningún filtro puede listar.
+ * Consecuencia práctica: "esperando" solo aplica a registros POSTERIORES al corte, que es
+ * exactamente la población viva (los ~20 pendientes de Ops).
  */
 export function displayVerdictOf(
   e: FuelEntry,
   desde: string = FUEL_VALIDACION_DESDE,
 ): FuelDisplayVerdict {
   const v = verdictOf(e);
-  return v === "pendiente" && esHistorico(e, desde) ? "historico" : v;
+  if (v !== "pendiente") return v;
+  if (esHistorico(e, desde)) return "historico";
+  // Por NEGACIÓN y con el MISMO predicado que aplica el candado de escritura: si Tesorería no
+  // puede resolverlo, no es su cola. Reimplementar el criterio aquí los dejaría divergir.
+  return puedeValidarManual(e) ? "pendiente" : "esperando";
 }
 
 function matchesSearch(e: FuelEntry, q: string): boolean {
@@ -174,6 +190,9 @@ export function filterAndSortFuel(
     discrepancia: 3,
     pendiente: 2,
     ok: 1,
+    // "esperando" se ordena por ENCIMA del histórico y por debajo de lo validado: no es
+    // trabajo de Tesorería, pero sí es una cola viva (se vacía cuando Ops aprueba).
+    esperando: 0.5,
     historico: 0,
   };
   // En vista Solicitudes las columnas Litros/Monto/km-l muestran Nivel/Monto a cargar/Litros máx,
@@ -247,6 +266,9 @@ const VERDICT_PILL: Record<FuelDisplayVerdict, { cls: string; txt: string }> = {
   ok: { cls: "sw-pill-ok", txt: "Validado" },
   discrepancia: { cls: "sw-pill-urg", txt: "Discrepancia" },
   pendiente: { cls: "sw-pill-rev", txt: "Pendiente" },
+  // Se lee DISTINTO de "Pendiente" y NO lleva el ámbar de "por revisar": no es cola de
+  // Tesorería, y validarlo a mano congelaría el veredicto que Ops aún debe mandar.
+  esperando: { cls: "sw-pill-espera", txt: "Esperando a Ops" },
   historico: { cls: "sw-pill-hist", txt: "Histórico" },
   rechazada: { cls: "sw-pill-rej", txt: "Rechazada · Ops" },
 };
@@ -479,7 +501,9 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
     else if (v === "rechazada") tr.classList.add("sw-rej");
     else if (v === "discrepancia") tr.classList.add("sw-urg");
     else if (v === "pendiente") tr.classList.add("sw-rev");
-    // "historico" no resalta la fila: estado neutro, fuera del radar de control.
+    // Ni "historico" ni "esperando" resaltan la fila: estados neutros, fuera del radar de
+    // control de Tesorería. Sin `else`, así que un veredicto derivado nuevo cae en neutro
+    // por omisión en vez de heredar el resaltado de "por revisar".
     tr.tabIndex = 0;
 
     const tcap = duracionCapturaMin(e);
@@ -513,9 +537,7 @@ export function renderTableCombustible(deps: RenderTableCombustibleDeps): {
           ? `${NUM.format(Math.round(e.litros * 10) / 10)} L`
           : "—",
       montoCell,
-      esSol
-        ? recLabel(recorridosByLoad?.get(e.loadId))
-        : kmplCell(metricsByLoad?.get(e.loadId)),
+      esSol ? recLabel(recorridosByLoad?.get(e.loadId)) : kmplCell(metricsByLoad?.get(e.loadId)),
       tcap != null ? `${tcap} min` : "—",
       alertasCell(findingsByLoad?.get(e.loadId)),
       verdictCell(e, v, nombreValidador),

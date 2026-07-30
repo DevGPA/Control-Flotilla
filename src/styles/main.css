@@ -5419,6 +5419,15 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   color: var(--w2);
   border: 1px solid var(--ln);
 }
+.sw-pill-espera {
+  /* Esperando a Operaciones-GPA (spec 2026-07-30 C5): pendiente que NO es cola de Tesorería
+     —el veredicto llega por el puente—. Neutro como el histórico para que no compita con lo
+     accionable, pero con borde punteado: la convención que ya usa .sw-pill-rej para "esto
+     está esperando a alguien". */
+  background: var(--bg2);
+  color: var(--w2);
+  border: 1px dashed var(--ln);
+}
 .sw-pill-rej {
   /* Rechazada en origen (Operaciones-GPA): acción pendiente de triage de tesorería. */
   background: var(--Rd);

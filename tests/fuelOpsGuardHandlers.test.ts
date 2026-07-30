@@ -107,6 +107,19 @@ describe("handleKmDetectado — el candado del odómetro no vive solo en el rend
     expect(load.review?.kmDetectado).toBeUndefined();
   });
 
+  it("la exención de retirada exige que HAYA algo que retirar", async () => {
+    // Un registro de Ops SIN review: "retirar" no retiraría nada, CREARÍA una
+    // ValidacionCarga con fuenteDeteccion "manual" → no-pisado activado y veredicto
+    // congelado de la nada. Es la corrupción que el candado existe para evitar.
+    const load = carga({ fuente: "ops-gpa", opsStatus: "Pendiente" });
+    expect(load.review, "el fixture no debe traer review").toBeUndefined();
+    const { onKmDetectado } = await handlers(load);
+    onKmDetectado(load.loadId, null);
+    expect(upserts).toEqual([]);
+    expect(load.review).toBeUndefined();
+    expect(avisos.join(" ")).toContain("no tiene ninguna corrección");
+  });
+
   it("un registro de MoreApp se corrige con normalidad", async () => {
     const load = carga({ loadId: "45|carga|3809", eventoId: "3809" });
     const { onKmDetectado } = await handlers(load);
