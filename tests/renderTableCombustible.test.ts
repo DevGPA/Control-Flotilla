@@ -455,7 +455,7 @@ describe("buildKpisFuel", () => {
     expect(kpis.find((k) => k.key === "sin-carga")).toBeUndefined();
   });
 
-  it("KPI 'Sin rendimiento' cuenta cargas sin km/l y separa 'por revisar' de estructurales", () => {
+  it("KPI 'Errores de captura' cuenta solo lo accionable, no estructurales", () => {
     // U1: 1ª carga (estructural) + 2ª válida; U2: 1ª carga (estructural) + retroceso (por revisar).
     // Cargas a tanque lleno (motor de ventanas: sin "Si" serían todas parciales sin km/l).
     const lleno = { seLlenoTanque: "Si" } as const;
@@ -468,10 +468,10 @@ describe("buildKpisFuel", () => {
     const metrics = computeFuelMetrics(entries);
     const baseline = buildFleetBaseline(metrics, entries);
     const card = buildKpisFuel(entries, metrics, baseline, []).find(
-      (k) => k.key === "sin-rendimiento",
+      (k) => k.key === "errores-captura",
     );
     expect(card).toBeTruthy();
-    expect(card!.value).toBe("3"); // 2 primeras cargas + 1 retroceso
-    expect(card!.sub).toContain("1 por revisar"); // solo el retroceso es accionable
+    expect(card!.value).toBe("1"); // solo el retroceso accionable (2 primeras cargas son estructurales)
+    expect(card!.sub).toContain("odómetro por corregir"); // sub de la tarjeta new
   });
 });

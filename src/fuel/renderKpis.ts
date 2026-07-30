@@ -74,12 +74,11 @@ export function buildKpisFuel(
   // "por revisar" (captura mala, accionables) de los huecos estructurales correctos; el
   // desglose completo por motivo va en el tooltip de la tarjeta.
   const sinKmpl = metrics.filter((m) => m.kmPorLitro == null);
-  // Cargas parciales que SUMAN a una ventana abierta (estructural del motor de ventanas):
-  // el desglose evita que el usuario las lea como "datos por revisar".
-  const enVentana = sinKmpl.filter((m) => m.motivoSinKmpl === "parcial_en_ventana").length;
   const porRevisar = sinKmpl.filter(
     (m) => m.motivoSinKmpl && MOTIVO_SIN_KMPL_ACCIONABLE[m.motivoSinKmpl],
   ).length;
+  // Cargas que SÍ tienen km/l — numerador de la cobertura.
+  const conKmpl = metrics.length - sinKmpl.length;
   const porMotivo = new Map<MotivoSinKmpl, number>();
   for (const m of sinKmpl)
     if (m.motivoSinKmpl) porMotivo.set(m.motivoSinKmpl, (porMotivo.get(m.motivoSinKmpl) ?? 0) + 1);
@@ -114,18 +113,32 @@ export function buildKpisFuel(
       sub: "ponderado por litros",
       tone: "g",
     },
+    // C1 (spec 2026-07-30 §2.5-1): el chip cuenta SOLO lo accionable. Los huecos
+    // estructurales (ventana, montacargas, 1ª carga, llenado partido) son correctos y no
+    // son trabajo: su sitio es el desglose de "Cobertura de km/l". Se auto-oculta en 0
+    // porque es deuda FINITA de la era MoreApp, no un KPI permanente.
+    ...(porRevisar > 0
+      ? [
+          {
+            key: "errores-captura",
+            grupo: "estado" as const,
+            label: "Errores de captura",
+            value: NUM.format(porRevisar),
+            sub: "odómetro por corregir",
+            tone: "a" as const,
+            title: desgloseSinRend || undefined,
+          } as FuelKpiCard,
+        ]
+      : []),
     {
-      key: "sin-rendimiento",
-      grupo: "estado",
-      label: "Sin rendimiento",
-      value: NUM.format(sinKmpl.length),
-      sub:
-        porRevisar > 0
-          ? `${porRevisar} por revisar · ${enVentana} suman a ventana · ${sinKmpl.length - porRevisar - enVentana} normales`
-          : enVentana > 0
-            ? `${enVentana} suman a ventana · resto explicado`
-            : "todas explicadas",
-      tone: porRevisar > 0 ? "a" : "n",
+      key: "cobertura-kmpl",
+      // Salud, no alerta: una tasa va en el núcleo con el valor en tinta.
+      grupo: "nucleo",
+      label: "Cobertura de km/l",
+      value: metrics.length ? `${((conKmpl / metrics.length) * 100).toFixed(0)} %` : "—",
+      sub: `${NUM.format(conKmpl)} de ${NUM.format(metrics.length)} cargas`,
+      tone: "n",
+      // El desglose completo (cuántas por cada motivo) explica el hueco sin gritar.
       title: desgloseSinRend || undefined,
     },
     {
