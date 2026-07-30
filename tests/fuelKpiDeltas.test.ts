@@ -88,10 +88,8 @@ describe("buildKpisFuel — jerarquía de grupos (fix Producto Vivo #2)", () => 
     }
     // cobertura-kmpl es ahora la métrica núcleo que reemplaza sin-rendimiento (pero es nucleo, no estado)
     expect(byKey["cobertura-kmpl"]!.grupo, "cobertura-kmpl debe ser nucleo").toBe("nucleo");
-    // errores-captura es la tarjeta de estado que aparece si hay errores accionables
-    if (byKey["errores-captura"]) {
-      expect(byKey["errores-captura"]!.grupo, "errores-captura debe ser estado").toBe("estado");
-    }
+    // errores-captura solo aparece si hay motivos accionables; este fixture solo tiene estructurales
+    expect(byKey["errores-captura"]).toBeUndefined();
     // el resto de chips siempre existen y son estado
     for (const k of ["discrepancias", "pendientes", "anomalias"]) {
       expect(byKey[k]!.grupo, `${k} debe ser estado`).toBe("estado");

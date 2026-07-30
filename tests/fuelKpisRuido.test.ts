@@ -51,6 +51,8 @@ describe("C1 — el chip cuenta errores de captura, no huecos estructurales", ()
     ];
     const cards = buildKpisFuel(es, ms, BASELINE, []);
     expect(card(cards, "errores-captura")?.value).toBe("2");
+    expect(card(cards, "errores-captura")?.grupo).toBe("estado");
+    expect(card(cards, "cobertura-kmpl")?.grupo).toBe("nucleo");
     expect(card(cards, "sin-rendimiento")).toBeUndefined();
   });
 
