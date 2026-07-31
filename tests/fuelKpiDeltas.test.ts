@@ -52,7 +52,7 @@ describe("buildKpisFuel — deltas con `prev` (Task 10)", () => {
 
     // el resto de tarjetas (fuera del alcance de esta tarea) no lleva delta
     expect(byKey.kmpl!.delta).toBeFalsy();
-    expect(byKey["sin-rendimiento"]!.delta).toBeFalsy();
+    expect(byKey["cobertura-kmpl"]!.delta).toBeFalsy();
     expect(byKey.discrepancias!.delta).toBeFalsy();
     expect(byKey.pendientes!.delta).toBeFalsy();
     expect(byKey.anomalias!.delta).toBeFalsy();
@@ -86,7 +86,12 @@ describe("buildKpisFuel — jerarquía de grupos (fix Producto Vivo #2)", () => 
     for (const k of ["cargas", "litros", "kmpl", "gasto"]) {
       expect(byKey[k]!.grupo, `${k} debe ser núcleo`).toBe("nucleo");
     }
-    for (const k of ["sin-rendimiento", "discrepancias", "pendientes", "anomalias"]) {
+    // cobertura-kmpl es ahora la métrica núcleo que reemplaza sin-rendimiento (pero es nucleo, no estado)
+    expect(byKey["cobertura-kmpl"]!.grupo, "cobertura-kmpl debe ser nucleo").toBe("nucleo");
+    // errores-captura solo aparece si hay motivos accionables; este fixture solo tiene estructurales
+    expect(byKey["errores-captura"]).toBeUndefined();
+    // el resto de chips siempre existen y son estado
+    for (const k of ["discrepancias", "pendientes", "anomalias"]) {
       expect(byKey[k]!.grupo, `${k} debe ser estado`).toBe("estado");
     }
   });

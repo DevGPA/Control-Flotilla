@@ -5419,6 +5419,20 @@ body:not([data-view="inspecciones"]) #alerts-panel {
   color: var(--w2);
   border: 1px solid var(--ln);
 }
+.sw-pill-espera {
+  /* Esperando a Operaciones-GPA (spec 2026-07-30 C5): pendiente que NO es cola de Tesorería
+     —el veredicto llega por el puente—. Neutro para que no compita con lo accionable, pero
+     con borde punteado: la convención que ya usa .sw-pill-rej para "esto espera a alguien".
+
+     Los colores salen de `--s2` (texto apagado) y NO de `--bg2`/`--w2`/`--ln`: con esa terna
+     —la que usa .sw-pill-hist— el fondo y el borde quedan a 1-2 % de luminancia de la fila
+     (claro #eff1f5 sobre blanco, oscuro #111827 sobre #0f172a), así que la pastilla no se ve
+     y `--w2` es el texto PRIMARIO. Verificado en pantalla: se leía como texto en negrita sin
+     contenedor, más prominente que las pills vecinas — justo lo contrario de "neutro". */
+  background: transparent;
+  color: var(--s2);
+  border: 1px dashed var(--s2);
+}
 .sw-pill-rej {
   /* Rechazada en origen (Operaciones-GPA): acción pendiente de triage de tesorería. */
   background: var(--Rd);
@@ -6421,4 +6435,34 @@ body[data-hydrating] .uv-empty::before {
   .vivo-seg button {
     transition: none !important;
   }
+}
+
+/* Línea de contexto bajo los KPIs (spec 2026-07-30 C2): archivo y huecos
+   estructurales — datos que NO se esconden pero que no deben pesar como pendientes. */
+.kpi-contexto {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--s2);
+  line-height: 1.5;
+}
+.kpi-contexto-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.kpi-contexto-link:hover,
+.kpi-contexto-link:focus-visible {
+  color: var(--ac);
+}
+
+/* Aviso de escritura bloqueada por el candado de Ops (spec 2026-07-30 C5b). */
+.fv-bloqueo {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ln);
+  border-left: 3px solid var(--A);
+  border-radius: 6px;
+  background: var(--bg2);
+  font-size: 12px;
+  color: var(--s2);
 }

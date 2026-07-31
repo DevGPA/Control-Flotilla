@@ -430,7 +430,7 @@ describe("buildKpisFuel", () => {
     expect(byKey.gasto).toContain("2,700");
   });
 
-  it("KPI 'Solicitudes sin carga' cuenta ciclos cerrados sin carga (no la última solicitud)", () => {
+  it("KPI 'Tasa de comprobación' cuenta ciclos cerrados sin carga (no la última solicitud)", () => {
     // U1: sol→sol SIN carga (ciclo cerrado sin carga = 1); la 2ª solicitud queda en curso.
     // U2: sol→carga→sol (ciclo cerrado CON carga = no cuenta).
     const entries = [
@@ -445,33 +445,152 @@ describe("buildKpisFuel", () => {
     const anomalies = detectFuelAnomalies(metrics, baseline);
     const rec = computeRecorridos(entries);
     const kpis = buildKpisFuel(entries, metrics, baseline, anomalies, rec);
-    const sin = kpis.find((k) => k.key === "sin-carga");
-    expect(sin).toBeTruthy();
-    expect(sin!.value).toBe("1");
+    const tasa = kpis.find((k) => k.key === "tasa-comprobacion");
+    expect(tasa).toBeTruthy();
+    expect(tasa!.sub).toContain("1 sin reporte");
   });
 
-  it("sin recorridosByLoad NO incluye la tarjeta 'sin-carga'", () => {
+  it("sin recorridosByLoad NO incluye la tarjeta 'tasa-comprobacion'", () => {
     const kpis = buildKpisFuel([], [], buildFleetBaseline([], []), []);
-    expect(kpis.find((k) => k.key === "sin-carga")).toBeUndefined();
+    expect(kpis.find((k) => k.key === "tasa-comprobacion")).toBeUndefined();
   });
 
-  it("KPI 'Sin rendimiento' cuenta cargas sin km/l y separa 'por revisar' de estructurales", () => {
+  it("KPI 'Capturas por revisar' cuenta solo lo accionable, no estructurales", () => {
     // U1: 1ª carga (estructural) + 2ª válida; U2: 1ª carga (estructural) + retroceso (por revisar).
     // Cargas a tanque lleno (motor de ventanas: sin "Si" serían todas parciales sin km/l).
     const lleno = { seLlenoTanque: "Si" } as const;
     const entries = [
-      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-01", km: 1000, litros: 50, monto: 1000, ...lleno }),
-      entry({ eco: "U1", tipo: "carga", fecha: "2026-06-10", km: 1500, litros: 50, monto: 1000, ...lleno }),
-      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-01", km: 2000, litros: 50, monto: 1000, ...lleno }),
-      entry({ eco: "U2", tipo: "carga", fecha: "2026-06-10", km: 1800, litros: 50, monto: 1000, ...lleno }),
+      entry({
+        eco: "U1",
+        tipo: "carga",
+        fecha: "2026-06-01",
+        km: 1000,
+        litros: 50,
+        monto: 1000,
+        ...lleno,
+      }),
+      entry({
+        eco: "U1",
+        tipo: "carga",
+        fecha: "2026-06-10",
+        km: 1500,
+        litros: 50,
+        monto: 1000,
+        ...lleno,
+      }),
+      entry({
+        eco: "U2",
+        tipo: "carga",
+        fecha: "2026-06-01",
+        km: 2000,
+        litros: 50,
+        monto: 1000,
+        ...lleno,
+      }),
+      entry({
+        eco: "U2",
+        tipo: "carga",
+        fecha: "2026-06-10",
+        km: 1800,
+        litros: 50,
+        monto: 1000,
+        ...lleno,
+      }),
     ];
     const metrics = computeFuelMetrics(entries);
     const baseline = buildFleetBaseline(metrics, entries);
     const card = buildKpisFuel(entries, metrics, baseline, []).find(
-      (k) => k.key === "sin-rendimiento",
+      (k) => k.key === "errores-captura",
     );
     expect(card).toBeTruthy();
-    expect(card!.value).toBe("3"); // 2 primeras cargas + 1 retroceso
-    expect(card!.sub).toContain("1 por revisar"); // solo el retroceso es accionable
+    expect(card!.value).toBe("1"); // solo el retroceso accionable (2 primeras cargas son estructurales)
+    // El copy NO promete odómetro: la población incluye sin_litros y odometro_no_fiable, que
+    // no se corrigen con kmDetectado. Y NO se llama "Errores de captura": ese nombre ya es del
+    // filtro `captura` del HTML, que cuenta otra población (el chip diría 32 y la lista 2).
+    expect(card!.label).toBe("Capturas por revisar");
+    expect(card!.sub).toBe("bloquean el cálculo de km/l");
+    expect(card!.label).not.toContain("Errores de captura");
+  });
+});
+
+describe("veredicto derivado «esperando» — el chip, su clic y el badge cuentan lo mismo", () => {
+  /** Pendientes (sin `review`) POSTERIORES al corte, uno por origen/status. */
+  const post = "2026-07-15";
+  const moreapp = (eco: string) => entry({ eco, tipo: "carga", fecha: post, eventoId: `m${eco}` });
+  const ops = (eco: string, opsStatus: string) =>
+    entry({ eco, tipo: "carga", fecha: post, eventoId: `o${eco}`, fuente: "ops-gpa", opsStatus });
+
+  it("un pendiente de Ops es «esperando», no «pendiente»", () => {
+    expect(displayVerdictOf(ops("1", "Pendiente"))).toBe("esperando");
+    // Por NEGACIÓN: también los "Por corregir" y cualquier status futuro.
+    expect(displayVerdictOf(ops("2", "Por corregir"))).toBe("esperando");
+    expect(displayVerdictOf(ops("3", "En revisión de flotilla"))).toBe("esperando");
+    // Cuando Ops ya decidió, vuelve a ser cola de Tesorería.
+    expect(displayVerdictOf(ops("4", "Aprobada"))).toBe("pendiente");
+    expect(displayVerdictOf(ops("5", "Aprobado"))).toBe("pendiente");
+    expect(displayVerdictOf(moreapp("6"))).toBe("pendiente");
+  });
+
+  it("una validación real ya hecha se respeta aunque el registro sea de Ops sin status final", () => {
+    const validada = entry({
+      eco: "7",
+      tipo: "carga",
+      fecha: post,
+      fuente: "ops-gpa",
+      opsStatus: "Pendiente",
+      review: { verdictGlobal: "discrepancia", porEvidencia: {} },
+    } as Partial<FuelEntry> & { eco: string; tipo: "carga" });
+    expect(displayVerdictOf(validada)).toBe("discrepancia");
+  });
+
+  it("«historico» gana sobre «esperando» en un registro de Ops previo al corte", () => {
+    // Precedencia justificada en displayVerdictOf: el corte es una afirmación sobre el
+    // control de FC, y "historico" sí tiene filtro propio mientras "esperando" no.
+    const viejo = entry({
+      eco: "8",
+      tipo: "carga",
+      fecha: "2026-03-01",
+      fuente: "ops-gpa",
+      opsStatus: "Pendiente",
+    });
+    expect(esHistorico(viejo)).toBe(true);
+    expect(displayVerdictOf(viejo)).toBe("historico");
+  });
+
+  it("el clic del chip lista EXACTAMENTE lo que el chip cuenta", () => {
+    const entries = [moreapp("10"), moreapp("11"), ops("12", "Pendiente"), ops("13", "Aprobada")];
+    const kpis = buildKpisFuel(entries, [], buildFleetBaseline([], []), []);
+    const chip = kpis.find((k) => k.key === "pendientes")!;
+    const espera = kpis.find((k) => k.key === "esperando-ops")!;
+    expect(chip.value).toBe("3"); // 2 MoreApp + la de Ops ya aprobada
+    expect(espera.value).toBe("1");
+    // El filtro que dispara el chip devuelve el MISMO número (era 4 antes del arreglo).
+    const listadas = filterAndSortFuel(entries, { ...NO_FILTER, verdict: "pendiente" }, "_idx", 1);
+    expect(listadas).toHaveLength(3);
+    expect(listadas.every((e) => displayVerdictOf(e) === "pendiente")).toBe(true);
+  });
+
+  it("una fila «esperando» no se pinta como «Pendiente» ni lleva el resaltado de por revisar", () => {
+    const tbody = document.createElement("tbody");
+    const entries = [ops("14", "Pendiente"), moreapp("15")];
+    renderTableCombustible({
+      tbody,
+      entries,
+      filter: NO_FILTER,
+      sortCol: "_idx",
+      sortDir: 1,
+      metricsByLoad: new Map(),
+    } as never);
+    const filas = [...tbody.querySelectorAll("tr")];
+    expect(filas).toHaveLength(2);
+    const fOps = filas[0]!;
+    const fMore = filas[1]!;
+    // Se lee distinta...
+    expect(fOps.textContent).toContain("Esperando a Ops");
+    expect(fOps.querySelector(".sw-pill-espera")).not.toBeNull();
+    expect(fOps.querySelector(".sw-pill-rev")).toBeNull();
+    // ...y no lleva el resaltado ámbar de "por revisar", que la de MoreApp sí lleva.
+    expect(fOps.classList.contains("sw-rev")).toBe(false);
+    expect(fMore.classList.contains("sw-rev")).toBe(true);
   });
 });

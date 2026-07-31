@@ -276,6 +276,11 @@ export function mapCargaToFuelEntry(
     // así que aquí solo se promueve: sin esta línea el dato existe en `datos` pero no
     // existe para la aplicación.
     solicitudFolio: str(datos.solicitudFolio),
+    // Procedencia del registro (spec 2026-07-30 §2.5): sin promoverlos, la aplicación no
+    // puede distinguir un registro del puente de uno de MoreApp, y los candados de
+    // escritura de opsGuard serían imposibles. `str()` ya recorta y colapsa "" → undefined.
+    fuente: str(datos.fuente),
+    opsStatus: str(datos.opsStatus),
     combustible: combustible || undefined,
     producto: producto || undefined,
     esMontacargas,

@@ -40,6 +40,7 @@ import {
 import { buildKpisFuel, renderKpisFuel } from "./renderKpis";
 import { totalesCargas, rangoAnterior } from "./kpiDeltas";
 import { renderDetalleCarga, deriveGlobalVerdict } from "./renderDetalleCarga";
+import { esOrigenOps, puedeCorregirKm, puedeValidarManual, motivoBloqueo } from "./opsGuard";
 import {
   rankUnitsByDeviation,
   rankUnitsBySubmarca,
@@ -682,6 +683,8 @@ function updateFuelNavBadge(): void {
     const v = displayVerdictOf(e);
     // "rechazada" ya contaba en el radar antes de esta feature (llegaba como
     // discrepancia); se preserva explícitamente para no perder esas filas del badge.
+    // Los pendientes de Ops NO cuentan: `displayVerdictOf` los devuelve como "esperando",
+    // así que el badge se parte por origen igual que el chip, sin repetir el criterio aquí.
     return v === "pendiente" || v === "discrepancia" || v === "rechazada";
   }).length;
   badge.textContent = pend > 99 ? "99+" : pend > 0 ? String(pend) : "";
@@ -1030,6 +1033,28 @@ function navDetail(delta: number): void {
 function handleKmDetectado(loadId: string, km: number | null): void {
   const load = loadById(loadId);
   if (!load) return;
+  // C5b (spec 2026-07-30 §2.5-5): el candado se aplica AQUÍ, no solo en el render. Que hoy
+  // el único camino sea el drawer es una coincidencia, no una garantía: cualquier atajo,
+  // acción masiva o llamada futura entra por esta función.
+  //
+  // RETIRAR es la salida de emergencia de una corrección manual ya escrita, así que la
+  // exención exige que HAYA algo que retirar: sin ese "y hay corrección", un
+  // `handleKmDetectado(id, null)` sobre un registro de Ops sin `review` no retiraría nada —
+  // CREARÍA una ValidacionCarga con `fuenteDeteccion: "manual"`, activando el no-pisado del
+  // receptor y congelando el veredicto DE LA NADA, que es justo la corrupción que el candado
+  // existe para evitar. La invariante no puede depender de que el único llamador se porte bien.
+  const retirando = km === null;
+  const hayCorreccion = load.review?.kmDetectado != null;
+  if (retirando ? esOrigenOps(load) && !hayCorreccion : !puedeCorregirKm(load)) {
+    window.notify?.(
+      retirando
+        ? "Este registro de Operaciones-GPA no tiene ninguna corrección de odómetro que retirar."
+        : "El odómetro de un registro de Operaciones-GPA se corrige en Ops (km forzado), no aquí: hacerlo en Flotilla crearía una divergencia que nadie vería.",
+      "error",
+      5000,
+    );
+    return;
+  }
   const prevReview = load.review;
   const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
   const sess = window.__cloudSession;
@@ -1083,6 +1108,14 @@ function handleValidate(
 ): void {
   const load = loadById(loadId);
   if (!load) return;
+  // C5b (spec 2026-07-30 §2.5-2): mismo candado que el render, en el handler. Validar a mano
+  // un registro que Ops aún no ha resuelto escribe `fuenteDeteccion: "manual"` y activa el
+  // no-pisado del receptor: el veredicto quedaría congelado y la decisión de Ops nunca
+  // entraría. Reusa `motivoBloqueo` para que el aviso diga lo mismo que el drawer.
+  if (!puedeValidarManual(load)) {
+    window.notify?.(motivoBloqueo(load), "error", 5000);
+    return;
+  }
   const prevReview = load.review; // para rollback si falla la persistencia
   const review = load.review ?? { verdictGlobal: "pendiente" as const, porEvidencia: {} };
   const por: Partial<Record<FuelEvidenceKind, FuelVerdict>> = { ...review.porEvidencia };
