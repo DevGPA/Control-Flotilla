@@ -118,7 +118,9 @@ describe("mapMensual: CL mensual de Ops → Unit + Checklist (analyzeRow)", () =
       "Copiloto Trasera": 8,
       Refacción: 7,
     });
-    expect(r.minT).toBe(7);
+    // El TACO mínimo cuenta solo llantas EN CIRCULACIÓN (decisión Navares 2026-08-11):
+    // la refacción a 7mm no lo define aunque sea la lectura más baja del registro.
+    expect(r.minT).toBe(8);
     expect(r.km).toBe("45210");
     expect(r.kmNextSvc).toBe("50000");
     expect(r.nextSvc).toBe("2027-01-15");
@@ -140,6 +142,20 @@ describe("mapMensual: CL mensual de Ops → Unit + Checklist (analyzeRow)", () =
       expect.objectContaining({ cat: "Llantas", key: "Llanta:Copiloto Trasera", lv: "Revisar" }),
     );
     expect(r.minT).toBe(2);
+  });
+
+  // Decisión Navares 2026-08-11: la refacción no toca el piso → tope Revisar y fuera
+  // del TACO mínimo. Antes una refacción lisa dejaba la unidad en Urgente y su lectura
+  // definía el mínimo, con lo que se veía "Reemplazo urgente" con el rodaje sano.
+  it("refacción lisa por el puente → Revisar, y no define el TACO mínimo", () => {
+    const ops = base();
+    (ops.answers as Record<string, unknown>).taco_ref = 2;
+    const r = resultadosDe(ops);
+    expect(r.risk).toBe("Revisar");
+    expect(r.findings).toContainEqual(
+      expect.objectContaining({ cat: "Llantas", key: "Llanta:Refacción", lv: "Revisar" }),
+    );
+    expect(r.minT).toBe(8); // la más baja EN CIRCULACIÓN
   });
 
   it('"Sin Nivel" en frenos (peor caso NIVEL_OPTS) → Urgente pese a no contener "bajo"', () => {

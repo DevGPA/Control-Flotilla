@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Esf1vFirssbzbeOON1eaP56w/WD0E3kxbvIu2dtHKOE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-u5w4Qf/xvjOVLFZG3x/VYEdcTeT+SKq2ZAlZqfu3RKY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1961,7 +1961,11 @@ function analyzeRow(row){
     const _raw=parseFloat(row[c]);if(!isNaN(_raw)){
       // TACO: 0<v<1 viene en cm (0.4cm=4mm) → ×10. 0 (lisa) y ≥1 igual.
       const v=_raw>0&&_raw<1?Math.round(_raw*100)/10:_raw;T[n]=v;
-      if(v<=TCRIT){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — desgaste crítico`,lv:"Urgente"});esc("Urgente")}
+      // Decisión Navares 2026-08-11: la refacción NO está en circulación → su desgaste
+      // nunca escala la unidad a Urgente (tope Revisar). Antes traer una refacción lisa
+      // se castigaba MÁS que no traer refacción (Completar) — severidad invertida.
+      // Espejo de src/analyzer/analyzeRow.ts + src/analyzer/refaccion.ts.
+      if(v<=TCRIT){const lvT=n==="Refacción"?"Revisar":"Urgente";F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — desgaste crítico`,lv:lvT});esc(lvT)}
       else if(v<=TWARN){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — revisar desgaste`,lv:"Revisar"});esc("Revisar")}
     }
   }
@@ -1994,8 +1998,12 @@ function analyzeRow(row){
       else if(diffDays<=30){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${diffDays} días)`,lv:"Completar"});esc("Completar")}
     }
   }
-  const tv=Object.values(T);
-  return{max,F,T,minT:tv.length?Math.min(...tv):null};
+  // TACO mínimo = solo llantas EN CIRCULACIÓN (espejo de minTRodaje en
+  // src/analyzer/refaccion.ts). Una refacción gastada no debe pintar de rojo la columna
+  // Llantas de una unidad con el rodaje sano; su lectura se conserva en T para mostrarla
+  // aparte, en su propia fila del detalle.
+  const tRodaje=Object.entries(T).filter(([n])=>n!=="Refacción").map(([,v])=>v);
+  return{max,F,T,minT:tRodaje.length?Math.min(...tRodaje):null};
 }
 
 // ── Fase C1: identidad estable de hallazgos + lectura de completaciones ─────
@@ -4216,11 +4224,19 @@ function renderDetBody(u){
         <div class="trrst" style="color:var(--s2)">Sin refacción</div>
         <div style="font-size:10px;color:var(--s2);font-style:italic;padding-left:6px">No disponible</div>
       </div></div>`:"");
+    // minT puede ser null y ahora es MÁS probable: al salir la refacción del mínimo, una
+    // unidad donde solo se midió la refacción se queda sin mínimo de rodaje. Sin este
+    // guard, null<=TCRIT da true y Number(null)=0 → falso "0mm — Reemplazo urgente"
+    // (auditoría 2026-06-04 #29; el módulo TS ya lo guardaba en renderTires.ts).
+    const hayMin=u.minT!==null&&Number.isFinite(u.minT);
     const ac=u.minT<=TCRIT?"var(--R)":u.minT<=TWARN?"var(--A)":"var(--G)";
     const ab=u.minT<=TCRIT?"var(--Rd)":u.minT<=TWARN?"var(--Ad)":"var(--Gd)";
     const al=u.minT<=TCRIT?"var(--Rl)":u.minT<=TWARN?"var(--Al)":"var(--Gl)";
     const at=u.minT<=TCRIT?"Reemplazo urgente":u.minT<=TWARN?"Programar reemplazo":"Buen estado";
-    body.innerHTML=`${rows}<div class="talert" style="background:${ab};border-color:${al};color:${ac}">Taco mínimo: <b>${Number(u.minT)}mm</b> — ${at}</div>
+    // "(en circulación)": el mínimo excluye la refacción, así que este recuadro puede decir
+    // "Buen estado" con una fila de refacción en rojo justo arriba — y no es contradicción.
+    const alertMin=hayMin?`<div class="talert" style="background:${ab};border-color:${al};color:${ac}">Taco mínimo (en circulación): <b>${Number(u.minT)}mm</b> — ${at}</div>`:"";
+    body.innerHTML=`${rows}${alertMin}
     <div class="tref">Referencia: <span style="color:var(--G)">≥7mm OK</span> · <span style="color:var(--A)">4–6mm revisar</span> · <span style="color:var(--R)">≤3.99mm urgente</span></div>`;
   }
 
@@ -5287,6 +5303,64 @@ function renderActionsTab(u,body){
   body.innerHTML=html;
 }
 
+// Indicador de progreso del PDF: toast PROPIO y actualizable. notify() crea uno nuevo por
+// llamada (40 fotos = 40 toasts) y showLoader() oculta todo el tablero — ninguno sirve
+// para un contador que avanza mientras el panel de detalle sigue abierto.
+function _pdfProgreso(){
+  let el=null;
+  return {
+    set(txt){
+      if(!el){
+        el=document.createElement("div");
+        el.setAttribute("role","status");
+        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
+        document.body.appendChild(el);
+      }
+      el.textContent=txt;
+    },
+    fin(){ if(el){el.remove();el=null;} }
+  };
+}
+
+// Reescalado de fotos ANTES de incrustarlas. jsPDF re-encoda cada imagen a JPEG con
+// CALIDAD 100, así que incrustar la foto a resolución completa para mostrarla del tamaño
+// de una tarjeta convertía 64 KB en ~700 KB: una inspección de ~37 fotos daba un PDF de
+// ~25 MB, imposible de enviar por correo. En el papel cada foto mide 58×44 mm — todo
+// pixel por encima de esa resolución es peso puro.
+const _PDF_FOTO_MM_ANCHO=58, _PDF_FOTO_MM_ALTO=44;
+const _PDF_FOTO_DPI=200;        // 2× la densidad de pantalla: legible al hacer zoom
+const _PDF_FOTO_CALIDAD=0.82;   // JPEG; arriba de ~0.85 el peso sube sin verse mejor
+
+async function _pdfOptimizarFoto(bytes, formato, api){
+  // createImageBitmap decodifica webp/jpg/png sin montar nada en el DOM.
+  const bmp = await createImageBitmap(new Blob([bytes]));
+  try{
+    const marco={
+      ancho: Math.round(api.pixelesPorMm(_PDF_FOTO_MM_ANCHO,_PDF_FOTO_DPI)),
+      alto:  Math.round(api.pixelesPorMm(_PDF_FOTO_MM_ALTO,_PDF_FOTO_DPI))
+    };
+    const d=api.dimensionesDestino({ancho:bmp.width,alto:bmp.height},marco);
+    if(!d.ancho || !d.alto) return null;
+    const cv = typeof OffscreenCanvas==="function"
+      ? new OffscreenCanvas(d.ancho,d.alto)
+      : Object.assign(document.createElement("canvas"),{width:d.ancho,height:d.alto});
+    const ctx=cv.getContext("2d");
+    if(!ctx) return null;
+    // Fondo blanco ANTES de dibujar: el JPEG no tiene transparencia y las firmas van en
+    // PNG con alfa — sin esto saldrían sobre negro.
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,0,d.ancho,d.alto);
+    ctx.drawImage(bmp,0,0,d.ancho,d.alto);
+    const blob = cv.convertToBlob
+      ? await cv.convertToBlob({type:"image/jpeg",quality:_PDF_FOTO_CALIDAD})
+      : await new Promise(res=>cv.toBlob(res,"image/jpeg",_PDF_FOTO_CALIDAD));
+    if(!blob) return null;
+    return {bytes:new Uint8Array(await blob.arrayBuffer()), formato:"JPEG"};
+  } finally {
+    if(bmp && typeof bmp.close==="function") bmp.close();
+  }
+}
+
 async function exportPDF(){
   const u=units.find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
@@ -5478,22 +5552,65 @@ async function exportPDF(){
       await Promise.all(_missing.map(p=>
         window.__cloudGetPhotoUrl(p.fname)
           .then(url=>{ if(url) _pdfUrlByFname.set(p.fname, url); })
-          .catch(()=>{})
+          // Antes: .catch(()=>{}) — se tragaba el fallo y nadie podía saber por qué el
+          // registro fotográfico salía vacío. Ahora al menos queda en la consola.
+          .catch(e=>{ console.warn(`[exportPDF] no se pudo firmar ${p.fname}:`, e); })
       ));
     }
   }
-  const photosWithUrl=u.photos
-    .map(p=>({...p,url:imgUrl(p.fname)||_pdfUrlByFname.get(p.fname)||null}))
-    .filter(p=>p.url);
 
-  if(photosWithUrl.length){
+  // BYTES, nunca la URL. jsPDF solo resuelve una URL con un XMLHttpRequest SINCRÓNICO
+  // interno cuyo error se traga por completo, y al fallar usa como respaldo el formato
+  // declarado a mano → procesaba la URL "como JPEG", no incrustaba nada y NO lanzaba
+  // excepción (por eso ni el recuadro "Sin imagen" aparecía). Medido contra prod
+  // 2026-08-11: con URL el PDF pesa 3,757 bytes; con los bytes reales, 599,497.
+  let fotosListas=[];
+  const _pdfApi = typeof window.__pdfPhotos==="function" ? await window.__pdfPhotos() : null;
+  if(!_pdfApi){
+    console.warn("[exportPDF] módulo de fotos no disponible — PDF sin registro fotográfico");
+  } else {
+    // Solo IMÁGENES: u.photos trae también videos (.mp4/.mov, ~1 por inspección de
+    // ene-jul 2026) y addImage con un mp4 tampoco lanza error — incrusta basura.
+    const _cand=(u.photos||[])
+      .filter(p=>p.fname && _pdfApi.esImagenSoportada(p.fname))
+      .map(p=>({...p,url:imgUrl(p.fname)||_pdfUrlByFname.get(p.fname)||""}))
+      .filter(p=>p.url);
+    if(_cand.length){
+      const _prog=_pdfProgreso();
+      try{
+        _prog.set(`Descargando fotos… 0/${_cand.length}`);
+        const _r=await _pdfApi.descargarImagenes(_cand,{
+          onProgress:(n,t)=>_prog.set(`Descargando fotos… ${n}/${t}`),
+          // Reescalar a la resolución de despliegue: sin esto el PDF pesa ~25 MB. Si el
+          // canvas falla, el módulo conserva la foto original (pesada, pero visible).
+          optimizar:(bytes,formato)=>_pdfOptimizarFoto(bytes,formato,_pdfApi),
+          fetchBytes: async (url,foto)=>{
+            // ZIP local: los bytes YA están en memoria. Además un fetch a su URL blob:
+            // lo bloquearía la CSP, que no lista blob: en connect-src.
+            const local = zipImgs && zipImgs[String(foto.fname||"").toLowerCase()];
+            if(local) return new Uint8Array(local);
+            const resp=await fetch(url);
+            if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return new Uint8Array(await resp.arrayBuffer());
+          },
+        });
+        fotosListas=_r.listas;
+        if(_r.fallidas.length){
+          console.warn(`[exportPDF] ${_r.fallidas.length} foto(s) fuera del PDF:`,_r.fallidas);
+          window.notify(`${_r.fallidas.length} de ${_cand.length} fotos no se pudieron incluir en el PDF.`,"warn",6000);
+        }
+      } finally { _prog.fin(); }
+    }
+  }
+
+  if(fotosListas.length){
     doc.addPage(); y=M; drawPageHeader(); y=18;
     txt("REGISTRO FOTOGRÁFICO",M,y,7,C.s3,undefined,true); y+=6;
 
     const imgW=(CW-4)/3, imgH=imgW*0.75, cols=3;
     let col=0;
     const grouped={};
-    photosWithUrl.forEach(p=>{if(!grouped[p.group])grouped[p.group]=[];grouped[p.group].push(p);});
+    fotosListas.forEach(p=>{if(!grouped[p.group])grouped[p.group]=[];grouped[p.group].push(p);});
 
     for(const [grp,items] of Object.entries(grouped)){
       chk(14);
@@ -5504,8 +5621,11 @@ async function exportPDF(){
         if(col===0) chk(imgH+14);
         const x=M+col*(imgW+2);
         try{
-          doc.addImage(p.url,"JPEG",x,y,imgW,imgH,"","FAST");
+          // Bytes + formato REAL (deducido de los bytes, no de la extensión: en prod hay
+          // archivos cuyo nombre miente). Declarar "JPEG" a ciegas era parte del bug.
+          doc.addImage(p.bytes,p.formato,x,y,imgW,imgH,"","FAST");
         }catch(e){
+          console.warn(`[exportPDF] addImage falló en ${p.fname} (${p.formato}):`,e);
           rect(x,y,imgW,imgH,C.bg3,C.bg3);
           txt("Sin imagen",x+imgW/2,y+imgH/2,7,C.s4,"center");
         }

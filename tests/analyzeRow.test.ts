@@ -60,13 +60,59 @@ describe("analyzeRow", () => {
     expect(r.T["Refacción"]).toBeUndefined();
   });
 
-  it("Refacción 'Si' + 0mm → Urgente (caso correcto)", () => {
+  // Decisión Navares 2026-08-11: la refacción no toca el piso → tope Revisar. Antes
+  // marcaba Urgente, con lo que traer una refacción lisa se castigaba MÁS que no
+  // traer refacción (Completar) — severidad invertida.
+  it("Refacción 'Si' + 0mm → Revisar, nunca Urgente (tope de severidad)", () => {
     const r = analyzeRow({
       "Cuenta con llanta de Refacción?": "Si",
       "Nivel TACO de llanta REFACCION": 0,
     });
+    expect(r.max).toBe("Revisar");
+    const refaccion = r.F.find((f) => f.key === "Llanta:Refacción");
+    expect(refaccion?.lv).toBe("Revisar");
+    // El texto sigue reportando el desgaste real: se ve que está lisa.
+    expect(refaccion?.text).toContain("desgaste crítico");
+  });
+
+  it("una refacción lisa NO arrastra la unidad a Urgente si el rodaje está sano", () => {
+    const r = analyzeRow({
+      "Cuenta con llanta de Refacción?": "Si",
+      "Nivel TACO de llanta REFACCION": 1,
+      "Nivel TACO de llanta piloto delantera": 8,
+      "Nivel TACO de llanta copiloto delantera": 9,
+    });
+    expect(r.max).toBe("Revisar");
+  });
+
+  it("el TACO mínimo ignora la refacción (solo llantas en circulación)", () => {
+    const r = analyzeRow({
+      "Cuenta con llanta de Refacción?": "Si",
+      "Nivel TACO de llanta REFACCION": 2,
+      "Nivel TACO de llanta piloto delantera": 8,
+      "Nivel TACO de llanta copiloto delantera": 9,
+    });
+    expect(r.minT).toBe(8);
+    // La lectura de la refacción se conserva para mostrarla aparte en el detalle.
+    expect(r.T["Refacción"]).toBe(2);
+  });
+
+  it("minT null si la única lectura es la refacción", () => {
+    const r = analyzeRow({
+      "Cuenta con llanta de Refacción?": "Si",
+      "Nivel TACO de llanta REFACCION": 5,
+    });
+    expect(r.minT).toBeNull();
+  });
+
+  it("una llanta de rodaje crítica SÍ sigue siendo Urgente", () => {
+    const r = analyzeRow({
+      "Nivel TACO de llanta piloto delantera": 2,
+      "Cuenta con llanta de Refacción?": "Si",
+      "Nivel TACO de llanta REFACCION": 9,
+    });
     expect(r.max).toBe("Urgente");
-    expect(r.F.some((f) => f.cat === "Llantas" && f.text.includes("Refacción"))).toBe(true);
+    expect(r.minT).toBe(2);
   });
 
   it("Internas 'No' + 0mm → skip, no Urgente", () => {

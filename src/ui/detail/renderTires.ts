@@ -91,7 +91,9 @@ function alertBox(minT: number, tcrit: number, twarn: number): HTMLElement {
   const alert = document.createElement("div");
   alert.className = "talert";
   alert.style.cssText = `background:${ab};border-color:${al};color:${ac}`;
-  alert.appendChild(document.createTextNode("Taco mínimo: "));
+  // "en circulación": el mínimo excluye la refacción (decisión Navares 2026-08-11), así
+  // que el recuadro puede decir "Buen estado" con una fila de refacción en rojo arriba.
+  alert.appendChild(document.createTextNode("Taco mínimo (en circulación): "));
   const b = document.createElement("b");
   b.textContent = `${Number(minT)}mm`;
   alert.appendChild(b);
