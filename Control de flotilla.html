@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-u5w4Qf/xvjOVLFZG3x/VYEdcTeT+SKq2ZAlZqfu3RKY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-qv5m4cfDWi3ds6Yx6Hvaajgr0UV3dFweeIFjlNL6+TU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4950,7 +4950,11 @@ window.addEventListener("appinstalled",()=>{
 // SORT
 // ════════════════════════════════════════════════════════════
 const SORT_KEYS={
-  plate:  u=>u.plate||u.eco||"",
+  // La columna MUESTRA `u.eco||u.plate` (ver L3984). Ordenar por `plate` primero hacía que
+  // el clic en "# Económico" ordenara por la PLACA —invisible, va en la línea gris de
+  // abajo— y la columna se veía sin orden. La clave se sigue llamando "plate" por el id del
+  // <th> (th-plate); lo que ordena es el económico. Guard: tests/sortInspecciones.test.ts.
+  plate:  u=>u.eco||u.plate||"",
   brand:  u=>u.brand||"",
   risk:   u=>-(RO[u.risk]||0),
   branch: u=>u.branch||"",
@@ -4984,7 +4988,11 @@ function sortedUnits(rows){
   const fn=SORT_KEYS[sortCol];
   return [...rows].sort((a,b)=>{
     const va=fn(a),vb=fn(b);
-    if(typeof va==="string") return va.localeCompare(vb,"es")*sortDir;
+    // Colación NUMÉRICA: hoy los económicos son de 2 dígitos con cero ("06"), así que el
+    // orden alfabético coincide con el numérico por casualidad. Con uno de 3 dígitos
+    // dejaría de coincidir ("100" antes de "99") y el desorden volvería en silencio.
+    // Mismo criterio que src/ui/fleetMap.ts y la tabla de Semanales.
+    if(typeof va==="string") return va.localeCompare(vb,"es",{numeric:true})*sortDir;
     return (va-vb)*sortDir;
   });
 }
