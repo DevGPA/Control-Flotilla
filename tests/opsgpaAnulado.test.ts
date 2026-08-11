@@ -130,11 +130,22 @@ describe("metaAnulacionDeOps", () => {
     expect(m.ts).toBe("2026-07-01T00:00:00Z");
   });
 
-  it("extrae el folio del sustituto de cualquiera de los nombres candidatos", () => {
-    for (const campo of ["reasignadoA", "reasignadoDe", "folioNuevo", "nuevoFolio"]) {
+  it("extrae el folio del sustituto de los nombres que apuntan HACIA ADELANTE", () => {
+    for (const campo of ["reasignadoA", "folioNuevo", "nuevoFolio"]) {
       const m = metaAnulacionDeOps({ status: "Anulado", [campo]: "OPS-abc123abc123" }, AHORA);
       expect(m.folioNuevo, campo).toBe("OPS-abc123abc123");
+      expect(m.sustituido, campo).toBe(true);
     }
+  });
+
+  // Cambio deliberado (2026-08-11): `reasignadoDe` marca el registro NUEVO, no el
+  // sustituido. Antes se leía como rastro y era inofensivo porque la anulación se gateaba
+  // solo por el status; ahora que TAMBIÉN se gatea por el rastro, tratarlo así anularía el
+  // registro BUENO y esconderría el dato válido. Ver tests/opsgpaReasignacionPorRastro.
+  it("`reasignadoDe` NO es rastro de sustitución — es el registro nuevo", () => {
+    const m = metaAnulacionDeOps({ status: "Aprobada", reasignadoDe: "OPS-viejo" }, AHORA);
+    expect(m.folioNuevo).toBeUndefined();
+    expect(m.sustituido).toBe(false);
   });
 
   it("si el candidato es un objeto, prefiere su folio y si no deriva OPS-<registroId>", () => {

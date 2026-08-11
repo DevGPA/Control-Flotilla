@@ -5,7 +5,8 @@
  */
 import type { FuelEntry, FuelFinding, FuelMetrics, FuelVerdictGlobal } from "./types";
 import type { RecorridoInfo } from "./fuelAnalysis";
-import { puedeValidarManual } from "./opsGuard";
+import { esOrigenOps, puedeValidarManual } from "./opsGuard";
+import { esStatusOpsConocido } from "../opsgpa/mapAnulacion";
 import { duracionCapturaMin } from "./fuelAggregates";
 import {
   MOTIVO_SIN_KMPL_CORTO,
@@ -408,7 +409,46 @@ function alertasCell(findings: readonly FuelFinding[] | undefined): string | HTM
 }
 
 /** Celda de Validación: semáforo + (si hay) "{nombre} · {fecha}" en línea chica. */
+/**
+ * Chip de aviso cuando Ops manda un status FUERA de su vocabulario conocido.
+ *
+ * Por qué existe: el puente reconoce la reasignación por el rastro `reasignadoA` y, de
+ * respaldo, por el status `Anulad*`. Si Ops cambiara su vocabulario y el rastro no llegara,
+ * un registro sustituido se contaría dos veces. El receptor ya lo avisa a CloudWatch, pero
+ * ahí nadie lo mira: esto lo pone donde tesorería sí pasa todos los días.
+ *
+ * `null` cuando no hay nada que avisar — el 100% de los 903 registros medidos en prod.
+ */
+function avisoStatusOps(e: FuelEntry): HTMLElement | null {
+  if (!esOrigenOps(e) || esStatusOpsConocido(e.opsStatus)) return null;
+  const chip = document.createElement("span");
+  chip.className = "sw-pill sw-pill-urg";
+  chip.textContent = `⚠ Estado Ops: ${e.opsStatus ?? "—"}`;
+  chip.title =
+    "Operaciones-GPA mandó un estado que Fleet Command no reconoce. Si fue una reasignación, " +
+    "este registro podría estar contándose dos veces: confírmalo con Ops antes de usar sus cifras.";
+  return chip;
+}
+
 function verdictCell(
+  e: FuelEntry,
+  v: FuelDisplayVerdict,
+  nombreFn?: (email?: string | null) => string,
+): HTMLElement {
+  const aviso = avisoStatusOps(e);
+  if (aviso) {
+    // Se apila SOBRE la celda normal en vez de reemplazarla: el veredicto sigue siendo el
+    // que manda para KPIs y filtros; esto solo agrega la advertencia.
+    const wrap = document.createElement("div");
+    wrap.className = "sw-valcell";
+    wrap.appendChild(verdictCellBase(e, v, nombreFn));
+    wrap.appendChild(aviso);
+    return wrap;
+  }
+  return verdictCellBase(e, v, nombreFn);
+}
+
+function verdictCellBase(
   e: FuelEntry,
   v: FuelDisplayVerdict,
   nombreFn?: (email?: string | null) => string,

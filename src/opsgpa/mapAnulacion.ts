@@ -55,6 +55,31 @@ export function esStatusPorCorregir(status: unknown): boolean {
 }
 
 /**
+ * ¿El status viene del vocabulario que Ops REALMENTE usa?
+ *
+ * Medido contra producción el 2026-08-11 sobre 903 registros del puente, el universo
+ * completo es: "Aprobada"/"Aprobado" (871), "Rechazada" (21), "Pendiente" (9) y
+ * "Por corregir" (2). `Anulad*` se acepta porque lo fija el brief, aunque nunca haya
+ * llegado. Vacío cuenta como conocido: hay eventos legítimos sin status.
+ *
+ * Un status FUERA de esta lista significa que Ops cambió su vocabulario, y ese es
+ * justamente el escenario en el que un registro sustituido se colaría como vivo. Por eso la
+ * lista vive AQUÍ y no duplicada: el receptor la usa para avisar en CloudWatch y la UI para
+ * marcar la fila, de modo que no puedan divergir.
+ */
+export function esStatusOpsConocido(status: unknown): boolean {
+  const s = norm(status);
+  return (
+    !s ||
+    s.startsWith("aproba") ||
+    s.startsWith("rechaza") ||
+    s.startsWith("pendiente") ||
+    esStatusAnulado(s) ||
+    esStatusPorCorregir(s)
+  );
+}
+
+/**
  * ¿Este registro puede actualizar el catálogo de unidades (`Unit`)?
  *
  * NO cuando está Anulado. La fila `Unit` que escriben mapMensual/mapSemanal **no se
@@ -65,8 +90,8 @@ export function esStatusPorCorregir(status: unknown): boolean {
  * económico). Un registro invalidado no manda sobre el catálogo — mismo razonamiento
  * que ya justifica `omitirEnUpdate: ["sucursal"]` en el receptor.
  */
-export function debeMantenerCatalogo(status: unknown): boolean {
-  return !esStatusAnulado(status);
+export function debeMantenerCatalogo(status: unknown, sustituido = false): boolean {
+  return !esStatusAnulado(status) && !sustituido;
 }
 
 /**
@@ -76,8 +101,14 @@ export function debeMantenerCatalogo(status: unknown): boolean {
  * registro anulado (y `reasignadoDe` en el nuevo), con la forma
  * `{ id, folio, vehicleId, economico, sucursal, por, en }`. Los otros dos nombres quedan
  * como red de seguridad barata hasta ver el primer evento real en producción.
+ *
+ * ⚠️ `reasignadoDe` NO va aquí: marca el registro **NUEVO** (apunta hacia atrás, al
+ * sustituido). Tratarlo como rastro de sustitución anularía el registro BUENO y esconderría
+ * el dato válido de todos los cálculos — peor que el doble conteo que esto viene a evitar.
+ * Estaba en la lista y era inofensivo solo porque la anulación se gateaba únicamente por el
+ * status; al gatearla también por el rastro, dejarlo sería un bug de datos.
  */
-const CANDIDATOS_RASTRO = ["reasignadoA", "reasignadoDe", "folioNuevo", "nuevoFolio"] as const;
+const CANDIDATOS_RASTRO = ["reasignadoA", "folioNuevo", "nuevoFolio"] as const;
 
 interface RastroReasignacion {
   /** Folio del sustituto en la convención de FC ("OPS-<id>"). */
@@ -135,6 +166,12 @@ export function metaAnulacionDeOps(ops: Record<string, unknown>, ahora: string):
     anuladoPor: rastro?.por ?? rea.por ?? ops.autorizadoPor,
     ts: rastro?.en ?? rea.en ?? ops.fechaAut,
     folioNuevo: rastro?.folio,
+    // Señal ESTRUCTURAL de que este registro fue sustituido, independiente del vocabulario.
+    // Medido en prod 2026-08-11: los únicos statuses que Ops ha emitido en 903 registros son
+    // "Aprobada/Aprobado", "Rechazada", "Pendiente" y "Por corregir" — "Anulado" NUNCA
+    // llegó, así que la palabra sigue sin confirmarse contra un evento real. Gatear solo por
+    // ella dejaría pasar un "Cancelado" y el sustituido se contaría dos veces en silencio.
+    sustituido: rastro !== null,
     ahora,
   };
 }
@@ -173,6 +210,12 @@ export interface AnulacionOpsMeta {
   /** Folio del registro sustituto, si el evento lo trae. */
   folioNuevo?: unknown;
   /**
+   * ¿Llegó el rastro que indica que ESTE registro fue sustituido (`reasignadoA`)? Es la
+   * señal estructural, no léxica: dispara la anulación aunque el status traiga una palabra
+   * que nadie anticipó. Lo calcula `metaAnulacionDeOps`.
+   */
+  sustituido?: boolean;
+  /**
    * Reloj inyectado (ISO). Respaldo de `ts`, que es OBLIGATORIO en el modelo: un `""`
    * hace que AppSync rechace el create y el receptor entre en 500 → reintento → DLQ.
    * Se inyecta en lugar de leerlo aquí para que la función siga siendo pura.
@@ -181,8 +224,13 @@ export interface AnulacionOpsMeta {
 }
 
 /**
- * Registro Anulado en Ops → fila de `Anulacion` de Fleet Command. `null` si el status no
- * es Anulado (el llamador no tiene que pre-filtrar).
+ * Registro sustituido en Ops → fila de `Anulacion` de Fleet Command. `null` si no hay nada
+ * que anular (el llamador no tiene que pre-filtrar).
+ *
+ * Dispara por DOS señales, y basta una:
+ *  1. **el rastro** `reasignadoA` (estructural, `meta.sustituido`) — la señal fuerte, porque
+ *     no depende de qué palabra use Ops;
+ *  2. **el status** `Anulad*` — la que fija el brief, ahora como respaldo.
  *
  * NO toca `ValidacionCarga` a propósito: la anulación ya excluye el registro de todo
  * cálculo, y degradar el veredicto lo destruiría sin versionarlo — al restaurar volvería
@@ -192,7 +240,7 @@ export function mapAnulacionOps(
   destino: AnulacionOpsDestino,
   meta: AnulacionOpsMeta,
 ): AnulacionOpsInput | null {
-  if (!esStatusAnulado(meta.status)) return null;
+  if (!esStatusAnulado(meta.status) && !meta.sustituido) return null;
 
   let tenantId: string;
   let refId: string;
