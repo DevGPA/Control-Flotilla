@@ -52,7 +52,7 @@ describe("renderTires", () => {
 
   it("colorea CRÍTICO para valores ≤TCRIT (3.99)", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "Piloto": 3 }, minT: 3 }) });
+    renderTires(c, { unit: makeUnit({ T: { Piloto: 3 }, minT: 3 }) });
     const status = c.querySelector(".trrst") as HTMLElement;
     expect(status.textContent).toBe("CRÍTICO");
     expect(status.style.color).toBe("var(--R)");
@@ -60,7 +60,7 @@ describe("renderTires", () => {
 
   it("colorea Vigilar (ambar) para valores entre TCRIT y TWARN", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "Piloto": 5 }, minT: 5 }) });
+    renderTires(c, { unit: makeUnit({ T: { Piloto: 5 }, minT: 5 }) });
     const status = c.querySelector(".trrst") as HTMLElement;
     expect(status.textContent).toBe("Vigilar");
     expect(status.style.color).toBe("var(--A)");
@@ -68,7 +68,7 @@ describe("renderTires", () => {
 
   it("colorea OK (verde) para valores > TWARN (6.99)", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "Piloto": 8 }, minT: 8 }) });
+    renderTires(c, { unit: makeUnit({ T: { Piloto: 8 }, minT: 8 }) });
     const status = c.querySelector(".trrst") as HTMLElement;
     expect(status.textContent).toBe("OK");
     expect(status.style.color).toBe("var(--G)");
@@ -76,7 +76,7 @@ describe("renderTires", () => {
 
   it("barra fill refleja porcentaje (v/10*100, capped a 100)", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "a": 5 }, minT: 5 }) });
+    renderTires(c, { unit: makeUnit({ T: { a: 5 }, minT: 5 }) });
     const fill = c.querySelector(".trrfill") as HTMLElement;
     expect(fill.style.width).toBe("50%");
   });
@@ -90,7 +90,7 @@ describe("renderTires", () => {
 
   it("alert box: 'Reemplazo urgente' cuando minT ≤ TCRIT", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "x": 3 }, minT: 3 }) });
+    renderTires(c, { unit: makeUnit({ T: { x: 3 }, minT: 3 }) });
     const alert = c.querySelector(".talert");
     expect(alert?.textContent).toContain("Reemplazo urgente");
     expect(alert?.textContent).toContain("3mm");
@@ -98,13 +98,21 @@ describe("renderTires", () => {
 
   it("alert box: 'Buen estado' cuando minT > TWARN", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "x": 9 }, minT: 9 }) });
+    renderTires(c, { unit: makeUnit({ T: { x: 9 }, minT: 9 }) });
     expect(c.querySelector(".talert")?.textContent).toContain("Buen estado");
+  });
+
+  // La refacción ya no entra al minT (decisión Navares 2026-08-11). El recuadro lo dice
+  // para que no parezca contradictorio junto a una fila de refacción en rojo.
+  it("alert box aclara que el mínimo es de llantas en circulación", () => {
+    const c = setupContainer();
+    renderTires(c, { unit: makeUnit({ T: { "Piloto Delantera": 8, Refacción: 2 }, minT: 8 }) });
+    expect(c.querySelector(".talert")?.textContent).toContain("en circulación");
   });
 
   it("referencia siempre se renderiza", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "x": 8 }, minT: 8 }) });
+    renderTires(c, { unit: makeUnit({ T: { x: 8 }, minT: 8 }) });
     const ref = c.querySelector(".tref");
     expect(ref?.textContent).toContain("Referencia:");
     expect(ref?.textContent).toContain("≥7mm OK");
@@ -114,7 +122,7 @@ describe("renderTires", () => {
 
   it("umbrales custom respetados", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "x": 8 }, minT: 8 }), tcrit: 5, twarn: 10 });
+    renderTires(c, { unit: makeUnit({ T: { x: 8 }, minT: 8 }), tcrit: 5, twarn: 10 });
     const status = c.querySelector(".trrst") as HTMLElement;
     expect(status.textContent).toBe("Vigilar"); // 5 < 8 ≤ 10 → ámbar
   });
@@ -135,7 +143,7 @@ describe("renderTires", () => {
 
   it("re-render reemplaza contenido", () => {
     const c = setupContainer();
-    renderTires(c, { unit: makeUnit({ T: { "a": 8 }, minT: 8 }) });
+    renderTires(c, { unit: makeUnit({ T: { a: 8 }, minT: 8 }) });
     expect(c.querySelectorAll(".trr")).toHaveLength(1);
     renderTires(c, { unit: makeUnit({ T: {}, hasRefaccion: true }) });
     expect(c.querySelectorAll(".trr")).toHaveLength(0);

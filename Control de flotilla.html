@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Esf1vFirssbzbeOON1eaP56w/WD0E3kxbvIu2dtHKOE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JqB6X+LLZvHzLRvtjUYu94R6jKbpnshYbwZuRlAOnxw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1961,7 +1961,11 @@ function analyzeRow(row){
     const _raw=parseFloat(row[c]);if(!isNaN(_raw)){
       // TACO: 0<v<1 viene en cm (0.4cm=4mm) → ×10. 0 (lisa) y ≥1 igual.
       const v=_raw>0&&_raw<1?Math.round(_raw*100)/10:_raw;T[n]=v;
-      if(v<=TCRIT){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — desgaste crítico`,lv:"Urgente"});esc("Urgente")}
+      // Decisión Navares 2026-08-11: la refacción NO está en circulación → su desgaste
+      // nunca escala la unidad a Urgente (tope Revisar). Antes traer una refacción lisa
+      // se castigaba MÁS que no traer refacción (Completar) — severidad invertida.
+      // Espejo de src/analyzer/analyzeRow.ts + src/analyzer/refaccion.ts.
+      if(v<=TCRIT){const lvT=n==="Refacción"?"Revisar":"Urgente";F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — desgaste crítico`,lv:lvT});esc(lvT)}
       else if(v<=TWARN){F.push({cat:"Llantas",key:`Llanta:${n}`,text:`${n}: ${v}mm — revisar desgaste`,lv:"Revisar"});esc("Revisar")}
     }
   }
@@ -1994,8 +1998,12 @@ function analyzeRow(row){
       else if(diffDays<=30){F.push({cat:"Mantenimiento",key:"Mant:Servicio",text:`Servicio próximo a vencer (${diffDays} días)`,lv:"Completar"});esc("Completar")}
     }
   }
-  const tv=Object.values(T);
-  return{max,F,T,minT:tv.length?Math.min(...tv):null};
+  // TACO mínimo = solo llantas EN CIRCULACIÓN (espejo de minTRodaje en
+  // src/analyzer/refaccion.ts). Una refacción gastada no debe pintar de rojo la columna
+  // Llantas de una unidad con el rodaje sano; su lectura se conserva en T para mostrarla
+  // aparte, en su propia fila del detalle.
+  const tRodaje=Object.entries(T).filter(([n])=>n!=="Refacción").map(([,v])=>v);
+  return{max,F,T,minT:tRodaje.length?Math.min(...tRodaje):null};
 }
 
 // ── Fase C1: identidad estable de hallazgos + lectura de completaciones ─────
@@ -4216,11 +4224,19 @@ function renderDetBody(u){
         <div class="trrst" style="color:var(--s2)">Sin refacción</div>
         <div style="font-size:10px;color:var(--s2);font-style:italic;padding-left:6px">No disponible</div>
       </div></div>`:"");
+    // minT puede ser null y ahora es MÁS probable: al salir la refacción del mínimo, una
+    // unidad donde solo se midió la refacción se queda sin mínimo de rodaje. Sin este
+    // guard, null<=TCRIT da true y Number(null)=0 → falso "0mm — Reemplazo urgente"
+    // (auditoría 2026-06-04 #29; el módulo TS ya lo guardaba en renderTires.ts).
+    const hayMin=u.minT!==null&&Number.isFinite(u.minT);
     const ac=u.minT<=TCRIT?"var(--R)":u.minT<=TWARN?"var(--A)":"var(--G)";
     const ab=u.minT<=TCRIT?"var(--Rd)":u.minT<=TWARN?"var(--Ad)":"var(--Gd)";
     const al=u.minT<=TCRIT?"var(--Rl)":u.minT<=TWARN?"var(--Al)":"var(--Gl)";
     const at=u.minT<=TCRIT?"Reemplazo urgente":u.minT<=TWARN?"Programar reemplazo":"Buen estado";
-    body.innerHTML=`${rows}<div class="talert" style="background:${ab};border-color:${al};color:${ac}">Taco mínimo: <b>${Number(u.minT)}mm</b> — ${at}</div>
+    // "(en circulación)": el mínimo excluye la refacción, así que este recuadro puede decir
+    // "Buen estado" con una fila de refacción en rojo justo arriba — y no es contradicción.
+    const alertMin=hayMin?`<div class="talert" style="background:${ab};border-color:${al};color:${ac}">Taco mínimo (en circulación): <b>${Number(u.minT)}mm</b> — ${at}</div>`:"";
+    body.innerHTML=`${rows}${alertMin}
     <div class="tref">Referencia: <span style="color:var(--G)">≥7mm OK</span> · <span style="color:var(--A)">4–6mm revisar</span> · <span style="color:var(--R)">≤3.99mm urgente</span></div>`;
   }
 

@@ -1,5 +1,6 @@
 import type { AnalyzeResult, ExcelRow, Finding, RiskLevel } from "../types";
 import { BIN, BIN_LABELS, RO, TC, TCRIT, TWARN, isBinFail } from "./constants";
+import { REFACCION, minTRodaje } from "./refaccion";
 
 // Keys de BIN que son documentos regulatorios, no checklist físico.
 // Antes todas las fallas BIN iban a cat:"Checklist" inflando ese bucket e
@@ -90,7 +91,7 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
   );
 
   for (const [n, c] of Object.entries(TC)) {
-    if (n === "Refacción" && !tieneRefaccion) continue;
+    if (n === REFACCION && !tieneRefaccion) continue;
     if (n === "Piloto Trasera Int." && !tieneIntPiloto) continue;
     if (n === "Copiloto Trasera Int." && !tieneIntCopiloto) continue;
     const raw = parseFloat(String(row[c] ?? ""));
@@ -100,13 +101,17 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
       const v = raw > 0 && raw < 1 ? Math.round(raw * 100) / 10 : raw;
       T[n] = v;
       if (v <= TCRIT) {
+        // Decisión Navares 2026-08-11: la refacción no está en circulación, así que su
+        // desgaste NUNCA escala la unidad a Urgente (tope Revisar). El texto sigue
+        // reportando el desgaste real para que se vea que hay que reponerla.
+        const lv: RiskLevel = n === REFACCION ? "Revisar" : "Urgente";
         F.push({
           cat: "Llantas",
           key: `Llanta:${n}`,
           text: `${n}: ${v}mm — desgaste crítico`,
-          lv: "Urgente",
+          lv,
         });
-        bump("Urgente");
+        bump(lv);
       } else if (v <= TWARN) {
         F.push({
           cat: "Llantas",
@@ -216,6 +221,8 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     }
   }
 
+  // Conteo de completitud: cuenta TODAS las lecturas (incluida la refacción), tal como
+  // se comportaba antes. Solo el `minT` cambia de criterio.
   const tv = Object.values(T);
   const validationErrors: string[] = [];
   if (
@@ -230,5 +237,8 @@ export function analyzeRow(row: ExcelRow): AnalyzeResult {
     validationErrors.push(`Datos de llantas incompletos (${tv.length}/4)`);
   }
 
-  return { max, F, T, minT: tv.length ? Math.min(...tv) : null, validationErrors };
+  // El TACO mínimo refleja solo llantas EN CIRCULACIÓN (decisión Navares 2026-08-11):
+  // una refacción gastada no debe pintar de rojo la columna Llantas ni el PDF de una
+  // unidad cuyo rodaje está sano. La refacción se muestra aparte, en su propia fila.
+  return { max, F, T, minT: minTRodaje(T), validationErrors };
 }

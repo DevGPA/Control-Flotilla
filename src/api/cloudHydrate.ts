@@ -38,6 +38,7 @@ import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import { mergeCheckDones } from "./mergeCheckDones";
 import type { DoneMap } from "../analyzer/findingKey";
+import { normalizaRefaccion } from "../analyzer/refaccion";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
@@ -193,13 +194,25 @@ export function esMontacargasProducto(productoToka: string | null | undefined): 
     .includes("gas lp");
 }
 
-function mergeUnitWithChecklist(
+/** Exportada para tests (el cableado de la refacción vivía aquí como bug). */
+export function mergeUnitWithChecklist(
   unit: Schema["Unit"]["type"],
   checklist: Schema["Checklist"]["type"] | undefined,
 ): Unit {
   const r = parseResultados(checklist?.resultados);
-  const risk = (r.risk ?? r.max ?? "OK") as RiskLevel;
   const findings = (Array.isArray(r.findings) ? r.findings : []) as Finding[];
+  const tires = r.tires ?? {};
+  // Reglas de la LLANTA DE REFACCIÓN aplicadas AL LEER (decisión Navares 2026-08-11):
+  // así los meses ya capturados en DynamoDB se ven con la regla nueva (tope Revisar +
+  // TACO mínimo sin refacción) sin necesidad de backfill. También deriva `hasRefaccion`
+  // de los hallazgos: antes se fijaba en `true` a mano y el aviso "Sin refacción" de la
+  // pestaña Llantas y el renglón del PDF nunca se activaban.
+  const refaccion = normalizaRefaccion({
+    findings,
+    risk: (r.risk ?? r.max ?? "OK") as RiskLevel,
+    tires,
+    minT: r.minT ?? null,
+  });
   // economicoId es el ID interno GPA (numérico tipo "78"). Fallback a placa si
   // el upload no lo guardó (rows viejas) — preserva render legacy `u.eco || u.plate`.
   const ecoId = unit.economicoId || unit.placa;
@@ -216,13 +229,13 @@ function mergeUnitWithChecklist(
     obsArr: r.obs ? r.obs.split("\n\n").filter(Boolean) : [],
     nextSvc: r.nextSvc ?? "",
     kmNextSvc: r.kmNextSvc ?? "",
-    risk,
-    F: findings,
-    T: r.tires ?? {},
-    minT: r.minT ?? null,
+    risk: refaccion.risk,
+    F: refaccion.findings,
+    T: tires,
+    minT: refaccion.minT,
     folio: r.moreappId ?? "",
     photos: Array.isArray(r.photos) ? r.photos : [],
-    hasRefaccion: true,
+    hasRefaccion: refaccion.hasRefaccion,
     esMontacargas: esMontacargasProducto(unit.productoToka),
   };
 }
