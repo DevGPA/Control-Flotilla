@@ -360,6 +360,16 @@ if (readFlag("USE_NEW_RENDER")) {
   );
 }
 
+// ─── Fotos del PDF — para el MONOLITO (sin feature flag) ───────────────
+// La UI viva de prod es `Control de flotilla.html`, y su exportPDF le pasaba a jsPDF la
+// URL de cada foto. jsPDF solo resuelve una URL con un XMLHttpRequest SINCRÓNICO interno
+// cuyo error se traga, y al fallar usa el formato declarado como respaldo → incrustaba
+// basura SIN lanzar excepción y el registro fotográfico salía en blanco. Ver
+// `src/pdf/photoImages.ts`. Import dinámico (perf F1-6): solo baja al exportar un PDF.
+(
+  window as unknown as { __pdfPhotos?: () => Promise<typeof import("./pdf/photoImages")> }
+).__pdfPhotos = () => import("./pdf/photoImages");
+
 // ─── Feature flag: PDF export (P2.2d) ──────────────────────────────────
 if (readFlag("USE_NEW_PDF")) {
   const legacyExportPDF = window.exportPDF;

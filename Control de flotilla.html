@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JqB6X+LLZvHzLRvtjUYu94R6jKbpnshYbwZuRlAOnxw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zoVlCwfRDTEw+hSdfb8r82tVvyi+OtmxIHM1k1OtPyw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5303,6 +5303,25 @@ function renderActionsTab(u,body){
   body.innerHTML=html;
 }
 
+// Indicador de progreso del PDF: toast PROPIO y actualizable. notify() crea uno nuevo por
+// llamada (40 fotos = 40 toasts) y showLoader() oculta todo el tablero — ninguno sirve
+// para un contador que avanza mientras el panel de detalle sigue abierto.
+function _pdfProgreso(){
+  let el=null;
+  return {
+    set(txt){
+      if(!el){
+        el=document.createElement("div");
+        el.setAttribute("role","status");
+        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
+        document.body.appendChild(el);
+      }
+      el.textContent=txt;
+    },
+    fin(){ if(el){el.remove();el=null;} }
+  };
+}
+
 async function exportPDF(){
   const u=units.find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
@@ -5494,22 +5513,62 @@ async function exportPDF(){
       await Promise.all(_missing.map(p=>
         window.__cloudGetPhotoUrl(p.fname)
           .then(url=>{ if(url) _pdfUrlByFname.set(p.fname, url); })
-          .catch(()=>{})
+          // Antes: .catch(()=>{}) — se tragaba el fallo y nadie podía saber por qué el
+          // registro fotográfico salía vacío. Ahora al menos queda en la consola.
+          .catch(e=>{ console.warn(`[exportPDF] no se pudo firmar ${p.fname}:`, e); })
       ));
     }
   }
-  const photosWithUrl=u.photos
-    .map(p=>({...p,url:imgUrl(p.fname)||_pdfUrlByFname.get(p.fname)||null}))
-    .filter(p=>p.url);
 
-  if(photosWithUrl.length){
+  // BYTES, nunca la URL. jsPDF solo resuelve una URL con un XMLHttpRequest SINCRÓNICO
+  // interno cuyo error se traga por completo, y al fallar usa como respaldo el formato
+  // declarado a mano → procesaba la URL "como JPEG", no incrustaba nada y NO lanzaba
+  // excepción (por eso ni el recuadro "Sin imagen" aparecía). Medido contra prod
+  // 2026-08-11: con URL el PDF pesa 3,757 bytes; con los bytes reales, 599,497.
+  let fotosListas=[];
+  const _pdfApi = typeof window.__pdfPhotos==="function" ? await window.__pdfPhotos() : null;
+  if(!_pdfApi){
+    console.warn("[exportPDF] módulo de fotos no disponible — PDF sin registro fotográfico");
+  } else {
+    // Solo IMÁGENES: u.photos trae también videos (.mp4/.mov, ~1 por inspección de
+    // ene-jul 2026) y addImage con un mp4 tampoco lanza error — incrusta basura.
+    const _cand=(u.photos||[])
+      .filter(p=>p.fname && _pdfApi.esImagenSoportada(p.fname))
+      .map(p=>({...p,url:imgUrl(p.fname)||_pdfUrlByFname.get(p.fname)||""}))
+      .filter(p=>p.url);
+    if(_cand.length){
+      const _prog=_pdfProgreso();
+      try{
+        _prog.set(`Descargando fotos… 0/${_cand.length}`);
+        const _r=await _pdfApi.descargarImagenes(_cand,{
+          onProgress:(n,t)=>_prog.set(`Descargando fotos… ${n}/${t}`),
+          fetchBytes: async (url,foto)=>{
+            // ZIP local: los bytes YA están en memoria. Además un fetch a su URL blob:
+            // lo bloquearía la CSP, que no lista blob: en connect-src.
+            const local = zipImgs && zipImgs[String(foto.fname||"").toLowerCase()];
+            if(local) return new Uint8Array(local);
+            const resp=await fetch(url);
+            if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return new Uint8Array(await resp.arrayBuffer());
+          },
+        });
+        fotosListas=_r.listas;
+        if(_r.fallidas.length){
+          console.warn(`[exportPDF] ${_r.fallidas.length} foto(s) fuera del PDF:`,_r.fallidas);
+          window.notify(`${_r.fallidas.length} de ${_cand.length} fotos no se pudieron incluir en el PDF.`,"warn",6000);
+        }
+      } finally { _prog.fin(); }
+    }
+  }
+
+  if(fotosListas.length){
     doc.addPage(); y=M; drawPageHeader(); y=18;
     txt("REGISTRO FOTOGRÁFICO",M,y,7,C.s3,undefined,true); y+=6;
 
     const imgW=(CW-4)/3, imgH=imgW*0.75, cols=3;
     let col=0;
     const grouped={};
-    photosWithUrl.forEach(p=>{if(!grouped[p.group])grouped[p.group]=[];grouped[p.group].push(p);});
+    fotosListas.forEach(p=>{if(!grouped[p.group])grouped[p.group]=[];grouped[p.group].push(p);});
 
     for(const [grp,items] of Object.entries(grouped)){
       chk(14);
@@ -5520,8 +5579,11 @@ async function exportPDF(){
         if(col===0) chk(imgH+14);
         const x=M+col*(imgW+2);
         try{
-          doc.addImage(p.url,"JPEG",x,y,imgW,imgH,"","FAST");
+          // Bytes + formato REAL (deducido de los bytes, no de la extensión: en prod hay
+          // archivos cuyo nombre miente). Declarar "JPEG" a ciegas era parte del bug.
+          doc.addImage(p.bytes,p.formato,x,y,imgW,imgH,"","FAST");
         }catch(e){
+          console.warn(`[exportPDF] addImage falló en ${p.fname} (${p.formato}):`,e);
           rect(x,y,imgW,imgH,C.bg3,C.bg3);
           txt("Sin imagen",x+imgW/2,y+imgH/2,7,C.s4,"center");
         }
