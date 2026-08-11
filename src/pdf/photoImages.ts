@@ -69,6 +69,33 @@ export function formatoDeBytes(b: Uint8Array): PdfImageFormat | null {
   return null;
 }
 
+export interface DimensionesPx {
+  ancho: number;
+  alto: number;
+}
+
+/** Píxeles necesarios para imprimir `mm` milímetros a `dpi` puntos por pulgada. */
+export function pixelesPorMm(mm: number, dpi: number): number {
+  if (!(mm > 0) || !(dpi > 0)) return 0;
+  return (mm / 25.4) * dpi;
+}
+
+/**
+ * Tamaño al que conviene reescalar una foto: cabe en `marco` sin deformarse y **nunca
+ * amplía** (ampliar agrega peso sin ganar nitidez).
+ *
+ * Por qué importa: jsPDF re-encoda cada imagen a JPEG con calidad 100, así que incrustar
+ * la foto a resolución completa para mostrarla del tamaño de una tarjeta convertía 64 KB
+ * en ~700 KB — una inspección de ~37 fotos daba un PDF de ~25 MB, inservible para enviar.
+ */
+export function dimensionesDestino(origen: DimensionesPx, marco: DimensionesPx): DimensionesPx {
+  const { ancho: w, alto: h } = origen;
+  if (!(w > 0) || !(h > 0)) return { ancho: 0, alto: 0 };
+  if (!(marco.ancho > 0) || !(marco.alto > 0)) return { ancho: w, alto: h };
+  const escala = Math.min(marco.ancho / w, marco.alto / h, 1);
+  return { ancho: Math.max(1, Math.round(w * escala)), alto: Math.max(1, Math.round(h * escala)) };
+}
+
 export interface FotoParaPdf {
   fname: string;
   /** URL ya resuelta (firmada de S3, o cualquier origen que el llamador sepa leer). */
@@ -108,6 +135,17 @@ export interface OpcionesDescarga {
   onProgress?: (hechas: number, total: number) => void;
   /** Descargas simultáneas. Bajas de más saturan la red; de menos, tarda. */
   concurrencia?: number;
+  /**
+   * Opcional: reescala / re-encoda los bytes antes de entregarlos. Inyectado porque
+   * necesita canvas (solo navegador), y así este módulo sigue siendo testeable.
+   *
+   * Devolver `null` —o lanzar— conserva el original: más vale una foto pesada que
+   * ninguna foto.
+   */
+  optimizar?: (
+    bytes: Uint8Array,
+    formato: PdfImageFormat,
+  ) => Promise<{ bytes: Uint8Array; formato: PdfImageFormat } | null>;
 }
 
 const CONCURRENCIA_DEFAULT = 6;
@@ -124,7 +162,7 @@ export async function descargarImagenes(
   const total = fotos.length;
   if (total === 0) return { listas: [], fallidas: [] };
 
-  const { fetchBytes, onProgress } = opts;
+  const { fetchBytes, onProgress, optimizar } = opts;
   const limite = Math.max(1, opts.concurrencia ?? CONCURRENCIA_DEFAULT);
 
   // Resultados por ÍNDICE: las descargas terminan desordenadas y el orden importa.
@@ -142,7 +180,17 @@ export async function descargarImagenes(
         const bytes = await fetchBytes(f.url, f);
         const formato = formatoDeBytes(bytes);
         if (formato) {
-          porIndice[i] = { ...f, bytes, formato };
+          let final: { bytes: Uint8Array; formato: PdfImageFormat } = { bytes, formato };
+          if (optimizar) {
+            try {
+              const opt = await optimizar(bytes, formato);
+              // Un resultado vacío significa que el canvas no produjo nada útil.
+              if (opt && opt.bytes.length > 0) final = opt;
+            } catch (e) {
+              console.warn(`[photoImages] no se pudo optimizar ${f.fname}:`, e);
+            }
+          }
+          porIndice[i] = { ...f, bytes: final.bytes, formato: final.formato };
         } else {
           fallidas.push({ fname: f.fname, motivo: "formato de imagen no reconocido" });
         }

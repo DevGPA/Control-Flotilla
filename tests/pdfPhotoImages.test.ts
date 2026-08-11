@@ -11,8 +11,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   descargarImagenes,
+  dimensionesDestino,
   esImagenSoportada,
   formatoDeBytes,
+  pixelesPorMm,
   type FotoParaPdf,
 } from "../src/pdf/photoImages";
 
@@ -71,6 +73,64 @@ describe("formatoDeBytes — el formato sale de los bytes, no del nombre", () =>
   it("un .jpg cuyo contenido real es WEBP se reporta como WEBP", () => {
     // Pasó en prod: el webhook guardó .jpg con ContentType video/*. El nombre miente.
     expect(formatoDeBytes(WEBP_VP8X)).toBe("WEBP");
+  });
+});
+
+// ── Reescalado ────────────────────────────────────────────────────────────────
+// jsPDF re-encoda cada imagen a JPEG calidad 100, así que una foto de 64 KB acababa
+// pesando ~700 KB dentro del PDF y una inspección de ~37 fotos daba ~25 MB —
+// inservible para enviar por correo. En el papel cada foto mide 58×44 mm: todo pixel
+// por encima de esa resolución es peso puro.
+describe("pixelesPorMm", () => {
+  it("convierte milímetros de papel a píxeles a la densidad dada", () => {
+    expect(Math.round(pixelesPorMm(58, 150))).toBe(343); // 58mm / 25.4 * 150
+    expect(Math.round(pixelesPorMm(25.4, 200))).toBe(200); // una pulgada exacta
+  });
+
+  it("no truena con cero o valores absurdos", () => {
+    expect(pixelesPorMm(0, 150)).toBe(0);
+    expect(pixelesPorMm(58, 0)).toBe(0);
+    expect(pixelesPorMm(-5, 150)).toBe(0);
+  });
+});
+
+describe("dimensionesDestino", () => {
+  it("reduce una foto grande manteniendo la proporción", () => {
+    const d = dimensionesDestino({ ancho: 4000, alto: 3000 }, { ancho: 400, alto: 300 });
+    expect(d).toEqual({ ancho: 400, alto: 300 });
+  });
+
+  it("una foto apaisada la limita el ancho", () => {
+    const d = dimensionesDestino({ ancho: 4000, alto: 1000 }, { ancho: 400, alto: 300 });
+    expect(d).toEqual({ ancho: 400, alto: 100 });
+  });
+
+  it("una foto vertical la limita el alto", () => {
+    const d = dimensionesDestino({ ancho: 1000, alto: 4000 }, { ancho: 400, alto: 300 });
+    expect(d).toEqual({ ancho: 75, alto: 300 });
+  });
+
+  // Ampliar solo agregaría peso sin ganar nitidez.
+  it("NUNCA amplía una foto que ya es más chica que el marco", () => {
+    const d = dimensionesDestino({ ancho: 200, alto: 150 }, { ancho: 400, alto: 300 });
+    expect(d).toEqual({ ancho: 200, alto: 150 });
+  });
+
+  it("devuelve enteros (el canvas no acepta fracciones)", () => {
+    const d = dimensionesDestino({ ancho: 1333, alto: 999 }, { ancho: 343, alto: 260 });
+    expect(Number.isInteger(d.ancho)).toBe(true);
+    expect(Number.isInteger(d.alto)).toBe(true);
+  });
+
+  it("no truena ni divide por cero con dimensiones inválidas", () => {
+    expect(dimensionesDestino({ ancho: 0, alto: 0 }, { ancho: 400, alto: 300 })).toEqual({
+      ancho: 0,
+      alto: 0,
+    });
+    expect(dimensionesDestino({ ancho: 100, alto: 100 }, { ancho: 0, alto: 0 })).toEqual({
+      ancho: 100,
+      alto: 100,
+    });
   });
 });
 
@@ -162,6 +222,64 @@ describe("descargarImagenes", () => {
       },
     });
     expect(vistas).toEqual([["https://s3/a.jpg", "a.jpg"]]);
+  });
+
+  it("aplica `optimizar` y usa el resultado", async () => {
+    const r = await descargarImagenes([foto("a.webp")], {
+      fetchBytes: async () => WEBP_VP8X,
+      optimizar: async () => ({ bytes: JPEG, formato: "JPEG" }),
+    });
+    expect(r.listas[0]!.formato).toBe("JPEG");
+    expect(r.listas[0]!.bytes).toBe(JPEG);
+  });
+
+  // Degradación elegante: más vale una foto pesada que ninguna foto.
+  it("si `optimizar` devuelve null, conserva el original", async () => {
+    const r = await descargarImagenes([foto("a.webp")], {
+      fetchBytes: async () => WEBP_VP8X,
+      optimizar: async () => null,
+    });
+    expect(r.listas[0]!.formato).toBe("WEBP");
+    expect(r.fallidas).toEqual([]);
+  });
+
+  it("si `optimizar` lanza, conserva el original, lo registra y NO pierde la foto", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const r = await descargarImagenes([foto("a.webp")], {
+        fetchBytes: async () => WEBP_VP8X,
+        optimizar: async () => {
+          throw new Error("canvas no disponible");
+        },
+      });
+      expect(r.listas).toHaveLength(1);
+      expect(r.listas[0]!.formato).toBe("WEBP");
+      expect(r.fallidas).toEqual([]);
+      expect(warn).toHaveBeenCalledOnce(); // el fallo queda visible, no en silencio
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // El canvas puede devolver un blob vacío; incrustar 0 bytes daría una foto rota.
+  it("si `optimizar` devuelve bytes vacíos, conserva el original", async () => {
+    const r = await descargarImagenes([foto("a.webp")], {
+      fetchBytes: async () => WEBP_VP8X,
+      optimizar: async () => ({ bytes: new Uint8Array(), formato: "JPEG" }),
+    });
+    expect(r.listas[0]!.formato).toBe("WEBP");
+  });
+
+  it("recibe los bytes y el formato ya detectado", async () => {
+    const vistos: string[] = [];
+    await descargarImagenes([foto("a.webp")], {
+      fetchBytes: async () => WEBP_VP8X,
+      optimizar: async (bytes, formato) => {
+        vistos.push(`${formato}:${bytes.length}`);
+        return null;
+      },
+    });
+    expect(vistos).toEqual([`WEBP:${WEBP_VP8X.length}`]);
   });
 
   it("lista vacía → no descarga nada", async () => {

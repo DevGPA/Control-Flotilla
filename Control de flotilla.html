@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zoVlCwfRDTEw+hSdfb8r82tVvyi+OtmxIHM1k1OtPyw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-u5w4Qf/xvjOVLFZG3x/VYEdcTeT+SKq2ZAlZqfu3RKY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5322,6 +5322,45 @@ function _pdfProgreso(){
   };
 }
 
+// Reescalado de fotos ANTES de incrustarlas. jsPDF re-encoda cada imagen a JPEG con
+// CALIDAD 100, así que incrustar la foto a resolución completa para mostrarla del tamaño
+// de una tarjeta convertía 64 KB en ~700 KB: una inspección de ~37 fotos daba un PDF de
+// ~25 MB, imposible de enviar por correo. En el papel cada foto mide 58×44 mm — todo
+// pixel por encima de esa resolución es peso puro.
+const _PDF_FOTO_MM_ANCHO=58, _PDF_FOTO_MM_ALTO=44;
+const _PDF_FOTO_DPI=200;        // 2× la densidad de pantalla: legible al hacer zoom
+const _PDF_FOTO_CALIDAD=0.82;   // JPEG; arriba de ~0.85 el peso sube sin verse mejor
+
+async function _pdfOptimizarFoto(bytes, formato, api){
+  // createImageBitmap decodifica webp/jpg/png sin montar nada en el DOM.
+  const bmp = await createImageBitmap(new Blob([bytes]));
+  try{
+    const marco={
+      ancho: Math.round(api.pixelesPorMm(_PDF_FOTO_MM_ANCHO,_PDF_FOTO_DPI)),
+      alto:  Math.round(api.pixelesPorMm(_PDF_FOTO_MM_ALTO,_PDF_FOTO_DPI))
+    };
+    const d=api.dimensionesDestino({ancho:bmp.width,alto:bmp.height},marco);
+    if(!d.ancho || !d.alto) return null;
+    const cv = typeof OffscreenCanvas==="function"
+      ? new OffscreenCanvas(d.ancho,d.alto)
+      : Object.assign(document.createElement("canvas"),{width:d.ancho,height:d.alto});
+    const ctx=cv.getContext("2d");
+    if(!ctx) return null;
+    // Fondo blanco ANTES de dibujar: el JPEG no tiene transparencia y las firmas van en
+    // PNG con alfa — sin esto saldrían sobre negro.
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,0,d.ancho,d.alto);
+    ctx.drawImage(bmp,0,0,d.ancho,d.alto);
+    const blob = cv.convertToBlob
+      ? await cv.convertToBlob({type:"image/jpeg",quality:_PDF_FOTO_CALIDAD})
+      : await new Promise(res=>cv.toBlob(res,"image/jpeg",_PDF_FOTO_CALIDAD));
+    if(!blob) return null;
+    return {bytes:new Uint8Array(await blob.arrayBuffer()), formato:"JPEG"};
+  } finally {
+    if(bmp && typeof bmp.close==="function") bmp.close();
+  }
+}
+
 async function exportPDF(){
   const u=units.find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
@@ -5542,6 +5581,9 @@ async function exportPDF(){
         _prog.set(`Descargando fotos… 0/${_cand.length}`);
         const _r=await _pdfApi.descargarImagenes(_cand,{
           onProgress:(n,t)=>_prog.set(`Descargando fotos… ${n}/${t}`),
+          // Reescalar a la resolución de despliegue: sin esto el PDF pesa ~25 MB. Si el
+          // canvas falla, el módulo conserva la foto original (pesada, pero visible).
+          optimizar:(bytes,formato)=>_pdfOptimizarFoto(bytes,formato,_pdfApi),
           fetchBytes: async (url,foto)=>{
             // ZIP local: los bytes YA están en memoria. Además un fetch a su URL blob:
             // lo bloquearía la CSP, que no lista blob: en connect-src.
