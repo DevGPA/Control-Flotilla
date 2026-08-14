@@ -29,21 +29,41 @@ export const esKeyEvidencia = (v: unknown): v is string =>
   typeof v === "string" && KEY_EVIDENCIA_RE.test(v);
 
 /**
- * Enumera toda clave S3 de evidencia en un registro plano (campos top-level y
- * `answers.*`) — mismo recorrido que hace el publisher del puente.
+ * Enumera toda clave S3 de evidencia en un registro plano — MISMO recorrido y MISMA
+ * grafía de `campo` que el publisher del puente (verificada contra sobres reales de
+ * ops-capture/, 2026-08-14): dict → "a.b", arreglo → "a[0]", objeto en arreglo →
+ * "a[0].foto". Clonarla exacta importa porque `nombreEvidencia(campo, key)` deriva el
+ * fname: otra grafía produciría un segundo objeto en S3 y una referencia distinta a la
+ * que el camino en vivo ya escribió.
+ *
+ * Antes solo se recorrían strings top-level y `answers.*` planos: el arreglo `fotos` de
+ * las solicitudes y los `golpes` [{foto,desc}] del checklist quedaban FUERA — el backfill
+ * no los copiaba y estampaba la key cruda de Ops como fname (imagen rota en el drawer).
+ * Dedup por key: una foto repetida en dos campos se copia una sola vez (primera gana).
  */
 export function extraerEvidencias(
   plano: Record<string, unknown>,
 ): Array<{ campo: string; key: string }> {
   const out: Array<{ campo: string; key: string }> = [];
-  for (const [k, v] of Object.entries(plano)) {
-    if (esKeyEvidencia(v)) out.push({ campo: k, key: v });
-    else if (k === "answers" && v && typeof v === "object" && !Array.isArray(v)) {
-      for (const [ak, av] of Object.entries(v as Record<string, unknown>)) {
-        if (esKeyEvidencia(av)) out.push({ campo: `answers.${ak}`, key: av });
+  const vistas = new Set<string>();
+  const recorrer = (v: unknown, ruta: string, prof: number): void => {
+    if (esKeyEvidencia(v)) {
+      if (!vistas.has(v)) {
+        vistas.add(v);
+        out.push({ campo: ruta, key: v });
       }
+      return;
     }
-  }
+    if (prof >= 6 || v === null || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      v.forEach((el, i) => recorrer(el, `${ruta}[${i}]`, prof + 1));
+      return;
+    }
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      recorrer(val, ruta ? `${ruta}.${k}` : k, prof + 1);
+    }
+  };
+  recorrer(plano, "", 0);
   return out;
 }
 
