@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-dcLipYCWsZ9Z1dCJogTtk+xrLsqIWeJ4ZQi5VMqdW0E=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-oEtrGHpwJldl1b8uouk4Rw60hy70aj3SBiR3mOo6XCw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8727,106 +8727,36 @@ function renderHistorial(){
 }
 
 // ── Exportar Taller a Excel ──────────────────────────────
-// Las columnas y los formatos viven en src/taller/exportExcel.ts (puro, con test de
-// cobertura que falla si un campo del modelo se queda sin exportar). Aquí solo se arma el
-// libro. Antes cada función llevaba su lista de columnas a mano y divergían.
-async function _tallerExportApi(){
-  if(!window.XLSX) await ensureXLSX();
-  if(typeof window.__tallerExport!=="function") throw new Error("módulo de exportación no disponible");
-  return window.__tallerExport();
-}
-
-/**
- * Hoja con formato: anchos, autofiltro en el encabezado y formato de celda por columna.
- * Las fechas llegan como Date y los montos como number, así que Excel los ORDENA y SUMA de
- * verdad — antes las fechas iban como texto "14/08/2026" y el orden salía alfabético.
- * Nota: esta edición de SheetJS no escribe estilos de celda (negritas/fondos), así que el
- * encabezado no se puede resaltar desde aquí.
- */
-function _tallerHoja(columnas, filas){
-  const XU=XLSX.utils;
-  const ws=XU.aoa_to_sheet([columnas.map(c=>c.titulo),...filas]);
-  ws["!cols"]=columnas.map(c=>({wch:c.ancho}));
-  const ref=XU.encode_range({s:{r:0,c:0},e:{r:filas.length,c:columnas.length-1}});
-  ws["!autofilter"]={ref};
-  columnas.forEach((c,ci)=>{
-    if(!c.formato)return;
-    for(let ri=1;ri<=filas.length;ri++){
-      const cell=ws[XU.encode_cell({r:ri,c:ci})];
-      if(cell&&cell.v!==""&&cell.v!=null) cell.z=c.formato;
-    }
-  });
-  return ws;
-}
-
+// TODO el armado del libro vive en src/taller/tallerExcel.ts (ExcelJS, formato de la
+// casa: título teal, encabezado congelado + autofiltro, zebra, $ y fechas reales, fila
+// TOTAL con SUM viva — el mismo lenguaje visual que "Solicitudes (Excel)" de
+// Combustible). Las columnas canónicas y el guard de cobertura viven en
+// src/taller/exportExcel.ts. Aquí solo se juntan las entries y se dispara la descarga.
+// ExcelJS llega por import dinámico (chunk on-demand) — no necesita ensureXLSX.
 async function exportTallerActivasExcel(){
-  let api;
-  try{ api=await _tallerExportApi(); }
-  catch(e){ window.notify("No se pudo cargar el componente Excel. Reintenta.","error",6000); return; }
-  const isClosed=e=>e.estado==="Finalizado";
-  const activas=tallerEntries.filter(e=>!isClosed(e));
+  const activas=tallerEntries.filter(e=>e.estado!=="Finalizado");
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
-
-  const hoy=new Date();
-  // Las que llevan más tiempo dentro primero: es la lectura operativa de esta hoja.
-  const orden=[...activas].sort((a,b)=>{
-    const da=api.diasEnTaller(a,hoy), db=api.diasEnTaller(b,hoy);
-    return (db===""?-1:db)-(da===""?-1:da);
-  });
-  const filas=api.filasDe(orden,api.COLUMNAS_TALLER,{hoy});
-
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,_tallerHoja(api.COLUMNAS_TALLER,filas),"Activas en Taller");
-  XLSX.writeFile(wb,`taller_activas_${new Date().toISOString().slice(0,10)}.xlsx`);
+  try{
+    const api=await window.__tallerExport();
+    await api.downloadTallerActivasXlsx(activas,{hoy:new Date()});
+  }catch(e){
+    console.error("[exportTallerActivasExcel]",e);
+    window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
+  }
 }
 
 async function exportTallerHistorialExcel(){
-  let api;
-  try{ api=await _tallerExportApi(); }
-  catch(e){ window.notify("No se pudo cargar el componente Excel. Reintenta.","error",6000); return; }
-  const isClosed=e=>e.estado==="Finalizado";
-  const hoy=new Date();
-
-  // Agrupar por unitKey (igual que renderHistorial)
-  const unitMap=new Map();
-  tallerEntries.forEach(e=>{
-    const key=e.unitKey||e.id;
-    if(!unitMap.has(key)) unitMap.set(key,{entries:[],cerradas:[],totalGasto:0,totalGastoRef:0,totalGastoMO:0,closedCount:0,latestClosed:null});
-    const u=unitMap.get(key);
-    u.entries.push(e);
-    if(isClosed(e)){
-      u.cerradas.push(e);
-      u.closedCount++;
-      u.totalGasto+=api.gastoTotalDe(e);u.totalGastoRef+=e.gastoRef||0;u.totalGastoMO+=e.gastoMO||0;
-      if(!u.latestClosed||(e.updatedAt||"")>(u.latestClosed.updatedAt||"")) u.latestClosed=e;
-    }
-  });
-
-  // Hoja 1: Resumen por unidad. Ahora incluye el PRIMER ingreso (antes se rotulaba
-  // "Último ingreso" pero se tomaba de la visita más reciente) y los días promedio.
-  const unidades=[...unitMap.values()].filter(u=>u.closedCount>0)
-    .sort((a,b)=>b.totalGasto-a.totalGasto)
-    .map(u=>{
-      const fechas=u.cerradas.map(e=>e.fentrada).filter(Boolean).sort();
-      const salidas=u.cerradas.map(e=>e.fsalidaReal).filter(Boolean).sort();
-      const dias=u.cerradas.map(e=>api.diasEnTaller(e,hoy)).filter(d=>d!=="");
-      return {
-        eco:u.latestClosed.eco,plate:u.latestClosed.plate,brand:u.latestClosed.brand,
-        sucursal:u.latestClosed.sucursal,area:u.latestClosed.area,
-        visitas:u.closedCount,
-        gastoTotal:u.totalGasto,gastoRef:u.totalGastoRef,gastoMO:u.totalGastoMO,
-        primerIngreso:fechas[0],ultimaSalida:salidas[salidas.length-1],
-        diasPromedio:dias.length?dias.reduce((a,b)=>a+b,0)/dias.length:"",
-      };
-    });
-
-  // Hoja 2: Detalle por ingreso — MISMAS columnas que Activas (es la misma entidad).
-  const cerradas=tallerEntries.filter(isClosed).sort((a,b)=>String(b.fentrada||"").localeCompare(String(a.fentrada||"")));
-
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,_tallerHoja(api.COLUMNAS_RESUMEN,api.filasResumen(unidades)),"Resumen");
-  XLSX.utils.book_append_sheet(wb,_tallerHoja(api.COLUMNAS_TALLER,api.filasDe(cerradas,api.COLUMNAS_TALLER,{hoy})),"Detalle");
-  XLSX.writeFile(wb,`historial_taller_${new Date().toISOString().slice(0,10)}.xlsx`);
+  if(!tallerEntries.some(e=>e.estado==="Finalizado")){
+    window.notify("No hay visitas finalizadas en el historial.","warn",4000);return;
+  }
+  try{
+    const api=await window.__tallerExport();
+    // El módulo filtra cerradas y arma el Resumen por unidad (resumenPorUnidad, testeado).
+    await api.downloadTallerHistorialXlsx(tallerEntries,{hoy:new Date()});
+  }catch(e){
+    console.error("[exportTallerHistorialExcel]",e);
+    window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
+  }
 }
 
 // ── Importar Excel de Seguimiento Taller ─────────────────

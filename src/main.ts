@@ -370,15 +370,16 @@ if (readFlag("USE_NEW_RENDER")) {
   window as unknown as { __pdfPhotos?: () => Promise<typeof import("./pdf/photoImages")> }
 ).__pdfPhotos = () => import("./pdf/photoImages");
 
-// ─── Columnas del Excel de Taller — para el MONOLITO (sin feature flag) ───
-// Las dos exportaciones del monolito llevaban su propia lista de columnas escrita a mano y se
-// quedaban cortas frente a `TallerEntry` (Activas sin fsalidaReal/fcierre/trazabilidad;
-// Detalle del historial además sin refacciones ni freporte). Ahora hay UNA definición
-// compartida, con anchos y formatos de Excel, y un test de cobertura que falla si alguien
-// agrega un campo al modelo y no lo exporta. Import dinámico: solo baja al exportar.
+// ─── Excel de Taller — para el MONOLITO (sin feature flag) ───
+// El armado del libro vive en src/taller/tallerExcel.ts (ExcelJS: título teal, encabezado
+// congelado, autofiltro, zebra, $ y fechas reales, fila TOTAL con SUM viva — el mismo
+// formato que "Solicitudes (Excel)"). Las columnas canónicas y el guard de cobertura
+// (test que falla si un campo del modelo se queda sin exportar) siguen en
+// src/taller/exportExcel.ts, que ese módulo consume. Import dinámico: exceljs pesa y
+// solo baja cuando el usuario exporta (mismo patrón que solicitudesExcel en fuel/wire).
 (
-  window as unknown as { __tallerExport?: () => Promise<typeof import("./taller/exportExcel")> }
-).__tallerExport = () => import("./taller/exportExcel");
+  window as unknown as { __tallerExport?: () => Promise<typeof import("./taller/tallerExcel")> }
+).__tallerExport = () => import("./taller/tallerExcel");
 
 // ─── Feature flag: PDF export (P2.2d) ──────────────────────────────────
 if (readFlag("USE_NEW_PDF")) {
