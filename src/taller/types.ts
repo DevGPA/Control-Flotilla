@@ -43,6 +43,15 @@ export type TallerEntry = {
   tipo?: string; // "Preventivo", "Correctivo", "Accidente", etc.
   estado: TallerEstado;
 
+  /**
+   * Kilometraje al INGRESO. Siempre se capturó (el formulario lo exige >0, campo
+   * `tf-km`) y siempre viajó a la nube (`datos.km`, ver cloudHydrate:656) — pero el
+   * tipo nunca lo declaró, así que el export de Excel no lo veía y el guard de
+   * cobertura (que se construye desde este tipo) tampoco podía reclamarlo. 0 = registros
+   * viejos sin captura.
+   */
+  km?: number | string;
+
   // Fechas (ISO string "YYYY-MM-DD" usualmente)
   freporte?: string;
   fentrada?: string;

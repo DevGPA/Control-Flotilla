@@ -85,6 +85,20 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
   { campo: "area", titulo: "Área", ancho: 16, tipo: "texto", valor: (e) => texto(e.area) },
   { campo: "tipo", titulo: "Tipo", ancho: 13, tipo: "texto", valor: (e) => texto(e.tipo) },
   { campo: "estado", titulo: "Estado", ancho: 15, tipo: "texto", valor: (e) => texto(e.estado) },
+  // Kilometraje al ingreso: obligatorio en el formulario y guardado en la nube desde
+  // siempre, pero el tipo no lo declaraba y el reporte no lo llevaba (reporte usuario
+  // 2026-08-14). 0 = registro viejo sin captura → celda vacía, no un "0 km" que miente.
+  {
+    campo: "km",
+    titulo: "KM Ingreso",
+    ancho: 11,
+    tipo: "numero",
+    formato: "#,##0",
+    valor: (e) => {
+      const n = Number(e.km);
+      return Number.isFinite(n) && n > 0 ? n : "";
+    },
+  },
   { campo: "freporte", titulo: "F. Reporte", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.freporte) },
   { campo: "fentrada", titulo: "F. Entrada", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fentrada) },
   { campo: "fsalidaEst", titulo: "F. Salida Est.", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fsalidaEst) },
