@@ -380,6 +380,8 @@ interface LegacyTallerEntry {
   gastoRef?: number;
   gastoMO?: number;
   tecnico?: string;
+  /** Pedido del ERP (NetSuite) — viaja completo dentro de `datos` como el resto. */
+  pedidoErp?: string;
   refacciones?: string;
   comentario?: string;
   updatedAt?: string;

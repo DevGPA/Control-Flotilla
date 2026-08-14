@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-oEtrGHpwJldl1b8uouk4Rw60hy70aj3SBiR3mOo6XCw=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-+ZKKPgGkVyjdT2BqFnwAyynGVUwrmt/ClQLuy3tP1LA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1283,6 +1283,10 @@
       <div class="tl-field">
         <label for="tf-gasto">Subtotal ($)</label>
         <input id="tf-gasto" type="number" min="0" step="0.01" placeholder="0.00"/>
+      </div>
+      <div class="tl-field">
+        <label for="tf-pedido">No. de Pedido (ERP)</label>
+        <input id="tf-pedido" type="text" placeholder="Folio del pedido en NetSuite" autocomplete="off"/>
       </div>
       <div class="tl-field full">
         <label for="tf-tecnico">Tecnico Asignado</label>
@@ -8903,6 +8907,7 @@ function openTallerModal(id){
   document.getElementById("tf-fsalida-real").value = e?.fsalidaReal||"";
   document.getElementById("tf-km").value           = e?.km||"";
   document.getElementById("tf-gasto").value        = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+  document.getElementById("tf-pedido").value       = e?.pedidoErp||"";
   document.getElementById("tf-tecnico").value      = e?.tecnico||"";
   document.getElementById("tf-refacciones").value  = e?.refacciones||"";
   document.getElementById("tf-comentario").value   = e?.comentario||"";
@@ -8920,7 +8925,8 @@ function closeTallerModal(){
 
 // ── Reingresar unidad al taller (nuevo registro, misma unidad) ──
 function clearTallerEntryFields(){
-  ["tf-km","tf-gasto","tf-freporte","tf-fentrada","tf-fsalida-est","tf-fsalida-real","tf-tecnico","tf-refacciones","tf-comentario"]
+  // tf-pedido incluido: cada visita (reingreso) gestiona su PROPIO pedido en el ERP.
+  ["tf-km","tf-gasto","tf-pedido","tf-freporte","tf-fentrada","tf-fsalida-est","tf-fsalida-real","tf-tecnico","tf-refacciones","tf-comentario"]
     .forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
 }
 
@@ -9056,6 +9062,7 @@ function renderHistorialModal(){
         <div class="hist-grid-cell"><span>Kilometraje</span><b>${e.km>0?Number(e.km).toLocaleString("es-MX")+" km":"—"}</b></div>
         <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${e.gasto>0?"$"+Number(e.gasto).toLocaleString("es-MX",{minimumFractionDigits:2}):(e.gastoRef+e.gastoMO)>0?"$"+Number(e.gastoRef+e.gastoMO).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"}</b></div>
         <div class="hist-grid-cell"><span>Tecnico</span><b>${escHtml(e.tecnico)||"—"}</b></div>
+        <div class="hist-grid-cell"><span>Pedido ERP</span><b>${escHtml(e.pedidoErp||"")||"—"}</b></div>
       </div>
       ${e.refacciones?`<div style="margin-top:8px;font-size:10px;color:var(--w1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ac)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">REFACCIONES / TRABAJOS</span>${escHtml(e.refacciones)}</div>`:""}
       ${e.comentario?`<div style="margin-top:6px;font-size:10px;color:var(--s1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ln)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">COMENTARIO</span>${escHtml(e.comentario)}</div>`:""}
@@ -9260,6 +9267,9 @@ async function saveTallerEntry(){
     gastoRef:    0,
     gastoMO:     0,
     gasto:       parseFloat(document.getElementById("tf-gasto").value)||0,
+    // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
+    // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
+    pedidoErp:   document.getElementById("tf-pedido").value.trim(),
     tecnico:     document.getElementById("tf-tecnico").value.trim(),
     refacciones: document.getElementById("tf-refacciones").value.trim(),
     comentario:  document.getElementById("tf-comentario").value.trim(),
