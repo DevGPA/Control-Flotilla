@@ -38,8 +38,23 @@ export function mapSolicitud(
   const economicoId = String(ops.economico ?? "").trim();
   if (!economicoId) throw new Error(`SOL ${ops.id}: registro sin económico — no mapeable`);
 
+  // Evidencias: Ops las manda en DOS lugares y antes solo se leía `photo`.
+  // `answers.fotos` es un ARREGLO y se ignoraba por completo: medido sobre los 789 payloads
+  // crudos archivados en agosto 2026, aparece en 535 registros con **328 fotos únicas** que
+  // nunca llegaron a Fleet Command (ninguna duplicada en otro campo — pérdida neta). El caso
+  // que lo destapó: unidad 54, folio OPS-84b0eebed5ae, dos fotos visibles en Ops y ninguna
+  // en FC. `camposCorregir:["fotos"]` confirma que para Ops es un campo de primera clase.
   const photos: FcPhotoRef[] = [];
-  if (ops.photo) photos.push({ group: "Evidencia", col: "foto", fname: resolveFname(ops.photo) });
+  const vistas = new Set<string>();
+  const pushEvidencia = (key: unknown): void => {
+    if (typeof key !== "string" || !key.trim() || vistas.has(key)) return;
+    vistas.add(key);
+    // La primera va sin número para no romper la etiqueta histórica "foto".
+    const col = photos.length === 0 ? "foto" : `foto ${photos.length + 1}`;
+    photos.push({ group: "Evidencia", col, fname: resolveFname(key) });
+  };
+  pushEvidencia(ops.photo);
+  for (const k of Array.isArray(ops.fotos) ? ops.fotos : []) pushEvidencia(k);
   if (ops.firma) photos.push({ group: "Firma", col: "firma", fname: resolveFname(ops.firma) });
 
   const datos = {
@@ -56,6 +71,16 @@ export function mapSolicitud(
     tankAfter: ops.tankAfter ?? null,
     necesidad: ops.necesidad ?? null,
     mail: String(ops.mail ?? ""),
+    // Comentario de quien autorizó: llegaba en 359 de los registros medidos y se tiraba.
+    // Es el "por qué" de la autorización — el único texto humano del flujo de aprobación.
+    comentarioAut: String(ops.comentarioAut ?? ""),
+    // Rastro del ciclo "Por corregir": QUÉ campo pidió corregir Ops y quién/cuándo. Sin
+    // esto, una solicitud devuelta llega sin explicación. Se omiten si no vienen para no
+    // engordar `datos` en el 99% de los registros.
+    ...(Array.isArray(ops.camposCorregir) && ops.camposCorregir.length
+      ? { camposCorregir: ops.camposCorregir }
+      : {}),
+    ...(ops.correccion ? { correccion: ops.correccion } : {}),
   };
 
   return {

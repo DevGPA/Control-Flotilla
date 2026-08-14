@@ -34,8 +34,7 @@ import {
 } from "../../../src/opsgpa/mapChecklist";
 import {
   debeMantenerCatalogo,
-  esStatusAnulado,
-  esStatusPorCorregir,
+  esStatusOpsConocido,
   mapAnulacionOps,
   metaAnulacionDeOps,
   type AnulacionOpsInput,
@@ -284,17 +283,10 @@ async function anularPorReasignacion(
  * El log lo hace visible sin romper la ingesta.
  */
 function avisarStatusDesconocido(evento: GpaOpsEvento): void {
-  const st = String(evento.status ?? "")
-    .trim()
-    .toLowerCase();
-  const conocido =
-    !st ||
-    st.startsWith("aproba") ||
-    st.startsWith("rechaza") ||
-    st.startsWith("pendiente") ||
-    esStatusAnulado(st) ||
-    esStatusPorCorregir(st);
-  if (!conocido) {
+  // La lista de conocidos vive en src/opsgpa/mapAnulacion.ts (esStatusOpsConocido): la misma
+  // que usa la UI para marcar la fila, así el aviso del backend y la señal visible no pueden
+  // divergir. Antes estaba duplicada aquí.
+  if (!esStatusOpsConocido(evento.status)) {
     console.warn(
       JSON.stringify({
         evt: "ops_status_desconocido",
@@ -461,17 +453,24 @@ export const handler = async (
 
     // 5) Mapear con los adaptadores probados y persistir con upsert idempotente.
     const plano = toOpsRecord(evento);
-    // Reasignación en Ops → el registro viejo llega con status "Anulado" y hay que anularlo
-    // aquí. Se despacha por STATUS, nunca por `evento.evento`: el backfill lee la tabla
-    // directo y no tiene ese campo, así que gatearlo por evento dejaría los ya-reasignados
-    // contando para siempre. Sin esto, la reasignación DUPLICA el registro en silencio.
+    // Reasignación en Ops → el registro sustituido hay que anularlo aquí; sin esto la
+    // reasignación DUPLICA el registro en silencio. Se despacha por el RASTRO
+    // (`reasignadoA`) y, como respaldo, por el status `Anulad*` — nunca por `evento.evento`:
+    // el backfill lee la tabla directo y no tiene ese campo, así que gatearlo por evento
+    // dejaría los ya-reasignados contando para siempre.
+    //
+    // Por qué el rastro y no solo la palabra: medido en prod el 2026-08-11, en 903 registros
+    // Ops solo ha emitido "Aprobada/Aprobado", "Rechazada", "Pendiente" y "Por corregir".
+    // "Anulado" NUNCA llegó, así que el vocabulario de la anulación sigue sin confirmarse
+    // contra un evento real; el rastro es estructural y no depende de qué palabra elijan.
     avisarStatusDesconocido(evento);
     const meta = metaAnulacionDeOps(plano as unknown as Record<string, unknown>, ahoraIso());
     const folioNuevo = String(meta.folioNuevo ?? "");
     // Un registro invalidado NO manda sobre el catálogo de unidades: la fila `Unit` no se
     // filtra por anulación, así que escribirla podría crear una unidad fantasma o pisar
-    // economicoId/marca/area de la unidad correcta.
-    const mantenerCatalogo = debeMantenerCatalogo(evento.status);
+    // economicoId/marca/area de la unidad correcta. Un SUSTITUIDO apunta justamente a la
+    // unidad equivocada (por eso se reasignó), así que aplica igual.
+    const mantenerCatalogo = debeMantenerCatalogo(evento.status, meta.sustituido);
 
     if (evento.tipo === "SOL") {
       const input = mapCombustible(plano as OpsSolRecord | OpsCargaRecord, resolver);
