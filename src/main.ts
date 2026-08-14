@@ -370,6 +370,16 @@ if (readFlag("USE_NEW_RENDER")) {
   window as unknown as { __pdfPhotos?: () => Promise<typeof import("./pdf/photoImages")> }
 ).__pdfPhotos = () => import("./pdf/photoImages");
 
+// ─── Columnas del Excel de Taller — para el MONOLITO (sin feature flag) ───
+// Las dos exportaciones del monolito llevaban su propia lista de columnas escrita a mano y se
+// quedaban cortas frente a `TallerEntry` (Activas sin fsalidaReal/fcierre/trazabilidad;
+// Detalle del historial además sin refacciones ni freporte). Ahora hay UNA definición
+// compartida, con anchos y formatos de Excel, y un test de cobertura que falla si alguien
+// agrega un campo al modelo y no lo exporta. Import dinámico: solo baja al exportar.
+(
+  window as unknown as { __tallerExport?: () => Promise<typeof import("./taller/exportExcel")> }
+).__tallerExport = () => import("./taller/exportExcel");
+
 // ─── Feature flag: PDF export (P2.2d) ──────────────────────────────────
 if (readFlag("USE_NEW_PDF")) {
   const legacyExportPDF = window.exportPDF;
