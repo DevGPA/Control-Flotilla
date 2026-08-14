@@ -112,6 +112,16 @@ describe("formato — Excel tiene que poder ordenar y sumar", () => {
     }
   });
 
+  // Pedido por Navares 2026-08-14: referencia cruzada con el pedido del ERP (NetSuite).
+  it("Pedido ERP sale como texto y vacío cuando el registro no lo trae", () => {
+    const i = COLUMNAS_TALLER.findIndex((c) => c.campo === "pedidoErp");
+    expect(i).toBeGreaterThanOrEqual(0);
+    const [con] = filasDe([entry({ pedidoErp: "PO-4512" })], COLUMNAS_TALLER, { hoy: HOY });
+    const [sin] = filasDe([entry()], COLUMNAS_TALLER, { hoy: HOY });
+    expect(con![i]).toBe("PO-4512");
+    expect(sin![i]).toBe("");
+  });
+
   it("un campo de texto ausente sale vacío, nunca 'undefined'", () => {
     const [fila] = filasDe([entry()], COLUMNAS_TALLER, { hoy: HOY });
     expect(fila!.some((v) => String(v).includes("undefined"))).toBe(false);

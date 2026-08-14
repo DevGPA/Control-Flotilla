@@ -107,6 +107,9 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
   { campo: "fcierre", titulo: "F. Cierre", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fcierre) },
   { campo: "_dias", titulo: "Días en Taller", ancho: 13, tipo: "numero", formato: "0", valor: (e, c) => diasEnTaller(e, c.hoy) },
   { campo: "tecnico", titulo: "Técnico", ancho: 20, tipo: "texto", valor: (e) => texto(e.tecnico) },
+  // Referencia cruzada con el ERP (NetSuite): el pedido con el que se gestiona la
+  // compra/servicio. Va junto a técnico y refacciones — es la cadena de gestión.
+  { campo: "pedidoErp", titulo: "Pedido ERP", ancho: 15, tipo: "texto", valor: (e) => texto(e.pedidoErp) },
   // Faltaba en el Detalle del historial: sin esto el historial no dice qué se le puso.
   { campo: "refacciones", titulo: "Refacciones", ancho: 34, tipo: "texto", valor: (e) => texto(e.refacciones) },
   { campo: "gastoRef", titulo: "Gasto Refacciones", ancho: 16, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gastoRef ?? 0 },

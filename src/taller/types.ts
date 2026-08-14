@@ -67,6 +67,12 @@ export type TallerEntry = {
 
   // Texto libre
   tecnico?: string;
+  /**
+   * Número de pedido con el que se gestiona la compra/servicio en el ERP (Oracle
+   * NetSuite). Referencia cruzada Taller ↔ ERP para conciliar el gasto; texto libre
+   * porque el folio lo asigna el ERP, no esta app. Pedido por Navares 2026-08-14.
+   */
+  pedidoErp?: string;
   refacciones?: string;
   comentario?: string;
 
