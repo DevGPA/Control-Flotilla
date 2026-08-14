@@ -95,6 +95,23 @@ describe("formato — Excel tiene que poder ordenar y sumar", () => {
     expect(fila![iS]).toBe("");
   });
 
+  // Reporte usuario 2026-08-14: el km al ingreso se capturaba (obligatorio en el
+  // formulario) y viajaba a la nube, pero el reporte no lo llevaba.
+  it("KM Ingreso sale numérico con formato de miles", () => {
+    const [fila] = filasDe([entry({ km: 88118 })], COLUMNAS_TALLER, { hoy: HOY });
+    const i = COLUMNAS_TALLER.findIndex((c) => c.campo === "km");
+    expect(fila![i]).toBe(88118);
+    expect(COLUMNAS_TALLER[i]!.formato).toBe("#,##0");
+  });
+
+  it("km 0 o ausente (registros viejos sin captura) → celda vacía, no '0 km'", () => {
+    const i = COLUMNAS_TALLER.findIndex((c) => c.campo === "km");
+    for (const km of [0, undefined, "", "no-numero"] as const) {
+      const [fila] = filasDe([entry({ km })], COLUMNAS_TALLER, { hoy: HOY });
+      expect(fila![i], String(km)).toBe("");
+    }
+  });
+
   it("un campo de texto ausente sale vacío, nunca 'undefined'", () => {
     const [fila] = filasDe([entry()], COLUMNAS_TALLER, { hoy: HOY });
     expect(fila!.some((v) => String(v).includes("undefined"))).toBe(false);
