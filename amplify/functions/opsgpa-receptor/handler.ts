@@ -12,7 +12,12 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/opsgpa-receptor";
 import type { Schema } from "../../data/resource";
-import { nombreEvidencia, inputSinCampos, normalizarArea } from "../../../src/opsgpa/contract";
+import {
+  dedupEvidencias,
+  nombreEvidencia,
+  inputSinCampos,
+  normalizarArea,
+} from "../../../src/opsgpa/contract";
 import type { OpsCargaRecord, OpsClRecord, OpsSolRecord } from "../../../src/opsgpa/contract";
 import {
   toOpsRecord,
@@ -433,10 +438,14 @@ export const handler = async (
     // Perf F3-7: copias S3→S3 en PARALELO (antes secuenciales — la latencia del POST
     // era la suma de todas; con 4-6 evidencias por carga ahora se paga solo la más
     // lenta). Mismo patrón que downloadPhotos del webhook MoreApp.
+    // dedupEvidencias: una key repetida en dos campos se copia UNA vez (primera gana) —
+    // sin esto, el Promise.all dejaba en fnames el fname del que terminara último.
     const fnames = new Map<string, string>();
-    const copias: Promise<void>[] = (evento.evidencias ?? []).map(async ({ campo, key }) => {
-      fnames.set(key, await copiarEvidencia(evento.tipo, evento.unidad, campo, key));
-    });
+    const copias: Promise<void>[] = dedupEvidencias(evento.evidencias ?? []).map(
+      async ({ campo, key }) => {
+        fnames.set(key, await copiarEvidencia(evento.tipo, evento.unidad, campo, key));
+      },
+    );
     if (evento.firma) {
       const firmaKey = evento.firma;
       copias.push(
