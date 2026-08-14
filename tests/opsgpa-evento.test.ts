@@ -8,6 +8,7 @@ import {
 } from "../src/opsgpa/evento";
 import { mapCombustible } from "../src/opsgpa/mapCarga";
 import { mapSolicitud } from "../src/opsgpa/mapSolicitud";
+import { extraerEvidencias } from "../src/opsgpa/contract";
 import type { OpsCargaRecord, OpsSolRecord } from "../src/opsgpa/contract";
 
 /**
@@ -42,15 +43,10 @@ const KEY_EVIDENCIA = /^(SOL|CL|MC|FRM)\/[0-9a-f]{32}\.(jpg|png|webp)$/;
 function construirEventoComoPublisher(item: Record<string, unknown>, evento: string): GpaOpsEvento {
   const tipo = String(item.tipo_reg ?? String(item.PK ?? "").split("#")[0]);
   const answers = Object.fromEntries(Object.entries(item).filter(([k]) => !CAMPOS_INFRA.has(k)));
-  const evidencias: Array<{ campo: string; key: string }> = [];
-  const walk = (obj: unknown, ruta: string) => {
-    if (typeof obj === "string" && KEY_EVIDENCIA.test(obj))
-      evidencias.push({ campo: ruta || "?", key: obj });
-    else if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      for (const [k, v] of Object.entries(obj)) walk(v, ruta ? `${ruta}.${k}` : k);
-    }
-  };
-  walk(answers, "");
+  // El publisher real SÍ recorre arreglos — campo "fotos[0]", "answers.golpes[0].foto"
+  // (verificado contra sobres crudos de ops-capture/, 2026-08-14). Se reutiliza
+  // extraerEvidencias para que el repo tenga UNA sola implementación del recorrido.
+  const evidencias = extraerEvidencias(answers);
   const firma =
     typeof item.firma === "string" && KEY_EVIDENCIA.test(item.firma) ? item.firma : null;
   return {
@@ -186,6 +182,26 @@ describe("toOpsRecord: envelope del publisher real → registro plano", () => {
     expect((plano as { tipo?: string }).tipo).toBe("semanal");
     expect((plano as { answers?: Record<string, unknown> }).answers?.radiador).toBe("Nivel Optimo");
     expect(plano.firma).toBe(cl.firma);
+  });
+
+  it("el publisher enumera ARREGLOS en evidencias (fotos[i] / answers.golpes[i].foto)", () => {
+    // Verificado contra sobres crudos reales de ops-capture/ (2026-08-14): el publisher
+    // vivo emite campo "fotos[0]" para el arreglo de la solicitud y
+    // "answers.golpes[0].foto" para los daños del checklist.
+    const K1 = "SOL/772917b464a646ab90c8c0b242d07362.webp";
+    const K2 = "SOL/97e1b0b60f3747bdb99ec48a615057bf.webp";
+    const conFotos = { ...REAL_SOL, id: "a7a11e4181ae", PK: "SOL#a7a11e4181ae", fotos: [K1, K2] };
+    const envelope = construirEventoComoPublisher(conFotos, "creacion");
+    expect(envelope.evidencias).toContainEqual({ campo: "fotos[0]", key: K1 });
+    expect(envelope.evidencias).toContainEqual({ campo: "fotos[1]", key: K2 });
+    // Y el viaje completo no deja ninguna key cruda como referencia. El resolver
+    // espejea al receptor: copia evidencias[] Y la firma (que viaja aparte).
+    const fnames = new Map(envelope.evidencias.map(({ key }) => [key, resolve(key)]));
+    if (envelope.firma) fnames.set(envelope.firma, resolve(envelope.firma));
+    const out = mapSolicitud(toOpsRecord(envelope) as OpsSolRecord, (k) => fnames.get(k) ?? k);
+    const photos = (JSON.parse(out.datos) as { photos: Array<{ fname: string }> }).photos;
+    expect(photos.length).toBeGreaterThanOrEqual(4); // photo + 2 fotos + firma
+    expect(photos.some((p) => p.fname.includes("/"))).toBe(false);
   });
 
   it("validarEvento: acepta el envelope real y rechaza tipos no implementados", () => {

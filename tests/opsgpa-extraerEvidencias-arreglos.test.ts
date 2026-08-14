@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { extraerEvidencias } from "../src/opsgpa/contract";
+import { describe, expect, it, vi } from "vitest";
+import { dedupEvidencias, extraerEvidencias } from "../src/opsgpa/contract";
 import { runBackfill, type BackfillDeps } from "../src/opsgpa/backfill";
 
 /**
@@ -72,6 +72,21 @@ describe("extraerEvidencias — arreglos (convención del publisher)", () => {
     ]);
   });
 
+  it("avisa cuando el tope de profundidad corta el recorrido (nunca en silencio)", () => {
+    // Una evidencia enterrada más allá del tope se omite — igual que antes — pero
+    // dejando rastro en el log: la clase de bug que este fix corrige (key fuera del
+    // recorrido → fname crudo) no debe poder reaparecer sin avisar.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const profundo = { a: { b: { c: { d: { e: { f: { foto: KGOLPE1 } } } } } } };
+      expect(extraerEvidencias(profundo)).toEqual([]);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(String(warn.mock.calls[0]![0])).toContain("evidencias_prof_max");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("ignora valores que no son keys de evidencia dentro de arreglos y objetos", () => {
     const out = extraerEvidencias({
       fotos: ["no-es-key", 42, null],
@@ -79,6 +94,31 @@ describe("extraerEvidencias — arreglos (convención del publisher)", () => {
       reasignacion: { por: "admin@gpa.com.mx" },
     });
     expect(out).toEqual([]);
+  });
+});
+
+describe("dedupEvidencias — el receptor copia cada key UNA vez (primera gana)", () => {
+  it("colapsa una key repetida en dos campos y conserva el orden del publisher", () => {
+    // Sin esto, el receptor copiaba la key duplicada DOS veces EN PARALELO y
+    // `fnames.set` se quedaba con el fname del que TERMINARA último (carrera):
+    // la referencia final no era determinística entre re-entregas.
+    const dup = [
+      { campo: "photo", key: K1 },
+      { campo: "fotos[0]", key: K1 },
+      { campo: "fotos[1]", key: K2 },
+    ];
+    expect(dedupEvidencias(dup)).toEqual([
+      { campo: "photo", key: K1 },
+      { campo: "fotos[1]", key: K2 },
+    ]);
+  });
+
+  it("sin duplicados es identidad", () => {
+    const sin = [
+      { campo: "photo", key: KPHOTO },
+      { campo: "fotos[0]", key: K1 },
+    ];
+    expect(dedupEvidencias(sin)).toEqual(sin);
   });
 });
 

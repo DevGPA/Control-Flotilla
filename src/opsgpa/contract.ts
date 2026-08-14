@@ -46,6 +46,7 @@ export function extraerEvidencias(
 ): Array<{ campo: string; key: string }> {
   const out: Array<{ campo: string; key: string }> = [];
   const vistas = new Set<string>();
+  const truncadas: string[] = [];
   const recorrer = (v: unknown, ruta: string, prof: number): void => {
     if (esKeyEvidencia(v)) {
       if (!vistas.has(v)) {
@@ -54,7 +55,13 @@ export function extraerEvidencias(
       }
       return;
     }
-    if (prof >= 6 || v === null || typeof v !== "object") return;
+    if (v === null || typeof v !== "object") return;
+    if (prof >= 6) {
+      // Nunca cortar EN SILENCIO: una key fuera del recorrido reproduce el bug del
+      // fname crudo. El aviso es la señal para subir el tope si Ops anida más.
+      truncadas.push(ruta);
+      return;
+    }
     if (Array.isArray(v)) {
       v.forEach((el, i) => recorrer(el, `${ruta}[${i}]`, prof + 1));
       return;
@@ -64,7 +71,25 @@ export function extraerEvidencias(
     }
   };
   recorrer(plano, "", 0);
+  if (truncadas.length) {
+    console.warn(JSON.stringify({ evt: "evidencias_prof_max", rutas: truncadas.slice(0, 5) }));
+  }
   return out;
+}
+
+/**
+ * Colapsa evidencias con la MISMA key (primera gana, orden estable). El receptor copia
+ * las evidencias EN PARALELO y resuelve key→fname con un Map: sin dedup, una key
+ * duplicada en dos campos se copiaba dos veces y `fnames.set` se quedaba con el fname
+ * del que TERMINARA último — referencia no determinística entre re-entregas. Mismo
+ * criterio que extraerEvidencias (el enumerador del backfill), para que ambos caminos
+ * elijan la misma referencia.
+ */
+export function dedupEvidencias(
+  evidencias: Array<{ campo: string; key: string }>,
+): Array<{ campo: string; key: string }> {
+  const vistas = new Set<string>();
+  return evidencias.filter(({ key }) => !vistas.has(key) && (vistas.add(key), true));
 }
 
 /** Quita las claves de infraestructura de un item crudo de la tabla de Ops. */
