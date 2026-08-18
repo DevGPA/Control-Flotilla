@@ -28,6 +28,7 @@ import {
   buildAnuladasActivas,
   esChecklistAnulado,
   esSemanalAnulado,
+  esTallerAnulado,
   type AnulacionInfo,
 } from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
@@ -630,10 +631,15 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // huérfanos legítimos pre-cloud, y el early-return de "cloud 100% vacío"
   // protege a tenants nuevos sin tocar su estado local.
   {
-    const dedupedTaller = dedupTallerCloudRows(tallerCloud);
-    if (dedupedTaller.length < tallerCloud.length) {
+    // Anulación reversible (P0 2026-08-14): las filas con tombstone activo se excluyen
+    // de la vista — el registro sigue en la nube y Restaurar lo trae de vuelta. Mismo
+    // patrón que checklistsVigentes arriba; el refId se compone con los campos de CLAVE
+    // de la propia fila (unitUid, fechaEntrada), la misma identidad que tallerCloudKey.
+    const tallerVigente = tallerCloud.filter((t) => !esTallerAnulado(t, anuladasActivas));
+    const dedupedTaller = dedupTallerCloudRows(tallerVigente);
+    if (dedupedTaller.length < tallerVigente.length) {
       console.info(
-        `[cloudHydrate] taller dedup: ${tallerCloud.length - dedupedTaller.length} fila(s) duplicada(s) ocultas`,
+        `[cloudHydrate] taller dedup: ${tallerVigente.length - dedupedTaller.length} fila(s) duplicada(s) ocultas`,
       );
     }
     const tallerEntries: TallerEntry[] = dedupedTaller.map((t) => {

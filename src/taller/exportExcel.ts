@@ -158,6 +158,14 @@ export interface ResumenUnidad {
   primerIngreso?: string;
   ultimaSalida?: string;
   diasPromedio?: number | "";
+  /** Odómetro más alto conocido de la unidad (cualquier visita, abierta o cerrada). */
+  kmUltimo?: number | "";
+  /**
+   * Gasto de mantenimiento registrado por cada 1,000 km de vida de la unidad — la base
+   * del reparar-vs-reemplazar. Honestidad del dato: el numerador es el gasto CAPTURADO
+   * en este módulo (visitas cerradas), no necesariamente todo el mantenimiento real.
+   */
+  costoPorMilKm?: number | "";
 }
 
 export interface ColumnaResumen {
@@ -179,6 +187,8 @@ export const COLUMNAS_RESUMEN: ColumnaResumen[] = [
   { titulo: "Refacciones", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoRef },
   { titulo: "Mano de Obra", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoMO },
   { titulo: "Días Promedio", ancho: 13, tipo: "numero", formato: "0.0", valor: (u) => u.diasPromedio ?? "" },
+  { titulo: "KM Último", ancho: 11, tipo: "numero", formato: "#,##0", valor: (u) => u.kmUltimo ?? "" },
+  { titulo: "$ / 1,000 km", ancho: 13, tipo: "moneda", formato: '"$"#,##0.00', valor: (u) => u.costoPorMilKm ?? "" },
   { titulo: "Primer Ingreso", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.primerIngreso) },
   { titulo: "Última Salida", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.ultimaSalida) },
 ];

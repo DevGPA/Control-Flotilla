@@ -9,6 +9,7 @@
 
 import {
   diasEnTaller,
+  diasVencida,
   filterActivas,
   groupByUnit,
   isClosed,
@@ -253,6 +254,16 @@ function buildRow(
   // F. Salida Est.
   const tdSal = document.createElement("td");
   tdSal.textContent = fmtDate(e.fsalidaEst);
+  // Salida VENCIDA (P0 2026-08-14): espejo del monolito — la fecha prometida ya pasó
+  // y la unidad sigue dentro. Cálculo compartido: diasVencida (tallerStore, testeada).
+  const atraso = diasVencida(e);
+  if (atraso != null) {
+    const pill = document.createElement("span");
+    pill.style.cssText =
+      "display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:var(--Rd);color:var(--R);font-size:9px;font-weight:800;letter-spacing:.3px";
+    pill.textContent = `VENCIDA +${atraso}d`;
+    tdSal.appendChild(pill);
+  }
   tr.appendChild(tdSal);
 
   // Técnico
