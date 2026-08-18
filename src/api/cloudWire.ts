@@ -18,6 +18,7 @@ import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
 import { gatingPlan, MODULE_NAV, ASSIGNABLE_MODULES, MODULE_LABEL } from "./moduleAccess";
 import { buildFleetMapModel, renderFleetMap } from "../ui/fleetMap";
 import { showAuthModal } from "../ui/authModal";
+import { refIdTaller } from "../anulacion/anulacion";
 import {
   uploadZipToCloud,
   uploadUnitsToCloud,
@@ -155,6 +156,8 @@ declare global {
       anular: (refId: string, modulo: string, motivo: string) => Promise<void>;
       restaurar: (refId: string) => Promise<void>;
     };
+    /** refId de un registro de Taller (identidad = tallerCloudKey). Para anular/restaurar. */
+    __tallerRefId?: (e: LegacyTallerEntry) => string;
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
     /** Gating de módulos (lógica pura testeable) para el applyModuleGating inline. */
@@ -446,6 +449,15 @@ export function setupCloud(): void {
       const s = await ensureSession();
       await restaurarAnulacion(s.tenantId, refId, s.email || "admin");
     },
+  };
+
+  // refId de un registro de Taller para anular/restaurar. Vive AQUÍ y no inline en el
+  // monolito para que la identidad la componga tallerCloudKey — el MISMO código que
+  // genera la clave de la fila cloud. Una segunda implementación del criterio en el
+  // HTML podría divergir y la anulación fallaría EN SILENCIO (se guarda, no excluye).
+  window.__tallerRefId = (e) => {
+    const { unitUid, fechaEntrada } = tallerCloudKey(e as Parameters<typeof tallerCloudKey>[0]);
+    return refIdTaller(unitUid, fechaEntrada);
   };
 
   window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {

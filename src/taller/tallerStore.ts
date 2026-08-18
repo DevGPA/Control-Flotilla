@@ -39,6 +39,27 @@ export function gastoTotal(entry: TallerEntry): number {
 }
 
 /**
+ * Días de ATRASO contra la fecha estimada de salida, o `null` si no aplica.
+ *
+ * P0 2026-08-14: el 87% de los registros captura `fsalidaEst` y nada la explotaba —
+ * medido en prod, una unidad llevaba 15 días dentro con la salida vencida desde hacía
+ * dos semanas y ninguna pantalla lo señalaba. Aplica solo a unidades DENTRO del taller
+ * (no finalizadas y sin salida real); el día exacto de la estimada aún no cuenta como
+ * vencida. Fecha inválida → null, nunca un atraso inventado.
+ */
+export function diasVencida(
+  entry: Pick<TallerEntry, "estado" | "fsalidaEst" | "fsalidaReal">,
+  today: Date = new Date(),
+): number | null {
+  if (entry.estado === "Finalizado" || entry.fsalidaReal || !entry.fsalidaEst) return null;
+  const est = new Date(`${String(entry.fsalidaEst).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(est.getTime())) return null;
+  const hoy0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dias = Math.round((hoy0.getTime() - est.getTime()) / 86400000);
+  return dias > 0 ? dias : null;
+}
+
+/**
  * Busca texto libre contra eco/plate/tecnico/comentario/brand/refacciones.
  * Compara case-insensitive con normalización (sin tildes).
  */

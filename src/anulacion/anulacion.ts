@@ -7,9 +7,10 @@
  *   combustible|<economicoId>|<tipo>|<eventoId>   (= "combustible|" + loadId)
  *   checklist|<unitUid>|<fecha>                   (identidad de Checklist)
  *   semanal|<periodoId>|<unitUid>                 (identidad de Semanal)
+ *   taller|<unitUid>|<fechaEntrada>               (identidad de Taller = tallerCloudKey)
  */
 
-export type AnulacionModulo = "combustible" | "checklist" | "semanal";
+export type AnulacionModulo = "combustible" | "checklist" | "semanal" | "taller";
 
 /** Fila de Anulacion tal como viene del cloud (tipos laxos para testear sin Amplify). */
 export interface AnulacionRow {
@@ -39,6 +40,18 @@ export function refIdChecklist(unitUid: string, fecha: string): string {
 
 export function refIdSemanal(periodoId: string, unitUid: string): string {
   return `semanal|${periodoId}|${unitUid}`;
+}
+
+/**
+ * Identidad natural de un registro de Taller = su clave cloud (`tallerCloudKey` en
+ * batchUpload.ts): unitUid = plate||eco||unitKey||id · fechaEntrada = fentrada||freporte||
+ * `sin-fecha:<id>`. Los llamadores DEBEN componer con esa misma regla — el monolito lo hace
+ * vía `window.__tallerRefId` (que llama a tallerCloudKey de verdad) y la hidratación con
+ * los campos de clave de la propia fila cloud, así que no hay una segunda implementación
+ * del criterio que pueda divergir.
+ */
+export function refIdTaller(unitUid: string, fechaEntrada: string): string {
+  return `taller|${unitUid}|${fechaEntrada}`;
 }
 
 /** Módulo de un refId ("combustible|..." → "combustible"). "" si no parsea. */
@@ -94,4 +107,12 @@ export function esSemanalAnulado(
   anuladas: ReadonlyMap<string, AnulacionInfo>,
 ): boolean {
   return anuladas.has(refIdSemanal(String(row.periodoId ?? ""), String(row.unitUid ?? "")));
+}
+
+/** La fila cloud de Taller trae su clave (unitUid, fechaEntrada) — se compone directo. */
+export function esTallerAnulado(
+  row: { unitUid?: unknown; fechaEntrada?: unknown },
+  anuladas: ReadonlyMap<string, AnulacionInfo>,
+): boolean {
+  return anuladas.has(refIdTaller(String(row.unitUid ?? ""), String(row.fechaEntrada ?? "")));
 }

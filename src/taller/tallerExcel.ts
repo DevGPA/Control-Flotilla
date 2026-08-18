@@ -178,28 +178,37 @@ const TOTALES_TALLER = ["gastoRef", "gastoMO", "_gastoTotal", "gasto"]
  */
 export function resumenPorUnidad(entries: readonly TallerEntry[], hoy: Date): ResumenUnidad[] {
   const porUnidad = new Map<string, TallerEntry[]>();
+  // Km último por unidad: sobre TODAS las visitas (una abierta trae la lectura más
+  // reciente del odómetro y su gasto aún no cuenta — el km sí).
+  const kmMax = new Map<string, number>();
   for (const e of entries) {
-    if (!esCerrada(e)) continue;
     const k = e.unitKey || e.id;
+    const km = Number(e.km);
+    if (Number.isFinite(km) && km > 0 && km > (kmMax.get(k) ?? 0)) kmMax.set(k, km);
+    if (!esCerrada(e)) continue;
     if (!porUnidad.has(k)) porUnidad.set(k, []);
     porUnidad.get(k)!.push(e);
   }
   const out: ResumenUnidad[] = [];
-  for (const cerradas of porUnidad.values()) {
+  for (const [k, cerradas] of porUnidad.entries()) {
     const ultima = [...cerradas].sort((a, b) =>
       String(a.updatedAt ?? "").localeCompare(String(b.updatedAt ?? "")),
     )[cerradas.length - 1]!;
     const entradas = cerradas.map((e) => e.fentrada).filter(Boolean).sort() as string[];
     const salidas = cerradas.map((e) => e.fsalidaReal).filter(Boolean).sort() as string[];
     const dias = cerradas.map((e) => diasEnTaller(e, hoy)).filter((d): d is number => d !== "");
+    const gastoTotal = cerradas.reduce((a, e) => a + gastoTotalDe(e), 0);
+    const kmU = kmMax.get(k) ?? 0;
     out.push({
+      kmUltimo: kmU > 0 ? kmU : "",
+      costoPorMilKm: kmU > 0 ? gastoTotal / (kmU / 1000) : "",
       eco: ultima.eco,
       plate: ultima.plate,
       brand: ultima.brand,
       sucursal: ultima.sucursal,
       area: ultima.area,
       visitas: cerradas.length,
-      gastoTotal: cerradas.reduce((a, e) => a + gastoTotalDe(e), 0),
+      gastoTotal,
       gastoRef: cerradas.reduce((a, e) => a + (e.gastoRef ?? 0), 0),
       gastoMO: cerradas.reduce((a, e) => a + (e.gastoMO ?? 0), 0),
       primerIngreso: entradas[0],

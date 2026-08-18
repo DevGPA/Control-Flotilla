@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-+ZKKPgGkVyjdT2BqFnwAyynGVUwrmt/ClQLuy3tP1LA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-O7nNEyFr4XL9ihwzlcdy1WBIEDKW/bjFWSOgtNmFZ0g=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -629,6 +629,7 @@
     <button onclick="exportTallerActivasExcel()" class="btn-export" style="margin-left:auto" title="Exportar unidades activas a Excel">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Exportar Excel</button>
+    <button onclick="abrirAnulados('taller','Registros de taller anulados')" class="btn-export needs-admin" title="Ver y restaurar registros de taller anulados (reversible)">⊘ Anulados</button>
     <!-- Importar Excel de taller OCULTO (UI removida). Input conservado: WF3 e2e lo usa. -->
     <input type="file" id="tl-xinput" accept=".xlsx,.xls" style="display:none" onchange="doTallerExcel(this.files[0]);this.value=''"/>
     <button class="tl-add" onclick="openTallerModal()" style="margin-left:0">
@@ -2566,6 +2567,7 @@ function abrirAnulados(modulo,titulo){
       const p=String(refId).split("|");
       if(p[0]==="checklist") return `Inspección · ${p[1]} · ${p[2]}`;
       if(p[0]==="semanal") return `Reporte semanal · ${p[2]} · semana ${p[1]}`;
+      if(p[0]==="taller") return `Taller · ${p[1]} · ingreso ${p[2]}`;
       return refId;
     },
     onRestaurar:async(refId)=>{
@@ -8376,9 +8378,26 @@ function renderActivas(){
     const d=Math.round((Date.now()-new Date(e.fentrada))/86400000);
     return d>7&&d>=0;
   }).map(e=>e.eco||e.plate);
-  const tlAlert = urgEcos.length
-    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":"lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
+  // P0 2026-08-14: SALIDA VENCIDA — el 87% captura fsalidaEst y nada la explotaba
+  // (eco 46: 15 días dentro, salida vencida desde el 31-jul, sin ninguna señal).
+  // Distinto de "Urgentes +7d": aquí venció la fecha PROMETIDA, no un umbral fijo.
+  // Cálculo espejo de diasVencida (src/taller/tallerStore.ts, testeada).
+  const _hoy0=new Date();_hoy0.setHours(0,0,0,0);
+  const _diasVenc=e=>{
+    if(e.estado==="Finalizado"||e.fsalidaReal||!e.fsalidaEst)return null;
+    const est=new Date(String(e.fsalidaEst).slice(0,10)+"T00:00:00");
+    if(isNaN(est.getTime()))return null;
+    const d=Math.round((_hoy0-est)/86400000);
+    return d>0?d:null;
+  };
+  const vencidas=filtered.filter(e=>_diasVenc(e)!=null)
+    .sort((a,b)=>_diasVenc(b)-_diasVenc(a));
+  const tlVencAlert = vencidas.length
+    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--R)18,var(--bg2));border-bottom:1px solid var(--Rl);color:var(--s1)"><span style="color:var(--R);display:inline-flex;align-items:center;gap:4px;font-weight:700"><i data-lucide="clock" style="width:11px;height:11px"></i> ${vencidas.length} unidad${vencidas.length>1?"es con la salida estimada VENCIDA":" con la salida estimada VENCIDA"}:</span> <b>${vencidas.slice(0,5).map(e=>escHtml((e.eco||e.plate||"?")+" (+"+_diasVenc(e)+"d)")).join(", ")}${vencidas.length>5?" y "+(vencidas.length-5)+" más...":""}</b></div>`
     : "";
+  const tlAlert = (urgEcos.length
+    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":"lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
+    : "") + tlVencAlert;
 
   const _klbl = (ico,txt) => `<div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="${ico}" style="width:11px;height:11px"></i> ${txt}</div>`;
   document.getElementById("tl-kpis").innerHTML=`<div style="padding:14px 16px 6px;background:var(--bg2);border-bottom:1px solid var(--ln)">
@@ -8523,7 +8542,14 @@ ${tlAlert}`;
       <td>${e.tipo?`<span class="tl-tipo ${tipoCls}">${escHtml(e.tipo)}</span>`:"—"}</td>
       <td>${fmtDate(e.fentrada)}</td>
       <td style="text-align:center">${diasTag}</td>
-      <td>${fmtDate(e.fsalidaEst)}</td>
+      <td>${fmtDate(e.fsalidaEst)}${(()=>{
+        // Salida VENCIDA (P0 2026-08-14): la fecha prometida ya pasó y sigue dentro.
+        if(e.estado==="Finalizado"||e.fsalidaReal||!e.fsalidaEst)return"";
+        const est=new Date(String(e.fsalidaEst).slice(0,10)+"T00:00:00");
+        const h=new Date();h.setHours(0,0,0,0);
+        const d=isNaN(est.getTime())?0:Math.round((h-est)/86400000);
+        return d>0?` <span style="display:inline-block;padding:1px 6px;border-radius:8px;background:var(--Rd);color:var(--R);font-size:9px;font-weight:800;letter-spacing:.3px">VENCIDA +${d}d</span>`:"";
+      })()}</td>
       <td style="font-size:11px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
       <td style="max-width:200px;color:var(--s1);font-size:11px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
       <td onclick="event.stopPropagation()">
@@ -9321,10 +9347,31 @@ async function saveTallerEntry(){
 async function deleteTallerEntry(id){
   const e=tallerEntries.find(x=>x.id===id);
   if(!e) return;
+  // P0 2026-08-14: ANULACIÓN reversible en vez de borrado físico. Taller era el ÚNICO
+  // módulo donde "Borrar" destruía el registro local Y en la nube con un confirm() —
+  // contra el estándar del proyecto (anulación, nunca borrado). El registro queda como
+  // tombstone (modelo Anulacion, refId = identidad de tallerCloudKey vía __tallerRefId,
+  // el MISMO código que compone la clave cloud) y se restaura desde el panel de anulados.
+  if(window.__anulacionUI && window.__anulaciones && typeof window.__tallerRefId==="function"){
+    window.__anulacionUI.openAnular({
+      etiqueta:`Taller · unidad ${e.eco||e.plate||"?"} (${e.plate||"sin placas"}) · ingreso ${fmtDate(e.fentrada||e.freporte)||"sin fecha"}`,
+      confirmText:String(e.plate||e.eco||""),
+      onConfirm:async(motivo)=>{
+        await window.__anulaciones.anular(window.__tallerRefId(e),"taller",motivo);
+        // Fuera de la vista local de inmediato; la hidratación lo mantiene fuera
+        // (filtro por tombstone) y Restaurar lo trae de vuelta en el siguiente ciclo.
+        tallerEntries=tallerEntries.filter(x=>x.id!==id);
+        await saveTallerDB();
+        updateTallerBadge();
+        renderTaller();
+      }
+    });
+    return;
+  }
+  // Respaldo SIN nube (modo local puro): conducta previa.
   if(!confirm(`¿Eliminar el registro de ${e.plate||e.eco}?`)) return;
   tallerEntries=tallerEntries.filter(x=>x.id!==id);
   await saveTallerDB();
-  // Cloud delete — fire-and-forget. No bloquea UX.
   if(typeof window.__cloudDeleteTaller === "function"){
     window.__cloudDeleteTaller(e).catch(err =>
       console.error("[deleteTallerEntry cloud]", err));
