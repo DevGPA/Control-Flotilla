@@ -15,6 +15,12 @@ import {
 import type { LecturaVision } from "../../../src/vision/fusion";
 import { TOOL_LECTURA, type VisionPrompt } from "../../../src/vision/prompt";
 import type { ImagenPreparada } from "../../../src/vision/resize";
+import {
+  reprocesaLote,
+  type CargaListada,
+  type SolicitudReproceso,
+} from "../../../src/vision/reproceso";
+import { loadIdOf } from "../../../src/fuel/mapEntry";
 
 // Lambda de visión IA (Fase 1). Dos modos:
 //  - EVENTO (invoke asíncrono del receptor): analiza UNA carga {tenantId, loadId, fnames}.
@@ -170,14 +176,53 @@ function depsReales(): DepsAnaliza {
   };
 }
 
+/** Página de CargaCombustible del tenant (para el modo reproceso). */
+async function listaCargas(
+  nextToken: string | null | undefined,
+  limit: number,
+): Promise<{ items: CargaListada[]; nextToken?: string | null }> {
+  const client = await getDataClient();
+  const model = client.models.CargaCombustible as unknown as {
+    list: (args: never) => Promise<{
+      data: Array<{
+        tenantId: string;
+        economicoId: string;
+        tipo: string;
+        eventoId: string;
+        datos?: unknown;
+      }>;
+      nextToken?: string | null;
+    }>;
+  };
+  const r = await model.list({
+    tenantId: TENANT,
+    limit,
+    nextToken: nextToken ?? undefined,
+  } as never);
+  return {
+    items: (r.data ?? []).map((c) => ({
+      tenantId: c.tenantId,
+      loadId: loadIdOf(c.economicoId, c.tipo, c.eventoId),
+      datos: typeof c.datos === "string" ? c.datos : JSON.stringify(c.datos ?? null),
+    })),
+    nextToken: r.nextToken ?? null,
+  };
+}
+
 // ── Entry point ──
 
 export const handler = async (event: unknown): Promise<unknown> => {
   const ev = (event ?? {}) as Partial<EventoVision> & { reproceso?: boolean };
 
   if (ev.reproceso) {
-    // Tarea 6 del plan: modo batch por invocación directa sobre el histórico.
-    return { error: "modo reproceso aún no implementado (Tarea 6)" };
+    // Modo batch por invocación directa (Tarea 6): lotes con soloSinVision default,
+    // limit + nextToken para iterar el histórico sin gasto accidental.
+    const resumen = await reprocesaLote(ev as SolicitudReproceso, {
+      ...depsReales(),
+      listaCargas,
+    });
+    console.info(`[vision:reproceso] ${JSON.stringify(resumen)}`);
+    return resumen;
   }
 
   if (!ev.loadId || !ev.fnames) {
