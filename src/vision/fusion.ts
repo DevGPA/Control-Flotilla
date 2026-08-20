@@ -41,6 +41,8 @@ export interface LecturaVision {
   tanqueAntes?: LecturaNivel;
   tanqueDespues?: LecturaNivel;
   notas?: string;
+  /** Set de fnames analizado — lo estampa analiza.ts; es la llave de idempotencia. */
+  fnames?: string[];
 }
 
 /** Campos planos que la Lambda persiste en ValidacionCarga (solo campos de visión). */
