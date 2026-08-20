@@ -8,7 +8,6 @@ import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { auth } from "./auth/resource";
 import { data } from "./data/resource";
 import { storage } from "./storage/resource";
-import { moreappWebhook } from "./functions/moreapp-webhook/resource";
 import { adminUsers } from "./functions/admin-users/resource";
 import { opsgpaReceptor } from "./functions/opsgpa-receptor/resource";
 
@@ -31,26 +30,17 @@ const backend = defineBackend({
   auth,
   data,
   storage,
-  moreappWebhook,
   adminUsers,
   opsgpaReceptor,
 });
 
-// ── MoreApp webhook (FASE 1 captura) ──────────────────────────
-// Function URL pública (sin IAM): MoreApp hace POST con el payload del form.
-// Protección por token en query (?t=...). El Lambda guarda el JSON crudo en el
-// bucket de fotos bajo prefix moreapp-capture/ para inspeccionar la estructura.
-const webhookFn = backend.moreappWebhook.resources.lambda;
-const webhookUrl = webhookFn.addFunctionUrl({
-  authType: FunctionUrlAuthType.NONE,
-  cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.ALL] },
-});
+// ── Webhook MoreApp RETIRADO (2026-08-20) ──────────────────────
+// MoreApp se dio de baja (migración a Operaciones-GPA completada); la Function URL
+// pública con token estático era un hallazgo de seguridad abierto. Retirar la
+// función elimina el endpoint y su Lambda del stack. El histórico ingerido por
+// MoreApp permanece intacto en DynamoDB/S3 (moreapp-capture/ incluido).
 
 const bucket = backend.storage.resources.bucket;
-bucket.grantReadWrite(webhookFn);
-(webhookFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
-
-backend.addOutput({ custom: { moreappWebhookUrl: webhookUrl.url } });
 
 // ── Receptor del puente Operaciones-GPA (gpa.ops.v1, 2026-07-10) ──────────────
 // Function URL dedicada (POST del publisher de Eco-Admin/operaciones-gpa). La
