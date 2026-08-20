@@ -103,6 +103,8 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
   });
 
   if (load.tipo === "carga") {
+    // Con tsVision, los *Detectado de esta carga los escribió la Lambda de visión (Fase 1).
+    const fuenteVision = load.review?.tsVision ? ("ia" as const) : undefined;
     slots.push({
       kind: "medidor",
       label: "Combustible cargado",
@@ -112,16 +114,25 @@ function buildSlots(load: FuelEntry, metrics?: FuelMetrics): Slot[] {
           : "—",
       detected:
         load.review?.litrosDetectado != null
-          ? `${NUM1.format(load.review.litrosDetectado)} L`
+          ? `${NUM1.format(load.review.litrosDetectado)} L${load.review?.nivelDetectado ? ` · tanque ${load.review.nivelDetectado}` : ""}`
           : undefined,
+      detectedFuente: fuenteVision,
     });
     const dollarL =
       load.monto != null && load.litros ? PESO.format(load.monto / load.litros) + "/L" : "";
+    const detTicket: string[] = [];
+    if (load.review?.montoDetectado != null)
+      detTicket.push(PESO.format(load.review.montoDetectado));
+    if (load.review?.precioDetectado != null)
+      detTicket.push(`${PESO.format(load.review.precioDetectado)}/L`);
+    if (load.review?.fechaDetectada) detTicket.push(load.review.fechaDetectada);
     slots.push({
       kind: "ticket",
       label: "Ticket / monto",
       value:
         load.monto != null ? `${PESO.format(load.monto)}${dollarL ? ` · ${dollarL}` : ""}` : "—",
+      detected: detTicket.length ? detTicket.join(" · ") : undefined,
+      detectedFuente: fuenteVision,
     });
   } else {
     slots.push({

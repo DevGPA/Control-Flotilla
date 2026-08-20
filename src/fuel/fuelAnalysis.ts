@@ -44,6 +44,12 @@ export const DEFAULT_FUEL_THRESHOLDS: FuelThresholds = {
   PARTIAL_WINDOW_N: 8,
   PARTIAL_MIN_N: 6,
   PARTIAL_PCT: 0.6,
+  // Ticket-no-cuadra (visión IA, Fase 1): tolerancias de la comparación determinística
+  // capturado-vs-detectado. Debajo del umbral de confianza la lectura no acusa a nadie.
+  VISION_CONF_MIN: 0.7,
+  VISION_MONTO_TOL_PCT: 0.01,
+  VISION_MONTO_TOL_MIN: 5,
+  VISION_LITROS_TOL_PCT: 0.02,
 };
 
 /**
@@ -380,7 +386,8 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           winRota = false;
           winInferida = llenoInferido;
         } else if (!llenoEf) {
-          motivoVentana = winStartKm != null && !winRota ? "parcial_en_ventana" : "sin_lleno_previo";
+          motivoVentana =
+            winStartKm != null && !winRota ? "parcial_en_ventana" : "sin_lleno_previo";
         }
       }
 
@@ -445,9 +452,7 @@ export function computeFuelMetrics(entries: readonly FuelEntry[]): FuelMetrics[]
           esMontacargas: e.esMontacargas,
           // Denominador del km/l de VENTANA (Σ litros de todas sus cargas) en la fila que
           // cierra; en llenados partidos sin cierre conserva la suma del grupo (informativa).
-          litrosFill: esRep
-            ? (ventanaLitrosOut ?? (multi ? litrosGrupo : undefined))
-            : undefined,
+          litrosFill: esRep ? (ventanaLitrosOut ?? (multi ? litrosGrupo : undefined)) : undefined,
           ventanaKmDesde: esRep ? ventanaKmDesdeOut : undefined,
           ventanaDesdeKm: esRep ? ventanaDesdeKmOut : undefined,
           ventanaCargas: esRep ? ventanaCargasOut : undefined,
@@ -540,7 +545,11 @@ export function computeKmplVida(entries: readonly FuelEntry[]): Map<string, Kmpl
       let delta = k - prevKm;
       if (delta <= 0) {
         // Retroceso: typo (se ignora) o reset de tablero (lo adopta la siguiente coherente).
-        if (pendiente != null && k - pendiente > 0 && k - pendiente <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP) {
+        if (
+          pendiente != null &&
+          k - pendiente > 0 &&
+          k - pendiente <= DEFAULT_FUEL_THRESHOLDS.MAX_KM_JUMP
+        ) {
           delta = k - pendiente;
         } else {
           pendiente = k;
@@ -561,8 +570,7 @@ export function computeKmplVida(entries: readonly FuelEntry[]): Map<string, Kmpl
     }
     if (n >= 5 && km >= 500 && litros > 0) {
       const kmpl = km / litros;
-      if (kmpl >= KMPL_FISICO_MIN && kmpl <= KMPL_FISICO_MAX)
-        out.set(eco, { kmpl, km, litros, n });
+      if (kmpl >= KMPL_FISICO_MIN && kmpl <= KMPL_FISICO_MAX) out.set(eco, { kmpl, km, litros, n });
     }
   }
   return out;
@@ -744,7 +752,48 @@ export const FUEL_RULE_LABEL: Record<string, string> = {
   "captura-precio": "Captura: precio",
   "parciales-cronicos": "Parciales crónicos",
   "economico-equivocado": "¿Económico equivocado?",
+  "ticket-no-cuadra": "Ticket no cuadra (IA)",
 };
+
+/**
+ * Regla "ticket-no-cuadra" (Fase 1 visión IA): compara lo CAPTURADO contra lo que la
+ * IA LEYÓ en el ticket/bomba (campos persistidos por la Lambda vision-combustible).
+ * Solo marca para triage — el veredicto sigue siendo humano (botones del drawer).
+ * Gates: hay lectura (montoDetectado/litrosDetectado) y confianza ≥ VISION_CONF_MIN
+ * (fusion.ts garantiza que una lectura ilegible jamás produce estos campos).
+ */
+export function ticketNoCuadra(e: FuelEntry, cfg: FuelThresholds): FuelFinding | null {
+  const r = e.review;
+  if (!r?.tsVision) return null;
+  if ((r.confianzaVision ?? 0) < cfg.VISION_CONF_MIN) return null;
+
+  const partes: string[] = [];
+  if (r.montoDetectado != null && e.monto != null) {
+    const tol = Math.max(e.monto * cfg.VISION_MONTO_TOL_PCT, cfg.VISION_MONTO_TOL_MIN);
+    if (Math.abs(r.montoDetectado - e.monto) > tol) {
+      partes.push(
+        `el ticket dice $${r.montoDetectado.toFixed(2)} y se capturaron $${e.monto.toFixed(2)}`,
+      );
+    }
+  }
+  if (r.litrosDetectado != null && e.litros != null && e.litros > 0) {
+    if (Math.abs(r.litrosDetectado - e.litros) > e.litros * cfg.VISION_LITROS_TOL_PCT) {
+      partes.push(
+        `el ticket dice ${r.litrosDetectado.toFixed(2)} litros y se capturaron ${e.litros.toFixed(2)}`,
+      );
+    }
+  }
+  if (!partes.length) return null;
+
+  return {
+    cat: "Combustible",
+    text: `Ticket no cuadra (lectura IA): ${partes.join("; ")}`,
+    lv: "Revisar",
+    key: `Fuel:ticket-no-cuadra:${e.loadId}`,
+    loadId: e.loadId,
+    eco: e.eco,
+  };
+}
 
 /**
  * ¿Los findings de una fila empatan el filtro de alerta? `""` = sin filtro (todo pasa),
@@ -809,8 +858,7 @@ function detectEconomicoEquivocado(
   for (const m of metrics) {
     // Candidata: huérfana para SU unidad (retroceso o salto vs su propio odómetro).
     const esHuerfana =
-      m.kmDesdeAnterior != null &&
-      (m.kmDesdeAnterior < 0 || m.kmDesdeAnterior > cfg.MAX_KM_JUMP);
+      m.kmDesdeAnterior != null && (m.kmDesdeAnterior < 0 || m.kmDesdeAnterior > cfg.MAX_KM_JUMP);
     if (!esHuerfana) continue;
     const c = entryByLoad.get(m.loadId);
     if (!c || c.esMontacargas || typeof c.km !== "number") continue;
@@ -948,12 +996,7 @@ export function detectFuelAnomalies(
       // 4. Caída de rendimiento (requiere baseline confiable de la unidad). Todo km/l
       // emitido por el motor de ventanas es fiel por construcción (lleno→lleno).
       const stat = baseline.porUnidad.get(m.eco);
-      if (
-        m.kmPorLitro != null &&
-        stat &&
-        stat.n >= cfg.MIN_BASELINE_N &&
-        stat.mean > 0
-      ) {
+      if (m.kmPorLitro != null && stat && stat.n >= cfg.MIN_BASELINE_N && stat.mean > 0) {
         const umbralSd = stat.mean - cfg.DROP_SD * stat.sd;
         const umbralPct = stat.mean * cfg.DROP_PCT;
         if (m.kmPorLitro < umbralSd && m.kmPorLitro < umbralPct)
@@ -1049,6 +1092,15 @@ export function detectFuelAnomalies(
   // Requiere `entries` (km/fecha/sucursal/placa de TODAS las unidades) — opcional para no
   // romper llamadas que solo pasan métricas.
   if (entries && entries.length) out.push(...detectEconomicoEquivocado(entries, metrics, cfg));
+
+  // 11. Ticket no cuadra (visión IA, Fase 1): comparación determinística de lo capturado
+  // contra la lectura persistida por la Lambda de visión. Solo marca — el humano decide.
+  if (entries) {
+    for (const e of entries) {
+      const f = ticketNoCuadra(e, cfg);
+      if (f) out.push(f);
+    }
+  }
 
   return out;
 }
