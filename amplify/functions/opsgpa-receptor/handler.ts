@@ -5,6 +5,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { Amplify } from "aws-amplify";
@@ -50,6 +51,8 @@ import {
   type BackfillResumen,
 } from "../../../src/opsgpa/backfill";
 import type { CargaCombustibleInput } from "../../../src/opsgpa/contract";
+import { fnamesParaVision } from "../../../src/vision/fnames";
+import { loadIdOf } from "../../../src/fuel/mapEntry";
 
 // Receptor del puente gpa.ops.v1 (ver src/opsgpa/README.md y el contrato en el repo
 // Eco-Admin: Operaciones-GPA/bridge/CONTRATO-gpa.ops.v1.md). Flujo por POST:
@@ -60,6 +63,8 @@ import type { CargaCombustibleInput } from "../../../src/opsgpa/contract";
 
 const s3 = new S3Client({});
 const ddb = new DynamoDBClient({});
+const lambda = new LambdaClient({});
+const VISION_FN = process.env.VISION_FUNCTION_NAME ?? "";
 const BUCKET = process.env.CAPTURE_BUCKET ?? ""; // bucket de FC (fotos + capturas)
 const OPS_BUCKET = process.env.OPS_EVIDENCIAS_BUCKET ?? "";
 const OPS_TABLE = process.env.OPS_TABLE ?? "gpa_operaciones_prod";
@@ -92,6 +97,34 @@ function res(status: number, body: unknown): APIGatewayProxyResultV2 {
 
 /** Reloj del receptor — respaldo del `ts` obligatorio de Anulacion cuando Ops no lo manda. */
 const ahoraIso = (): string => new Date().toISOString();
+
+/**
+ * Dispara la visión IA de una carga (Fase 1) — asíncrono y tolerante a fallo: el
+ * análisis corre en la Lambda vision-combustible con su propio timeout; si el invoke
+ * falla, la ingesta sigue (la lectura se repara con la re-entrega o el reproceso).
+ */
+async function dispararVision(input: CargaCombustibleInput): Promise<void> {
+  if (!VISION_FN) return; // sin función configurada (p.ej. entorno viejo) — silencioso
+  const fnames = fnamesParaVision(input.datos);
+  if (!Object.keys(fnames).length) return;
+  try {
+    await lambda.send(
+      new InvokeCommand({
+        FunctionName: VISION_FN,
+        InvocationType: "Event",
+        Payload: Buffer.from(
+          JSON.stringify({
+            tenantId: input.tenantId,
+            loadId: loadIdOf(input.economicoId, input.tipo, input.eventoId),
+            fnames,
+          }),
+        ),
+      }),
+    );
+  } catch (e) {
+    console.warn(`[vision] invoke falló (no bloquea la ingesta): ${(e as Error).message}`);
+  }
+}
 
 type GraphqlErrors = Array<{ errorType?: string; message?: string }> | undefined;
 function isConditionalCheckFailed(errors: GraphqlErrors): boolean {
@@ -497,6 +530,10 @@ export const handler = async (
       // null (la Anulacion ya excluye; degradar destruiría el veredicto real).
       const validacion = mapValidacion(plano as Record<string, unknown>, input);
       if (validacion) await upsertValidacion(validacion);
+      // Visión IA (Fase 1): invoke ASÍNCRONO fire-and-forget — un fallo aquí jamás
+      // tumba la ingesta (mismo espíritu que copiarEvidencia). Solo dispara si hay
+      // ticket/bomba que leer (las solicitudes salen con mapa vacío).
+      await dispararVision(input);
       return res(200, {
         folio: evento.folio,
         evento: evento.evento,
