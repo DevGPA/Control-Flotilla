@@ -25,8 +25,24 @@ import { loadIdOf } from "../fuel/mapEntry";
 import type { CargaCombustibleInput } from "./contract";
 import { esStatusPorCorregir } from "./mapAnulacion";
 
-/** Marcador de autoría del puente — es también la llave de la regla de no-pisado. */
+/** Marcador de autoría del puente. */
 export const OPS_FUENTE_DETECCION = "ops-gpa";
+
+/** Fuente que estampa la UI cuando un humano de tesorería valida/corrige a mano. */
+export const FUENTE_MANUAL = "manual";
+
+/**
+ * Regla de NO-PISADO (2026-08-20, Fase 1 visión IA): el puente respeta un veredicto
+ * existente SOLO si lo escribió un humano (`fuenteDeteccion === "manual"`).
+ *
+ * Antes la condición era `!== "ops-gpa"`, que además protegía filas con fuente null.
+ * La Lambda de visión puede crear la fila ANTES del cambio_estado de Ops (y no escribe
+ * `fuenteDeteccion`): con la regla vieja esa fila bloquearía para siempre el
+ * "Aprobada → ok" del puente. La lectura IA es asesora, no un veredicto — no se protege.
+ */
+export function esVeredictoProtegido(fuente: string | null | undefined): boolean {
+  return fuente === FUENTE_MANUAL;
+}
 
 export interface ValidacionCargaInput {
   tenantId: string;

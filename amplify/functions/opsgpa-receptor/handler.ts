@@ -27,8 +27,8 @@ import {
 } from "../../../src/opsgpa/evento";
 import { mapCombustible } from "../../../src/opsgpa/mapCarga";
 import {
+  esVeredictoProtegido,
   mapValidacion,
-  OPS_FUENTE_DETECCION,
   type ValidacionCargaInput,
 } from "../../../src/opsgpa/mapValidacion";
 import {
@@ -171,10 +171,12 @@ async function estampaArea(unit: UnitInput): Promise<UnitInput> {
 }
 
 /**
- * Upsert de ValidacionCarga con REGLA DE NO-PISADO: si ya existe un veredicto y NO fue
- * escrito por el puente (fuenteDeteccion ≠ "ops-gpa"), es de un humano de tesorería en
- * FC y se respeta — el puente jamás lo sobreescribe (auditoría selectiva conserva la
- * última palabra).
+ * Upsert de ValidacionCarga con REGLA DE NO-PISADO: un veredicto escrito por un humano
+ * de tesorería (fuenteDeteccion === "manual") se respeta — el puente jamás lo
+ * sobreescribe (auditoría selectiva conserva la última palabra). Una fila creada por la
+ * Lambda de visión (fuente null: solo trae campos *Detectado) SÍ es pisable en los
+ * campos de veredicto; el update de este handler no incluye campos de visión, así que
+ * la lectura IA sobrevive las re-entregas del puente.
  */
 async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
   const client = await getDataClient();
@@ -189,7 +191,7 @@ async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
     throw new Error(`ValidacionCarga.create: ${JSON.stringify(created.errors)}`);
   }
   const existente = await model.get({ tenantId: input.tenantId, loadId: input.loadId } as never);
-  if (existente.data && existente.data.fuenteDeteccion !== OPS_FUENTE_DETECCION) {
+  if (existente.data && esVeredictoProtegido(existente.data.fuenteDeteccion)) {
     console.log(`validación humana respetada (no-pisado): ${input.loadId}`);
     return;
   }

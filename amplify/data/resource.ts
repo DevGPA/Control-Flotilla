@@ -255,6 +255,15 @@ const schema = a
         litrosDetectado: a.float(),
         confianzaVision: a.float(),
         fuenteDeteccion: a.string(), // 'manual' | 'ia' | 'ops-gpa'
+        // Visión IA de tickets (Fase 1, 2026-08-20). La Lambda vision-combustible SOLO
+        // escribe estos campos + los *Detectado de arriba — jamás verdictGlobal /
+        // porEvidencia / fuenteDeteccion (la autoría de la lectura vive en tsVision).
+        montoDetectado: a.float(),
+        precioDetectado: a.float(),
+        fechaDetectada: a.string(), // YYYY-MM-DD normalizada en código, no por el modelo
+        tsVision: a.string(), // ISO del análisis — también es la llave de idempotencia
+        modeloVision: a.string(), // model id de Bedrock que hizo la lectura
+        visionDetalle: a.json(), // { ticket:{...}, bomba:{...}, tanqueAntes/Despues:{...} }
         version: a.integer().default(1),
       })
       .identifier(["tenantId", "loadId"])
