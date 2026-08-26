@@ -1,5 +1,4 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
-import { moreappWebhook } from "../functions/moreapp-webhook/resource";
 import { adminUsers } from "../functions/admin-users/resource";
 import { opsgpaReceptor } from "../functions/opsgpa-receptor/resource";
 
@@ -475,11 +474,10 @@ const schema = a
       .handler(a.handler.function(adminUsers))
       .authorization((allow) => [allow.group("admin")]),
   })
-  // Acceso IAM para el Lambda moreapp-webhook (FASE 2): ingiere envíos de MoreApp
-  // y escribe Unit/Checklist (mensual) + Unit/Semanal (semanal). El grant resource
-  // es a nivel schema (la API no lo soporta por-modelo).
+  // Acceso IAM para Lambdas del backend. El grant resource es a nivel schema
+  // (la API no lo soporta por-modelo). El webhook MoreApp fue retirado 2026-08-20
+  // (baja de MoreApp; la ingesta vive en el receptor Ops-GPA).
   .authorization((allow) => [
-    allow.resource(moreappWebhook).to(["query", "mutate"]),
     // admin-users escribe UserProfile/AuditEvent y lee UserProfile vía IAM.
     allow.resource(adminUsers).to(["query", "mutate"]),
     // opsgpa-receptor: puente Operaciones-GPA (gpa.ops.v1) — upserts idempotentes
