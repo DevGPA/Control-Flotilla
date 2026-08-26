@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mapValidacion, OPS_FUENTE_DETECCION } from "../src/opsgpa/mapValidacion";
+import {
+  esVeredictoProtegido,
+  mapValidacion,
+  OPS_FUENTE_DETECCION,
+} from "../src/opsgpa/mapValidacion";
 
 const CARGA = {
   tenantId: "gpa",
@@ -78,5 +82,33 @@ describe("mapValidacion: statuses nuevos de Ops (Anulado / Por corregir)", () =>
     for (const s of ["Anulado", "Anulada"]) {
       expect(mapValidacion({ status: s, autorizadoPor: "admin" }, CARGA), s).toBeNull();
     }
+  });
+});
+
+/**
+ * Regla de no-pisado extraída a función pura (Fase 1 visión IA, 2026-08-20).
+ *
+ * Semántica NUEVA: se protege SOLO el veredicto humano (`fuenteDeteccion === "manual"`).
+ * Antes la condición era `!== "ops-gpa"`, que también protegía filas con fuente null —
+ * pero la Lambda de visión puede crear la fila ANTES de que llegue el cambio_estado de
+ * Ops (fuente null: la visión no escribe fuenteDeteccion), y con la regla vieja esa fila
+ * bloquearía para siempre el "Aprobada → ok" del puente. La lectura IA no es un
+ * veredicto: no merece protección; el humano sí, siempre.
+ */
+describe("esVeredictoProtegido: matriz de fuentes (no-pisado)", () => {
+  it("'manual' es el ÚNICO valor protegido", () => {
+    expect(esVeredictoProtegido("manual")).toBe(true);
+  });
+
+  it("ops-gpa, ia, null, undefined y vacío son pisables por el puente", () => {
+    for (const fuente of [OPS_FUENTE_DETECCION, "ia", null, undefined, ""]) {
+      expect(esVeredictoProtegido(fuente), String(fuente)).toBe(false);
+    }
+  });
+
+  it("valores desconocidos NO se protegen (cambio deliberado vs la regla vieja `!== ops-gpa`)", () => {
+    // Si algún día aparece una fuente nueva que merezca protección, debe agregarse
+    // explícitamente aquí y en la función — nunca por accidente.
+    expect(esVeredictoProtegido("otro-sistema")).toBe(false);
   });
 });

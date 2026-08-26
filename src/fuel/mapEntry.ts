@@ -10,6 +10,7 @@ import type {
   FuelVerdictGlobal,
   FuelEvidenceKind,
   FuelVerdict,
+  FuelVisionDetalle,
 } from "./types";
 import { ecoKey } from "./tokaLayout";
 import { refIdCombustible, type AnulacionInfo } from "../anulacion/anulacion";
@@ -48,6 +49,13 @@ export interface ValidacionRow {
   litrosDetectado?: number | null;
   confianzaVision?: number | null;
   fuenteDeteccion?: string | null;
+  // Visión IA de tickets (Fase 1)
+  montoDetectado?: number | null;
+  precioDetectado?: number | null;
+  fechaDetectada?: string | null;
+  tsVision?: string | null;
+  modeloVision?: string | null;
+  visionDetalle?: unknown; // AWSJSON: llega string u objeto
 }
 
 function safeObj(raw: unknown): Record<string, unknown> {
@@ -217,6 +225,12 @@ function mapReview(v: ValidacionRow | undefined): FuelReview | undefined {
     nivelDetectado: v.nivelDetectado ?? undefined,
     litrosDetectado: num(v.litrosDetectado),
     confianzaVision: num(v.confianzaVision),
+    montoDetectado: num(v.montoDetectado),
+    precioDetectado: num(v.precioDetectado),
+    fechaDetectada: v.fechaDetectada ?? undefined,
+    tsVision: v.tsVision ?? undefined,
+    modeloVision: v.modeloVision ?? undefined,
+    visionDetalle: v.visionDetalle ? (safeObj(v.visionDetalle) as FuelVisionDetalle) : undefined,
     fuenteDeteccion:
       v.fuenteDeteccion === "ia" || v.fuenteDeteccion === "ops-gpa"
         ? v.fuenteDeteccion

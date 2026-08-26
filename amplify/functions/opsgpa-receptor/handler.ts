@@ -5,6 +5,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { Amplify } from "aws-amplify";
@@ -27,8 +28,8 @@ import {
 } from "../../../src/opsgpa/evento";
 import { mapCombustible } from "../../../src/opsgpa/mapCarga";
 import {
+  esVeredictoProtegido,
   mapValidacion,
-  OPS_FUENTE_DETECCION,
   type ValidacionCargaInput,
 } from "../../../src/opsgpa/mapValidacion";
 import {
@@ -50,6 +51,8 @@ import {
   type BackfillResumen,
 } from "../../../src/opsgpa/backfill";
 import type { CargaCombustibleInput } from "../../../src/opsgpa/contract";
+import { fnamesParaVision } from "../../../src/vision/fnames";
+import { loadIdOf } from "../../../src/fuel/mapEntry";
 
 // Receptor del puente gpa.ops.v1 (ver src/opsgpa/README.md y el contrato en el repo
 // Eco-Admin: Operaciones-GPA/bridge/CONTRATO-gpa.ops.v1.md). Flujo por POST:
@@ -60,6 +63,8 @@ import type { CargaCombustibleInput } from "../../../src/opsgpa/contract";
 
 const s3 = new S3Client({});
 const ddb = new DynamoDBClient({});
+const lambda = new LambdaClient({});
+const VISION_FN = process.env.VISION_FUNCTION_NAME ?? "";
 const BUCKET = process.env.CAPTURE_BUCKET ?? ""; // bucket de FC (fotos + capturas)
 const OPS_BUCKET = process.env.OPS_EVIDENCIAS_BUCKET ?? "";
 const OPS_TABLE = process.env.OPS_TABLE ?? "gpa_operaciones_prod";
@@ -92,6 +97,34 @@ function res(status: number, body: unknown): APIGatewayProxyResultV2 {
 
 /** Reloj del receptor — respaldo del `ts` obligatorio de Anulacion cuando Ops no lo manda. */
 const ahoraIso = (): string => new Date().toISOString();
+
+/**
+ * Dispara la visión IA de una carga (Fase 1) — asíncrono y tolerante a fallo: el
+ * análisis corre en la Lambda vision-combustible con su propio timeout; si el invoke
+ * falla, la ingesta sigue (la lectura se repara con la re-entrega o el reproceso).
+ */
+async function dispararVision(input: CargaCombustibleInput): Promise<void> {
+  if (!VISION_FN) return; // sin función configurada (p.ej. entorno viejo) — silencioso
+  const fnames = fnamesParaVision(input.datos);
+  if (!Object.keys(fnames).length) return;
+  try {
+    await lambda.send(
+      new InvokeCommand({
+        FunctionName: VISION_FN,
+        InvocationType: "Event",
+        Payload: Buffer.from(
+          JSON.stringify({
+            tenantId: input.tenantId,
+            loadId: loadIdOf(input.economicoId, input.tipo, input.eventoId),
+            fnames,
+          }),
+        ),
+      }),
+    );
+  } catch (e) {
+    console.warn(`[vision] invoke falló (no bloquea la ingesta): ${(e as Error).message}`);
+  }
+}
 
 type GraphqlErrors = Array<{ errorType?: string; message?: string }> | undefined;
 function isConditionalCheckFailed(errors: GraphqlErrors): boolean {
@@ -171,10 +204,12 @@ async function estampaArea(unit: UnitInput): Promise<UnitInput> {
 }
 
 /**
- * Upsert de ValidacionCarga con REGLA DE NO-PISADO: si ya existe un veredicto y NO fue
- * escrito por el puente (fuenteDeteccion ≠ "ops-gpa"), es de un humano de tesorería en
- * FC y se respeta — el puente jamás lo sobreescribe (auditoría selectiva conserva la
- * última palabra).
+ * Upsert de ValidacionCarga con REGLA DE NO-PISADO: un veredicto escrito por un humano
+ * de tesorería (fuenteDeteccion === "manual") se respeta — el puente jamás lo
+ * sobreescribe (auditoría selectiva conserva la última palabra). Una fila creada por la
+ * Lambda de visión (fuente null: solo trae campos *Detectado) SÍ es pisable en los
+ * campos de veredicto; el update de este handler no incluye campos de visión, así que
+ * la lectura IA sobrevive las re-entregas del puente.
  */
 async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
   const client = await getDataClient();
@@ -189,7 +224,7 @@ async function upsertValidacion(input: ValidacionCargaInput): Promise<void> {
     throw new Error(`ValidacionCarga.create: ${JSON.stringify(created.errors)}`);
   }
   const existente = await model.get({ tenantId: input.tenantId, loadId: input.loadId } as never);
-  if (existente.data && existente.data.fuenteDeteccion !== OPS_FUENTE_DETECCION) {
+  if (existente.data && esVeredictoProtegido(existente.data.fuenteDeteccion)) {
     console.log(`validación humana respetada (no-pisado): ${input.loadId}`);
     return;
   }
@@ -495,6 +530,10 @@ export const handler = async (
       // null (la Anulacion ya excluye; degradar destruiría el veredicto real).
       const validacion = mapValidacion(plano as Record<string, unknown>, input);
       if (validacion) await upsertValidacion(validacion);
+      // Visión IA (Fase 1): invoke ASÍNCRONO fire-and-forget — un fallo aquí jamás
+      // tumba la ingesta (mismo espíritu que copiarEvidencia). Solo dispara si hay
+      // ticket/bomba que leer (las solicitudes salen con mapa vacío).
+      await dispararVision(input);
       return res(200, {
         folio: evento.folio,
         evento: evento.evento,

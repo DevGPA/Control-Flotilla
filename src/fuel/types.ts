@@ -32,6 +32,35 @@ export type FuelReview = {
   litrosDetectado?: number;
   confianzaVision?: number;
   fuenteDeteccion?: "manual" | "ia" | "ops-gpa";
+  // Visión IA de tickets (Fase 1, 2026-08). Solo lectura: los escribe la Lambda
+  // vision-combustible; la comparación contra lo capturado es client-side.
+  montoDetectado?: number;
+  precioDetectado?: number;
+  fechaDetectada?: string; // YYYY-MM-DD
+  tsVision?: string;
+  modeloVision?: string;
+  visionDetalle?: FuelVisionDetalle;
+};
+
+/** Estado de cada evidencia según la visión IA ("faltante" lo estampa el código). */
+export type FuelVisionEstado = "ok" | "ilegible" | "no-corresponde" | "faltante";
+
+export type FuelVisionLectura = {
+  estado?: FuelVisionEstado;
+  confianza?: number;
+  monto?: number | null;
+  litros?: number | null;
+  precioLitro?: number | null;
+  nivel?: string | null;
+};
+
+/** Detalle por evidencia de la lectura IA (espejo laxo de visionDetalle en Dynamo). */
+export type FuelVisionDetalle = {
+  ticket?: FuelVisionLectura;
+  bomba?: FuelVisionLectura;
+  tanqueAntes?: FuelVisionLectura;
+  tanqueDespues?: FuelVisionLectura;
+  notas?: string;
 };
 
 /**
@@ -243,6 +272,10 @@ export type FuelThresholds = {
   PARTIAL_WINDOW_N: number; // parciales crónicos: tamaño de la ventana de cargas recientes a evaluar
   PARTIAL_MIN_N: number; // parciales crónicos: mínimo de cargas recientes para juzgar a la unidad
   PARTIAL_PCT: number; // parciales crónicos: fracción de cargas sin tanque lleno que dispara la alerta
+  VISION_CONF_MIN: number; // ticket-no-cuadra: confianza mínima de la lectura IA para alertar
+  VISION_MONTO_TOL_PCT: number; // tolerancia relativa de monto (fracción)
+  VISION_MONTO_TOL_MIN: number; // tolerancia absoluta mínima de monto ($)
+  VISION_LITROS_TOL_PCT: number; // tolerancia relativa de litros (fracción)
 };
 
 /**

@@ -10,6 +10,7 @@ import { data } from "./data/resource";
 import { storage } from "./storage/resource";
 import { adminUsers } from "./functions/admin-users/resource";
 import { opsgpaReceptor } from "./functions/opsgpa-receptor/resource";
+import { visionCombustible } from "./functions/vision-combustible/resource";
 
 /**
  * Amplify Gen 2 backend entrypoint.
@@ -32,6 +33,7 @@ const backend = defineBackend({
   storage,
   adminUsers,
   opsgpaReceptor,
+  visionCombustible,
 });
 
 // ── Webhook MoreApp RETIRADO (2026-08-20) ──────────────────────
@@ -82,6 +84,26 @@ receptorFn.addToRolePolicy(
   }),
 );
 backend.addOutput({ custom: { opsgpaReceptorUrl: receptorUrl.url } });
+
+// ── Visión IA de tickets de combustible (Fase 1, 2026-08-20) ──────────────────
+// SIN Function URL: la única puerta es lambda:InvokeFunction (el receptor la invoca
+// asíncrona tras cada reporte de carga) + invocación directa para el modo reproceso.
+// Bedrock con permiso mínimo: solo InvokeModel sobre modelos Anthropic (foundation
+// model directo o inference profile regional us.anthropic.*).
+const visionFn = backend.visionCombustible.resources.lambda;
+bucket.grantRead(visionFn);
+(visionFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
+visionFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["bedrock:InvokeModel"],
+    resources: [
+      "arn:aws:bedrock:*::foundation-model/anthropic.*",
+      "arn:aws:bedrock:*:*:inference-profile/*.anthropic.*",
+    ],
+  }),
+);
+visionFn.grantInvoke(receptorFn);
+(receptorFn as LambdaFunction).addEnvironment("VISION_FUNCTION_NAME", visionFn.functionName);
 
 // ── Módulo de Administración de Usuarios (2026-06-12) ─────────────────────────
 // La Lambda admin-users opera la Cognito Admin API. Permisos ACOTADOS al ARN del
