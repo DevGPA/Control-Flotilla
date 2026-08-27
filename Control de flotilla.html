@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-rXObVOac70UiObSPYGay6AV5WBZrltaxpYwGQonpjaI=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bBXI4ZgTEWf+tzEhi0VzzZkmO45tiHAdhJYqaTAKUa0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4162,7 +4162,9 @@ function toggleDetCompact(){
   document.querySelector('.dtop').classList.toggle('dtop-compact');
 }
 function renderDet(){
-  const u=units.find(x=>x.uid===selId);if(!u)return;
+  // Fallback a __inspections: la tab Evolución salta a inspecciones FUERA del
+  // rango Desde/Hasta (precedente: anularInspeccion). Mismas referencias de objeto.
+  const u=units.find(x=>x.uid===selId)||(window.__inspections||[]).find(x=>x.uid===selId);if(!u)return;
   const rt=u.risk==="Urgente"?"var(--R)":u.risk==="Revisar"?"var(--A)":"var(--G)";
   document.getElementById("dplate").textContent=u.eco||u.plate||"—";
   document.getElementById("dplate").style.color=rt;
@@ -4184,6 +4186,7 @@ function renderDet(){
   const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !isFindingDone(dm,f,u.fecha);}).length;
   const cmpEntries=(window.complianceEntries||[]).filter(e=>e.economicoId===u.eco);
   const cmpIssues=cmpEntries.filter(e=>e.estado==="vencido"||e.estado==="porVencer"||e.estado==="adeudo").length;
+  const evN=(window.__evolucion&&typeof window.__evolucion.count==="function")?window.__evolucion.count(u):0;
   const tabs=[
     {id:"c",label:"Checklist",ico:'<i data-lucide="check-square" style="width:11px;height:11px;vertical-align:-2px"></i>',n:pendingFindings||""},
     {id:"t",label:"Llantas",ico:'<i data-lucide="disc-3" style="width:11px;height:11px;vertical-align:-2px"></i>'},
@@ -4191,6 +4194,7 @@ function renderDet(){
     {id:"n",label:"Notas",ico:'<i data-lucide="pencil" style="width:11px;height:11px;vertical-align:-2px"></i>',n2:noteCount||""},
     {id:"o",label:"Servicio",ico:'<i data-lucide="settings" style="width:11px;height:11px;vertical-align:-2px"></i>'},
     {id:"cmp",label:"Cumplimiento",ico:'<i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-2px"></i>',n:cmpIssues||""},
+    {id:"ev",label:"Evolución",ico:'<i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i>',n2:evN>1?evN:""},
   ];
   document.getElementById("dtabs").innerHTML=tabs.map(t=>{
     const on=curTab===t.id?(u.risk==="Urgente"&&t.id==="c"?" onr":" on"):"";
@@ -4257,6 +4261,10 @@ function renderDetBody(u){
   else if(curTab==="cmp"){
     if(typeof window.renderComplianceTab==="function") window.renderComplianceTab(u.eco, u.plate, body);
     else body.innerHTML='<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Módulo de cumplimiento no disponible.</div>';
+  }
+  else if(curTab==="ev"){
+    if(window.__evolucion&&typeof window.__evolucion.renderTab==="function") window.__evolucion.renderTab(u, body);
+    else body.innerHTML='<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Módulo de evolución no disponible.</div>';
   }
 }
 
@@ -5372,7 +5380,8 @@ async function _pdfOptimizarFoto(bytes, formato, api){
 }
 
 async function exportPDF(){
-  const u=units.find(x=>x.uid===selId);
+  // Mismo fallback de rango que renderDet: PDF de inspecciones históricas (tab Evolución).
+  const u=units.find(x=>x.uid===selId)||(window.__inspections||[]).find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
   // Perf F1-6: jspdf carga on-demand.
   try{ await ensureJsPDF(); }catch(e){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }

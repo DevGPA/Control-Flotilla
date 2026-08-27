@@ -109,7 +109,9 @@ import {
 import type { WeeklyPeriodo } from "./weekly/weeklyStore";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
-import { latestPorUnidad, rangoCountLabel } from "./inspecciones/unidades";
+import { latestPorUnidad, rangoCountLabel, plateKey } from "./inspecciones/unidades";
+import { buildEvolucionUnidad, countInspecciones } from "./inspecciones/evolucionUnidad";
+import { renderEvolucion } from "./ui/detail/renderEvolucion";
 import { buildCobertura, coberturaNivel } from "./inspecciones/cobertura";
 import { buildTrendFromInspections } from "./dashboard/trendData";
 import {
@@ -138,6 +140,12 @@ declare global {
     isUnitEnTaller?: (u: Unit) => boolean;
     parseSvcDate?: (s: string) => Date | null;
     selUnit?: (uid: string) => void;
+    swTab?: (t: string) => void;
+    /** Tab Evolución del expediente: conteo para el badge + render (main.ts). */
+    __evolucion?: {
+      count: (u: Unit) => number;
+      renderTab: (u: Unit, body: HTMLElement) => void;
+    };
     /** override del legado — si feature flag activa. */
     renderTable?: () => void;
     exportPDF?: () => void | Promise<void>;
@@ -299,6 +307,37 @@ wirePeriodoPresets();
 // Dedupe unidades-vs-inspecciones para las hero cards y el contador del rango
 // (patrón namespace __fleetMap: el legado lo consume con guard typeof).
 window.__inspUnidades = { latestPorUnidad, rangoCountLabel };
+// Tab Evolución del expediente: timeline histórico por unidad (etapa 2).
+// Fuente con fallback a units (offline/xlsx, precedente anularInspeccion).
+// SIN re-scope por sucursal: el expediente ya viene de tabla scopeada y el
+// histórico de ESA placa no debe ocultar meses de una unidad transferida.
+function srcInspections(): Unit[] {
+  const insp = window.__inspections;
+  if (Array.isArray(insp) && insp.length) return insp;
+  return (window.units as Unit[] | undefined) ?? [];
+}
+window.__evolucion = {
+  count: (u) => countInspecciones(srcInspections(), plateKey(u)),
+  renderTab: (u, body) => {
+    const rows = buildEvolucionUnidad(
+      srcInspections(),
+      plateKey(u),
+      (window.checklistDB ?? appStore.get("checklistDB")) as ChecklistDB | undefined,
+    );
+    renderEvolucion(body, {
+      rows,
+      selUid: u.uid,
+      onJump: (uid) => {
+        // Guard anti-toggle: selUnit con el uid ya abierto CERRARÍA el panel.
+        if (!uid || uid === u.uid) return;
+        window.selUnit?.(uid);
+        // selUnit fuerza curTab="c"; re-activar Evolución para que comparar
+        // meses no expulse al usuario (solo si el salto realmente abrió).
+        if (window.selId === uid) window.swTab?.("ev");
+      },
+    });
+  },
+};
 // Cobertura del ciclo (hero card): mismo insumo que el chip "Sin check".
 window.__cobertura = { build: buildCobertura, nivel: coberturaNivel };
 // Serie mensual para #chart-trend (buildAnalytics) desde __inspections.
@@ -429,7 +468,10 @@ if (readFlag("USE_NEW_PDF")) {
     // closure sin que nadie haya leído window.* desde entonces.
     const units = safeUnitArray(window.units ?? appStore.get("units"), "exportPDF units");
     const selId = (window.selId ?? appStore.get("selectedUid")) as string | null;
-    const unit = units.find((u) => u.uid === selId);
+    const unit =
+      units.find((u) => u.uid === selId) ??
+      // Fallback de rango (tab Evolución): PDF de inspecciones históricas.
+      ((window.__inspections ?? []) as Unit[]).find((u) => u.uid === selId);
     if (!unit) {
       alert("Selecciona una unidad primero.");
       return;
