@@ -112,6 +112,13 @@ import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
 import { latestPorUnidad, rangoCountLabel } from "./inspecciones/unidades";
 import { buildCobertura, coberturaNivel } from "./inspecciones/cobertura";
 import { buildTrendFromInspections } from "./dashboard/trendData";
+import {
+  buildSucursalesOps,
+  buildRadarVencimientos,
+  buildReincidentes,
+  buildGastoMensual,
+} from "./analytics/opsTablero";
+import { renderSucursalesOps, renderRadar, renderReincidentes } from "./analytics/renderOps";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -214,27 +221,24 @@ declare global {
       segments: import("./dashboard/charts").DonutSegment[],
       handlers?: { onSegmentClick?: (key: string) => void },
     ) => unknown;
-    renderBranchesChart?: (
-      el: HTMLElement,
-      data: import("./dashboard/charts").BranchStat[],
-      handlers?: { onBranchClick?: (branch: string) => void },
-    ) => unknown;
-    renderCategoriesChart?: (
-      el: HTMLElement,
-      data: import("./dashboard/charts").CategoryStat[],
-    ) => unknown;
     renderTrendChart?: (
       el: HTMLElement,
       data: import("./dashboard/charts").PeriodTrend[],
     ) => unknown;
-    renderTallerHeatmapChart?: (
+    renderGastoMensualChart?: (
       el: HTMLElement,
-      data: import("./dashboard/charts").DayCount[],
+      data: import("./analytics/opsTablero").GastoMes[],
     ) => unknown;
-    renderKmScatterChart?: (
-      el: HTMLElement,
-      data: import("./dashboard/charts").KmScatterPoint[],
-    ) => unknown;
+    /** Tablero operativo de Análisis (builders puros + renders DOM). */
+    __tableroOps?: {
+      buildSucursales: typeof buildSucursalesOps;
+      buildRadar: typeof buildRadarVencimientos;
+      buildReincidentes: typeof buildReincidentes;
+      buildGastoMensual: typeof buildGastoMensual;
+      renderSucursales: typeof renderSucursalesOps;
+      renderRadar: typeof renderRadar;
+      renderReincidentes: typeof renderReincidentes;
+    };
   }
 }
 
@@ -249,20 +253,10 @@ window.__appStore = appStore;
 // nada. Expone los widgets ECharts al legado (buildKPIs / buildAnalytics).
 function loadDashboardCharts(): Promise<void> {
   return import("./dashboard/charts").then(
-    ({
-      renderDonut,
-      renderBranchesBar,
-      renderCategoriesBar,
-      renderTrendLine,
-      renderTallerHeatmap,
-      renderKmScatter,
-    }) => {
+    ({ renderDonut, renderTrendLine, renderGastoMensualBar }) => {
       window.renderDonutChart = renderDonut;
-      window.renderBranchesChart = renderBranchesBar;
-      window.renderCategoriesChart = renderCategoriesBar;
       window.renderTrendChart = renderTrendLine;
-      window.renderTallerHeatmapChart = renderTallerHeatmap;
-      window.renderKmScatterChart = renderKmScatter;
+      window.renderGastoMensualChart = renderGastoMensualBar;
       // Re-pintar ahora que la lib está lista (no-op si no hay datos / vista distinta).
       const w = window as unknown as { buildKPIs?: () => void; buildAnalytics?: () => void };
       w.buildKPIs?.();
@@ -294,6 +288,16 @@ window.__inspUnidades = { latestPorUnidad, rangoCountLabel };
 window.__cobertura = { build: buildCobertura, nivel: coberturaNivel };
 // Serie mensual para #chart-trend (buildAnalytics) desde __inspections.
 window.__trendData = { fromInspections: buildTrendFromInspections };
+// Tablero operativo de Análisis (rediseño 2026-08-27): datos puros + renders DOM.
+window.__tableroOps = {
+  buildSucursales: buildSucursalesOps,
+  buildRadar: buildRadarVencimientos,
+  buildReincidentes: buildReincidentes,
+  buildGastoMensual: buildGastoMensual,
+  renderSucursales: renderSucursalesOps,
+  renderRadar: renderRadar,
+  renderReincidentes: renderReincidentes,
+};
 
 function readFlag(key: string): boolean {
   try {

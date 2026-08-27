@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-fYpqvOr/8LHfX/+/2oHxSPdzs/s2DpEnPab0k0tX9pY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-vZOhGY1oDcwF72nmSUYwU4ZdMfp2H38KSp7DiylbPe0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -410,20 +410,10 @@
   <div class="view-ttl-bar"><span class="view-ttl" role="heading" aria-level="2">Análisis</span></div>
   <div class="analytics-content" id="analytics-content">
     <div class="analytics-grid">
-      <div class="chart-card">
-        <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Sucursales por riesgo</div>
-          <div class="chart-hint">Clic en una barra para filtrar</div>
-        </div>
-        <div id="chart-branches" class="chart-canvas" role="img" aria-label="Gráfica de barras: inspecciones por sucursal según nivel de riesgo (urgente, revisar, operativa)"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Hallazgos por categoría</div>
-          <div class="chart-hint">5 categorías · 3 niveles</div>
-        </div>
-        <div id="chart-categories" class="chart-canvas" role="img" aria-label="Gráfica de barras: hallazgos por categoría (llantas, checklist, documentos, fluidos, mantenimiento) y nivel"></div>
-      </div>
+      <!-- TABLERO OPERATIVO (rediseño 2026-08-27, decisión Navares): las gráficas
+           descriptivas (categorías, heatmap, scatter km) se retiraron; el tablero
+           contesta preguntas operativas. Piezas: window.__tableroOps (datos puros
+           en src/analytics/opsTablero.ts, renders DOM en renderOps.ts). -->
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Tendencia por período</div>
@@ -437,34 +427,41 @@
           <div class="chart-empty-hint">La gráfica se construye sola conforme se acumulen meses de checklists.</div>
         </div>
       </div>
-      <div class="chart-card" id="chart-card-heatmap">
+      <div class="chart-card" id="chart-card-gasto">
         <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Taller · ingresos por día</div>
-          <div class="chart-hint">90 días · pasa el cursor para ver el detalle</div>
+          <div class="chart-title" role="heading" aria-level="2">Gasto de taller por mes</div>
+          <div class="chart-hint">Por sucursal · fecha de entrada · últimos 12 meses</div>
         </div>
-        <div id="chart-heatmap" class="chart-canvas" role="img" aria-label="Mapa de calor: cantidad de ingresos a taller por día en los últimos 90 días"></div>
-        <div id="chart-heatmap-empty" class="chart-empty" hidden>
-          <i data-lucide="wrench" class="chart-empty-icon"></i>
-          <div class="chart-empty-title">Sin ingresos a taller</div>
-          <div class="chart-empty-msg">No hay registros en los últimos 90 días.</div>
-          <div class="chart-empty-hint">Registra ingresos desde la pestaña <b>Taller</b> o importa un Excel.</div>
+        <div id="chart-gasto" class="chart-canvas" role="img" aria-label="Gráfica de barras apiladas: gasto de taller mensual por sucursal"></div>
+        <div id="chart-gasto-empty" class="chart-empty" hidden>
+          <i data-lucide="banknote" class="chart-empty-icon"></i>
+          <div class="chart-empty-title">Sin gasto registrado</div>
+          <div class="chart-empty-msg">Ningún ingreso a taller con costo capturado.</div>
+          <div class="chart-empty-hint">El gasto se captura al cerrar reparaciones en la pestaña <b>Taller</b>.</div>
         </div>
       </div>
-      <div class="chart-card chart-card-wide" id="chart-card-km">
+      <div class="chart-card" id="card-sucursales-ops">
         <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Km actual vs servicio programado</div>
-          <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
+          <div class="chart-title" role="heading" aria-level="2">Sucursales: cobertura y riesgo</div>
+          <div class="chart-hint">Peor cobertura primero · clic filtra Inspecciones</div>
         </div>
-        <div id="chart-km" class="chart-canvas" role="img" aria-label="Gráfica de dispersión: kilometraje actual vs. kilometraje del siguiente servicio por unidad"></div>
-        <div id="chart-km-empty" class="chart-empty" hidden>
-          <i data-lucide="gauge" class="chart-empty-icon"></i>
-          <div class="chart-empty-title">Sin datos de kilometraje</div>
-          <div class="chart-empty-msg">Ninguna unidad tiene <code>Kilometraje</code> + <code>Kilometraje del siguiente servicio</code>.</div>
-          <div class="chart-empty-hint">Completa esos campos en MoreApp para ver el scatter predictivo.</div>
+        <div id="sucursales-ops" class="ops-body" role="table" aria-label="Tabla: cobertura del ciclo y unidades urgentes por sucursal"></div>
+      </div>
+      <div class="chart-card" id="card-radar-venc">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Radar de vencimientos</div>
+          <div class="chart-hint">Servicios + documentos · vencidos y por vencer</div>
         </div>
+        <div id="radar-venc" class="ops-body" aria-label="Lista de servicios y documentos vencidos o por vencer"></div>
+      </div>
+      <div class="chart-card chart-card-wide" id="card-reincidentes">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Unidades reincidentes</div>
+          <div class="chart-hint">Urgente en ≥2 meses o ≥2 visitas a taller · ventana 6 meses · clic abre expediente</div>
+        </div>
+        <div id="reincidentes-ops" class="ops-body" role="table" aria-label="Tabla: unidades que repiten urgencias o visitas a taller"></div>
       </div>
     </div>
-  </div>
 </div>
 
 <!-- FILTER BAR -->
@@ -3595,71 +3592,24 @@ function buildBranches(){
 
 // Cálculo de stats — render condicional cuando vista activa (lazy via showView).
 function buildAnalytics(){
-  // Perf F1-2: NO recomputar ni redibujar los 5 charts si el panel Análisis está
-  // cerrado. Antes buildKPIs()→buildAnalytics() corría en CADA hidratación/refresh
-  // (poll 4min + focus + evento live) reconstruyendo ECharts en contenedores ocultos.
-  // showView("analytics") lo re-invoca al entrar, así que la vista se puebla al abrirla.
+  // Perf F1-2: NO recomputar ni redibujar el tablero si el panel Análisis está
+  // cerrado. showView("analytics") lo re-invoca al entrar.
   if(document.body.dataset.view !== "analytics") return;
-  if(!units || !units.length) return;
+  const ops = window.__tableroOps;
+  if(!ops) return; // sin módulos TS (flujo offline degradado) el tablero no se puebla
 
-  // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
-  // scope sucursal del usuario fijado (no-op admin): solo computa su sucursal.
-  const sUnits = scopeUnits(units);
-  const branchMap = new Map();
-  for(const x of sUnits){
-    const branch = x.branch || "(Sin sucursal)";
-    let stat = branchMap.get(branch);
-    if(!stat){ stat = { branch, urgente:0, revisar:0, operativa:0 }; branchMap.set(branch, stat); }
-    const dm = checklistDB[x.uid] || {};
-    const pend = x.F.filter(f => !isFindingDone(dm, f, x.fecha));
-    const hasU = pend.some(f => f.lv === "Urgente");
-    const hasR = pend.some(f => f.lv === "Revisar");
-    if(hasU) stat.urgente++;
-    else if(hasR) stat.revisar++;
-    else stat.operativa++;
-  }
-  const branchesData = Array.from(branchMap.values());
+  // ─── Insumos comunes (mismos criterios que buildKPIs) ─────────────────────
+  // Rango dedupeado por unidad (última inspección) — urgentes/revisar = unidades.
+  const rangoScoped = scopeUnits(Array.isArray(units) ? units : []);
+  const rangoUnidades = (window.__inspUnidades && typeof window.__inspUnidades.latestPorUnidad === "function")
+    ? window.__inspUnidades.latestPorUnidad(rangoScoped) : rangoScoped;
+  // Catálogo sin montacargas (denominador de cobertura, igual que la hero card).
+  const roster = scopeUnits(window.__fleetUnits).filter(u=>!u.esMontacargas);
+  const tallerScoped = scopeBySucursal(Array.isArray(tallerEntries) ? tallerEntries : []);
 
-  // ─── Categorías: por hallazgo (no por unidad), counter por cat × nivel
-  const catOrder = ["Llantas", "Checklist", "Documentos", "Fluidos", "Mantenimiento"];
-  const catMap = new Map(catOrder.map(c => [c, { cat:c, urgente:0, revisar:0, completar:0 }]));
-  for(const x of sUnits){
-    const dm = checklistDB[x.uid] || {};
-    for(const f of x.F){
-      if(isFindingDone(dm, f, x.fecha)) continue; // skip atendidos
-      const stat = catMap.get(f.cat);
-      if(!stat) continue;
-      if(f.lv === "Urgente") stat.urgente++;
-      else if(f.lv === "Revisar") stat.revisar++;
-      else if(f.lv === "Completar") stat.completar++;
-    }
-  }
-  const categoriesData = Array.from(catMap.values());
-
-  // Render vía ECharts (módulo TS via window.*). Fallback silencioso si no cargado.
-  const branchesEl = document.getElementById("chart-branches");
-  const categoriesEl = document.getElementById("chart-categories");
-  if(branchesEl && typeof window.renderBranchesChart === "function"){
-    try {
-      window.renderBranchesChart(branchesEl, branchesData, {
-        onBranchClick: (name) => {
-          const bsel = document.getElementById("bsel");
-          if(bsel && typeof setB === "function"){ bsel.value = name; setB(name); }
-        },
-      });
-    } catch(e){ console.warn("[analytics] branches chart falló:", e); }
-  }
-  if(categoriesEl && typeof window.renderCategoriesChart === "function"){
-    try {
-      window.renderCategoriesChart(categoriesEl, categoriesData);
-    } catch(e){ console.warn("[analytics] categorías chart falló:", e); }
-  }
-
-  // ─── Trend histórico: % Urgente/Revisar/Operativa por MES, desde __inspections
-  // (todo el histórico hidratado, scoped por sucursal, independiente del rango
-  // Desde/Hasta — la tendencia responde "¿mejoramos?" y no debe desaparecer al
-  // filtrar una semana). Antes leía window.periodos (solo flujo XLSX viejo): en
-  // cloud vivía vacío y la card quedaba colapsada (auditoría 2026-06-10, ítem 51).
+  // ─── Tendencia mensual (pieza central): histórico completo, independiente
+  // del rango — responde "¿mejoramos?" (antes leía window.periodos, muerto en
+  // cloud; auditoría 2026-06-10 ítem 51).
   const trendEl = document.getElementById("chart-trend");
   const trendEmpty = document.getElementById("chart-trend-empty");
   const trendCard = document.getElementById("chart-card-trend");
@@ -3668,8 +3618,6 @@ function buildAnalytics(){
     const trendData = (window.__trendData && typeof window.__trendData.fromInspections === "function")
       ? window.__trendData.fromInspections(inspAll)
       : [];
-    // La card del trend ya NO colapsa con data-empty: sin datos muestra su empty
-    // state (antes era UI muerta — data-empty ocultaba la card entera).
     if(trendCard) trendCard.removeAttribute("data-empty");
     if(trendData.length >= 2 && typeof window.renderTrendChart === "function"){
       trendEl.style.display = "";
@@ -3682,68 +3630,53 @@ function buildAnalytics(){
     }
   }
 
-  // ─── Taller heatmap: ingresos por día, 90 días rolling.
-  const heatEl = document.getElementById("chart-heatmap");
-  const heatEmpty = document.getElementById("chart-heatmap-empty");
-  const allTallerEntries = Array.isArray(window.tallerEntries) ? window.tallerEntries : [];
-  if(heatEl){
-    const today0 = new Date(); today0.setHours(0,0,0,0);
-    const cutoff = new Date(today0); cutoff.setDate(cutoff.getDate() - 89);
-    // Normaliza fentrada a YYYY-MM-DD y agrupa counts.
-    const dayMap = new Map();
-    for(const e of allTallerEntries){
-      const raw = String(e.fentrada || "").trim();
-      if(!raw) continue;
-      let iso = null;
-      // DD/MM/YYYY
-      const m1 = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if(m1){ iso = `${m1[3]}-${String(m1[2]).padStart(2,"0")}-${String(m1[1]).padStart(2,"0")}`; }
-      else if(/^\d{4}-\d{2}-\d{2}/.test(raw)){ iso = raw.slice(0,10); }
-      if(!iso) continue;
-      const d = new Date(iso + "T00:00:00");
-      if(isNaN(d.getTime()) || d < cutoff || d > today0) continue;
-      dayMap.set(iso, (dayMap.get(iso) || 0) + 1);
-    }
-    const heatData = Array.from(dayMap.entries()).map(([date, count]) => ({ date, count }));
-    const heatCard = document.getElementById("chart-card-heatmap");
-    if(heatData.length && typeof window.renderTallerHeatmapChart === "function"){
-      if(heatCard) heatCard.removeAttribute("data-empty");
-      heatEl.style.display = "";
-      if(heatEmpty) heatEmpty.hidden = true;
-      try { window.renderTallerHeatmapChart(heatEl, heatData); }
-      catch(e){ console.warn("[analytics] heatmap falló:", e); }
+  // ─── Gasto de taller por mes (stacked por sucursal, 12 meses) ─────────────
+  const gastoEl = document.getElementById("chart-gasto");
+  const gastoEmpty = document.getElementById("chart-gasto-empty");
+  if(gastoEl){
+    const serie = ops.buildGastoMensual(tallerScoped);
+    if(serie.length && typeof window.renderGastoMensualChart === "function"){
+      gastoEl.style.display = "";
+      if(gastoEmpty) gastoEmpty.hidden = true;
+      try { window.renderGastoMensualChart(gastoEl, serie); }
+      catch(e){ console.warn("[analytics] gasto chart falló:", e); }
     } else {
-      if(heatCard) heatCard.setAttribute("data-empty", "1");
-      heatEl.style.display = "none";
-      if(heatEmpty) heatEmpty.hidden = false;
+      gastoEl.style.display = "none";
+      if(gastoEmpty) gastoEmpty.hidden = false;
     }
   }
 
-  // ─── Scatter km actual vs km siguiente servicio (Traccar).
-  // Filtra units que tengan ambos km > 0. Colorea por u.risk.
-  const kmEl = document.getElementById("chart-km");
-  const kmEmpty = document.getElementById("chart-km-empty");
-  if(kmEl){
-    const kmPoints = [];
-    for(const u of units){
-      const kmA = parseFloat(String(u.km||""));
-      const kmN = parseFloat(String(u.kmNextSvc||""));
-      if(!(kmA>0) || !(kmN>0)) continue;
-      const risk = (u.risk === "Urgente" || u.risk === "Revisar" || u.risk === "Completar" || u.risk === "OK") ? u.risk : "OK";
-      kmPoints.push({ km: kmA, kmNext: kmN, label: u.eco || u.plate || u.uid || "—", risk });
-    }
-    const kmCard = document.getElementById("chart-card-km");
-    if(kmPoints.length && typeof window.renderKmScatterChart === "function"){
-      if(kmCard) kmCard.removeAttribute("data-empty");
-      kmEl.style.display = "";
-      if(kmEmpty) kmEmpty.hidden = true;
-      try { window.renderKmScatterChart(kmEl, kmPoints); }
-      catch(e){ console.warn("[analytics] km scatter falló:", e); }
-    } else {
-      if(kmCard) kmCard.setAttribute("data-empty", "1");
-      kmEl.style.display = "none";
-      if(kmEmpty) kmEmpty.hidden = false;
-    }
+  // ─── Sucursales: cobertura y riesgo (clic → filtrar Inspecciones) ─────────
+  const sucEl = document.getElementById("sucursales-ops");
+  if(sucEl){
+    try {
+      ops.renderSucursales(sucEl, ops.buildSucursales(roster, rangoUnidades), (suc)=>{
+        if(typeof setB === "function") setB(suc);
+        if(typeof showView === "function") showView("inspecciones");
+      });
+    } catch(e){ console.warn("[analytics] sucursales falló:", e); }
+  }
+
+  // ─── Radar de vencimientos: servicio (criterio svcStatus inyectado, vive
+  // aquí en el legado) + cumplimiento vencido/por vencer/adeudo. ─────────────
+  const radarEl = document.getElementById("radar-venc");
+  if(radarEl){
+    try {
+      const fleetConCheck = scopeUnits(window.__fleetUnits).filter(u=>u.fecha && !u.esMontacargas);
+      const compliance = scopeBySucursal(Array.isArray(window.complianceEntries) ? window.complianceEntries : []);
+      ops.renderRadar(radarEl, ops.buildRadar(fleetConCheck, svcStatus, compliance));
+    } catch(e){ console.warn("[analytics] radar falló:", e); }
+  }
+
+  // ─── Unidades reincidentes (6 meses, clic → expediente de taller) ─────────
+  const reincEl = document.getElementById("reincidentes-ops");
+  if(reincEl){
+    try {
+      const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
+      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped), (r)=>{
+        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+      });
+    } catch(e){ console.warn("[analytics] reincidentes falló:", e); }
   }
 }
 

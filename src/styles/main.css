@@ -6204,6 +6204,165 @@ body:not([data-view="inspecciones"]) #alerts-panel {
 /* Auto-hide toda la chart-card cuando se marca con atributo data-empty="1".
    Reduce ruido visual en panel sin forzar layout shift — solo cards con
    data rellenan el grid. */
+/* ── Tablero operativo de Análisis (rediseño 2026-08-27) ──────────────
+   Tablas y radar del tablero (src/analytics/renderOps.ts). Los colores de
+   severidad reutilizan los tokens R/A/G; data-sev gobierna el énfasis. */
+.ops-body {
+  min-height: 120px;
+  max-height: var(--chart-h, 320px);
+  overflow-y: auto;
+}
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.ops-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--s2);
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--ln);
+}
+.ops-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ln2);
+  color: var(--s1);
+}
+.ops-table td[data-sev="bad"] {
+  color: var(--R);
+  font-weight: 700;
+}
+.ops-table td[data-sev="warn"] {
+  color: var(--A);
+  font-weight: 600;
+}
+.ops-table .ops-suc {
+  font-weight: 600;
+  color: var(--w1);
+}
+.ops-table .ops-num {
+  font-variant-numeric: tabular-nums;
+}
+.ops-row-click {
+  cursor: pointer;
+}
+.ops-row-click:hover td {
+  background: var(--bg2);
+}
+.ops-cob {
+  min-width: 150px;
+}
+.ops-bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: 64px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ln2);
+  margin-right: 7px;
+  overflow: hidden;
+}
+.ops-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.ops-bar-fill[data-nivel="ok"] {
+  background: var(--G);
+}
+.ops-bar-fill[data-nivel="warn"] {
+  background: var(--A);
+}
+.ops-bar-fill[data-nivel="bad"] {
+  background: var(--R);
+}
+.ops-cob-txt {
+  font-variant-numeric: tabular-nums;
+}
+.ops-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: var(--s2);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px;
+}
+.ops-radar-head {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ops-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.ops-chip[data-sev="bad"] {
+  background: var(--Rl);
+  color: var(--R);
+}
+.ops-chip[data-sev="warn"] {
+  background: var(--Al);
+  color: var(--A);
+}
+.ops-radar-list {
+  display: flex;
+  flex-direction: column;
+}
+.ops-radar-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--ln2);
+  font-size: 11.5px;
+}
+.ops-radar-item::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+}
+.ops-radar-item[data-sev="bad"]::before {
+  background: var(--R);
+}
+.ops-radar-item[data-sev="warn"]::before {
+  background: var(--A);
+}
+.ops-radar-eco {
+  font-weight: 700;
+  color: var(--w1);
+  min-width: 42px;
+}
+.ops-radar-que {
+  font-weight: 600;
+  color: var(--s1);
+}
+.ops-radar-det {
+  color: var(--s2);
+}
+.ops-radar-item[data-sev="bad"] .ops-radar-det {
+  color: var(--R);
+  font-weight: 600;
+}
+.ops-radar-suc {
+  margin-left: auto;
+  color: var(--s2);
+  font-size: 10px;
+}
+
 .chart-card[data-empty="1"] {
   display: none;
 }

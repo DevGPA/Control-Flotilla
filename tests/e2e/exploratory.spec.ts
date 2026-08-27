@@ -108,8 +108,10 @@ test.describe("Exploratory — funcionalidad end-to-end", () => {
     // Vista Análisis (4º tab) — kpi-donut vive en hero (oculto en analytics)
     await page.click("#mn-analytics");
     await page.waitForTimeout(1000);
-    await expect(page.locator("#chart-branches")).toBeVisible();
-    await expect(page.locator("#chart-categories")).toBeVisible();
+    // Tablero operativo (rediseño 2026-08-27): tabla de sucursales y radar
+    // siempre pintan contenido (tabla o empty state).
+    await expect(page.locator("#sucursales-ops")).toBeVisible();
+    await expect(page.locator("#radar-venc")).toBeVisible();
 
     await page.screenshot({
       path: "test-results/exploratory/02-mensual-cargado.png",
