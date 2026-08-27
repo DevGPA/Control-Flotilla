@@ -38,6 +38,9 @@ export type RenderChecklistDeps = {
    *  (findingKey), el texto display (alias legacy para el dual-read) y el
    *  nuevo estado deseado ("1" marcar / "0" desmarcar). */
   onToggle?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void;
+  /** Arrastre por findingKey (src/inspecciones/arrastre.ts) — chip "⏳ desde <mes>"
+   *  en pendientes reportados en ≥2 inspecciones consecutivas. Opcional. */
+  arrastre?: Map<string, import("../../inspecciones/arrastre").ArrastreInfo> | null;
 };
 
 const RISK_ORDER: Record<RiskLevel, number> = { OK: 0, Completar: 1, Revisar: 2, Urgente: 3 };
@@ -236,6 +239,7 @@ function findingItem(
   isDone: boolean,
   highlightChange: boolean,
   onToggle?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void,
+  arrastre?: import("../../inspecciones/arrastre").ArrastreInfo | null,
 ): HTMLElement {
   const el = document.createElement("div");
   const cls = isDone
@@ -273,6 +277,15 @@ function findingItem(
   const textSpan = document.createElement("span");
   textSpan.textContent = f.text;
   el.appendChild(textSpan);
+
+  // Arrastre: solo en pendientes con cadena ≥2 (la edad del problema es la prioridad).
+  if (!isDone && arrastre && arrastre.veces >= 2) {
+    const chip = document.createElement("span");
+    chip.className = "ck-arrastre";
+    chip.textContent = `⏳ desde ${arrastre.desdeLabel}`;
+    chip.title = `Reportado en ${arrastre.veces} inspecciones seguidas`;
+    el.appendChild(chip);
+  }
   return el;
 }
 
@@ -360,7 +373,16 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
       const isDone = isFindingDone(doneMap, f, unit.fecha);
       const isNewItem = !wasInPrev(f.text);
       const isChanged = changedRisk(f.text);
-      grid.appendChild(findingItem(f, unit.uid, isDone, isNewItem || isChanged, onToggle));
+      grid.appendChild(
+        findingItem(
+          f,
+          unit.uid,
+          isDone,
+          isNewItem || isChanged,
+          onToggle,
+          deps.arrastre?.get(findingKey(f)) ?? null,
+        ),
+      );
     }
     catWrap.appendChild(grid);
     catsWrap.appendChild(catWrap);

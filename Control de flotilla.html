@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bBXI4ZgTEWf+tzEhi0VzzZkmO45tiHAdhJYqaTAKUa0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-5hr9vZ9aECz25ESzm1WTvqWu5MmbPQdT+R4wf/4P8rU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -4395,6 +4395,9 @@ function renderChecklist(u,body){
   const cats=Object.keys(grp).sort((a,b)=>(ord.indexOf(a)<0?99:ord.indexOf(a))-(ord.indexOf(b)<0?99:ord.indexOf(b)));
 
   html+=`<div class="ck-cats">`;
+  // Arrastre (2026-08-27): "⏳ desde <mes>" en pendientes reportados en ≥2
+  // inspecciones consecutivas de la placa (capa pura src/inspecciones/arrastre.ts).
+  const arrMap=(window.__evolucion&&typeof window.__evolucion.arrastre==="function")?window.__evolucion.arrastre(u):null;
   for(const cat of cats){
     const items=[...grp[cat].filter(f=>f.lv==="Urgente"),...grp[cat].filter(f=>f.lv==="Revisar"),...grp[cat].filter(f=>f.lv==="Completar")];
     html+=`<div><div class="ck-cat-ttl">${CATI[cat]||"•"} ${cat} <span style="font-size:9px;font-weight:600;color:var(--s2);font-style:normal">${items.length}</span></div><div class="ck-grid">`;
@@ -4417,7 +4420,9 @@ function renderChecklist(u,body){
         const cls=f.lv==="Urgente"?"ck-fail-u":f.lv==="Completar"?"ck-fail-c":"ck-fail-r";
         const icon=f.lv==="Urgente"?'<i data-lucide="x" style="width:11px;height:11px;vertical-align:-2px"></i>':f.lv==="Completar"?'<i data-lucide="plus" style="width:11px;height:11px;vertical-align:-2px"></i>':'<i data-lucide="alert-triangle" style="width:11px;height:11px;vertical-align:-2px"></i>';
         const col=f.lv==="Urgente"?"var(--R)":f.lv==="Completar"?"var(--B)":"var(--A)";
-        html+=`<div class="ck-item ${cls} ck-actionable"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:${col}">${icon}</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox" ${cbAttr} aria-label="Marcar como completado"></button></div>`;
+        const _arr=arrMap&&arrMap.get?arrMap.get(findingKey(f)):null;
+        const arrChip=(_arr&&_arr.veces>=2)?`<span class="ck-arrastre" title="Reportado en ${_arr.veces} inspecciones seguidas">⏳ desde ${escHtml(_arr.desdeLabel)}</span>`:"";
+        html+=`<div class="ck-item ${cls} ck-actionable"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:${col}">${icon}</span><span class="ck-txt">${escHtml(f.text)}</span>${arrChip}</div><button class="ck-checkbox" ${cbAttr} aria-label="Marcar como completado"></button></div>`;
       }
     }
     html+=`</div></div>`;

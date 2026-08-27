@@ -3095,6 +3095,16 @@ select.filter-active {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Arrastre de hallazgos (2026-08-27): edad del pendiente junto al texto. */
+.ck-arrastre {
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--A);
+  white-space: nowrap;
+}
 .ck-item.ck-done .ck-txt {
   color: var(--s3);
   text-decoration: line-through;

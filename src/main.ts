@@ -111,6 +111,7 @@ import { appStore, bindLegacyWindow } from "./state/appState";
 import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
 import { latestPorUnidad, rangoCountLabel, plateKey } from "./inspecciones/unidades";
 import { buildEvolucionUnidad, countInspecciones } from "./inspecciones/evolucionUnidad";
+import { buildArrastre, type ArrastreInfo } from "./inspecciones/arrastre";
 import { renderEvolucion } from "./ui/detail/renderEvolucion";
 import { buildCobertura, coberturaNivel } from "./inspecciones/cobertura";
 import { buildTrendFromInspections } from "./dashboard/trendData";
@@ -145,6 +146,8 @@ declare global {
     __evolucion?: {
       count: (u: Unit) => number;
       renderTab: (u: Unit, body: HTMLElement) => void;
+      /** Arrastre por findingKey de la inspección abierta (chip "⏳ desde <mes>"). */
+      arrastre: (u: Unit) => Map<string, ArrastreInfo>;
     };
     /** override del legado — si feature flag activa. */
     renderTable?: () => void;
@@ -318,6 +321,7 @@ function srcInspections(): Unit[] {
 }
 window.__evolucion = {
   count: (u) => countInspecciones(srcInspections(), plateKey(u)),
+  arrastre: (u) => buildArrastre(srcInspections(), plateKey(u), u.uid),
   renderTab: (u, body) => {
     const rows = buildEvolucionUnidad(
       srcInspections(),
@@ -507,6 +511,7 @@ if (readFlag("USE_NEW_DETAIL")) {
         unit: u,
         checklistDB: appStore.get("checklistDB"),
         onToggle: window.toggleCheckItem,
+        arrastre: window.__evolucion?.arrastre(u) ?? null,
       });
     } catch (err) {
       console.error("[renderChecklist/new] falló, fallback a legado:", err);
