@@ -33,12 +33,14 @@ import {
 } from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
 import { buildComplianceEntries } from "../compliance/mapEntry";
+import { monthOf } from "../dates";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import { mergeCheckDones } from "./mergeCheckDones";
-import type { DoneMap } from "../analyzer/findingKey";
+import { stripAuto, type DoneMap } from "../analyzer/findingKey";
+import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
 import { normalizaRefaccion } from "../analyzer/refaccion";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
@@ -56,6 +58,8 @@ interface ChecklistResultados {
   nextSvc?: string;
   kmNextSvc?: number | string;
   validationErrors?: string[];
+  /** Keys que la inspección evaluó (spec auto-resueltos §4; pipeline nuevo). */
+  evaluatedKeys?: string[];
   moreappId?: string;
   photos?: unknown[];
 }
@@ -125,17 +129,6 @@ declare global {
 
 // Throttle de la persistencia del snapshot cloud (ver hydrateFromCloud).
 let lastCloudPersist = 0;
-
-/** Deriva "YYYY-MM" de una fecha de checklist (ISO YYYY-MM-DD o legacy DD/MM/YYYY). */
-function monthOf(fecha: string | null | undefined): string | null {
-  const s = String(fecha ?? "").trim();
-  if (!s) return null;
-  const iso = s.match(/^(\d{4})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}`;
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (dmy) return `${dmy[3]}-${dmy[2]!.padStart(2, "0")}`;
-  return null;
-}
 
 /** Normaliza una fecha de checklist a ISO YYYY-MM-DD para ORDENAR/COMPARAR.
  * Acepta ISO (passthrough) o legacy DD/MM/YYYY. "" si no parseable. NO se usa
@@ -222,6 +215,9 @@ export function mergeUnitWithChecklist(
     eco: ecoId,
     plate: unit.placa,
     brand: unit.marca ?? undefined,
+    anio: unit.anio ?? undefined,
+    validationErrors: Array.isArray(r.validationErrors) ? r.validationErrors : undefined,
+    evaluatedKeys: Array.isArray(r.evaluatedKeys) ? r.evaluatedKeys : undefined,
     branch: unit.sucursal ?? undefined,
     insp: checklist?.responsable ?? "",
     fecha: checklist?.fecha ?? "",
@@ -847,6 +843,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         return f !== "" && f >= from && f <= to;
       });
       window.units = sel;
+      // Los risk de resultados vienen crudos (sin descuento de marcas/overlay);
+      // recalc sobre el rango activo para que el pill de filas viejas no
+      // contradiga a la celda de hallazgos (revisión adversarial 2026-07-23).
+      if (typeof window.recalcAllRisks === "function") window.recalcAllRisks();
       if (typeof window.buildKPIs === "function") window.buildKPIs();
       if (typeof window.renderTable === "function") window.renderTable();
       if (typeof window.buildAlertsSummary === "function") window.buildAlertsSummary();
@@ -975,28 +975,38 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     );
   }
 
-  // Completaciones de checklist COMPARTIDAS (Fase C1): merge puro con fan-out
-  // por placa, tombstones (done:false propaga desmarcados) y dirty-skip (no
-  // pisa un toggle local más reciente). Ver mergeCheckDones.ts.
-  if (checkDones.length) {
-    const { cdb, modifiedUids } = mergeCheckDones({
-      checkDones,
-      rows: (window.__inspections ?? legacyUnits).map((u) => ({ uid: u.uid, plate: u.plate })),
-      cdb: (window.checklistDB ?? {}) as Record<string, DoneMap>,
-      dirty: window.__checkDirty,
-    });
-    window.checklistDB = cdb as ChecklistDB;
-    // Persistir a IndexedDB (H7): sin esto un arranque offline restaura el
-    // snapshot viejo y "revive" desmarcados ya propagados.
-    if (typeof window.dbPut === "function") {
-      for (const uid of modifiedUids) {
-        try {
-          void window.dbPut("checklist", uid, cdb[uid]);
-        } catch {
-          /* persistencia best-effort */
+  // Completaciones de checklist COMPARTIDAS (Fase C1) + overlay auto-resueltos.
+  // Orden OBLIGATORIO (spec 2026-07-23-hallazgos-autoresueltos §3):
+  //   purga(auto) → merge cloud → persistir sin autos → inyección → recalc.
+  // Sin la purga previa, un auto viejo bloquearía por LWW el re-merge de marcas
+  // humanas y sobreviviría a la anulación de su evidencia.
+  {
+    const cdb = (window.checklistDB ?? {}) as Record<string, DoneMap>;
+    purgeAutoEntries(cdb);
+    if (checkDones.length) {
+      const { modifiedUids } = mergeCheckDones({
+        checkDones,
+        rows: (window.__inspections ?? legacyUnits).map((u) => ({ uid: u.uid, plate: u.plate })),
+        cdb,
+        dirty: window.__checkDirty,
+      });
+      // Persistir a IndexedDB (H7): sin esto un arranque offline restaura el
+      // snapshot viejo y "revive" desmarcados ya propagados. stripAuto por
+      // defensa: en este punto aún no hay autos, pero blinda reordenamientos.
+      if (typeof window.dbPut === "function") {
+        for (const uid of modifiedUids) {
+          try {
+            void window.dbPut("checklist", uid, stripAuto(cdb[uid] ?? {}));
+          } catch {
+            /* persistencia best-effort */
+          }
         }
       }
     }
+    // Overlay derivado (solo memoria, jamás persistido): __inspections trae todas
+    // las filas hidratadas, ya sin anuladas (checklistsVigentes).
+    injectAutoResolve({ rows: (window.__inspections ?? []) as AutoRow[], cdb });
+    window.checklistDB = cdb as ChecklistDB;
   }
   // Recalcular el riesgo efectivo por fila con las completaciones aplicadas —
   // antes de C1 no se llamaba y el badge de riesgo nunca descontaba atendidos

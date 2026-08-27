@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-O7nNEyFr4XL9ihwzlcdy1WBIEDKW/bjFWSOgtNmFZ0g=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-RiJ+UM6Kdpe5B2PfjrSXOagVnarzB28fXxFAEivY1NI=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -285,6 +285,17 @@
         <div class="hero-sub" id="ks0"></div>
       </div>
     </div>
+    <!-- Cobertura del ciclo (2026-08): "¿vamos al corriente?" como titular, no nota al
+         pie. El % vive en hero-val porque hero-sub desaparece en laptops (max-height:800px).
+         La llena buildKPIs vía window.__cobertura; clic → las que faltan (missingMensual). -->
+    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades con inspección en el rango · clic para ver las que faltan">
+      <div class="hero-icon" style="background:var(--B)"><i data-lucide="clipboard-check" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-body">
+        <div class="hero-val" id="kv_cob">—</div>
+        <div class="hero-lbl">Cobertura del ciclo</div>
+        <div class="hero-sub" id="ks_cob"></div>
+      </div>
+    </div>
     <div class="hero-card" onclick="openFleetModal('tiresCrit')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con llantas críticas">
       <div class="hero-icon" style="background:var(--R)"><i data-lucide="disc-3" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
@@ -399,58 +410,76 @@
   <div class="view-ttl-bar"><span class="view-ttl" role="heading" aria-level="2">Análisis</span></div>
   <div class="analytics-content" id="analytics-content">
     <div class="analytics-grid">
-      <div class="chart-card">
-        <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Sucursales por riesgo</div>
-          <div class="chart-hint">Clic en una barra para filtrar</div>
-        </div>
-        <div id="chart-branches" class="chart-canvas" role="img" aria-label="Gráfica de barras: inspecciones por sucursal según nivel de riesgo (urgente, revisar, operativa)"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Hallazgos por categoría</div>
-          <div class="chart-hint">5 categorías · 3 niveles</div>
-        </div>
-        <div id="chart-categories" class="chart-canvas" role="img" aria-label="Gráfica de barras: hallazgos por categoría (llantas, checklist, documentos, fluidos, mantenimiento) y nivel"></div>
-      </div>
+      <!-- TABLERO OPERATIVO (rediseño 2026-08-27, decisión Navares): las gráficas
+           descriptivas (categorías, heatmap, scatter km) se retiraron; el tablero
+           contesta preguntas operativas. Piezas: window.__tableroOps (datos puros
+           en src/analytics/opsTablero.ts, renders DOM en renderOps.ts). -->
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Tendencia por período</div>
-          <div class="chart-hint">% Urgente · Revisar · Operativa</div>
+          <div class="chart-hint">% Urgente · Revisar · Operativa · últimos 12 meses</div>
         </div>
         <div id="chart-trend" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia del porcentaje urgente, revisar y operativa por período"></div>
         <div id="chart-trend-empty" class="chart-empty" hidden>
           <i data-lucide="trending-up" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin tendencia histórica</div>
-          <div class="chart-empty-msg">Necesitas al menos 2 períodos mensuales para comparar.</div>
-          <div class="chart-empty-hint">Carga un XLSX adicional con el botón <b>“Actualizar Excel”</b>.</div>
+          <div class="chart-empty-msg">Necesitas al menos 2 meses con inspecciones para comparar.</div>
+          <div class="chart-empty-hint">La gráfica se construye sola conforme se acumulen meses de checklists.</div>
         </div>
       </div>
-      <div class="chart-card" id="chart-card-heatmap">
+      <div class="chart-card" id="chart-card-gasto">
         <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Taller · ingresos por día</div>
-          <div class="chart-hint">90 días · pasa el cursor para ver el detalle</div>
+          <div class="chart-title" role="heading" aria-level="2">Gasto de taller por mes</div>
+          <div class="chart-hint">Por sucursal · fecha de entrada · últimos 12 meses</div>
         </div>
-        <div id="chart-heatmap" class="chart-canvas" role="img" aria-label="Mapa de calor: cantidad de ingresos a taller por día en los últimos 90 días"></div>
-        <div id="chart-heatmap-empty" class="chart-empty" hidden>
+        <div id="chart-gasto" class="chart-canvas" role="img" aria-label="Gráfica de barras apiladas: gasto de taller mensual por sucursal"></div>
+        <div id="chart-gasto-empty" class="chart-empty" hidden>
+          <i data-lucide="banknote" class="chart-empty-icon"></i>
+          <div class="chart-empty-title">Sin gasto registrado</div>
+          <div class="chart-empty-msg">Ningún ingreso a taller con costo capturado.</div>
+          <div class="chart-empty-hint">El gasto se captura al cerrar reparaciones en la pestaña <b>Taller</b>.</div>
+        </div>
+      </div>
+      <div class="chart-card" id="chart-card-prevcorr">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Preventivo vs Correctivo</div>
+          <div class="chart-hint">Gasto por tipo de mantenimiento · si el programa funciona, el rojo baja</div>
+        </div>
+        <div id="chart-prevcorr" class="chart-canvas" role="img" aria-label="Gráfica de barras apiladas: gasto de taller mensual por tipo de mantenimiento (preventivo, correctivo, otros)"></div>
+        <div id="chart-prevcorr-empty" class="chart-empty" hidden>
           <i data-lucide="wrench" class="chart-empty-icon"></i>
-          <div class="chart-empty-title">Sin ingresos a taller</div>
-          <div class="chart-empty-msg">No hay registros en los últimos 90 días.</div>
-          <div class="chart-empty-hint">Registra ingresos desde la pestaña <b>Taller</b> o importa un Excel.</div>
+          <div class="chart-empty-title">Sin gasto por tipo</div>
+          <div class="chart-empty-msg">Ningún ingreso a taller con costo y tipo capturados.</div>
+          <div class="chart-empty-hint">El tipo (Preventivo/Correctivo) se captura al registrar el ingreso en <b>Taller</b>.</div>
         </div>
       </div>
-      <div class="chart-card chart-card-wide" id="chart-card-km">
+      <div class="chart-card" id="card-sucursales-ops">
         <div class="chart-card-header">
-          <div class="chart-title" role="heading" aria-level="2">Km actual vs servicio programado</div>
-          <div class="chart-hint">Línea diagonal = vigente · debajo = vencido</div>
+          <div class="chart-title" role="heading" aria-level="2">Sucursales: cobertura y riesgo</div>
+          <div class="chart-hint">Peor cobertura primero · clic filtra Inspecciones</div>
         </div>
-        <div id="chart-km" class="chart-canvas" role="img" aria-label="Gráfica de dispersión: kilometraje actual vs. kilometraje del siguiente servicio por unidad"></div>
-        <div id="chart-km-empty" class="chart-empty" hidden>
-          <i data-lucide="gauge" class="chart-empty-icon"></i>
-          <div class="chart-empty-title">Sin datos de kilometraje</div>
-          <div class="chart-empty-msg">Ninguna unidad tiene <code>Kilometraje</code> + <code>Kilometraje del siguiente servicio</code>.</div>
-          <div class="chart-empty-hint">Completa esos campos en MoreApp para ver el scatter predictivo.</div>
+        <div id="sucursales-ops" class="ops-body" role="table" aria-label="Tabla: cobertura del ciclo y unidades urgentes por sucursal"></div>
+      </div>
+      <div class="chart-card" id="card-radar-venc">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Radar de vencimientos</div>
+          <div class="chart-hint">Servicios + documentos · vencidos y por vencer</div>
         </div>
+        <div id="radar-venc" class="ops-body" aria-label="Lista de servicios y documentos vencidos o por vencer"></div>
+      </div>
+      <div class="chart-card" id="card-costo-unidad">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Costo por unidad</div>
+          <div class="chart-hint">Top gasto de taller · 12 meses · marca/año para reparar-vs-reemplazar · clic abre expediente</div>
+        </div>
+        <div id="costo-unidad" class="ops-body" role="table" aria-label="Tabla: unidades con mayor gasto de taller acumulado en 12 meses"></div>
+      </div>
+      <div class="chart-card chart-card-wide" id="card-reincidentes">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Unidades reincidentes</div>
+          <div class="chart-hint">Urgente en ≥2 meses o ≥2 visitas a taller · ventana 6 meses · clic abre expediente</div>
+        </div>
+        <div id="reincidentes-ops" class="ops-body" role="table" aria-label="Tabla: unidades que repiten urgencias o visitas a taller"></div>
       </div>
     </div>
   </div>
@@ -464,7 +493,6 @@
     <button class="chip" id="btn-Revisar" aria-pressed="false" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
     <button class="chip" id="btn-obs" aria-pressed="false" onclick="setF('obs')"><span class="chip-dot" style="background:var(--s2)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-svcvencido" aria-pressed="false" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
-    <button class="chip" id="btn-sinmensual" onclick="openFleetModal('missingMensual')" title="Unidades de la flota sin check mensual en el rango seleccionado" style="display:none;border-style:dashed"><span class="chip-dot" style="background:var(--s2)"></span>Sin check <span class="chip-n" id="fc_missing"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
   <div class="sw">
@@ -3406,9 +3434,12 @@ function buildKPIs(){
     const enTallerNow=isUnitEnTaller(x);
     if(enTallerNow){ enTaller++; tallerDonut++; } else operativaDonut++;
   }
-  // LLANTAS CRÍTICAS + SERVICIO = sobre las inspecciones del RANGO (units), igual que la tabla.
+  // LLANTAS CRÍTICAS + SERVICIO = sobre las UNIDADES del rango (última inspección por
+  // unidad, dedupe __inspUnidades): la card dice "Unidades" y con rango >1 mes las filas
+  // repetidas inflaban el conteo. Los chips (abajo) siguen contando FILAS: filtran la tabla.
+  const kpiUnits=(window.__inspUnidades&&typeof window.__inspUnidades.latestPorUnidad==="function")?window.__inspUnidades.latestPorUnidad(sUnits):sUnits;
   let ct=0,nSvcVencido=0,nSvcProximo=0;
-  for(const x of sUnits){
+  for(const x of kpiUnits){
     if(x.minT!==null && x.minT<=TCRIT) ct++;
     const ss=svcStatus(x);
     if(ss==="vencido") nSvcVencido++; else if(ss==="proximo") nSvcProximo++;
@@ -3449,20 +3480,28 @@ function buildKPIs(){
   const fcRev=document.getElementById("fc_rev");if(fcRev)fcRev.textContent=r?`(${r})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
   const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcRange?`(${nSvcRange})`:"";
-  // "Sin check" mensual = catálogo (flota) − placas con inspección mensual en el rango.
-  // Solo con catálogo cloud; abre el modal (no es filtro de tabla, esas unidades no están en units).
-  const btnSinM=document.getElementById("btn-sinmensual");
-  if(btnSinM){
-    // Excluye montacargas: no hacen checklist de vehículo, no deben contar como "sin check".
+  // Cobertura del ciclo = catálogo (flota) − placas con inspección en el rango.
+  // Solo con catálogo cloud. Clic en la card → modal missingMensual (las que faltan).
+  // El chip "Sin check" se retiró (decisión 2026-08-27): la card cubre esa necesidad.
+  const cobCard=document.getElementById("hero-cobertura");
+  if(cobCard){
+    // Excluye montacargas: no hacen checklist de vehículo, no deben contar en el ciclo.
     const fleetRoster=scopeUnits(window.__fleetUnits).filter(u=>!u.esMontacargas);
-    if(fleetRoster.length){
+    if(fleetRoster.length && window.__cobertura && typeof window.__cobertura.build==="function"){
       const pres=new Set(sUnits.map(x=>x.plate||x.uid));
-      const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
-      // Siempre visible con catálogo cloud (aunque sea 0) para que el usuario lo encuentre.
-      btnSinM.style.display="inline-flex";
-      btnSinM.style.opacity=faltanM?"1":"0.55";
-      const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=`(${faltanM})`;
-    } else { btnSinM.style.display="none"; }
+      const cob=window.__cobertura.build(fleetRoster,pres);
+      const cs=getComputedStyle(document.documentElement);
+      const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
+      const kvc=document.getElementById("kv_cob");
+      if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
+      const ksc=document.getElementById("ks_cob");
+      if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
+      cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
+      cobCard.style.display="flex";
+    } else {
+      // Sin catálogo cloud no hay denominador: la card queda oculta (fail-closed).
+      cobCard.style.display="none";
+    }
   }
   // Action buttons
   const btnFleet=document.getElementById("btn-fleet-pdf");
@@ -3574,161 +3613,117 @@ function buildBranches(){
 
 // Cálculo de stats — render condicional cuando vista activa (lazy via showView).
 function buildAnalytics(){
-  // Perf F1-2: NO recomputar ni redibujar los 5 charts si el panel Análisis está
-  // cerrado. Antes buildKPIs()→buildAnalytics() corría en CADA hidratación/refresh
-  // (poll 4min + focus + evento live) reconstruyendo ECharts en contenedores ocultos.
-  // showView("analytics") lo re-invoca al entrar, así que la vista se puebla al abrirla.
+  // Perf F1-2: NO recomputar ni redibujar el tablero si el panel Análisis está
+  // cerrado. showView("analytics") lo re-invoca al entrar.
   if(document.body.dataset.view !== "analytics") return;
-  if(!units || !units.length) return;
+  const ops = window.__tableroOps;
+  if(!ops) return; // sin módulos TS (flujo offline degradado) el tablero no se puebla
 
-  // ─── Sucursales: por unidad (excluyendo pending atendidos), 3-state exclusivo
-  // scope sucursal del usuario fijado (no-op admin): solo computa su sucursal.
-  const sUnits = scopeUnits(units);
-  const branchMap = new Map();
-  for(const x of sUnits){
-    const branch = x.branch || "(Sin sucursal)";
-    let stat = branchMap.get(branch);
-    if(!stat){ stat = { branch, urgente:0, revisar:0, operativa:0 }; branchMap.set(branch, stat); }
-    const dm = checklistDB[x.uid] || {};
-    const pend = x.F.filter(f => !isFindingDone(dm, f, x.fecha));
-    const hasU = pend.some(f => f.lv === "Urgente");
-    const hasR = pend.some(f => f.lv === "Revisar");
-    if(hasU) stat.urgente++;
-    else if(hasR) stat.revisar++;
-    else stat.operativa++;
-  }
-  const branchesData = Array.from(branchMap.values());
+  // ─── Insumos comunes (mismos criterios que buildKPIs) ─────────────────────
+  // Rango dedupeado por unidad (última inspección) — urgentes/revisar = unidades.
+  const rangoScoped = scopeUnits(Array.isArray(units) ? units : []);
+  const rangoUnidades = (window.__inspUnidades && typeof window.__inspUnidades.latestPorUnidad === "function")
+    ? window.__inspUnidades.latestPorUnidad(rangoScoped) : rangoScoped;
+  // Catálogo sin montacargas (denominador de cobertura, igual que la hero card).
+  const roster = scopeUnits(window.__fleetUnits).filter(u=>!u.esMontacargas);
+  const tallerScoped = scopeBySucursal(Array.isArray(tallerEntries) ? tallerEntries : []);
 
-  // ─── Categorías: por hallazgo (no por unidad), counter por cat × nivel
-  const catOrder = ["Llantas", "Checklist", "Documentos", "Fluidos", "Mantenimiento"];
-  const catMap = new Map(catOrder.map(c => [c, { cat:c, urgente:0, revisar:0, completar:0 }]));
-  for(const x of sUnits){
-    const dm = checklistDB[x.uid] || {};
-    for(const f of x.F){
-      if(isFindingDone(dm, f, x.fecha)) continue; // skip atendidos
-      const stat = catMap.get(f.cat);
-      if(!stat) continue;
-      if(f.lv === "Urgente") stat.urgente++;
-      else if(f.lv === "Revisar") stat.revisar++;
-      else if(f.lv === "Completar") stat.completar++;
-    }
-  }
-  const categoriesData = Array.from(catMap.values());
-
-  // Render vía ECharts (módulo TS via window.*). Fallback silencioso si no cargado.
-  const branchesEl = document.getElementById("chart-branches");
-  const categoriesEl = document.getElementById("chart-categories");
-  if(branchesEl && typeof window.renderBranchesChart === "function"){
-    try {
-      window.renderBranchesChart(branchesEl, branchesData, {
-        onBranchClick: (name) => {
-          const bsel = document.getElementById("bsel");
-          if(bsel && typeof setB === "function"){ bsel.value = name; setB(name); }
-        },
-      });
-    } catch(e){ console.warn("[analytics] branches chart falló:", e); }
-  }
-  if(categoriesEl && typeof window.renderCategoriesChart === "function"){
-    try {
-      window.renderCategoriesChart(categoriesEl, categoriesData);
-    } catch(e){ console.warn("[analytics] categorías chart falló:", e); }
-  }
-
-  // ─── Trend histórico: % por periodo mensual cargado.
-  // Requiere ≥ 2 periodos para una línea de tendencia real.
+  // ─── Tendencia mensual (pieza central): histórico completo, independiente
+  // del rango — responde "¿mejoramos?" (antes leía window.periodos, muerto en
+  // cloud; auditoría 2026-06-10 ítem 51).
   const trendEl = document.getElementById("chart-trend");
   const trendEmpty = document.getElementById("chart-trend-empty");
-  const allPeriodos = Array.isArray(window.periodos) ? window.periodos : [];
-  const hasTrend = allPeriodos.length >= 2;
-  // chart-card marca data-empty="1" cuando no hay data — CSS colapsa con display:none.
-  // En modo "analytics full" (futuro tab dedicado) se ignorará data-empty para mostrar empty states.
   const trendCard = document.getElementById("chart-card-trend");
   if(trendEl){
-    if(hasTrend && typeof window.renderTrendChart === "function"){
-      if(trendCard) trendCard.removeAttribute("data-empty");
+    const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
+    const trendData = (window.__trendData && typeof window.__trendData.fromInspections === "function")
+      ? window.__trendData.fromInspections(inspAll)
+      : [];
+    if(trendCard) trendCard.removeAttribute("data-empty");
+    if(trendData.length >= 2 && typeof window.renderTrendChart === "function"){
       trendEl.style.display = "";
       if(trendEmpty) trendEmpty.hidden = true;
-      const trendData = allPeriodos.map(p => {
-        const us = scopeUnits(Array.isArray(p.units) ? p.units : []);
-        let pu=0, pr=0, po=0;
-        for(const u of us){
-          if(u.risk === "Urgente") pu++;
-          else if(u.risk === "Revisar") pr++;
-          else po++;
-        }
-        return { label: p.label || p.id || "—", total: us.length, urgente: pu, revisar: pr, operativa: po };
-      });
       try { window.renderTrendChart(trendEl, trendData); }
       catch(e){ console.warn("[analytics] trend chart falló:", e); }
     } else {
-      if(trendCard) trendCard.setAttribute("data-empty", "1");
       trendEl.style.display = "none";
       if(trendEmpty) trendEmpty.hidden = false;
     }
   }
 
-  // ─── Taller heatmap: ingresos por día, 90 días rolling.
-  const heatEl = document.getElementById("chart-heatmap");
-  const heatEmpty = document.getElementById("chart-heatmap-empty");
-  const allTallerEntries = Array.isArray(window.tallerEntries) ? window.tallerEntries : [];
-  if(heatEl){
-    const today0 = new Date(); today0.setHours(0,0,0,0);
-    const cutoff = new Date(today0); cutoff.setDate(cutoff.getDate() - 89);
-    // Normaliza fentrada a YYYY-MM-DD y agrupa counts.
-    const dayMap = new Map();
-    for(const e of allTallerEntries){
-      const raw = String(e.fentrada || "").trim();
-      if(!raw) continue;
-      let iso = null;
-      // DD/MM/YYYY
-      const m1 = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if(m1){ iso = `${m1[3]}-${String(m1[2]).padStart(2,"0")}-${String(m1[1]).padStart(2,"0")}`; }
-      else if(/^\d{4}-\d{2}-\d{2}/.test(raw)){ iso = raw.slice(0,10); }
-      if(!iso) continue;
-      const d = new Date(iso + "T00:00:00");
-      if(isNaN(d.getTime()) || d < cutoff || d > today0) continue;
-      dayMap.set(iso, (dayMap.get(iso) || 0) + 1);
-    }
-    const heatData = Array.from(dayMap.entries()).map(([date, count]) => ({ date, count }));
-    const heatCard = document.getElementById("chart-card-heatmap");
-    if(heatData.length && typeof window.renderTallerHeatmapChart === "function"){
-      if(heatCard) heatCard.removeAttribute("data-empty");
-      heatEl.style.display = "";
-      if(heatEmpty) heatEmpty.hidden = true;
-      try { window.renderTallerHeatmapChart(heatEl, heatData); }
-      catch(e){ console.warn("[analytics] heatmap falló:", e); }
+  // ─── Gasto de taller por mes (stacked por sucursal, 12 meses) ─────────────
+  const gastoEl = document.getElementById("chart-gasto");
+  const gastoEmpty = document.getElementById("chart-gasto-empty");
+  if(gastoEl){
+    const serie = ops.buildGastoMensual(tallerScoped);
+    if(serie.length && typeof window.renderGastoMensualChart === "function"){
+      gastoEl.style.display = "";
+      if(gastoEmpty) gastoEmpty.hidden = true;
+      try { window.renderGastoMensualChart(gastoEl, serie); }
+      catch(e){ console.warn("[analytics] gasto chart falló:", e); }
     } else {
-      if(heatCard) heatCard.setAttribute("data-empty", "1");
-      heatEl.style.display = "none";
-      if(heatEmpty) heatEmpty.hidden = false;
+      gastoEl.style.display = "none";
+      if(gastoEmpty) gastoEmpty.hidden = false;
     }
   }
 
-  // ─── Scatter km actual vs km siguiente servicio (Traccar).
-  // Filtra units que tengan ambos km > 0. Colorea por u.risk.
-  const kmEl = document.getElementById("chart-km");
-  const kmEmpty = document.getElementById("chart-km-empty");
-  if(kmEl){
-    const kmPoints = [];
-    for(const u of units){
-      const kmA = parseFloat(String(u.km||""));
-      const kmN = parseFloat(String(u.kmNextSvc||""));
-      if(!(kmA>0) || !(kmN>0)) continue;
-      const risk = (u.risk === "Urgente" || u.risk === "Revisar" || u.risk === "Completar" || u.risk === "OK") ? u.risk : "OK";
-      kmPoints.push({ km: kmA, kmNext: kmN, label: u.eco || u.plate || u.uid || "—", risk });
-    }
-    const kmCard = document.getElementById("chart-card-km");
-    if(kmPoints.length && typeof window.renderKmScatterChart === "function"){
-      if(kmCard) kmCard.removeAttribute("data-empty");
-      kmEl.style.display = "";
-      if(kmEmpty) kmEmpty.hidden = true;
-      try { window.renderKmScatterChart(kmEl, kmPoints); }
-      catch(e){ console.warn("[analytics] km scatter falló:", e); }
+  // ─── Preventivo vs Correctivo: la prueba de fuego del programa — si las
+  // inspecciones funcionan, el gasto correctivo baja y el preventivo sube. ──
+  const pcEl = document.getElementById("chart-prevcorr");
+  const pcEmpty = document.getElementById("chart-prevcorr-empty");
+  if(pcEl){
+    const seriePc = ops.buildPrevCorr(tallerScoped);
+    if(seriePc.length && typeof window.renderPrevCorrChart === "function"){
+      pcEl.style.display = "";
+      if(pcEmpty) pcEmpty.hidden = true;
+      try { window.renderPrevCorrChart(pcEl, seriePc); }
+      catch(e){ console.warn("[analytics] prev/corr chart falló:", e); }
     } else {
-      if(kmCard) kmCard.setAttribute("data-empty", "1");
-      kmEl.style.display = "none";
-      if(kmEmpty) kmEmpty.hidden = false;
+      pcEl.style.display = "none";
+      if(pcEmpty) pcEmpty.hidden = false;
     }
+  }
+
+  // ─── Costo por unidad (12m): la conversación reparar-vs-reemplazar. ───────
+  const costoEl = document.getElementById("costo-unidad");
+  if(costoEl){
+    try {
+      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits)), (r)=>{
+        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+      });
+    } catch(e){ console.warn("[analytics] costo por unidad falló:", e); }
+  }
+  // ─── Sucursales: cobertura y riesgo (clic → filtrar Inspecciones) ─────────
+  const sucEl = document.getElementById("sucursales-ops");
+  if(sucEl){
+    try {
+      ops.renderSucursales(sucEl, ops.buildSucursales(roster, rangoUnidades), (suc)=>{
+        if(typeof setB === "function") setB(suc);
+        if(typeof showView === "function") showView("inspecciones");
+      });
+    } catch(e){ console.warn("[analytics] sucursales falló:", e); }
+  }
+
+  // ─── Radar de vencimientos: servicio (criterio svcStatus inyectado, vive
+  // aquí en el legado) + cumplimiento vencido/por vencer/adeudo. ─────────────
+  const radarEl = document.getElementById("radar-venc");
+  if(radarEl){
+    try {
+      const fleetConCheck = scopeUnits(window.__fleetUnits).filter(u=>u.fecha && !u.esMontacargas);
+      const compliance = scopeBySucursal(Array.isArray(window.complianceEntries) ? window.complianceEntries : []);
+      ops.renderRadar(radarEl, ops.buildRadar(fleetConCheck, svcStatus, compliance));
+    } catch(e){ console.warn("[analytics] radar falló:", e); }
+  }
+
+  // ─── Unidades reincidentes (6 meses, clic → expediente de taller) ─────────
+  const reincEl = document.getElementById("reincidentes-ops");
+  if(reincEl){
+    try {
+      const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
+      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped), (r)=>{
+        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+      });
+    } catch(e){ console.warn("[analytics] reincidentes falló:", e); }
   }
 }
 
@@ -3956,8 +3951,15 @@ function fcell(u){
   const dm=checklistDB[u.uid]||{};
   const pf=u.F.filter(f=>!isFindingDone(dm,f,u.fecha));
   const a=pf.filter(f=>f.lv==="Urgente").length,b=pf.filter(f=>f.lv==="Revisar").length,cc=pf.filter(f=>f.lv==="Completar").length;
-  if(!a&&!b&&!cc)return`<span style="color:var(--G);font-size:10px">Ninguno</span>`;
-  return`<div class="fcw">${a?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--R);display:inline-block;flex-shrink:0"></span><span style="color:var(--R);font-size:10px">${a} urgente${a>1?"s":""}</span></div>`:""}${b?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--A);display:inline-block;flex-shrink:0"></span><span style="color:var(--A);font-size:10px">${b} revisar</span></div>`:""}${cc?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--B);display:inline-block;flex-shrink:0"></span><span style="color:var(--B);font-size:10px">${cc} completar</span></div>`:""}</div>`;
+  // Overlay auto-resueltos (spec 2026-07-23): tachados con fecha de la evidencia inline
+  // (la app es PWA en celulares: sin tooltips en touch, la fecha va en el renglón).
+  const autos=u.F.filter(f=>{const e=resolveDoneEntry(dm,f);return !!(e&&e.auto===true)&&isFindingDone(dm,f,u.fecha);});
+  let autoTs="";
+  for(const f of autos){const e=resolveDoneEntry(dm,f);if(e&&e.ts&&e.ts>autoTs)autoTs=e.ts;}
+  const autoFecha=autoTs?autoTs.slice(0,10).split("-").reverse().join("/"):"";
+  const autoRow=autos.length?`<div class="fcr" title="Ya no reportados en la inspección del ${escAttr(autoFecha||"—")}"><span style="width:5px;height:5px;border-radius:50%;background:var(--G);display:inline-block;flex-shrink:0"></span><span style="color:var(--G);font-size:10px;text-decoration:line-through">${autos.length} resuelto${autos.length>1?"s":""}${autoFecha?` · ${autoFecha}`:""}</span></div>`:"";
+  if(!a&&!b&&!cc&&!autos.length)return`<span style="color:var(--G);font-size:10px">Ninguno</span>`;
+  return`<div class="fcw">${a?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--R);display:inline-block;flex-shrink:0"></span><span style="color:var(--R);font-size:10px">${a} urgente${a>1?"s":""}</span></div>`:""}${b?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--A);display:inline-block;flex-shrink:0"></span><span style="color:var(--A);font-size:10px">${b} revisar</span></div>`:""}${cc?`<div class="fcr"><span style="width:5px;height:5px;border-radius:50%;background:var(--B);display:inline-block;flex-shrink:0"></span><span style="color:var(--B);font-size:10px">${cc} completar</span></div>`:""}${autoRow}</div>`;
 }
 function tcell(u){
   if(u.minT===null)return`<span style="color:var(--s3);font-size:10px">—</span>`;
@@ -4167,7 +4169,9 @@ function toggleDetCompact(){
   document.querySelector('.dtop').classList.toggle('dtop-compact');
 }
 function renderDet(){
-  const u=units.find(x=>x.uid===selId);if(!u)return;
+  // Fallback a __inspections: la tab Evolución salta a inspecciones FUERA del
+  // rango Desde/Hasta (precedente: anularInspeccion). Mismas referencias de objeto.
+  const u=units.find(x=>x.uid===selId)||(window.__inspections||[]).find(x=>x.uid===selId);if(!u)return;
   const rt=u.risk==="Urgente"?"var(--R)":u.risk==="Revisar"?"var(--A)":"var(--G)";
   document.getElementById("dplate").textContent=u.eco||u.plate||"—";
   document.getElementById("dplate").style.color=rt;
@@ -4189,6 +4193,7 @@ function renderDet(){
   const pendingFindings=u.F.filter(f=>{const dm=(checklistDB[u.uid]||{}); return !isFindingDone(dm,f,u.fecha);}).length;
   const cmpEntries=(window.complianceEntries||[]).filter(e=>e.economicoId===u.eco);
   const cmpIssues=cmpEntries.filter(e=>e.estado==="vencido"||e.estado==="porVencer"||e.estado==="adeudo").length;
+  const evN=(window.__evolucion&&typeof window.__evolucion.count==="function")?window.__evolucion.count(u):0;
   const tabs=[
     {id:"c",label:"Checklist",ico:'<i data-lucide="check-square" style="width:11px;height:11px;vertical-align:-2px"></i>',n:pendingFindings||""},
     {id:"t",label:"Llantas",ico:'<i data-lucide="disc-3" style="width:11px;height:11px;vertical-align:-2px"></i>'},
@@ -4196,6 +4201,7 @@ function renderDet(){
     {id:"n",label:"Notas",ico:'<i data-lucide="pencil" style="width:11px;height:11px;vertical-align:-2px"></i>',n2:noteCount||""},
     {id:"o",label:"Servicio",ico:'<i data-lucide="settings" style="width:11px;height:11px;vertical-align:-2px"></i>'},
     {id:"cmp",label:"Cumplimiento",ico:'<i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-2px"></i>',n:cmpIssues||""},
+    {id:"ev",label:"Evolución",ico:'<i data-lucide="trending-up" style="width:11px;height:11px;vertical-align:-2px"></i>',n2:evN>1?evN:""},
   ];
   document.getElementById("dtabs").innerHTML=tabs.map(t=>{
     const on=curTab===t.id?(u.risk==="Urgente"&&t.id==="c"?" onr":" on"):"";
@@ -4262,6 +4268,10 @@ function renderDetBody(u){
   else if(curTab==="cmp"){
     if(typeof window.renderComplianceTab==="function") window.renderComplianceTab(u.eco, u.plate, body);
     else body.innerHTML='<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Módulo de cumplimiento no disponible.</div>';
+  }
+  else if(curTab==="ev"){
+    if(window.__evolucion&&typeof window.__evolucion.renderTab==="function") window.__evolucion.renderTab(u, body);
+    else body.innerHTML='<div style="text-align:center;padding:36px;color:var(--s3);font-size:12px">Módulo de evolución no disponible.</div>';
   }
 }
 
@@ -4392,6 +4402,9 @@ function renderChecklist(u,body){
   const cats=Object.keys(grp).sort((a,b)=>(ord.indexOf(a)<0?99:ord.indexOf(a))-(ord.indexOf(b)<0?99:ord.indexOf(b)));
 
   html+=`<div class="ck-cats">`;
+  // Arrastre (2026-08-27): "⏳ desde <mes>" en pendientes reportados en ≥2
+  // inspecciones consecutivas de la placa (capa pura src/inspecciones/arrastre.ts).
+  const arrMap=(window.__evolucion&&typeof window.__evolucion.arrastre==="function")?window.__evolucion.arrastre(u):null;
   for(const cat of cats){
     const items=[...grp[cat].filter(f=>f.lv==="Urgente"),...grp[cat].filter(f=>f.lv==="Revisar"),...grp[cat].filter(f=>f.lv==="Completar")];
     html+=`<div><div class="ck-cat-ttl">${CATI[cat]||"•"} ${cat} <span style="font-size:9px;font-weight:600;color:var(--s2);font-style:normal">${items.length}</span></div><div class="ck-grid">`;
@@ -4409,12 +4422,20 @@ function renderChecklist(u,body){
       const cbAttr=`data-action="toggleCheckItem" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(findingKey(f))}" data-arg3="${escAttr(f.text)}" data-arg4="${done?"0":"1"}" data-stop-propagation="1" role="checkbox" aria-checked="${done?"true":"false"}"${_ro?' disabled aria-disabled="true" title="Solo lectura"':''}`;
       const bodyAttr=`data-action="openMnPhotoForFinding" data-arg1="${escAttr(u.uid)}" data-arg2="${escAttr(f.text)}"`;
       if(done){
-        html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
+        // Overlay auto-resueltos (spec 2026-07-23): distinguir auto vs manual.
+        const _e=resolveDoneEntry(doneMap,f);
+        const _fe=_e&&_e.ts?_e.ts.slice(0,10).split("-").reverse().join("/"):"";
+        const _meta=_e&&_e.auto===true
+          ?`<span style="margin-left:6px;font-size:9px;color:var(--G);font-style:italic">resuelto — inspección ${escHtml(_fe||"posterior")}</span>`
+          :(_e&&(_e.by||_fe)?`<span style="margin-left:6px;font-size:9px;color:var(--s2);font-style:italic">atendido${_e.by?` — ${escHtml(_e.by)}`:""}${_fe?` · ${escHtml(_fe)}`:""}</span>`:"");
+        html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}${_meta}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
       } else {
         const cls=f.lv==="Urgente"?"ck-fail-u":f.lv==="Completar"?"ck-fail-c":"ck-fail-r";
         const icon=f.lv==="Urgente"?'<i data-lucide="x" style="width:11px;height:11px;vertical-align:-2px"></i>':f.lv==="Completar"?'<i data-lucide="plus" style="width:11px;height:11px;vertical-align:-2px"></i>':'<i data-lucide="alert-triangle" style="width:11px;height:11px;vertical-align:-2px"></i>';
         const col=f.lv==="Urgente"?"var(--R)":f.lv==="Completar"?"var(--B)":"var(--A)";
-        html+=`<div class="ck-item ${cls} ck-actionable"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:${col}">${icon}</span><span class="ck-txt">${escHtml(f.text)}</span></div><button class="ck-checkbox" ${cbAttr} aria-label="Marcar como completado"></button></div>`;
+        const _arr=arrMap&&arrMap.get?arrMap.get(findingKey(f)):null;
+        const arrChip=(_arr&&_arr.veces>=2)?`<span class="ck-arrastre" title="Reportado en ${_arr.veces} inspecciones seguidas">⏳ desde ${escHtml(_arr.desdeLabel)}</span>`:"";
+        html+=`<div class="ck-item ${cls} ck-actionable"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:${col}">${icon}</span><span class="ck-txt">${escHtml(f.text)}</span>${arrChip}</div><button class="ck-checkbox" ${cbAttr} aria-label="Marcar como completado"></button></div>`;
       }
     }
     html+=`</div></div>`;
@@ -4424,14 +4445,35 @@ function renderChecklist(u,body){
 }
 
 // ── Checklist persistence ──────────────────────────────────
+// Overlay auto-resueltos (spec 2026-07-23): las entradas {auto:true} son
+// DERIVADAS y jamás se persisten. Espejo trivial de stripAuto
+// (src/analyzer/findingKey.ts) — si cambia la semántica allá, cambia aquí.
+function stripAutoDM(dm){
+  const o={};
+  for(const k in dm){ const e=dm[k]; if(e&&e.auto===true) continue; o[k]=e; }
+  return o;
+}
 async function loadAllChecklist(){
   try{
     const all=await dbGetAll("checklist");
-    // Fase C1 (H8): MERGE en vez de reemplazar — un hydrate cloud puede haber
-    // poblado checklistDB antes de que este restore termine; pisarlo descartaría
-    // las completaciones de otros usuarios hasta el próximo poll.
+    // Fase C1 (H8) + overlay 2026-07-23: merge por KEY con LWW por ts (empate →
+    // gana la memoria, preservando la intención original de H8: no pisar las
+    // completaciones que un hydrate cloud ya metió a memoria). Antes la memoria
+    // ganaba WHOLESALE por uid: un auto inyectado en memoria podía shadowear (y
+    // en el siguiente dbPut, borrar) un tombstone humano MÁS NUEVO que solo
+    // vivía en IndexedDB (toggle con la nube caída + carrera de boot).
+    // stripAutoDM defensivo: autos fugados por versiones previas no reviven.
     const merged=checklistDB||{};
-    all.forEach(({key,value})=>{merged[key]=Object.assign({},value,merged[key]);});
+    all.forEach(({key,value})=>{
+      const stored=stripAutoDM(value||{});
+      const mem=merged[key]||{};
+      const out=Object.assign({},stored);
+      for(const k in mem){
+        const a=mem[k],b=out[k];
+        if(!b||String((a&&a.ts)||"")>=String((b&&b.ts)||"")) out[k]=a;
+      }
+      merged[key]=out;
+    });
     checklistDB=merged;
   }catch(e){console.warn("loadAllChecklist:",e)}
 }
@@ -4472,7 +4514,7 @@ async function toggleCheckItem(uid,itemKey,aliasText,want){
     // Tombstone {done:false,ts} en vez de delete: conserva el ts para que el
     // LWW del dual-read gane a marcas viejas bajo el texto display.
     checklistDB[t.uid][itemKey]={done:nowDone,ts};
-    try{ await dbPut("checklist",t.uid,checklistDB[t.uid]); }
+    try{ await dbPut("checklist",t.uid,stripAutoDM(checklistDB[t.uid])); }
     catch(e){ console.warn("[toggleCheckItem] dbPut falló:",t.uid,e); }
     recalcRisk(t);
   }
@@ -5377,7 +5419,8 @@ async function _pdfOptimizarFoto(bytes, formato, api){
 }
 
 async function exportPDF(){
-  const u=units.find(x=>x.uid===selId);
+  // Mismo fallback de rango que renderDet: PDF de inspecciones históricas (tab Evolución).
+  const u=units.find(x=>x.uid===selId)||(window.__inspections||[]).find(x=>x.uid===selId);
   if(!u){ window.notify("Selecciona una unidad primero.","warn",4000); return; }
   // Perf F1-6: jspdf carga on-demand.
   try{ await ensureJsPDF(); }catch(e){ window.notify("La librería PDF no cargó. Verifica tu conexión.","error",6000); return; }
@@ -6558,7 +6601,12 @@ function aplicarRango(){
 
 function updateRangoCount(){
   const el = document.getElementById("rango-count");
-  if(el) el.textContent = Array.isArray(units) ? `${units.length} inspecciones` : "";
+  if(!el) return;
+  if(!Array.isArray(units)){ el.textContent=""; return; }
+  // "34 inspecciones · 28 unidades" cuando el rango repite unidades (rango >1 mes).
+  el.textContent = (window.__inspUnidades&&typeof window.__inspUnidades.rangoCountLabel==="function")
+    ? window.__inspUnidades.rangoCountLabel(units)
+    : `${units.length} inspecciones`;
 }
 
 async function confirmPeriodo(){
@@ -7485,9 +7533,12 @@ function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal";
 function _fleetSource(){
   // scope sucursal del usuario fijado (no-op admin): el modal de flota (que abren las
   // tarjetas KPI y "sin check") solo lista las unidades de su sucursal.
-  // tiresCrit/svc = inspecciones del RANGO (units), igual que el KPI y la tabla → el
-  // conteo del modal cuadra con el número de la card.
-  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return scopeUnits(units || []);
+  // tiresCrit/svc = UNIDADES del rango (última inspección por unidad, mismo dedupe que
+  // el KPI en buildKPIs) → una fila por unidad y el modal cuadra con el número de la card.
+  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc"){
+    const enRango=scopeUnits(units || []);
+    return (window.__inspUnidades&&typeof window.__inspUnidades.latestPorUnidad==="function")?window.__inspUnidades.latestPorUnidad(enRango):enRango;
+  }
   // all/taller/missing* = flota completa (catálogo); fallback a units sin cloud.
   return scopeUnits((window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []));
 }

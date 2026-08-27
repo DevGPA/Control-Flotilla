@@ -15,7 +15,9 @@
 
 import type { Finding } from "../types";
 
-export type DoneEntry = { done?: boolean; ts?: string; by?: string };
+/** `auto: true` = entrada DERIVADA por el overlay de auto-resueltos (spec
+ *  2026-07-23). Vive solo en memoria: stripAuto la excluye de toda persistencia. */
+export type DoneEntry = { done?: boolean; ts?: string; by?: string; auto?: boolean };
 export type DoneMap = Record<string, DoneEntry>;
 
 /** Identidad estable del hallazgo: key sintética si existe, texto display si no. */
@@ -81,4 +83,17 @@ export function isFindingDone(
     if (fila && marca && fila > marca) return false;
   }
   return true;
+}
+
+/** Copia del DoneMap sin entradas derivadas (auto:true) — para persistencia.
+ *  El monolito tiene un espejo trivial inline (stripAutoDM, junto a
+ *  loadAllChecklist) — si cambias la semántica aquí, cambia el espejo. */
+export function stripAuto(dm: DoneMap): DoneMap {
+  const out: DoneMap = {};
+  for (const k of Object.keys(dm)) {
+    const e = dm[k];
+    if (!e || e.auto === true) continue;
+    out[k] = e;
+  }
+  return out;
 }

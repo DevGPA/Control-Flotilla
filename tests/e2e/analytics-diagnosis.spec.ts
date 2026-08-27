@@ -60,11 +60,11 @@ test("analytics diagnosis — estado real de 5 widgets post data load", async ({
   const report = await page.evaluate(() => {
     const widgets = [
       { id: "kpi-donut", name: "Donut hero (card 5 del hero row)" },
-      { id: "chart-branches", name: "Sucursales por riesgo" },
-      { id: "chart-categories", name: "Hallazgos por categoría" },
       { id: "chart-trend", name: "Tendencia por período" },
-      { id: "chart-heatmap", name: "Taller · ingresos por día" },
-      { id: "chart-km", name: "Km vs servicio" },
+      { id: "chart-gasto", name: "Gasto de taller por mes" },
+      { id: "sucursales-ops", name: "Sucursales: cobertura y riesgo" },
+      { id: "radar-venc", name: "Radar de vencimientos" },
+      { id: "reincidentes-ops", name: "Unidades reincidentes" },
     ];
 
     type Status = {

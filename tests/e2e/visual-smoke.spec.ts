@@ -72,9 +72,9 @@ test.describe("visual smoke — paleta Tremor + dark mode", () => {
         fullPage: true,
       });
 
-      // Verifica que charts del panel analytics estén visibles
-      await expect(page.locator("#chart-branches")).toBeVisible();
-      await expect(page.locator("#chart-categories")).toBeVisible();
+      // Verifica que el tablero operativo de Análisis esté visible
+      await expect(page.locator("#sucursales-ops")).toBeVisible();
+      await expect(page.locator("#radar-venc")).toBeVisible();
     });
 
     test(`${theme} mode — alerts panel visible (si aplica)`, async ({ page }) => {

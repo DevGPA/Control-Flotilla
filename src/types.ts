@@ -75,12 +75,21 @@ export type Unit = {
   kmNextSvc?: number | string;
   /** Folio de registro de la submission de MoreApp (envelope.id). Solo cloud-hidratado. */
   folio?: string;
+  /** Año modelo de la unidad (catálogo cloud) — para la conversación reparar-vs-reemplazar. */
+  anio?: number | string;
+  /** Errores de validación persistidos en resultados — una fila con ellos NO
+   *  sirve como evidencia del overlay auto-resueltos (spec 2026-07-23 §2). */
+  validationErrors?: string[];
+  /** Keys que la inspección SÍ evaluó (spec §4; las escribe el pipeline nuevo).
+   *  Ausente en filas actuales → aplica el régimen retro de evaluoKey. */
+  evaluatedKeys?: string[];
   /** Montacargas (producto Gas LP). Solo cloud-hidratado; excluido de la cuenta de flota. */
   esMontacargas?: boolean;
 };
 
-/** Marks for completed findings per unit, keyed by finding text. */
+/** Marks for completed findings per unit, keyed by findingKey (o texto legacy).
+ *  `auto` = entrada derivada del overlay auto-resueltos (nunca persistida). */
 export type ChecklistDB = Record<
   string,
-  Record<string, { done?: boolean; ts?: string; by?: string }>
+  Record<string, { done?: boolean; ts?: string; by?: string; auto?: boolean }>
 >;

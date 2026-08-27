@@ -1,5 +1,5 @@
 // GENERADO por scripts/gen-lucide-subset.mjs — NO editar a mano.
-// Perf F2-4: subset de 51 iconos Lucide (el vendor completo pesa 388 KB
+// Perf F2-4: subset de 52 iconos Lucide (el vendor completo pesa 388 KB
 // para ~51 usados). Para agregar un icono: añadirlo a USED en el script y re-correr.
 // createIcons() replica el contrato del UMD: materializa <i data-lucide="x"> → <svg>,
 // copiando los atributos del elemento (style/class/aria) y SIN conservar data-lucide
@@ -91,6 +91,11 @@ const ICONS: Record<string, IconNode> = {
   ],
   "chevron-down": [["path", { d: "m6 9 6 6 6-6" }]],
   circle: [["circle", { cx: "12", cy: "12", r: "10" }]],
+  "clipboard-check": [
+    ["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1" }],
+    ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" }],
+    ["path", { d: "m9 14 2 2 4-4" }],
+  ],
   "clipboard-list": [
     ["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1" }],
     ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" }],

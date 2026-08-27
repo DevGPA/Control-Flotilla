@@ -5,33 +5,26 @@
 // ECharts para permitir .resize() o .dispose() desde el caller.
 
 import * as echarts from "echarts/core";
-import { PieChart, BarChart, LineChart, HeatmapChart, ScatterChart } from "echarts/charts";
-import { MarkLineComponent } from "echarts/components";
+import { PieChart, BarChart, LineChart } from "echarts/charts";
 import {
   TooltipComponent,
   LegendComponent,
   TitleComponent,
   GridComponent,
-  CalendarComponent,
-  VisualMapComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange } from "./chartTheme";
-import { gradBar, gradBarH, ejesVivo, tooltipVivo, animVivo } from "./chartVivo";
+import type { GastoMes, PrevCorrMes } from "../analytics/opsTablero";
+import { gradBar, ejesVivo, tooltipVivo, animVivo, fmtMoneda } from "./chartVivo";
 
 echarts.use([
   PieChart,
   BarChart,
   LineChart,
-  HeatmapChart,
-  ScatterChart,
   TooltipComponent,
   LegendComponent,
   TitleComponent,
   GridComponent,
-  CalendarComponent,
-  VisualMapComponent,
-  MarkLineComponent,
   CanvasRenderer,
 ]);
 
@@ -91,211 +84,6 @@ export function renderDonut(
   };
 
   return chart;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  SUCURSALES BAR (horizontal stacked)
-// ═══════════════════════════════════════════════════════════════════
-
-export type BranchStat = {
-  branch: string;
-  urgente: number;
-  revisar: number;
-  operativa: number;
-};
-
-export function renderBranchesBar(
-  container: HTMLElement,
-  data: BranchStat[],
-  handlers: { onBranchClick?: (branch: string) => void } = {},
-): echarts.ECharts {
-  const existing = echarts.getInstanceByDom(container);
-  if (existing) existing.dispose();
-
-  const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(buildBranchesOption(data));
-
-  chart.on("click", "series", (params) => {
-    if (!handlers.onBranchClick) return;
-    const branch = params.name;
-    if (typeof branch === "string") handlers.onBranchClick(branch);
-  });
-
-  const off = onThemeChange(() => chart.setOption(buildBranchesOption(data)));
-  const ro = new ResizeObserver(() => chart.resize());
-  ro.observe(container);
-
-  const origDispose = chart.dispose.bind(chart);
-  chart.dispose = () => {
-    off();
-    ro.disconnect();
-    origDispose();
-  };
-
-  return chart;
-}
-
-function buildBranchesOption(data: BranchStat[]): echarts.EChartsCoreOption {
-  const p = getTremorPalette();
-  // Sort desc por urgente (peor arriba en horizontal bar = primera en eje Y inverso)
-  const sorted = [...data].sort((a, b) => b.urgente - a.urgente || b.revisar - a.revisar);
-  const branches = sorted.map((d) => d.branch);
-  const urgente = sorted.map((d) => d.urgente);
-  const revisar = sorted.map((d) => d.revisar);
-  const operativa = sorted.map((d) => d.operativa);
-
-  return {
-    ...animVivo(),
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      ...tooltipVivo(p),
-    },
-    legend: {
-      top: 0,
-      right: 0,
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 12,
-      textStyle: { color: p.textSub, fontSize: 10 },
-      icon: "circle",
-    },
-    grid: { left: 8, right: 12, top: 26, bottom: 4, containLabel: true },
-    xAxis: {
-      type: "value",
-      ...ejesVivo(p),
-    },
-    yAxis: {
-      type: "category",
-      data: branches,
-      inverse: true,
-      axisLabel: { color: p.text, fontSize: 10.5, fontWeight: 500 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-    },
-    series: [
-      {
-        name: "Urgente",
-        type: "bar",
-        stack: "total",
-        data: urgente,
-        itemStyle: { color: gradBarH(p.R), borderRadius: [5, 0, 0, 5] },
-        emphasis: { focus: "series" },
-        cursor: "pointer",
-      },
-      {
-        name: "Revisar",
-        type: "bar",
-        stack: "total",
-        data: revisar,
-        itemStyle: { color: gradBarH(p.A) },
-        emphasis: { focus: "series" },
-        cursor: "pointer",
-      },
-      {
-        name: "Operativa",
-        type: "bar",
-        stack: "total",
-        data: operativa,
-        itemStyle: { color: gradBarH(p.G), borderRadius: [0, 5, 5, 0] },
-        emphasis: { focus: "series" },
-        cursor: "pointer",
-      },
-    ],
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  CATEGORÍAS BAR (grouped by risk level)
-// ═══════════════════════════════════════════════════════════════════
-
-export type CategoryStat = {
-  cat: string;
-  urgente: number;
-  revisar: number;
-  completar: number;
-};
-
-export function renderCategoriesBar(container: HTMLElement, data: CategoryStat[]): echarts.ECharts {
-  const existing = echarts.getInstanceByDom(container);
-  if (existing) existing.dispose();
-
-  const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(buildCategoriesOption(data));
-
-  const off = onThemeChange(() => chart.setOption(buildCategoriesOption(data)));
-  const ro = new ResizeObserver(() => chart.resize());
-  ro.observe(container);
-
-  const origDispose = chart.dispose.bind(chart);
-  chart.dispose = () => {
-    off();
-    ro.disconnect();
-    origDispose();
-  };
-
-  return chart;
-}
-
-function buildCategoriesOption(data: CategoryStat[]): echarts.EChartsCoreOption {
-  const p = getTremorPalette();
-  const cats = data.map((d) => d.cat);
-  const urgente = data.map((d) => d.urgente);
-  const revisar = data.map((d) => d.revisar);
-  const completar = data.map((d) => d.completar);
-
-  return {
-    ...animVivo(),
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      ...tooltipVivo(p),
-    },
-    legend: {
-      top: 0,
-      right: 0,
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 12,
-      textStyle: { color: p.textSub, fontSize: 10 },
-      icon: "circle",
-    },
-    grid: { left: 8, right: 12, top: 26, bottom: 4, containLabel: true },
-    xAxis: {
-      type: "category",
-      data: cats,
-      axisLabel: { color: p.text, fontSize: 10, fontWeight: 500, interval: 0 },
-      axisLine: { lineStyle: { color: p.ln } },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: "value",
-      ...ejesVivo(p),
-    },
-    series: [
-      {
-        name: "Urgente",
-        type: "bar",
-        data: urgente,
-        itemStyle: { color: gradBar(p.R), borderRadius: [5, 5, 0, 0] },
-        emphasis: { focus: "series" },
-      },
-      {
-        name: "Revisar",
-        type: "bar",
-        data: revisar,
-        itemStyle: { color: gradBar(p.A), borderRadius: [5, 5, 0, 0] },
-        emphasis: { focus: "series" },
-      },
-      {
-        name: "Completar",
-        type: "bar",
-        data: completar,
-        itemStyle: { color: gradBar(p.B), borderRadius: [5, 5, 0, 0] },
-        emphasis: { focus: "series" },
-      },
-    ],
-  };
 }
 
 function buildDonutOption(segments: DonutSegment[]): echarts.EChartsCoreOption {
@@ -471,23 +259,17 @@ function buildTrendOption(data: PeriodTrend[]): echarts.EChartsCoreOption {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  TALLER CALENDAR HEATMAP — ingresos por día
+//  GASTO DE TALLER POR MES (stacked bar por sucursal)
 // ═══════════════════════════════════════════════════════════════════
 
-export type DayCount = {
-  /** YYYY-MM-DD */
-  date: string;
-  count: number;
-};
-
-export function renderTallerHeatmap(container: HTMLElement, data: DayCount[]): echarts.ECharts {
+export function renderGastoMensualBar(container: HTMLElement, data: GastoMes[]): echarts.ECharts {
   const existing = echarts.getInstanceByDom(container);
   if (existing) existing.dispose();
 
   const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(buildHeatmapOption(data));
+  chart.setOption(buildGastoMensualOption(data));
 
-  const off = onThemeChange(() => chart.setOption(buildHeatmapOption(data)));
+  const off = onThemeChange(() => chart.setOption(buildGastoMensualOption(data)));
   const ro = new ResizeObserver(() => chart.resize());
   ro.observe(container);
 
@@ -501,211 +283,124 @@ export function renderTallerHeatmap(container: HTMLElement, data: DayCount[]): e
   return chart;
 }
 
-function buildHeatmapOption(data: DayCount[]): echarts.EChartsCoreOption {
+function buildGastoMensualOption(data: GastoMes[]): echarts.EChartsCoreOption {
   const p = getTremorPalette();
-  const values = data.map((d) => [d.date, d.count] as [string, number]);
-  const maxCount = values.reduce((m, v) => Math.max(m, v[1]), 0);
-
-  // Rango = 90 días hasta hoy (trimestre rolling).
-  const today = new Date();
-  const start = new Date(today);
-  start.setDate(start.getDate() - 89);
-  // Formatear con componentes LOCALES, no toISOString()/UTC: los datos d.date se
-  // generan en hora local (YYYY-MM-DD); en UTC-6, toISOString por las tardes
-  // devuelve el día siguiente → calendario y llaves de datos quedaban desfasados.
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-  return {
-    ...animVivo(),
-    tooltip: {
-      ...tooltipVivo(p),
-      formatter: (params: unknown) => {
-        const pp = params as { value: [string, number] };
-        const d = pp.value[0];
-        const c = pp.value[1];
-        return `${d}<br/><b>${c}</b> ingreso${c === 1 ? "" : "s"}`;
-      },
-    },
-    visualMap: {
-      min: 0,
-      max: Math.max(maxCount, 1),
-      calculable: false,
-      orient: "horizontal",
-      left: "center",
-      bottom: 0,
-      itemWidth: 10,
-      itemHeight: 80,
-      textStyle: { color: p.textSub, fontSize: 9 },
-      inRange: {
-        color: [p.bg3, p.A, p.R],
-      },
-    },
-    calendar: {
-      range: [fmt(start), fmt(today)],
-      cellSize: ["auto", 14],
-      top: 10,
-      left: 26,
-      right: 10,
-      bottom: 40,
-      orient: "horizontal",
-      splitLine: { show: false },
-      itemStyle: {
-        color: p.bg3,
-        borderColor: p.bg,
-        borderWidth: 2,
-      },
-      yearLabel: { show: false },
-      monthLabel: { color: p.textSub, fontSize: 9 },
-      // nameMap:"es" NO es un locale integrado de ECharts (caía a inglés
-      // S/M/T/W/T/F/S). Array explícito, domingo primero (auditoría UX H20).
-      dayLabel: { color: p.textSub, fontSize: 9, nameMap: ["D", "L", "M", "M", "J", "V", "S"] },
-    },
-    series: [
-      {
-        type: "heatmap",
-        coordinateSystem: "calendar",
-        data: values,
-      },
-    ],
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  KM vs SERVICIO SCATTER — Traccar-style predictive visual
-// ═══════════════════════════════════════════════════════════════════
-
-export type KmScatterPoint = {
-  /** Kilometraje actual de la unidad. */
-  km: number;
-  /** Kilometraje del siguiente servicio programado. */
-  kmNext: number;
-  /** Identificador legible (ECO o placa). */
-  label: string;
-  /** Nivel de riesgo actual — dicta color del punto. */
-  risk: "Urgente" | "Revisar" | "Completar" | "OK";
-};
-
-export function renderKmScatter(container: HTMLElement, data: KmScatterPoint[]): echarts.ECharts {
-  const existing = echarts.getInstanceByDom(container);
-  if (existing) existing.dispose();
-
-  const chart = echarts.init(container, null, { renderer: "canvas" });
-  chart.setOption(buildKmScatterOption(data));
-
-  const off = onThemeChange(() => chart.setOption(buildKmScatterOption(data)));
-  const ro = new ResizeObserver(() => chart.resize());
-  ro.observe(container);
-
-  const origDispose = chart.dispose.bind(chart);
-  chart.dispose = () => {
-    off();
-    ro.disconnect();
-    origDispose();
-  };
-
-  return chart;
-}
-
-function buildKmScatterOption(data: KmScatterPoint[]): echarts.EChartsCoreOption {
-  const p = getTremorPalette();
-  const byRisk = {
-    Urgente: { color: p.R, points: [] as [number, number, string][] },
-    Revisar: { color: p.A, points: [] as [number, number, string][] },
-    Completar: { color: p.B, points: [] as [number, number, string][] },
-    OK: { color: p.G, points: [] as [number, number, string][] },
-  };
+  const labels = data.map((d) => d.label);
+  // Series = sucursales presentes en la ventana, ordenadas por gasto total desc
+  // (las grandes abajo del stack, legible).
+  const totalPorSuc = new Map<string, number>();
   for (const d of data) {
-    byRisk[d.risk].points.push([d.km, d.kmNext, d.label]);
+    for (const [suc, g] of Object.entries(d.porSucursal)) {
+      totalPorSuc.set(suc, (totalPorSuc.get(suc) || 0) + g);
+    }
   }
-
-  const maxKm = data.reduce((m, d) => Math.max(m, d.km, d.kmNext), 0);
-  const axisMax = maxKm > 0 ? Math.ceil((maxKm * 1.1) / 1000) * 1000 : 100000;
+  const sucursales = [...totalPorSuc.entries()].sort((a, b) => b[1] - a[1]).map(([s]) => s);
+  const colores = [p.B, p.G, p.A, p.ac, p.O, p.R, p.ac2];
 
   return {
     ...animVivo(),
     tooltip: {
-      trigger: "item",
       ...tooltipVivo(p),
-      formatter: (params: unknown) => {
-        const pp = params as { seriesName: string; value: [number, number, string] };
-        const [km, kmNext, label] = pp.value;
-        const diff = kmNext - km;
-        const diffStr =
-          diff <= 0
-            ? `<span style="color:${p.R}"><b>VENCIDO</b> ${Math.abs(diff).toLocaleString("es-MX")}km</span>`
-            : `<span style="color:${p.G}">${diff.toLocaleString("es-MX")}km restantes</span>`;
-        return `<b>${label}</b><br/>${pp.seriesName}<br/>Actual: ${km.toLocaleString("es-MX")}km<br/>Siguiente: ${kmNext.toLocaleString("es-MX")}km<br/>${diffStr}`;
-      },
+      trigger: "axis",
+      valueFormatter: (v: unknown) => (typeof v === "number" && v > 0 ? fmtMoneda(v) : "—"),
     },
     legend: {
-      top: 0,
-      right: 0,
+      bottom: 0,
       itemWidth: 10,
       itemHeight: 10,
-      itemGap: 12,
-      textStyle: { color: p.textSub, fontSize: 10 },
       icon: "circle",
+      textStyle: { color: p.textSub, fontSize: 10 },
     },
-    grid: { left: 8, right: 12, top: 26, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 12, top: 16, bottom: 28, containLabel: true },
     xAxis: {
-      type: "value",
-      name: "Km actual",
-      nameLocation: "middle",
-      nameGap: 28,
-      nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
-      min: 0,
-      max: axisMax,
+      type: "category",
+      data: labels,
       ...ejesVivo(p),
-      axisLabel: {
-        color: p.textSub,
-        fontSize: 10,
-        formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
-      },
     },
     yAxis: {
       type: "value",
-      name: "Km siguiente servicio",
-      nameLocation: "middle",
-      nameGap: 46,
-      nameTextStyle: { color: p.textSub, fontSize: 10, fontWeight: 600 },
-      min: 0,
-      max: axisMax,
       ...ejesVivo(p),
-      axisLabel: {
-        color: p.textSub,
-        fontSize: 10,
-        formatter: (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)),
-      },
+      axisLabel: { color: p.textSub, fontSize: 10, formatter: (v: number) => fmtMoneda(v) },
     },
-    series: (Object.keys(byRisk) as Array<keyof typeof byRisk>).map((risk, idx) => {
-      const s = byRisk[risk];
-      const base: Record<string, unknown> = {
-        name: risk,
-        type: "scatter",
-        data: s.points,
-        itemStyle: { color: s.color, opacity: 0.85 },
-        symbolSize: 9,
-        emphasis: { itemStyle: { opacity: 1, borderColor: p.bg, borderWidth: 2 } },
-      };
-      if (idx === 0) {
-        // MarkLine diagonal y=x — linea de "servicio vigente".
-        // Puntos DEBAJO = km_actual > km_siguiente = VENCIDO.
-        base.markLine = {
-          symbol: "none",
-          silent: true,
-          animation: false,
-          lineStyle: { color: p.textSub, type: "dashed", width: 1.2, opacity: 0.6 },
-          label: {
-            color: p.textSub,
-            fontSize: 9,
-            position: "end",
-            formatter: "Servicio vigente",
-          },
-          data: [[{ coord: [0, 0] }, { coord: [axisMax, axisMax] }]],
-        };
-      }
-      return base;
-    }),
+    series: sucursales.map((suc, i) => ({
+      name: suc,
+      type: "bar" as const,
+      stack: "gasto",
+      barMaxWidth: 26,
+      emphasis: { focus: "series" as const },
+      itemStyle: { color: gradBar(colores[i % colores.length]!), borderRadius: 0 },
+      data: data.map((d) => d.porSucursal[suc] || 0),
+    })),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PREVENTIVO vs CORRECTIVO (stacked bar por tipo de mantenimiento)
+// ═══════════════════════════════════════════════════════════════════
+
+export function renderPrevCorrBar(container: HTMLElement, data: PrevCorrMes[]): echarts.ECharts {
+  const existing = echarts.getInstanceByDom(container);
+  if (existing) existing.dispose();
+
+  const chart = echarts.init(container, null, { renderer: "canvas" });
+  chart.setOption(buildPrevCorrOption(data));
+
+  const off = onThemeChange(() => chart.setOption(buildPrevCorrOption(data)));
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(container);
+
+  const origDispose = chart.dispose.bind(chart);
+  chart.dispose = () => {
+    off();
+    ro.disconnect();
+    origDispose();
+  };
+
+  return chart;
+}
+
+function buildPrevCorrOption(data: PrevCorrMes[]): echarts.EChartsCoreOption {
+  const p = getTremorPalette();
+  const labels = data.map((d) => d.label);
+  const series = [
+    { name: "Correctivo", color: p.R, valores: data.map((d) => d.correctivo) },
+    { name: "Preventivo", color: p.G, valores: data.map((d) => d.preventivo) },
+    { name: "Otros / sin tipo", color: p.textSub, valores: data.map((d) => d.otros) },
+  ];
+
+  return {
+    ...animVivo(),
+    tooltip: {
+      ...tooltipVivo(p),
+      trigger: "axis",
+      valueFormatter: (v: unknown) => (typeof v === "number" && v > 0 ? fmtMoneda(v) : "—"),
+    },
+    legend: {
+      bottom: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      icon: "circle",
+      textStyle: { color: p.textSub, fontSize: 10 },
+    },
+    grid: { left: 8, right: 12, top: 16, bottom: 28, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: labels,
+      ...ejesVivo(p),
+    },
+    yAxis: {
+      type: "value",
+      ...ejesVivo(p),
+      axisLabel: { color: p.textSub, fontSize: 10, formatter: (v: number) => fmtMoneda(v) },
+    },
+    series: series.map((sr) => ({
+      name: sr.name,
+      type: "bar" as const,
+      stack: "tipo",
+      barMaxWidth: 26,
+      emphasis: { focus: "series" as const },
+      itemStyle: { color: gradBar(sr.color), borderRadius: 0 },
+      data: sr.valores,
+    })),
   };
 }
