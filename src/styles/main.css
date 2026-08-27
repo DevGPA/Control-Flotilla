@@ -1057,6 +1057,11 @@ select {
   border-color: var(--acl);
   color: var(--ac);
 }
+.rp-btn.active {
+  background: var(--ac);
+  border-color: var(--ac);
+  color: #fff;
+}
 /* UX Fase 1: botón limpiar filtros — visible solo con filtros activos */
 .clear-filters {
   display: none;

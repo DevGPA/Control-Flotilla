@@ -108,6 +108,7 @@ import {
 } from "./weekly/renderPeriodoBar";
 import type { WeeklyPeriodo } from "./weekly/weeklyStore";
 import { appStore, bindLegacyWindow } from "./state/appState";
+import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -278,6 +279,10 @@ else setTimeout(() => void loadDashboardCharts(), 1200);
 // módulos nuevos puedan leer del store, y el legado siga escribiendo como
 // siempre a window.*.
 bindLegacyWindow();
+
+// Atajos de periodo (Este mes / Mes anterior / Trimestre / Año) en la barra
+// de rango de Inspecciones. Inyectados por DOM: el HTML legado no cambia.
+wirePeriodoPresets();
 
 function readFlag(key: string): boolean {
   try {
