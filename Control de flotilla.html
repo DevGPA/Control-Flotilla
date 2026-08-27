@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-M0fhFNJ/Er/OQgmpkPIn8fPTjXK3PfJ5EdF0XUPNKxo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-h9H6AQ+JJCzhVII5zZy5mCkl+UCXyx9GIN+3mlsKK/Q=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -283,6 +283,17 @@
         <div class="hero-val" id="kv0">—</div>
         <div class="hero-lbl">Flota</div>
         <div class="hero-sub" id="ks0"></div>
+      </div>
+    </div>
+    <!-- Cobertura del ciclo (2026-08): "¿vamos al corriente?" como titular, no nota al
+         pie. El % vive en hero-val porque hero-sub desaparece en laptops (max-height:800px).
+         La llena buildKPIs vía window.__cobertura; clic → las que faltan (missingMensual). -->
+    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades con inspección en el rango · clic para ver las que faltan">
+      <div class="hero-icon" style="background:var(--B)"><i data-lucide="clipboard-check" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
+      <div class="hero-body">
+        <div class="hero-val" id="kv_cob">—</div>
+        <div class="hero-lbl">Cobertura del ciclo</div>
+        <div class="hero-sub" id="ks_cob"></div>
       </div>
     </div>
     <div class="hero-card" onclick="openFleetModal('tiresCrit')" style="cursor:pointer" role="button" tabindex="0" title="Ver unidades con llantas críticas">
@@ -3466,6 +3477,22 @@ function buildKPIs(){
       btnSinM.style.opacity=faltanM?"1":"0.55";
       const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=`(${faltanM})`;
     } else { btnSinM.style.display="none"; }
+    // Hero card Cobertura del ciclo — mismo roster y mismas placas presentes que
+    // "Sin check": card, chip y modal missingMensual cuadran por construcción.
+    const cobCard=document.getElementById("hero-cobertura");
+    if(cobCard){
+      if(fleetRoster.length && window.__cobertura && typeof window.__cobertura.build==="function"){
+        const cob=window.__cobertura.build(fleetRoster,pres);
+        const cs=getComputedStyle(document.documentElement);
+        const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
+        const kvc=document.getElementById("kv_cob");
+        if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
+        const ksc=document.getElementById("ks_cob");
+        if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
+        cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
+        cobCard.style.display="flex";
+      } else { cobCard.style.display="none"; }
+    }
   }
   // Action buttons
   const btnFleet=document.getElementById("btn-fleet-pdf");

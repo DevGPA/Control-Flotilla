@@ -23,7 +23,7 @@ const OUT = resolve(__dirname, "../src/ui/lucideSubset.ts");
 const USED = [
   "alert-circle", "alert-triangle", "banknote", "calendar-clock", "calendar-range",
   "calendar-x", "camera", "camera-off", "car", "check", "check-circle-2",
-  "check-square", "chevron-down", "circle", "clipboard-list", "clock", "cloud",
+  "check-square", "chevron-down", "circle", "clipboard-check", "clipboard-list", "clock", "cloud",
   "disc-3", "download", "droplet", "file-text", "gauge", "key-round", "lightbulb",
   "log-out", "menu", "message-square", "moon", "more-horizontal", "notebook-pen",
   "pencil", "pie-chart", "plus", "search", "settings", "shield", "shield-alert",

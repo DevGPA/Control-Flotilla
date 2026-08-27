@@ -110,6 +110,7 @@ import type { WeeklyPeriodo } from "./weekly/weeklyStore";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
 import { latestPorUnidad, rangoCountLabel } from "./inspecciones/unidades";
+import { buildCobertura, coberturaNivel } from "./inspecciones/cobertura";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -288,6 +289,8 @@ wirePeriodoPresets();
 // Dedupe unidades-vs-inspecciones para las hero cards y el contador del rango
 // (patrón namespace __fleetMap: el legado lo consume con guard typeof).
 window.__inspUnidades = { latestPorUnidad, rangoCountLabel };
+// Cobertura del ciclo (hero card): mismo insumo que el chip "Sin check".
+window.__cobertura = { build: buildCobertura, nivel: coberturaNivel };
 
 function readFlag(key: string): boolean {
   try {
