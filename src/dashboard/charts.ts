@@ -14,7 +14,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { getTremorPalette, onThemeChange } from "./chartTheme";
-import type { GastoMes } from "../analytics/opsTablero";
+import type { GastoMes, PrevCorrMes } from "../analytics/opsTablero";
 import { gradBar, ejesVivo, tooltipVivo, animVivo, fmtMoneda } from "./chartVivo";
 
 echarts.use([
@@ -330,6 +330,77 @@ function buildGastoMensualOption(data: GastoMes[]): echarts.EChartsCoreOption {
       emphasis: { focus: "series" as const },
       itemStyle: { color: gradBar(colores[i % colores.length]!), borderRadius: 0 },
       data: data.map((d) => d.porSucursal[suc] || 0),
+    })),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PREVENTIVO vs CORRECTIVO (stacked bar por tipo de mantenimiento)
+// ═══════════════════════════════════════════════════════════════════
+
+export function renderPrevCorrBar(container: HTMLElement, data: PrevCorrMes[]): echarts.ECharts {
+  const existing = echarts.getInstanceByDom(container);
+  if (existing) existing.dispose();
+
+  const chart = echarts.init(container, null, { renderer: "canvas" });
+  chart.setOption(buildPrevCorrOption(data));
+
+  const off = onThemeChange(() => chart.setOption(buildPrevCorrOption(data)));
+  const ro = new ResizeObserver(() => chart.resize());
+  ro.observe(container);
+
+  const origDispose = chart.dispose.bind(chart);
+  chart.dispose = () => {
+    off();
+    ro.disconnect();
+    origDispose();
+  };
+
+  return chart;
+}
+
+function buildPrevCorrOption(data: PrevCorrMes[]): echarts.EChartsCoreOption {
+  const p = getTremorPalette();
+  const labels = data.map((d) => d.label);
+  const series = [
+    { name: "Correctivo", color: p.R, valores: data.map((d) => d.correctivo) },
+    { name: "Preventivo", color: p.G, valores: data.map((d) => d.preventivo) },
+    { name: "Otros / sin tipo", color: p.textSub, valores: data.map((d) => d.otros) },
+  ];
+
+  return {
+    ...animVivo(),
+    tooltip: {
+      ...tooltipVivo(p),
+      trigger: "axis",
+      valueFormatter: (v: unknown) => (typeof v === "number" && v > 0 ? fmtMoneda(v) : "—"),
+    },
+    legend: {
+      bottom: 0,
+      itemWidth: 10,
+      itemHeight: 10,
+      icon: "circle",
+      textStyle: { color: p.textSub, fontSize: 10 },
+    },
+    grid: { left: 8, right: 12, top: 16, bottom: 28, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: labels,
+      ...ejesVivo(p),
+    },
+    yAxis: {
+      type: "value",
+      ...ejesVivo(p),
+      axisLabel: { color: p.textSub, fontSize: 10, formatter: (v: number) => fmtMoneda(v) },
+    },
+    series: series.map((sr) => ({
+      name: sr.name,
+      type: "bar" as const,
+      stack: "tipo",
+      barMaxWidth: 26,
+      emphasis: { focus: "series" as const },
+      itemStyle: { color: gradBar(sr.color), borderRadius: 0 },
+      data: sr.valores,
     })),
   };
 }

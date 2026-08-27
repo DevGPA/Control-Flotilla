@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-vZOhGY1oDcwF72nmSUYwU4ZdMfp2H38KSp7DiylbPe0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-rXObVOac70UiObSPYGay6AV5WBZrltaxpYwGQonpjaI=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -440,6 +440,19 @@
           <div class="chart-empty-hint">El gasto se captura al cerrar reparaciones en la pestaña <b>Taller</b>.</div>
         </div>
       </div>
+      <div class="chart-card" id="chart-card-prevcorr">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Preventivo vs Correctivo</div>
+          <div class="chart-hint">Gasto por tipo de mantenimiento · si el programa funciona, el rojo baja</div>
+        </div>
+        <div id="chart-prevcorr" class="chart-canvas" role="img" aria-label="Gráfica de barras apiladas: gasto de taller mensual por tipo de mantenimiento (preventivo, correctivo, otros)"></div>
+        <div id="chart-prevcorr-empty" class="chart-empty" hidden>
+          <i data-lucide="wrench" class="chart-empty-icon"></i>
+          <div class="chart-empty-title">Sin gasto por tipo</div>
+          <div class="chart-empty-msg">Ningún ingreso a taller con costo y tipo capturados.</div>
+          <div class="chart-empty-hint">El tipo (Preventivo/Correctivo) se captura al registrar el ingreso en <b>Taller</b>.</div>
+        </div>
+      </div>
       <div class="chart-card" id="card-sucursales-ops">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Sucursales: cobertura y riesgo</div>
@@ -453,6 +466,13 @@
           <div class="chart-hint">Servicios + documentos · vencidos y por vencer</div>
         </div>
         <div id="radar-venc" class="ops-body" aria-label="Lista de servicios y documentos vencidos o por vencer"></div>
+      </div>
+      <div class="chart-card" id="card-costo-unidad">
+        <div class="chart-card-header">
+          <div class="chart-title" role="heading" aria-level="2">Costo por unidad</div>
+          <div class="chart-hint">Top gasto de taller · 12 meses · marca/año para reparar-vs-reemplazar · clic abre expediente</div>
+        </div>
+        <div id="costo-unidad" class="ops-body" role="table" aria-label="Tabla: unidades con mayor gasto de taller acumulado en 12 meses"></div>
       </div>
       <div class="chart-card chart-card-wide" id="card-reincidentes">
         <div class="chart-card-header">
@@ -3647,6 +3667,32 @@ function buildAnalytics(){
     }
   }
 
+  // ─── Preventivo vs Correctivo: la prueba de fuego del programa — si las
+  // inspecciones funcionan, el gasto correctivo baja y el preventivo sube. ──
+  const pcEl = document.getElementById("chart-prevcorr");
+  const pcEmpty = document.getElementById("chart-prevcorr-empty");
+  if(pcEl){
+    const seriePc = ops.buildPrevCorr(tallerScoped);
+    if(seriePc.length && typeof window.renderPrevCorrChart === "function"){
+      pcEl.style.display = "";
+      if(pcEmpty) pcEmpty.hidden = true;
+      try { window.renderPrevCorrChart(pcEl, seriePc); }
+      catch(e){ console.warn("[analytics] prev/corr chart falló:", e); }
+    } else {
+      pcEl.style.display = "none";
+      if(pcEmpty) pcEmpty.hidden = false;
+    }
+  }
+
+  // ─── Costo por unidad (12m): la conversación reparar-vs-reemplazar. ───────
+  const costoEl = document.getElementById("costo-unidad");
+  if(costoEl){
+    try {
+      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits)), (r)=>{
+        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+      });
+    } catch(e){ console.warn("[analytics] costo por unidad falló:", e); }
+  }
   // ─── Sucursales: cobertura y riesgo (clic → filtrar Inspecciones) ─────────
   const sucEl = document.getElementById("sucursales-ops");
   if(sucEl){

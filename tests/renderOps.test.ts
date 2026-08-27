@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { renderSucursalesOps, renderRadar, renderReincidentes } from "../src/analytics/renderOps";
-import type { SucursalOps, RadarOps, Reincidente } from "../src/analytics/opsTablero";
+import {
+  renderSucursalesOps,
+  renderRadar,
+  renderReincidentes,
+  renderCostoUnidad,
+} from "../src/analytics/renderOps";
+import type { SucursalOps, RadarOps, Reincidente, CostoUnidad } from "../src/analytics/opsTablero";
 
 const mkSuc = (overrides: Partial<SucursalOps> = {}): SucursalOps => ({
   sucursal: "GDL",
@@ -168,5 +173,47 @@ describe("renderReincidentes", () => {
     const c = mount();
     renderReincidentes(c, []);
     expect(c.querySelector(".ops-empty")!.textContent).toContain("Ninguna unidad reincidente");
+  });
+});
+
+describe("renderCostoUnidad", () => {
+  const mkCosto = (overrides: Partial<CostoUnidad> = {}): CostoUnidad => ({
+    eco: "45",
+    unidad: "RAM 2016",
+    sucursal: "GDL",
+    visitas: 4,
+    gasto: 80000,
+    tallerKey: "uk-45",
+    ...overrides,
+  });
+
+  it("pinta tabla con marca/año y gasto en pesos", () => {
+    const c = mount();
+    renderCostoUnidad(c, [mkCosto()]);
+    expect(c.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(c.textContent).toContain("RAM 2016");
+    expect(c.textContent).toMatch(/\$\s?80,000/);
+  });
+
+  it("clic abre expediente solo con tallerKey", () => {
+    const c = mount();
+    const spy = vi.fn();
+    renderCostoUnidad(c, [mkCosto(), mkCosto({ eco: "99", tallerKey: "" })], spy);
+    const filas = c.querySelectorAll("tbody tr");
+    (filas[0] as HTMLElement).click();
+    (filas[1] as HTMLElement).click();
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it("XSS en unidad no inyecta", () => {
+    const c = mount();
+    renderCostoUnidad(c, [mkCosto({ unidad: "<img onerror=x>" })]);
+    expect(c.querySelector("img")).toBeFalsy();
+  });
+
+  it("vacío → mensaje", () => {
+    const c = mount();
+    renderCostoUnidad(c, []);
+    expect(c.querySelector(".ops-empty")).toBeTruthy();
   });
 });

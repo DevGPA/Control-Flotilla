@@ -75,6 +75,8 @@ export type Unit = {
   kmNextSvc?: number | string;
   /** Folio de registro de la submission de MoreApp (envelope.id). Solo cloud-hidratado. */
   folio?: string;
+  /** Año modelo de la unidad (catálogo cloud) — para la conversación reparar-vs-reemplazar. */
+  anio?: number | string;
   /** Montacargas (producto Gas LP). Solo cloud-hidratado; excluido de la cuenta de flota. */
   esMontacargas?: boolean;
 };

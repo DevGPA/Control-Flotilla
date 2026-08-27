@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildSucursalesOps,
+  buildPrevCorrectivo,
+  buildCostoUnidad,
   buildRadarVencimientos,
   buildReincidentes,
   buildGastoMensual,
@@ -254,5 +256,97 @@ describe("gastoDe / restarMeses", () => {
     expect(restarMeses("2026-08", 5)).toBe("2026-03");
     expect(restarMeses("2026-02", 3)).toBe("2025-11");
     expect(restarMeses("2026-01", 12)).toBe("2025-01");
+  });
+});
+
+// ── Preventivo vs Correctivo ─────────────────────────────────────────────────
+
+describe("buildPrevCorrectivo", () => {
+  it("parte el gasto mensual por tipo; sin tipo/accidente → otros", () => {
+    const out = buildPrevCorrectivo([
+      { fentrada: "2026-08-05", tipo: "Preventivo", gasto: 1000 },
+      { fentrada: "2026-08-10", tipo: "Correctivo", gastoRef: 2000, gastoMO: 500 },
+      { fentrada: "2026-08-12", tipo: "Accidente", gasto: 300 },
+      { fentrada: "2026-08-15", gasto: 200 }, // sin tipo
+      { fentrada: "2026-07-01", tipo: "correctivo", gasto: 900 }, // case-insensitive
+    ]);
+    expect(out.map((m) => m.mes)).toEqual(["2026-07", "2026-08"]);
+    expect(out[0]).toMatchObject({ correctivo: 900, preventivo: 0, otros: 0 });
+    expect(out[1]).toMatchObject({
+      preventivo: 1000,
+      correctivo: 2500,
+      otros: 500,
+      label: "Ago 2026",
+    });
+  });
+
+  it("sin fecha o sin gasto → fuera; recorta a maxMeses", () => {
+    const taller = Array.from({ length: 14 }, (_, i) => ({
+      fentrada: `${i < 12 ? 2025 : 2026}-${String((i % 12) + 1).padStart(2, "0")}-05`,
+      tipo: "Preventivo",
+      gasto: 100,
+    }));
+    expect(buildPrevCorrectivo(taller)).toHaveLength(12);
+    expect(buildPrevCorrectivo([{ fentrada: "", gasto: 5 }, { fentrada: "2026-08-01" }])).toEqual(
+      [],
+    );
+  });
+});
+
+// ── Costo por unidad ─────────────────────────────────────────────────────────
+
+describe("buildCostoUnidad", () => {
+  const fleet = [
+    { eco: "45", plate: "P45", branch: "GDL", brand: "RAM", anio: 2016 },
+    { eco: "46", plate: "P46", branch: "MTY", brand: "Aumark", anio: 2022 },
+  ];
+
+  it("acumula gasto 12m por unidad, resuelve marca/año del catálogo, ordena por gasto", () => {
+    const out = buildCostoUnidad(
+      [
+        { eco: "45", fentrada: "2026-08-01", gasto: 5000, unitKey: "uk-45" },
+        { eco: "45", fentrada: "2026-03-01", gastoRef: 3000, gastoMO: 0, unitKey: "uk-45" },
+        { eco: "46", fentrada: "2026-08-10", gasto: 2000, unitKey: "uk-46" },
+      ],
+      fleet,
+    );
+    expect(out.map((r) => r.eco)).toEqual(["45", "46"]);
+    expect(out[0]).toMatchObject({
+      unidad: "RAM 2016",
+      sucursal: "GDL",
+      visitas: 2,
+      gasto: 8000,
+      tallerKey: "uk-45",
+    });
+  });
+
+  it("unidad fuera del catálogo usa la sucursal del taller y unidad '—'", () => {
+    const out = buildCostoUnidad(
+      [{ eco: "99", sucursal: "Cancun", fentrada: "2026-08-01", gasto: 100 }],
+      fleet,
+    );
+    expect(out[0]).toMatchObject({ eco: "99", unidad: "—", sucursal: "Cancun", tallerKey: "" });
+  });
+
+  it("ventana 12m anclada al dato más reciente; visitas sin gasto no cuentan", () => {
+    const out = buildCostoUnidad(
+      [
+        { eco: "45", fentrada: "2025-08-01", gasto: 9999 }, // 2025-08 < cutoff 2025-09
+        { eco: "45", fentrada: "2026-08-01", gasto: 100 },
+        { eco: "45", fentrada: "2026-07-01" }, // sin gasto
+      ],
+      fleet,
+    );
+    expect(out[0]).toMatchObject({ gasto: 100, visitas: 1 });
+  });
+
+  it("respeta maxItems y sin datos → vacío", () => {
+    const taller = Array.from({ length: 12 }, (_, i) => ({
+      eco: String(i),
+      fentrada: "2026-08-01",
+      gasto: 100 + i,
+    }));
+    expect(buildCostoUnidad(taller, [], { maxItems: 5 })).toHaveLength(5);
+    expect(buildCostoUnidad([], fleet)).toEqual([]);
   });
 });

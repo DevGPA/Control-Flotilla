@@ -4,7 +4,7 @@
 // fleetMap: el criterio vive en la capa pura; esto solo pinta). El caller
 // (buildAnalytics en el legado) resuelve contenedores y callbacks.
 
-import type { SucursalOps, RadarOps, Reincidente } from "./opsTablero";
+import type { SucursalOps, RadarOps, Reincidente, CostoUnidad } from "./opsTablero";
 
 const PESO = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -165,6 +165,49 @@ export function renderReincidentes(
     if (r.ultimoRiesgo === "Urgente") tdE.dataset.sev = "bad";
     else if (r.ultimoRiesgo === "Revisar") tdE.dataset.sev = "warn";
     tr.appendChild(tdE);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  container.replaceChildren(table);
+}
+
+// ── Costo por unidad (reparar vs reemplazar) ─────────────────────────────────
+
+export function renderCostoUnidad(
+  container: HTMLElement,
+  rows: ReadonlyArray<CostoUnidad>,
+  onUnitClick?: (r: CostoUnidad) => void,
+): void {
+  const doc = container.ownerDocument;
+  if (!rows.length) {
+    container.replaceChildren(
+      emptyMsg(doc, "Sin gasto de taller registrado en los últimos 12 meses."),
+    );
+    return;
+  }
+  const table = el(doc, "table", "ops-table");
+  const thead = el(doc, "thead");
+  const trh = el(doc, "tr");
+  for (const h of ["ECO", "Unidad", "Sucursal", "Visitas", "Gasto 12m"]) {
+    trh.appendChild(el(doc, "th", undefined, h));
+  }
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = el(doc, "tbody");
+  for (const r of rows) {
+    const tr = el(doc, "tr");
+    if (onUnitClick && r.tallerKey) {
+      tr.classList.add("ops-row-click");
+      tr.title = `Ver el expediente de taller de ${r.eco}`;
+      tr.addEventListener("click", () => onUnitClick(r));
+    }
+    tr.appendChild(el(doc, "td", "ops-suc", r.eco));
+    tr.appendChild(el(doc, "td", undefined, r.unidad));
+    tr.appendChild(el(doc, "td", undefined, r.sucursal));
+    tr.appendChild(el(doc, "td", "ops-num", String(r.visitas)));
+    const tdG = el(doc, "td", "ops-num", PESO.format(r.gasto));
+    tdG.dataset.sev = "bad";
+    tr.appendChild(tdG);
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);

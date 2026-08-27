@@ -395,3 +395,147 @@ export function buildGastoMensual(
   }
   return [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes)).slice(-maxMeses);
 }
+
+// ── 5) Preventivo vs Correctivo (la prueba de fuego del programa) ────────────
+
+export type PrevCorrMes = {
+  mes: string; // "2026-08"
+  label: string; // "Ago 2026"
+  preventivo: number; // gasto $
+  correctivo: number;
+  /** Accidentes, sin tipo capturado, u otros — visibiliza calidad del dato. */
+  otros: number;
+};
+
+/**
+ * Gasto de taller por mes partido por TIPO de mantenimiento. Si el programa de
+ * inspecciones funciona, el correctivo (fallas) baja y el preventivo sube con
+ * los meses — es la medida de ROI de todo el sistema. Mes = fecha de entrada.
+ */
+export function buildPrevCorrectivo(
+  taller: ReadonlyArray<TallerRow & { tipo?: string }>,
+  opts?: { maxMeses?: number },
+): PrevCorrMes[] {
+  const maxMeses = opts?.maxMeses ?? 12;
+  const porMes = new Map<string, PrevCorrMes>();
+  for (const t of taller) {
+    const ym = monthOf(t.fentrada);
+    if (!ym) continue;
+    const g = gastoDe(t);
+    if (!g) continue;
+    let row = porMes.get(ym);
+    if (!row) {
+      row = { mes: ym, label: monthLabel(ym), preventivo: 0, correctivo: 0, otros: 0 };
+      porMes.set(ym, row);
+    }
+    const tipo = String(t.tipo ?? "")
+      .trim()
+      .toLowerCase();
+    if (tipo === "preventivo") row.preventivo += g;
+    else if (tipo === "correctivo") row.correctivo += g;
+    else row.otros += g;
+  }
+  return [...porMes.values()].sort((a, b) => a.mes.localeCompare(b.mes)).slice(-maxMeses);
+}
+
+// ── 6) Costo por unidad (reparar vs reemplazar) ──────────────────────────────
+
+export type CostoUnidad = {
+  eco: string;
+  /** "Marca 2016" — para la conversación de reemplazo. */
+  unidad: string;
+  sucursal: string;
+  visitas: number;
+  gasto: number;
+  /** Llave del expediente de taller (clic); "" si no resoluble. */
+  tallerKey: string;
+};
+
+type FleetInfoRow = {
+  eco?: string;
+  plate?: string;
+  branch?: string;
+  brand?: string;
+  anio?: number | string;
+};
+
+/**
+ * Top unidades por gasto de taller acumulado en la ventana (default 12 meses,
+ * anclada al dato más reciente). Marca/año desde el catálogo para poner el
+ * gasto en contexto de reemplazo. Orden: más gasto primero.
+ */
+export function buildCostoUnidad(
+  taller: ReadonlyArray<TallerRow & { sucursal?: string }>,
+  fleet: ReadonlyArray<FleetInfoRow>,
+  opts?: { maxMeses?: number; maxItems?: number },
+): CostoUnidad[] {
+  const maxMeses = opts?.maxMeses ?? 12;
+  const maxItems = opts?.maxItems ?? 8;
+  let maxYm = "";
+  for (const t of taller) {
+    const ym = monthOf(t.fentrada);
+    if (ym && ym > maxYm) maxYm = ym;
+  }
+  if (!maxYm) return [];
+  const cutoff = restarMeses(maxYm, maxMeses - 1);
+
+  const infoPorEco = new Map<string, FleetInfoRow>();
+  for (const u of fleet) {
+    const key = ecoKeyDe(u.eco, u.plate);
+    if (key && !infoPorEco.has(key)) infoPorEco.set(key, u);
+  }
+
+  type Acc = {
+    eco: string;
+    sucursal: string;
+    visitas: number;
+    gasto: number;
+    tallerKey: string;
+    tallerKeyYm: string;
+  };
+  const porUnidad = new Map<string, Acc>();
+  for (const t of taller) {
+    const ym = monthOf(t.fentrada);
+    if (!ym || ym < cutoff) continue;
+    const g = gastoDe(t);
+    if (!g) continue;
+    const key = ecoKeyDe(t.eco, t.plate);
+    if (!key) continue;
+    let a = porUnidad.get(key);
+    if (!a) {
+      a = {
+        eco: String(t.eco ?? t.plate ?? "").trim(),
+        sucursal: String(t.sucursal ?? "").trim() || SIN_SUCURSAL,
+        visitas: 0,
+        gasto: 0,
+        tallerKey: "",
+        tallerKeyYm: "",
+      };
+      porUnidad.set(key, a);
+    }
+    a.visitas++;
+    a.gasto += g;
+    const expKey = String(t.unitKey ?? t.id ?? "");
+    if (expKey && ym >= a.tallerKeyYm) {
+      a.tallerKey = expKey;
+      a.tallerKeyYm = ym;
+    }
+  }
+
+  return [...porUnidad.entries()]
+    .map(([key, a]) => {
+      const info = infoPorEco.get(key);
+      const marca = String(info?.brand ?? "").trim();
+      const anio = String(info?.anio ?? "").trim();
+      return {
+        eco: a.eco || "—",
+        unidad: [marca, anio].filter(Boolean).join(" ") || "—",
+        sucursal: String(info?.branch ?? "").trim() || a.sucursal,
+        visitas: a.visitas,
+        gasto: a.gasto,
+        tallerKey: a.tallerKey,
+      };
+    })
+    .sort((x, y) => y.gasto - x.gasto || x.eco.localeCompare(y.eco, "es", { numeric: true }))
+    .slice(0, maxItems);
+}

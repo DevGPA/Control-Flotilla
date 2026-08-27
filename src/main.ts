@@ -117,8 +117,15 @@ import {
   buildRadarVencimientos,
   buildReincidentes,
   buildGastoMensual,
+  buildPrevCorrectivo,
+  buildCostoUnidad,
 } from "./analytics/opsTablero";
-import { renderSucursalesOps, renderRadar, renderReincidentes } from "./analytics/renderOps";
+import {
+  renderSucursalesOps,
+  renderRadar,
+  renderReincidentes,
+  renderCostoUnidad,
+} from "./analytics/renderOps";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -229,15 +236,22 @@ declare global {
       el: HTMLElement,
       data: import("./analytics/opsTablero").GastoMes[],
     ) => unknown;
+    renderPrevCorrChart?: (
+      el: HTMLElement,
+      data: import("./analytics/opsTablero").PrevCorrMes[],
+    ) => unknown;
     /** Tablero operativo de Análisis (builders puros + renders DOM). */
     __tableroOps?: {
       buildSucursales: typeof buildSucursalesOps;
       buildRadar: typeof buildRadarVencimientos;
       buildReincidentes: typeof buildReincidentes;
       buildGastoMensual: typeof buildGastoMensual;
+      buildPrevCorr: typeof buildPrevCorrectivo;
+      buildCostoUnidad: typeof buildCostoUnidad;
       renderSucursales: typeof renderSucursalesOps;
       renderRadar: typeof renderRadar;
       renderReincidentes: typeof renderReincidentes;
+      renderCostoUnidad: typeof renderCostoUnidad;
     };
   }
 }
@@ -253,10 +267,11 @@ window.__appStore = appStore;
 // nada. Expone los widgets ECharts al legado (buildKPIs / buildAnalytics).
 function loadDashboardCharts(): Promise<void> {
   return import("./dashboard/charts").then(
-    ({ renderDonut, renderTrendLine, renderGastoMensualBar }) => {
+    ({ renderDonut, renderTrendLine, renderGastoMensualBar, renderPrevCorrBar }) => {
       window.renderDonutChart = renderDonut;
       window.renderTrendChart = renderTrendLine;
       window.renderGastoMensualChart = renderGastoMensualBar;
+      window.renderPrevCorrChart = renderPrevCorrBar;
       // Re-pintar ahora que la lib está lista (no-op si no hay datos / vista distinta).
       const w = window as unknown as { buildKPIs?: () => void; buildAnalytics?: () => void };
       w.buildKPIs?.();
@@ -294,9 +309,12 @@ window.__tableroOps = {
   buildRadar: buildRadarVencimientos,
   buildReincidentes: buildReincidentes,
   buildGastoMensual: buildGastoMensual,
+  buildPrevCorr: buildPrevCorrectivo,
+  buildCostoUnidad: buildCostoUnidad,
   renderSucursales: renderSucursalesOps,
   renderRadar: renderRadar,
   renderReincidentes: renderReincidentes,
+  renderCostoUnidad: renderCostoUnidad,
 };
 
 function readFlag(key: string): boolean {

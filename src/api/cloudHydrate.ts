@@ -212,6 +212,7 @@ export function mergeUnitWithChecklist(
     eco: ecoId,
     plate: unit.placa,
     brand: unit.marca ?? undefined,
+    anio: unit.anio ?? undefined,
     branch: unit.sucursal ?? undefined,
     insp: checklist?.responsable ?? "",
     fecha: checklist?.fecha ?? "",
