@@ -39,7 +39,8 @@ import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import { mergeCheckDones } from "./mergeCheckDones";
-import type { DoneMap } from "../analyzer/findingKey";
+import { stripAuto, type DoneMap } from "../analyzer/findingKey";
+import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
 import { normalizaRefaccion } from "../analyzer/refaccion";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
@@ -842,6 +843,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         return f !== "" && f >= from && f <= to;
       });
       window.units = sel;
+      // Los risk de resultados vienen crudos (sin descuento de marcas/overlay);
+      // recalc sobre el rango activo para que el pill de filas viejas no
+      // contradiga a la celda de hallazgos (revisión adversarial 2026-07-23).
+      if (typeof window.recalcAllRisks === "function") window.recalcAllRisks();
       if (typeof window.buildKPIs === "function") window.buildKPIs();
       if (typeof window.renderTable === "function") window.renderTable();
       if (typeof window.buildAlertsSummary === "function") window.buildAlertsSummary();
@@ -970,28 +975,38 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     );
   }
 
-  // Completaciones de checklist COMPARTIDAS (Fase C1): merge puro con fan-out
-  // por placa, tombstones (done:false propaga desmarcados) y dirty-skip (no
-  // pisa un toggle local más reciente). Ver mergeCheckDones.ts.
-  if (checkDones.length) {
-    const { cdb, modifiedUids } = mergeCheckDones({
-      checkDones,
-      rows: (window.__inspections ?? legacyUnits).map((u) => ({ uid: u.uid, plate: u.plate })),
-      cdb: (window.checklistDB ?? {}) as Record<string, DoneMap>,
-      dirty: window.__checkDirty,
-    });
-    window.checklistDB = cdb as ChecklistDB;
-    // Persistir a IndexedDB (H7): sin esto un arranque offline restaura el
-    // snapshot viejo y "revive" desmarcados ya propagados.
-    if (typeof window.dbPut === "function") {
-      for (const uid of modifiedUids) {
-        try {
-          void window.dbPut("checklist", uid, cdb[uid]);
-        } catch {
-          /* persistencia best-effort */
+  // Completaciones de checklist COMPARTIDAS (Fase C1) + overlay auto-resueltos.
+  // Orden OBLIGATORIO (spec 2026-07-23-hallazgos-autoresueltos §3):
+  //   purga(auto) → merge cloud → persistir sin autos → inyección → recalc.
+  // Sin la purga previa, un auto viejo bloquearía por LWW el re-merge de marcas
+  // humanas y sobreviviría a la anulación de su evidencia.
+  {
+    const cdb = (window.checklistDB ?? {}) as Record<string, DoneMap>;
+    purgeAutoEntries(cdb);
+    if (checkDones.length) {
+      const { modifiedUids } = mergeCheckDones({
+        checkDones,
+        rows: (window.__inspections ?? legacyUnits).map((u) => ({ uid: u.uid, plate: u.plate })),
+        cdb,
+        dirty: window.__checkDirty,
+      });
+      // Persistir a IndexedDB (H7): sin esto un arranque offline restaura el
+      // snapshot viejo y "revive" desmarcados ya propagados. stripAuto por
+      // defensa: en este punto aún no hay autos, pero blinda reordenamientos.
+      if (typeof window.dbPut === "function") {
+        for (const uid of modifiedUids) {
+          try {
+            void window.dbPut("checklist", uid, stripAuto(cdb[uid] ?? {}));
+          } catch {
+            /* persistencia best-effort */
+          }
         }
       }
     }
+    // Overlay derivado (solo memoria, jamás persistido): __inspections trae todas
+    // las filas hidratadas, ya sin anuladas (checklistsVigentes).
+    injectAutoResolve({ rows: (window.__inspections ?? []) as AutoRow[], cdb });
+    window.checklistDB = cdb as ChecklistDB;
   }
   // Recalcular el riesgo efectivo por fila con las completaciones aplicadas —
   // antes de C1 no se llamaba y el badge de riesgo nunca descontaba atendidos

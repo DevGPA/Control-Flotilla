@@ -11,7 +11,12 @@
 //   6. Toggle done via onClick → onToggle callback
 
 import { CATI } from "../../analyzer/constants";
-import { findingKey, isFindingDone } from "../../analyzer/findingKey";
+import {
+  findingKey,
+  isFindingDone,
+  resolveDoneEntry,
+  type DoneEntry,
+} from "../../analyzer/findingKey";
 import type { ChecklistDB, Finding, RiskLevel, Unit } from "../../types";
 
 export type ChecklistItemDiff = {
@@ -240,6 +245,7 @@ function findingItem(
   highlightChange: boolean,
   onToggle?: (uid: string, itemKey: string, aliasText?: string, want?: "0" | "1") => void,
   arrastre?: import("../../inspecciones/arrastre").ArrastreInfo | null,
+  doneEntry?: DoneEntry,
 ): HTMLElement {
   const el = document.createElement("div");
   const cls = isDone
@@ -285,6 +291,24 @@ function findingItem(
     chip.textContent = `⏳ desde ${arrastre.desdeLabel}`;
     chip.title = `Reportado en ${arrastre.veces} inspecciones seguidas`;
     el.appendChild(chip);
+  }
+
+  // Overlay auto-resueltos (spec 2026-07-23): origen explícito del atendido.
+  if (isDone && doneEntry) {
+    // ts puede ser día ("2026-07-06", autos) o ISO completo (manuales) → día.
+    const fecha = doneEntry.ts ? doneEntry.ts.slice(0, 10).split("-").reverse().join("/") : "";
+    const meta = document.createElement("span");
+    meta.style.cssText = "margin-left:6px;font-size:9px;font-style:italic";
+    if (doneEntry.auto) {
+      meta.style.color = "var(--G)";
+      meta.textContent = fecha
+        ? `resuelto — inspección ${fecha}`
+        : "resuelto — inspección posterior";
+    } else if (doneEntry.by || fecha) {
+      meta.style.color = "var(--s2)";
+      meta.textContent = `atendido${doneEntry.by ? ` — ${doneEntry.by}` : ""}${fecha ? ` · ${fecha}` : ""}`;
+    }
+    if (meta.textContent) el.appendChild(meta);
   }
   return el;
 }
@@ -381,6 +405,7 @@ export function renderChecklist(container: HTMLElement, deps: RenderChecklistDep
           isNewItem || isChanged,
           onToggle,
           deps.arrastre?.get(findingKey(f)) ?? null,
+          resolveDoneEntry(doneMap, f),
         ),
       );
     }

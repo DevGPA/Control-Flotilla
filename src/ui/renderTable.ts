@@ -8,7 +8,7 @@
 // entran como deps para mantener el módulo DOM-agnostic/testeable.
 
 import { TCRIT, TWARN } from "../analyzer/constants";
-import { isFindingDone } from "../analyzer/findingKey";
+import { isFindingDone, resolveDoneEntry } from "../analyzer/findingKey";
 import type { ChecklistDB, RiskLevel, Unit } from "../types";
 import { createVirtualTable, type Controller } from "./virtualTable";
 
@@ -99,10 +99,15 @@ function dotRow(color: string, text: string): HTMLElement {
 export function fcell(u: Unit, checklistDB: ChecklistDB = {}): HTMLElement {
   const dm = checklistDB[u.uid] || {};
   const pending = u.F.filter((f) => !isFindingDone(dm, f, u.fecha));
+  // Auto-resueltos (overlay spec 2026-07-23): tachados con fecha inline. Los
+  // atendidos manuales siguen desapareciendo de la celda, como siempre.
+  const autos = u.F.filter(
+    (f) => resolveDoneEntry(dm, f)?.auto === true && isFindingDone(dm, f, u.fecha),
+  );
   const a = pending.filter((f) => f.lv === "Urgente").length;
   const b = pending.filter((f) => f.lv === "Revisar").length;
   const c = pending.filter((f) => f.lv === "Completar").length;
-  if (!a && !b && !c) {
+  if (!a && !b && !c && !autos.length) {
     const empty = document.createElement("span");
     empty.style.cssText = "color:var(--G);font-size:10px";
     empty.textContent = "Ninguno";
@@ -113,6 +118,24 @@ export function fcell(u: Unit, checklistDB: ChecklistDB = {}): HTMLElement {
   if (a) wrap.appendChild(dotRow("var(--R)", `${a} urgente${a > 1 ? "s" : ""}`));
   if (b) wrap.appendChild(dotRow("var(--A)", `${b} revisar`));
   if (c) wrap.appendChild(dotRow("var(--B)", `${c} completar`));
+  if (autos.length) {
+    const ts =
+      autos
+        .map((f) => resolveDoneEntry(dm, f)?.ts ?? "")
+        .sort()
+        .pop() ?? "";
+    // Fecha INLINE: la PWA corre en celulares, donde title no existe.
+    const fecha = ts ? ts.slice(0, 10).split("-").reverse().join("/") : "";
+    const row = dotRow(
+      "var(--G)",
+      `${autos.length} resuelto${autos.length > 1 ? "s" : ""}${fecha ? ` · ${fecha}` : ""}`,
+    );
+    (row.lastChild as HTMLElement).style.textDecoration = "line-through";
+    row.title = fecha
+      ? `Ya no reportados en la inspección del ${fecha}`
+      : "Ya no reportados en una inspección posterior";
+    wrap.appendChild(row);
+  }
   return wrap;
 }
 
