@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-NiL9tth7pHDw6LTxFTGjZ3tim7QqIOfeckFoJwVKXxU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-fYpqvOr/8LHfX/+/2oHxSPdzs/s2DpEnPab0k0tX9pY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -475,7 +475,6 @@
     <button class="chip" id="btn-Revisar" aria-pressed="false" onclick="setF('Revisar')"><span class="chip-dot" style="background:var(--A)"></span>A revisar <span class="chip-n" id="fc_rev"></span></button>
     <button class="chip" id="btn-obs" aria-pressed="false" onclick="setF('obs')"><span class="chip-dot" style="background:var(--s2)"></span>Comentarios <span class="chip-n" id="fc3"></span></button>
     <button class="chip" id="btn-svcvencido" aria-pressed="false" onclick="setF('svcvencido')"><span class="chip-dot" style="background:var(--R)"></span>Svc ≤30d <span class="chip-n" id="fc_svc"></span></button>
-    <button class="chip" id="btn-sinmensual" onclick="openFleetModal('missingMensual')" title="Unidades de la flota sin check mensual en el rango seleccionado" style="display:none;border-style:dashed"><span class="chip-dot" style="background:var(--s2)"></span>Sin check <span class="chip-n" id="fc_missing"></span></button>
   </div>
   <select id="bsel" onchange="setB(this.value)" aria-label="Filtrar por sucursal"><option value="all">Todas las sucursales</option></select>
   <div class="sw">
@@ -3463,38 +3462,27 @@ function buildKPIs(){
   const fcRev=document.getElementById("fc_rev");if(fcRev)fcRev.textContent=r?`(${r})`:"";
   const fc3=document.getElementById("fc3");if(fc3)fc3.textContent=withObs?`(${withObs})`:"";
   const fcsvc=document.getElementById("fc_svc");if(fcsvc)fcsvc.textContent=nSvcRange?`(${nSvcRange})`:"";
-  // "Sin check" mensual = catálogo (flota) − placas con inspección mensual en el rango.
-  // Solo con catálogo cloud; abre el modal (no es filtro de tabla, esas unidades no están en units).
-  const btnSinM=document.getElementById("btn-sinmensual");
-  if(btnSinM){
-    // Excluye montacargas: no hacen checklist de vehículo, no deben contar como "sin check".
+  // Cobertura del ciclo = catálogo (flota) − placas con inspección en el rango.
+  // Solo con catálogo cloud. Clic en la card → modal missingMensual (las que faltan).
+  // El chip "Sin check" se retiró (decisión 2026-08-27): la card cubre esa necesidad.
+  const cobCard=document.getElementById("hero-cobertura");
+  if(cobCard){
+    // Excluye montacargas: no hacen checklist de vehículo, no deben contar en el ciclo.
     const fleetRoster=scopeUnits(window.__fleetUnits).filter(u=>!u.esMontacargas);
-    if(fleetRoster.length){
+    if(fleetRoster.length && window.__cobertura && typeof window.__cobertura.build==="function"){
       const pres=new Set(sUnits.map(x=>x.plate||x.uid));
-      const faltanM=fleetRoster.filter(x=>!pres.has(x.plate||x.uid)).length;
-      // Siempre visible con catálogo cloud (aunque sea 0) para que el usuario lo encuentre.
-      btnSinM.style.display="inline-flex";
-      btnSinM.style.opacity=faltanM?"1":"0.55";
-      const fcm=document.getElementById("fc_missing");if(fcm)fcm.textContent=`(${faltanM})`;
-      // Hero card Cobertura del ciclo — mismo roster y mismas placas presentes (pres)
-      // que "Sin check": card, chip y modal missingMensual cuadran por construcción.
-      const cobCard=document.getElementById("hero-cobertura");
-      if(cobCard && window.__cobertura && typeof window.__cobertura.build==="function"){
-        const cob=window.__cobertura.build(fleetRoster,pres);
-        const cs=getComputedStyle(document.documentElement);
-        const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
-        const kvc=document.getElementById("kv_cob");
-        if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
-        const ksc=document.getElementById("ks_cob");
-        if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
-        cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
-        cobCard.style.display="flex";
-      } else if(cobCard){ cobCard.style.display="none"; }
+      const cob=window.__cobertura.build(fleetRoster,pres);
+      const cs=getComputedStyle(document.documentElement);
+      const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
+      const kvc=document.getElementById("kv_cob");
+      if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
+      const ksc=document.getElementById("ks_cob");
+      if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
+      cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
+      cobCard.style.display="flex";
     } else {
-      btnSinM.style.display="none";
-      // Sin catálogo cloud no hay denominador: la card de cobertura queda oculta.
-      const cobCard=document.getElementById("hero-cobertura");
-      if(cobCard) cobCard.style.display="none";
+      // Sin catálogo cloud no hay denominador: la card queda oculta (fail-closed).
+      cobCard.style.display="none";
     }
   }
   // Action buttons
