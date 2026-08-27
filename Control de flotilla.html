@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-h9H6AQ+JJCzhVII5zZy5mCkl+UCXyx9GIN+3mlsKK/Q=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-mIyIGveuGCpjzN9Ok0FOxCvacvFETHXWFD29MqtkB1s=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -427,14 +427,14 @@
       <div class="chart-card" id="chart-card-trend">
         <div class="chart-card-header">
           <div class="chart-title" role="heading" aria-level="2">Tendencia por período</div>
-          <div class="chart-hint">% Urgente · Revisar · Operativa</div>
+          <div class="chart-hint">% Urgente · Revisar · Operativa · últimos 12 meses</div>
         </div>
         <div id="chart-trend" class="chart-canvas" role="img" aria-label="Gráfica de líneas: tendencia del porcentaje urgente, revisar y operativa por período"></div>
         <div id="chart-trend-empty" class="chart-empty" hidden>
           <i data-lucide="trending-up" class="chart-empty-icon"></i>
           <div class="chart-empty-title">Sin tendencia histórica</div>
-          <div class="chart-empty-msg">Necesitas al menos 2 períodos mensuales para comparar.</div>
-          <div class="chart-empty-hint">Carga un XLSX adicional con el botón <b>“Actualizar Excel”</b>.</div>
+          <div class="chart-empty-msg">Necesitas al menos 2 meses con inspecciones para comparar.</div>
+          <div class="chart-empty-hint">La gráfica se construye sola conforme se acumulen meses de checklists.</div>
         </div>
       </div>
       <div class="chart-card" id="chart-card-heatmap">
@@ -3664,34 +3664,28 @@ function buildAnalytics(){
     } catch(e){ console.warn("[analytics] categorías chart falló:", e); }
   }
 
-  // ─── Trend histórico: % por periodo mensual cargado.
-  // Requiere ≥ 2 periodos para una línea de tendencia real.
+  // ─── Trend histórico: % Urgente/Revisar/Operativa por MES, desde __inspections
+  // (todo el histórico hidratado, scoped por sucursal, independiente del rango
+  // Desde/Hasta — la tendencia responde "¿mejoramos?" y no debe desaparecer al
+  // filtrar una semana). Antes leía window.periodos (solo flujo XLSX viejo): en
+  // cloud vivía vacío y la card quedaba colapsada (auditoría 2026-06-10, ítem 51).
   const trendEl = document.getElementById("chart-trend");
   const trendEmpty = document.getElementById("chart-trend-empty");
-  const allPeriodos = Array.isArray(window.periodos) ? window.periodos : [];
-  const hasTrend = allPeriodos.length >= 2;
-  // chart-card marca data-empty="1" cuando no hay data — CSS colapsa con display:none.
-  // En modo "analytics full" (futuro tab dedicado) se ignorará data-empty para mostrar empty states.
   const trendCard = document.getElementById("chart-card-trend");
   if(trendEl){
-    if(hasTrend && typeof window.renderTrendChart === "function"){
-      if(trendCard) trendCard.removeAttribute("data-empty");
+    const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
+    const trendData = (window.__trendData && typeof window.__trendData.fromInspections === "function")
+      ? window.__trendData.fromInspections(inspAll)
+      : [];
+    // La card del trend ya NO colapsa con data-empty: sin datos muestra su empty
+    // state (antes era UI muerta — data-empty ocultaba la card entera).
+    if(trendCard) trendCard.removeAttribute("data-empty");
+    if(trendData.length >= 2 && typeof window.renderTrendChart === "function"){
       trendEl.style.display = "";
       if(trendEmpty) trendEmpty.hidden = true;
-      const trendData = allPeriodos.map(p => {
-        const us = scopeUnits(Array.isArray(p.units) ? p.units : []);
-        let pu=0, pr=0, po=0;
-        for(const u of us){
-          if(u.risk === "Urgente") pu++;
-          else if(u.risk === "Revisar") pr++;
-          else po++;
-        }
-        return { label: p.label || p.id || "—", total: us.length, urgente: pu, revisar: pr, operativa: po };
-      });
       try { window.renderTrendChart(trendEl, trendData); }
       catch(e){ console.warn("[analytics] trend chart falló:", e); }
     } else {
-      if(trendCard) trendCard.setAttribute("data-empty", "1");
       trendEl.style.display = "none";
       if(trendEmpty) trendEmpty.hidden = false;
     }

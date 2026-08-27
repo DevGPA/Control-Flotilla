@@ -111,6 +111,7 @@ import { appStore, bindLegacyWindow } from "./state/appState";
 import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
 import { latestPorUnidad, rangoCountLabel } from "./inspecciones/unidades";
 import { buildCobertura, coberturaNivel } from "./inspecciones/cobertura";
+import { buildTrendFromInspections } from "./dashboard/trendData";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -291,6 +292,8 @@ wirePeriodoPresets();
 window.__inspUnidades = { latestPorUnidad, rangoCountLabel };
 // Cobertura del ciclo (hero card): mismo insumo que el chip "Sin check".
 window.__cobertura = { build: buildCobertura, nivel: coberturaNivel };
+// Serie mensual para #chart-trend (buildAnalytics) desde __inspections.
+window.__trendData = { fromInspections: buildTrendFromInspections };
 
 function readFlag(key: string): boolean {
   try {
