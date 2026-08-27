@@ -33,6 +33,7 @@ import {
 } from "../anulacion/anulacion";
 import { buildFuelEntries } from "../fuel/mapEntry";
 import { buildComplianceEntries } from "../compliance/mapEntry";
+import { monthOf } from "../dates";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
@@ -125,17 +126,6 @@ declare global {
 
 // Throttle de la persistencia del snapshot cloud (ver hydrateFromCloud).
 let lastCloudPersist = 0;
-
-/** Deriva "YYYY-MM" de una fecha de checklist (ISO YYYY-MM-DD o legacy DD/MM/YYYY). */
-function monthOf(fecha: string | null | undefined): string | null {
-  const s = String(fecha ?? "").trim();
-  if (!s) return null;
-  const iso = s.match(/^(\d{4})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}`;
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (dmy) return `${dmy[3]}-${dmy[2]!.padStart(2, "0")}`;
-  return null;
-}
 
 /** Normaliza una fecha de checklist a ISO YYYY-MM-DD para ORDENAR/COMPARAR.
  * Acepta ISO (passthrough) o legacy DD/MM/YYYY. "" si no parseable. NO se usa
