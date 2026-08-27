@@ -57,6 +57,8 @@ interface ChecklistResultados {
   nextSvc?: string;
   kmNextSvc?: number | string;
   validationErrors?: string[];
+  /** Keys que la inspección evaluó (spec auto-resueltos §4; pipeline nuevo). */
+  evaluatedKeys?: string[];
   moreappId?: string;
   photos?: unknown[];
 }
@@ -213,6 +215,8 @@ export function mergeUnitWithChecklist(
     plate: unit.placa,
     brand: unit.marca ?? undefined,
     anio: unit.anio ?? undefined,
+    validationErrors: Array.isArray(r.validationErrors) ? r.validationErrors : undefined,
+    evaluatedKeys: Array.isArray(r.evaluatedKeys) ? r.evaluatedKeys : undefined,
     branch: unit.sucursal ?? undefined,
     insp: checklist?.responsable ?? "",
     fecha: checklist?.fecha ?? "",
