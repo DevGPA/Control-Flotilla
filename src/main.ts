@@ -109,6 +109,7 @@ import {
 import type { WeeklyPeriodo } from "./weekly/weeklyStore";
 import { appStore, bindLegacyWindow } from "./state/appState";
 import { wirePeriodoPresets } from "./inspecciones/periodoPresets";
+import { latestPorUnidad, rangoCountLabel } from "./inspecciones/unidades";
 import { type FilterState, onUrlStateChange, readUrlState, writeUrlState } from "./state/urlState";
 import type { Unit, ChecklistDB } from "./types";
 
@@ -283,6 +284,10 @@ bindLegacyWindow();
 // Atajos de periodo (Este mes / Mes anterior / Trimestre / Año) en la barra
 // de rango de Inspecciones. Inyectados por DOM: el HTML legado no cambia.
 wirePeriodoPresets();
+
+// Dedupe unidades-vs-inspecciones para las hero cards y el contador del rango
+// (patrón namespace __fleetMap: el legado lo consume con guard typeof).
+window.__inspUnidades = { latestPorUnidad, rangoCountLabel };
 
 function readFlag(key: string): boolean {
   try {

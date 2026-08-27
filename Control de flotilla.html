@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-O7nNEyFr4XL9ihwzlcdy1WBIEDKW/bjFWSOgtNmFZ0g=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-M0fhFNJ/Er/OQgmpkPIn8fPTjXK3PfJ5EdF0XUPNKxo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3406,9 +3406,12 @@ function buildKPIs(){
     const enTallerNow=isUnitEnTaller(x);
     if(enTallerNow){ enTaller++; tallerDonut++; } else operativaDonut++;
   }
-  // LLANTAS CRÍTICAS + SERVICIO = sobre las inspecciones del RANGO (units), igual que la tabla.
+  // LLANTAS CRÍTICAS + SERVICIO = sobre las UNIDADES del rango (última inspección por
+  // unidad, dedupe __inspUnidades): la card dice "Unidades" y con rango >1 mes las filas
+  // repetidas inflaban el conteo. Los chips (abajo) siguen contando FILAS: filtran la tabla.
+  const kpiUnits=(window.__inspUnidades&&typeof window.__inspUnidades.latestPorUnidad==="function")?window.__inspUnidades.latestPorUnidad(sUnits):sUnits;
   let ct=0,nSvcVencido=0,nSvcProximo=0;
-  for(const x of sUnits){
+  for(const x of kpiUnits){
     if(x.minT!==null && x.minT<=TCRIT) ct++;
     const ss=svcStatus(x);
     if(ss==="vencido") nSvcVencido++; else if(ss==="proximo") nSvcProximo++;
@@ -6558,7 +6561,12 @@ function aplicarRango(){
 
 function updateRangoCount(){
   const el = document.getElementById("rango-count");
-  if(el) el.textContent = Array.isArray(units) ? `${units.length} inspecciones` : "";
+  if(!el) return;
+  if(!Array.isArray(units)){ el.textContent=""; return; }
+  // "34 inspecciones · 28 unidades" cuando el rango repite unidades (rango >1 mes).
+  el.textContent = (window.__inspUnidades&&typeof window.__inspUnidades.rangoCountLabel==="function")
+    ? window.__inspUnidades.rangoCountLabel(units)
+    : `${units.length} inspecciones`;
 }
 
 async function confirmPeriodo(){
@@ -7485,9 +7493,12 @@ function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal";
 function _fleetSource(){
   // scope sucursal del usuario fijado (no-op admin): el modal de flota (que abren las
   // tarjetas KPI y "sin check") solo lista las unidades de su sucursal.
-  // tiresCrit/svc = inspecciones del RANGO (units), igual que el KPI y la tabla → el
-  // conteo del modal cuadra con el número de la card.
-  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc") return scopeUnits(units || []);
+  // tiresCrit/svc = UNIDADES del rango (última inspección por unidad, mismo dedupe que
+  // el KPI en buildKPIs) → una fila por unidad y el modal cuadra con el número de la card.
+  if(_fleetModalKind==="tiresCrit" || _fleetModalKind==="svc"){
+    const enRango=scopeUnits(units || []);
+    return (window.__inspUnidades&&typeof window.__inspUnidades.latestPorUnidad==="function")?window.__inspUnidades.latestPorUnidad(enRango):enRango;
+  }
   // all/taller/missing* = flota completa (catálogo); fallback a units sin cloud.
   return scopeUnits((window.__fleetUnits && window.__fleetUnits.length) ? window.__fleetUnits : (units || []));
 }
