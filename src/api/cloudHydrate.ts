@@ -22,6 +22,7 @@ import {
   listCombustibleRange,
   listValidaciones,
   listComplianceDocs,
+  listAccesorios,
   listAnulaciones,
 } from "./client";
 import {
@@ -34,6 +35,7 @@ import {
 import { buildFuelEntries } from "../fuel/mapEntry";
 import { buildComplianceEntries } from "../compliance/mapEntry";
 import { monthOf } from "../dates";
+import { buildAccesorioEntries } from "../accesorios/mapEntry";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
@@ -465,6 +467,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     combustible,
     validaciones,
     complianceDocs,
+    accesorioRows,
     anulaciones,
   ] = await Promise.all([
     listUnits(tenantId),
@@ -500,6 +503,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     listComplianceDocs(tenantId).catch((e) => {
       console.warn("[cloudHydrate] listComplianceDocs falló (no-fatal):", e);
       return [] as Schema["ComplianceDoc"]["type"][];
+    }),
+    // No-fatal: la sub-pestaña Accesorios de Taller es independiente y su modelo puede aún
+    // NO estar desplegado → devolver [] para no tumbar la hidratación del resto.
+    listAccesorios(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listAccesorios falló (no-fatal):", e);
+      return [] as Schema["Accesorio"]["type"][];
     }),
     // No-fatal: las anulaciones son un overlay; si el modelo aún no está desplegado,
     // nada se excluye (comportamiento previo intacto).
@@ -817,6 +826,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       window.updateCumplimientoNavBadge();
     if (typeof window.renderCumplimiento === "function") window.renderCumplimiento();
     console.info(`[cloudHydrate] ${complianceDocs.length} documentos de cumplimiento hidratados`);
+
+    // ── Hydrate accesorios (sub-pestaña de Taller) → window.accesorioEntries ──
+    // Mismo `hoy` de zona México: la antigüedad en meses se ancla ahí. El accesorio
+    // vigente por unidad lo deriva el wire al renderizar (no se persiste).
+    window.accesorioEntries = buildAccesorioEntries(accesorioRows, hoy, { unitsByEco });
+    if (typeof window.renderAccesorios === "function") window.renderAccesorios();
+    console.info(`[cloudHydrate] ${accesorioRows.length} registros de accesorios hidratados`);
   }
 
   let legacyUnits: Unit[];
