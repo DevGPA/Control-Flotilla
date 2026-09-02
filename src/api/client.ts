@@ -687,6 +687,68 @@ export async function deleteComplianceDoc(input: {
   throwOnErrors("deleteComplianceDoc", errors);
 }
 
+// ───────────────────────── Accesorios (2026-09-02) ──────────────────────────────
+// Accesorios que se le cambian a la unidad (limpiabrisas, batería). Identidad
+// (tenantId, economicoId, accesorioId); la llave la arma el front con buildAccesorioDoc
+// (batería por número de serie, limpiabrisas por fecha de compra) para que recapturar el
+// mismo accesorio haga upsert en vez de duplicar. Sub-pestaña del módulo Taller.
+
+export type AccesorioInput = {
+  tenantId: string;
+  economicoId: string;
+  accesorioId: string;
+  tipo: string;
+  marca?: string;
+  numeroSerie?: string;
+  fechaCompra?: string;
+  costo?: number;
+  nota?: string;
+  capturadoPor?: string;
+  ultimaActualizacion?: string;
+};
+
+export async function upsertAccesorio(input: AccesorioInput): Promise<Schema["Accesorio"]["type"]> {
+  const c = getClient();
+  const created = await c.models.Accesorio.create(input);
+  if (!created.errors && created.data) return created.data;
+  if (created.errors && isConditionalCheckFailed(created.errors)) {
+    const updated = await c.models.Accesorio.update(input);
+    throwOnErrors("upsertAccesorio(update)", updated.errors);
+    if (!updated.data)
+      throw new Error(
+        `upsertAccesorio(update) null data ${input.economicoId}/${input.accesorioId} — auth filtering?`,
+      );
+    return updated.data;
+  }
+  throwOnErrors("upsertAccesorio(create)", created.errors);
+  throw new Error(
+    `upsertAccesorio(create) null data ${input.economicoId}/${input.accesorioId} — auth filtering?`,
+  );
+}
+
+export async function listAccesorios(tenantId: string): Promise<Schema["Accesorio"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["Accesorio"]["type"]>(
+    (token) =>
+      c.models.Accesorio.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listAccesorios",
+  );
+}
+
+export async function deleteAccesorio(input: {
+  tenantId: string;
+  economicoId: string;
+  accesorioId: string;
+}): Promise<void> {
+  const c = getClient();
+  const { errors } = await c.models.Accesorio.delete(input);
+  throwOnErrors("deleteAccesorio", errors);
+}
+
 // ───────────────────────── Administración de Usuarios (2026-06-12) ─────────────
 // PRIMER uso de client.mutations/queries (custom ops). Cada op devuelve a.json()
 // con forma { ok, message?, error?, data? }. La autorización (grupo admin) la

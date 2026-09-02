@@ -36,6 +36,9 @@ import "./fuel/wire";
 // Módulo de cumplimiento vehicular: monta window.renderCumplimiento /
 // updateCumplimientoNavBadge y cablea los controles de la vista. Side-effect import.
 import "./compliance/wire";
+// Sub-pestaña "Accesorios" de Taller (limpiabrisas y batería por unidad): monta
+// window.renderAccesorios / openAccesorioHistorial / openAccesorioCaptura. Side-effect import.
+import "./accesorios/wire";
 
 // ── Registro del Service Worker (PWA) ────────────────────────────────────────
 // Manual (injectRegister:null en vite.config) — el registerSW.js autogenerado

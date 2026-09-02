@@ -373,6 +373,44 @@ const schema = a
         index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
       ]),
 
+    // ── Accesorios de la unidad (2026-09-02) ───────────────────────────────
+    // Cada CAMBIO de accesorio es un registro (hoy limpiabrisas y batería). El accesorio
+    // "vigente" NO se persiste: se deriva del de fecha de compra más reciente, para que no
+    // quede obsoleto con el tiempo (mismo criterio que el semáforo de ComplianceDoc).
+    // Identidad (tenantId, economicoId, accesorioId) donde accesorioId es:
+    //   batería      → "bateria#<numeroSerie normalizado>"  (la serie es la identidad física)
+    //   limpiabrisas → "limpiabrisas#<fechaCompra>"          (no tiene serie)
+    // Efecto: recapturar la misma batería hace upsert, no duplica.
+    // `tipo` es string y no a.enum() a propósito: agregar llantas/frenos después es solo UI.
+    Accesorio: a
+      .model({
+        tenantId: a.string().required(),
+        economicoId: a.string().required(),
+        accesorioId: a.string().required(),
+        tipo: a.string().required(), // 'bateria' | 'limpiabrisas' — validado en cliente
+        marca: a.string(),
+        numeroSerie: a.string(), // solo batería
+        fechaCompra: a.string(), // YYYY-MM-DD
+        costo: a.float(),
+        nota: a.string(),
+        capturadoPor: a.string(), // correo de quien capturó (trazabilidad)
+        ultimaActualizacion: a.string(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "economicoId", "accesorioId"])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura operativo/admin: la captura
+        // la hace Administración de Riesgos, que tiene rol operativo.
+        // Deuda técnica: operativo/admin son grupos GLOBALES de escritura (no por-tenant);
+        // inocuo con un solo tenant (gpa), revisar si se añade un 2º tenant.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
+      ]),
+
     // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
     // Espejo local del usuario Cognito para listados eficientes y soft-delete.
     // Identidad = (tenantId, cognitoSub) — sub inmutable de Cognito.
