@@ -7,7 +7,7 @@ import {
   llaveFoto,
   validarPartidaEntrante,
   validarTamanoFoto,
-} from "../amplify/functions/taller-portal/handler";
+} from "../amplify/functions/taller-portal/validacion";
 
 describe("llaveFoto — la ruta la genera el SERVIDOR", () => {
   it("vive bajo el prefijo de partidas de taller, con el tenant primero", () => {
