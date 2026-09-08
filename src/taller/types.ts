@@ -91,3 +91,27 @@ export type TallerFilter = {
   tipo?: string;
   search?: string; // texto libre en eco/plate/tecnico/comentario
 };
+
+/** Áreas operativas canónicas. Fuente de verdad: el catálogo de unidades
+ *  (`#cf-area` en el monolito). Taller usaba MAYÚSCULAS SIN ACENTO, lo que
+ *  hacía que el autocompletado dejara el select vacío en silencio. */
+export const AREAS_CANONICAS = [
+  "Logística",
+  "Almacén",
+  "Servicio Técnico",
+  "Mantenimiento",
+  "Administración",
+] as const;
+
+function sinAcentos(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+const AREA_INDEX = new Map<string, string>(AREAS_CANONICAS.map((a) => [sinAcentos(a), a]));
+
+/** Devuelve la grafía canónica del área, o "" si el valor no corresponde a
+ *  ninguna de las cinco. Nunca inventa un área. */
+export function normalizeArea(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  return AREA_INDEX.get(sinAcentos(String(v))) ?? "";
+}

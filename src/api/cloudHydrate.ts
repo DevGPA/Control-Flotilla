@@ -47,7 +47,7 @@ import { normalizaRefaccion } from "../analyzer/refaccion";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
-import { migrateEstado } from "../taller/types";
+import { migrateEstado, normalizeArea } from "../taller/types";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -626,6 +626,19 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     }
   }
 
+  // Join VIVO con el catálogo de Unidades: submarca (eco.SUBMARCA → Unit.marca) y área
+  // (asignada por el admin) por economicoId. buildFuelEntries normaliza las claves
+  // (ecoKey "06"↔"6"). Reasignar el área re-clasifica el gasto histórico. También
+  // alimenta el sellado del área de Taller (misma fuente de verdad, ver más abajo).
+  const unidadPorEco = new Map<string, { submarca?: string; area?: string }>();
+  for (const u of units) {
+    const eco = String(u.economicoId ?? "");
+    const marca = String(u.marca ?? "").trim();
+    const area = String(u.area ?? "").trim();
+    if (eco && (marca || area) && !unidadPorEco.has(eco))
+      unidadPorEco.set(eco, { submarca: marca || undefined, area: area || undefined });
+  }
+
   // ── Hydrate taller → window.tallerEntries ──────────────────
   // Cada Taller row reconstruye TallerEntry legacy desde datos JSON.
   // Fase C2: dedup en lectura — los re-keys históricos dejaron filas duplicadas
@@ -658,7 +671,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         plate: String(datos.plate ?? t.unitUid),
         brand: String(datos.brand ?? ""),
         sucursal: String(datos.sucursal ?? ""),
-        area: String(datos.area ?? ""),
+        // El área SIEMPRE sale del catálogo de la unidad (misma fuente que
+        // Combustible); lo capturado a mano queda como respaldo normalizado.
+        area:
+          normalizeArea(unidadPorEco.get(String(datos.eco ?? "").trim())?.area) ||
+          normalizeArea(datos.area),
         tipo: String(datos.tipo ?? t.motivo ?? ""),
         estado,
         freporte: String(datos.freporte ?? ""),
@@ -748,17 +765,6 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // CargaCombustible (solicitudes + cargas) + ValidacionCarga (revisión) → FuelEntry[].
   // Las fotos de evidencia se pre-firman junto con las demás (más abajo).
   {
-    // Join VIVO con el catálogo de Unidades: submarca (eco.SUBMARCA → Unit.marca) y área
-    // (asignada por el admin) por economicoId. buildFuelEntries normaliza las claves
-    // (ecoKey "06"↔"6"). Reasignar el área re-clasifica el gasto histórico.
-    const unidadPorEco = new Map<string, { submarca?: string; area?: string }>();
-    for (const u of units) {
-      const eco = String(u.economicoId ?? "");
-      const marca = String(u.marca ?? "").trim();
-      const area = String(u.area ?? "").trim();
-      if (eco && (marca || area) && !unidadPorEco.has(eco))
-        unidadPorEco.set(eco, { submarca: marca || undefined, area: area || undefined });
-    }
     const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco, anuladasActivas);
     window.fuelEntries = fuelEntries;
     // Perf F3-1: fijar el estado de la ventana (frontera + crudo + insumos) para que
