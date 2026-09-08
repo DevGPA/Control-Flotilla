@@ -2,6 +2,7 @@ import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { adminUsers } from "../functions/admin-users/resource";
 import { opsgpaReceptor } from "../functions/opsgpa-receptor/resource";
 import { visionCombustible } from "../functions/vision-combustible/resource";
+import { tallerPortal } from "../functions/taller-portal/resource";
 
 /**
  * Schema replica 1:1 las 6 entidades de shared/types/entities.ts.
@@ -608,6 +609,9 @@ const schema = a
     // vision-combustible: lee/escribe SOLO campos de visión de ValidacionCarga
     // (el grant es a nivel schema; la restricción por-campo la garantiza su handler).
     allow.resource(visionCombustible).to(["query", "mutate"]),
+    // taller-portal: la liga del proveedor escribe TallerPartida y actualiza las
+    // columnas de Taller que captura el taller. Mismo rol IAM que las otras ingestas.
+    allow.resource(tallerPortal).to(["query", "mutate"]),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

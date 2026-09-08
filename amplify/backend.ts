@@ -10,6 +10,7 @@ import { data } from "./data/resource";
 import { storage } from "./storage/resource";
 import { adminUsers } from "./functions/admin-users/resource";
 import { opsgpaReceptor } from "./functions/opsgpa-receptor/resource";
+import { tallerPortal } from "./functions/taller-portal/resource";
 import { visionCombustible } from "./functions/vision-combustible/resource";
 
 /**
@@ -34,6 +35,7 @@ const backend = defineBackend({
   adminUsers,
   opsgpaReceptor,
   visionCombustible,
+  tallerPortal,
 });
 
 // ── Webhook MoreApp RETIRADO (2026-08-20) ──────────────────────
@@ -84,6 +86,21 @@ receptorFn.addToRolePolicy(
   }),
 );
 backend.addOutput({ custom: { opsgpaReceptorUrl: receptorUrl.url } });
+
+// ── Portal del proveedor de taller (2026-09-08) ───────────────────────────────
+// Function URL pública: el taller abre la liga en su celular. La autenticación
+// es la firma del token (fail-closed sin secreto). Sirve la página y recibe las
+// partidas; emite PUT prefirmados para las fotos, con la llave generada por el
+// servidor bajo photos/<tenant>/taller-partidas/.
+const portalFn = backend.tallerPortal.resources.lambda;
+const portalUrl = portalFn.addFunctionUrl({
+  authType: FunctionUrlAuthType.NONE,
+  cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.GET, HttpMethod.POST] },
+});
+bucket.grantReadWrite(portalFn);
+(portalFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
+
+backend.addOutput({ custom: { tallerPortalUrl: portalUrl.url } });
 
 // ── Visión IA de tickets de combustible (Fase 1, 2026-08-20) ──────────────────
 // SIN Function URL: la única puerta es lambda:InvokeFunction (el receptor la invoca

@@ -35,6 +35,21 @@ const verifyPwaIcons = {
 export default defineConfig(({ mode }) => ({
   root: ".",
   base: "./",
+  resolve: {
+    alias: {
+      // Módulo virtual que Amplify inyecta SOLO al desplegar (bundling propio
+      // de CDK/ampx, ajeno a Vite) — amplify/functions/taller-portal/handler.ts
+      // lo importa para el cliente AppSync-por-IAM (mismo patrón que
+      // opsgpa-receptor). En vitest no existe como archivo real: sin este
+      // alias, tallerPortalHandler.test.ts no puede ni importar las funciones
+      // puras que exporta handler.ts, porque el import de nivel superior
+      // rompe antes de llegar a ellas. Ver el stub en env-stub.ts.
+      "$amplify/env/taller-portal": resolve(
+        __dirname,
+        "amplify/functions/taller-portal/env-stub.ts",
+      ),
+    },
+  },
   build: {
     outDir: "dist",
     target: "es2022",
