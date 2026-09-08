@@ -22,6 +22,10 @@ import { ErrorToken, verificarToken, type PortalToken } from "./token";
 export const MIMES_FOTO = ["image/jpeg", "image/png", "image/webp"] as const;
 export const TOPE_FOTOS_PARTIDA = 6;
 export const TOPE_PARTIDAS_VISITA = 60;
+// 10 MB — tope de bytes por foto subida (spec §7.3): sin esto, una liga
+// válida podría empujar archivos sin límite hacia el bucket de producción
+// mientras el token siga vigente.
+export const TOPE_BYTES_FOTO = 10 * 1024 * 1024;
 const LARGO_DESCRIPCION = 500;
 const PRECIO_MAX = 10_000_000;
 
@@ -90,6 +94,24 @@ export function validarPartidaEntrante(body: unknown): PartidaEntrante {
   // Nada más se toma del cliente: el estado, la autoría y las fechas los pone
   // el servidor. Un cliente NO puede mandar una partida ya autorizada.
   return { descripcion, tipo, precio };
+}
+
+/**
+ * El tamaño declarado de una foto ANTES de firmar su URL de subida. El límite
+ * es real (§7.3): sin él, cualquiera con una liga vigente podría empujar
+ * archivos de tamaño arbitrario al bucket de producción mientras el token
+ * no expire. Se valida ANTES de emitir la URL prefirmada — nunca después —
+ * y el valor validado se firma como ContentLength exacto en el PUT: S3
+ * rechaza cualquier subida cuyo tamaño real no coincida.
+ */
+export function validarTamanoFoto(tamano: unknown): number {
+  if (typeof tamano !== "number" || !Number.isInteger(tamano) || tamano <= 0) {
+    throw new ErrorEntrada(`Tamaño de archivo no válido: ${String(tamano)}`);
+  }
+  if (tamano > TOPE_BYTES_FOTO) {
+    throw new ErrorEntrada(`El archivo excede el máximo de ${TOPE_BYTES_FOTO} bytes`);
+  }
+  return tamano;
 }
 
 const SECRETO = process.env.TALLER_PORTAL_SECRET ?? "";
@@ -193,9 +215,11 @@ export const handler = async (event: any) => {
       if (!(MIMES_FOTO as readonly string[]).includes(mime)) {
         return json(400, { error: "tipo de archivo no permitido" });
       }
+      // El tamaño se valida ANTES de firmar la URL — nunca después.
+      const tamano = validarTamanoFoto(body?.tamano);
       const key = llaveFoto(tk.t, visitaKey, randomUUID(), mime);
-      bitacora("firmar-subida", tk, { key });
-      return json(200, await firmarSubida(key, mime));
+      bitacora("firmar-subida", tk, { key, tamano });
+      return json(200, await firmarSubida(key, mime, tamano));
     }
 
     return json(404, { error: "no encontrado" });
@@ -256,10 +280,13 @@ function parseDatos(datos: unknown): Record<string, unknown> {
   return (datos ?? {}) as Record<string, unknown>;
 }
 
-async function firmarSubida(key: string, mime: string) {
+async function firmarSubida(key: string, mime: string, tamano: number) {
   const url = await getSignedUrl(
     s3,
-    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime }),
+    // ContentLength EXACTO: S3 rechaza cualquier PUT cuyo tamaño real no
+    // coincida con el firmado aquí — es lo que convierte el tope en algo
+    // real y no solo un número que el cliente puede ignorar.
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime, ContentLength: tamano }),
     { expiresIn: 300 }, // minutos, no horas
   );
   return { url, key };

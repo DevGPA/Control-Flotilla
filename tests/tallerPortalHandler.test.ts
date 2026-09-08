@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   MIMES_FOTO,
+  TOPE_BYTES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
   llaveFoto,
   validarPartidaEntrante,
+  validarTamanoFoto,
 } from "../amplify/functions/taller-portal/handler";
 
 describe("llaveFoto — la ruta la genera el SERVIDOR", () => {
@@ -72,5 +74,35 @@ describe("validarPartidaEntrante — el texto lo escribe un tercero", () => {
   it("los topes son los del spec", () => {
     expect(TOPE_FOTOS_PARTIDA).toBe(6);
     expect(TOPE_PARTIDAS_VISITA).toBe(60);
+  });
+});
+
+describe("validarTamanoFoto — el tope de subida es real, no un techo de cortesía", () => {
+  it("el tope es 10 MB", () => {
+    expect(TOPE_BYTES_FOTO).toBe(10 * 1024 * 1024);
+  });
+
+  it("rechaza cero", () => {
+    expect(() => validarTamanoFoto(0)).toThrow();
+  });
+
+  it("rechaza un tamaño negativo", () => {
+    expect(() => validarTamanoFoto(-1)).toThrow();
+  });
+
+  it("rechaza un tamaño no entero", () => {
+    expect(() => validarTamanoFoto(1.5)).toThrow();
+  });
+
+  it("rechaza un byte por encima del tope", () => {
+    expect(() => validarTamanoFoto(TOPE_BYTES_FOTO + 1)).toThrow();
+  });
+
+  it("acepta exactamente el tope", () => {
+    expect(validarTamanoFoto(TOPE_BYTES_FOTO)).toBe(TOPE_BYTES_FOTO);
+  });
+
+  it('un tamaño omitido se rechaza — nunca hay un "sin límite" por default', () => {
+    expect(() => validarTamanoFoto(undefined)).toThrow();
   });
 });
