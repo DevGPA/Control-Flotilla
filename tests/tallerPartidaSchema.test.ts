@@ -38,8 +38,26 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
   });
 
   it("viewer no escribe partidas: la escritura es de operativo y admin", () => {
-    const bloque = schema.slice(schema.indexOf("TallerPartida: a"));
+    // Acota el bloque de TallerPartida: el siguiente modelo de nivel superior
+    // marca el fin de su declaración. Regresión: si la búsqueda fallara, esto
+    // debería revisarse; si el bound fuera incorrecto, veremos strings que NO
+    // pertenecen a TallerPartida.
+    const inicio = schema.indexOf("TallerPartida: a");
+    const resto = schema.slice(inicio);
+    // Patrón: salto de línea + 4 espacios + palabra + ": a" + salto/espacios + ".model("
+    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
+    const bloque = fin === -1 ? resto : resto.slice(0, fin);
+
+    // Prueba que el bound funciona: el bloque NO debe contener "adminCreateUser",
+    // que es un modelo posterior (Custom operations del módulo de Administración).
+    expect(bloque).not.toContain("adminCreateUser");
+
+    // Prueba central: viewer solo lee; escritura es operativo/admin.
     expect(bloque).toContain('allow.groupDefinedIn("tenantId").to(["read"])');
     expect(bloque).toContain('allow.group("operativo")');
+
+    // Regresión crítica: viewer no tiene write. El 2026-06-18 un grant incorrecto
+    // de viewer causó un incidente; este guard lo previene.
+    expect(bloque).not.toContain('allow.group("viewer").to(["create", "update", "delete"])');
   });
 });
