@@ -74,6 +74,17 @@ const schema = a
         estatus: a.enum(["abierto", "cerrado"]),
         // Datos legacy completos (id, unitKey, eco, plate, brand, area, tipo,
         // freporte, fsalidaEst, fsalidaReal, km, gasto*, tecnico, refacciones,
+        // Promovidos de `datos` a columnas (2026-09-08): los escribe el
+        // PROVEEDOR desde la liga mientras Riesgos puede tener el registro
+        // abierto. Como columnas, DynamoDB las actualiza independientes; dentro
+        // del blob `datos` un escritor pisaría al otro sin aviso.
+        // Migración: leer la columna y, si viene vacía, caer a `datos.<campo>`.
+        km: a.integer(),
+        estadoOperativo: a.enum(["revisando", "reparando", "esperandoRefaccion", "lista"]),
+        fsalidaEst: a.string(),
+        /** Primera fecha prometida. Se escribe UNA sola vez: es contra esta que
+         *  se mide el incumplimiento, así que el taller no la puede reescribir. */
+        fsalidaEstCompromiso: a.string(),
         // comentario, updatedAt). JSON arbitrary para no migrar schema en cada cambio.
         datos: a.json(),
         version: a.integer().default(1),
@@ -88,6 +99,69 @@ const schema = a
         allow.groupDefinedIn("tenantId").to(["read"]),
         allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
+      ]),
+
+    /**
+     * Una partida = un hallazgo cotizado por el proveedor: su evidencia, su
+     * precio y su propia decisión de autorización.
+     *
+     * `visitaKey` = `${unitUid}|${fechaEntrada}` — empata con la llave natural
+     * de `Taller` y con la que compone `tallerCloudKey()` en
+     * src/api/batchUpload.ts.
+     *
+     * `descripcion` la escribe un TERCERO NO AUTENTICADO (el taller, desde la
+     * liga). Nunca pintarla con innerHTML.
+     */
+    TallerPartida: a
+      .model({
+        tenantId: a.string().required(),
+        visitaKey: a.string().required(),
+        partidaId: a.string().required(),
+
+        descripcion: a.string().required(),
+        tipo: a.enum(["refaccion", "manoObra"]),
+        /** Sin IVA. */
+        precio: a.float(),
+        estado: a.enum([
+          "borrador",
+          "propuesta",
+          "autorizada",
+          "rechazada",
+          "terminada",
+          "cancelada",
+        ]),
+        motivoRechazo: a.string(),
+        /** Solo cuando el motivo es "Otro". Es lo que dice qué opción falta
+         *  en el menú (decisión 19 del spec). */
+        motivoRechazoNota: a.string(),
+        fotos: a.string().array(),
+        evidenciaFinal: a.string().array(),
+        /** Congelado en el momento de la firma: se autoriza un precio, no una idea. */
+        precioAutorizado: a.float(),
+        /** partidaId de la partida que se está recotizando (Plan 2). */
+        recotizaDe: a.string(),
+        /** Quién cotizó ESTA partida; puede diferir del proveedor de la visita. */
+        proveedorNombre: a.string(),
+        /** "liga:<hash8>" | "user:<sub>" */
+        creadoPor: a.string(),
+        creadoEn: a.string(),
+        propuestoEn: a.string(),
+        decididoEn: a.string(),
+        decididoPor: a.string(),
+        terminadoEn: a.string(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "visitaKey", "partidaId"])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura operativo/admin;
+        // el Lambda del portal escribe por IAM vía el grant de schema, abajo.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        // Para contar lo pendiente de firma sin recorrer toda la tabla.
+        index("tenantId").sortKeys(["estado"]).name("byTenantAndEstado"),
       ]),
 
     Nota: a
