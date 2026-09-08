@@ -142,6 +142,34 @@ describe("totales — el gasto es la suma de lo firmado", () => {
     expect(pendientesDeFirma(ps)).toBe(1);
     expect(pendientesDeFirma([])).toBe(0);
   });
+
+  it("terminada también cuenta hacia el gasto — es una autorizada que ya se cerró", () => {
+    const psTerminadas = [
+      P({
+        partidaId: "g",
+        estado: "terminada",
+        precio: 9999,
+        precioAutorizado: 1200,
+        tipo: "refaccion",
+      }),
+      P({
+        partidaId: "h",
+        estado: "terminada",
+        precio: 500,
+        precioAutorizado: 500,
+        tipo: "manoObra",
+      }),
+    ];
+    const t = totalesVisita(psTerminadas);
+    expect(t.cotizado).toBe(9999 + 500);
+    expect(t.autorizado).toBe(1200 + 500);
+    expect(t.gastoRef).toBe(1200);
+    expect(t.gastoMO).toBe(500);
+    expect(t.gastoRef + t.gastoMO).toBe(t.autorizado);
+    expect(t.rechazado).toBe(0);
+    // terminada ya se decidió: no es algo que espere firma.
+    expect(pendientesDeFirma(psTerminadas)).toBe(0);
+  });
 });
 
 describe("estado compuesto — el estado de la visita no puede mentir", () => {
