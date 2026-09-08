@@ -86,6 +86,16 @@ const schema = a
         /** Primera fecha prometida. Se escribe UNA sola vez: es contra esta que
          *  se mide el incumplimiento, así que el taller no la puede reescribir. */
         fsalidaEstCompromiso: a.string(),
+        /** Interruptor de revocación de la liga del proveedor (Plan 1, Task 5):
+         *  Task 11 la escribe al emitir cada liga y la sube para invalidar las
+         *  ya emitidas. Columna real (no `datos`) A PROPÓSITO: `datos` se
+         *  reemplaza completo en cada guardado de escritorio (upsertTaller,
+         *  src/api/client.ts), así que vivir ahí la borraría en silencio y un
+         *  token viejo volvería a valer sin que nadie lo note. Ausente hoy en
+         *  toda fila existente — nada la escribe todavía (Task 11); el lado
+         *  que la LEE (ligaRevocada, en taller-portal/validacion.ts) trata la
+         *  ausencia como versión 1. */
+        ligaVersion: a.integer(),
         // comentario, updatedAt). JSON arbitrary para no migrar schema en cada cambio.
         datos: a.json(),
         version: a.integer().default(1),

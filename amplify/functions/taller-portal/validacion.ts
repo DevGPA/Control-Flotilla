@@ -93,3 +93,44 @@ export function validarTamanoFoto(tamano: unknown): number {
   }
   return tamano;
 }
+
+/**
+ * ligaVersion es el ÚNICO interruptor de revocación: el token de la liga no
+ * se guarda en la base, así que subir esta columna en la visita es la forma
+ * de invalidar ligas ya emitidas. Comparación SIEMPRE !==, nunca < — no es
+ * un contador donde "menor o igual" tenga sentido; es un interruptor, y
+ * cualquier desajuste (para arriba o para abajo) es revocación.
+ *
+ * Un valor AUSENTE en la columna (visita sobre la que nunca se emitió
+ * ninguna liga, o emitida antes de que existiera esta columna) se trata
+ * como versión 1 — el mismo valor con el que Task 11 estampará el primer
+ * token de cada visita. Explícito aquí, con su propia prueba, en vez de un
+ * fallback suelto en el punto de lectura.
+ */
+export function ligaRevocada(ligaVersionActual: unknown, tk: { v: number }): boolean {
+  const actual = typeof ligaVersionActual === "number" ? ligaVersionActual : 1;
+  return actual !== tk.v;
+}
+
+const EXTENSIONES_FOTO = "jpg|png|webp";
+
+/**
+ * Verifica la FORMA COMPLETA de una llave de foto que manda el cliente (no
+ * solo el prefijo): el prefijo exacto de esta visita, seguido de UN SOLO
+ * segmento (sin más "/") que respete el charset y el tope de longitud que
+ * produce segmento(), sin ".." en la cola, y terminado en una de las tres
+ * extensiones permitidas — nunca la que el cliente diga por fuera.
+ *
+ * Sin esto, un startsWith() a secas deja pasar una cola con ".." (una
+ * forma que el generador jamás produce, pero que igual queda escrita en
+ * fotos para que la rendericen tareas futuras) y colas sin tope de
+ * longitud (seis de esas pueden acercarse al límite de 400 KB por item de
+ * DynamoDB).
+ */
+export function llaveFotoValida(tenantId: string, visitaKey: string, key: string): boolean {
+  const prefijo = `photos/${segmento(tenantId)}/taller-partidas/${segmento(visitaKey)}/`;
+  if (!key.startsWith(prefijo)) return false;
+  const cola = key.slice(prefijo.length);
+  if (cola.includes("..")) return false;
+  return new RegExp(`^[A-Za-z0-9_.:@+-]{1,120}\\.(?:${EXTENSIONES_FOTO})$`).test(cola);
+}

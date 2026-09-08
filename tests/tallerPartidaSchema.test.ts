@@ -31,6 +31,10 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
     }
   });
 
+  it("promueve a columna el interruptor de revocación de la liga", () => {
+    expect(schema).toContain("ligaVersion:");
+  });
+
   it("declara los cuatro estados operativos", () => {
     for (const e of ["revisando", "reparando", "esperandoRefaccion", "lista"]) {
       expect(schema).toContain(`"${e}"`);

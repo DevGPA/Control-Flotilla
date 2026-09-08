@@ -8,6 +8,9 @@
 // - Ninguna respuesta distingue POR QUÉ una liga no sirvió (firma mala,
 //   vencida, revocada, secreto ausente...): todas responden lo mismo hacia
 //   afuera. El motivo real solo vive en la bitácora del servidor.
+// - Toda ruta autenticada cruza UN SOLO portón (cargarVisitaVigente): una
+//   liga revocada no puede leer, crear partidas, actualizar la visita ni
+//   firmar una subida — no solo "no puede leer".
 
 import { randomUUID } from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -23,8 +26,9 @@ import {
   MIMES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
+  ligaRevocada,
   llaveFoto,
-  segmento,
+  llaveFotoValida,
   validarPartidaEntrante,
   validarTamanoFoto,
   type PartidaEntrante,
@@ -107,6 +111,17 @@ export const handler = async (event: any) => {
   const visitaKey = `${tk.u}|${tk.f}`;
 
   try {
+    // ── El portón — TODA ruta lo cruza ──────────────────────────────────────
+    // Una sola lectura de la visita, aquí, antes de cualquier despacho: si la
+    // liga fue revocada (ligaVersion subió) o la visita ya no existe, ninguna
+    // ruta de abajo se alcanza — ni leer, ni crear partida, ni actualizar la
+    // visita, ni firmar una subida. Antes, la revocación solo se checaba
+    // dentro de leerVisita: una liga revocada podía seguir escribiendo
+    // partidas y firmando subidas de 10 MB durante los 90 días de vigencia
+    // del token. El resultado se reutiliza en las rutas que lo necesitan, así
+    // que actualizarVisita ya no repite su propio Taller.get.
+    const visita = await cargarVisitaVigente(tk);
+
     if (metodo === "GET" && ruta === "/") {
       bitacora("abrir", tk);
       const { paginaProveedor } = await import("./pagina");
@@ -115,7 +130,7 @@ export const handler = async (event: any) => {
 
     if (metodo === "GET" && ruta === "/api/visita") {
       bitacora("leer", tk);
-      return json(200, await leerVisita(tk, visitaKey));
+      return json(200, await leerVisita(tk, visitaKey, visita));
     }
 
     if (metodo === "POST" && ruta === "/api/partida") {
@@ -128,7 +143,7 @@ export const handler = async (event: any) => {
     if (metodo === "POST" && ruta === "/api/visita") {
       const body = parseBody(event);
       bitacora("actualizar-visita", tk);
-      return json(200, await actualizarVisita(tk, body));
+      return json(200, await actualizarVisita(tk, body, visita));
     }
 
     if (metodo === "POST" && ruta === "/api/subida") {
@@ -202,6 +217,88 @@ function parseDatos(datos: unknown): Record<string, unknown> {
   return (datos ?? {}) as Record<string, unknown>;
 }
 
+/**
+ * El portón único: una lectura de `Taller` por su llave real, seguida del
+ * chequeo de revocación (`ligaRevocada`, pura, en validacion.ts). Lo cruza
+ * TODA ruta autenticada — ver el comentario en `handler()`.
+ */
+async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["type"]> {
+  const client = await getDataClient();
+  const { data: v, errors } = await client.models.Taller.get({
+    tenantId: tk.t,
+    unitUid: tk.u,
+    fechaEntrada: tk.f,
+  });
+  if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
+  if (!v) throw new ErrorLigaInvalida("visita no encontrada");
+  if (ligaRevocada(v.ligaVersion, tk)) throw new ErrorLigaInvalida("liga revocada");
+  return v;
+}
+
+/**
+ * Trae TODAS las partidas de una visita — Query real por clave primaria
+ * (`tenantId` como hash + `beginsWith` sobre el sort key compuesto), NO un
+ * Scan filtrado. Sigue `nextToken` hasta agotar las páginas.
+ *
+ * Sin esto: `TallerPartida.list({filter: {tenantId, visitaKey}})` (sin
+ * argumentos de llave) resuelve como Scan, y DynamoDB aplica `limit` a lo
+ * ESCANEADO antes del filtro — en cuanto la tabla pasa de ~70 filas (dos
+ * visitas), una visita real puede devolver una lista vacía o parcial, y el
+ * conteo del tope de 60 partidas deja de dispararse porque cuenta sobre una
+ * página truncada, no sobre la visita completa.
+ *
+ * Forma del argumento VERIFICADA (no adivinada) contra dos fuentes
+ * independientes en node_modules de este proyecto, no contra documentación:
+ *  1) el runtime del cliente, `@aws-amplify/data-schema/.../APIClient.mjs`
+ *     (`resolvedSkName` + el caso `LIST` de `buildGraphQLVariables`): para
+ *     `.identifier(["tenantId","visitaKey","partidaId"])` el hash es
+ *     `tenantId` y el sort key compuesto se manda bajo la llave
+ *     `visitaKeyPartidaId` (camelCase de los campos de sort restantes).
+ *  2) el transformer que arma el esquema real en CDK,
+ *     `@aws-amplify/graphql-index-transformer` (`toCamelCase` +
+ *     `makeCompositeKeyConditionInputForKey`/`makeCompositeKeyInputForKey`):
+ *     mismo nombre `visitaKeyPartidaId`, tipo `ModelTallerPartidaPrimary-
+ *     CompositeKeyConditionInput` con `beginsWith`, cuyos campos internos
+ *     (`visitaKey`, `partidaId`) son AMBOS opcionales — se puede mandar solo
+ *     `visitaKey` para calzar cualquier partida de esa visita sin conocer
+ *     `partidaId` de antemano (confirmado en la VTL de
+ *     `applyCompositeKeyConditionExpression`, que arma el prefijo del
+ *     `begins_with` solo con los campos presentes).
+ *
+ * El tipo público de `generateClient` (`@aws-amplify/data-schema-types`) NO
+ * expone `visitaKeyPartidaId` — solo tipa la identidad como campos planos
+ * (`Partial<Record<"tenantId"|"visitaKey"|"partidaId", string>>`), así que
+ * pasarlo tal cual con ese nombre no compila sin relajar el tipo. De ahí el
+ * `as never` en el argumento: mismo idioma que ya usa este archivo para
+ * `Taller.update(input as never)` cuando el shape exacto que exige el
+ * cliente generado no vale la pena tipar a mano — el valor en sí ya está
+ * verificado arriba, no es una adivinanza.
+ */
+async function listarPartidasDeVisita(
+  tenantId: string,
+  visitaKey: string,
+): Promise<Schema["TallerPartida"]["type"][]> {
+  const client = await getDataClient();
+  const items: Schema["TallerPartida"]["type"][] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const {
+      data,
+      errors,
+      nextToken: siguiente,
+    } = await client.models.TallerPartida.list({
+      tenantId,
+      visitaKeyPartidaId: { beginsWith: { visitaKey } },
+      limit: 100,
+      nextToken,
+    } as never);
+    if (errors) throw new Error(`TallerPartida.list: ${JSON.stringify(errors)}`);
+    items.push(...(data ?? []));
+    nextToken = siguiente;
+  } while (nextToken);
+  return items;
+}
+
 async function firmarSubida(key: string, mime: string, tamano: number) {
   const url = await getSignedUrl(
     s3,
@@ -214,29 +311,10 @@ async function firmarSubida(key: string, mime: string, tamano: number) {
   return { url, key };
 }
 
-async function leerVisita(tk: PortalToken, visitaKey: string) {
-  const client = await getDataClient();
+async function leerVisita(tk: PortalToken, visitaKey: string, visita: Schema["Taller"]["type"]) {
+  const d = parseDatos(visita.datos);
 
-  const { data: v, errors } = await client.models.Taller.get({
-    tenantId: tk.t,
-    unitUid: tk.u,
-    fechaEntrada: tk.f,
-  });
-  if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
-  if (!v) throw new ErrorLigaInvalida("visita no encontrada");
-
-  const d = parseDatos(v.datos);
-  // Revocación: un token con ligaVersion vieja muere aquí. `!==`, nunca `<`
-  // — `v` (ligaVersion) es el interruptor de revocación, no un contador
-  // donde "menor o igual" tenga sentido: cualquier desajuste es revocación.
-  const vActual = Number(d.ligaVersion ?? 1);
-  if (vActual !== tk.v) throw new ErrorLigaInvalida("liga revocada");
-
-  const { data: partidas, errors: errPartidas } = await client.models.TallerPartida.list({
-    filter: { tenantId: { eq: tk.t }, visitaKey: { eq: visitaKey } },
-    limit: TOPE_PARTIDAS_VISITA + 10,
-  });
-  if (errPartidas) throw new Error(`TallerPartida.list: ${JSON.stringify(errPartidas)}`);
+  const partidas = await listarPartidasDeVisita(tk.t, visitaKey);
 
   return {
     // Solo lo que el taller necesita ver. Nada del resto de la flota.
@@ -250,12 +328,12 @@ async function leerVisita(tk: PortalToken, visitaKey: string) {
     visita: {
       tipo: d.tipo ?? "",
       fechaEntrada: tk.f,
-      km: v.km ?? d.km ?? null,
-      estadoOperativo: v.estadoOperativo ?? null,
-      fsalidaEst: v.fsalidaEst ?? d.fsalidaEst ?? null,
+      km: visita.km ?? d.km ?? null,
+      estadoOperativo: visita.estadoOperativo ?? null,
+      fsalidaEst: visita.fsalidaEst ?? d.fsalidaEst ?? null,
       comentario: d.comentario ?? "",
     },
-    partidas: (partidas ?? [])
+    partidas: partidas
       .filter((p) => p.estado !== "cancelada")
       .map((p) => ({
         partidaId: p.partidaId,
@@ -277,12 +355,8 @@ async function crearPartida(
 ) {
   const client = await getDataClient();
 
-  const { data: existentes, errors: errExistentes } = await client.models.TallerPartida.list({
-    filter: { tenantId: { eq: tk.t }, visitaKey: { eq: visitaKey } },
-    limit: TOPE_PARTIDAS_VISITA + 10,
-  });
-  if (errExistentes) throw new Error(`TallerPartida.list: ${JSON.stringify(errExistentes)}`);
-  const vivas = (existentes ?? []).filter((p) => p.estado !== "cancelada");
+  const existentes = await listarPartidasDeVisita(tk.t, visitaKey);
+  const vivas = existentes.filter((p) => p.estado !== "cancelada");
   if (vivas.length >= TOPE_PARTIDAS_VISITA) {
     throw new ErrorEntrada(`Esta visita ya tiene ${TOPE_PARTIDAS_VISITA} hallazgos`);
   }
@@ -291,11 +365,11 @@ async function crearPartida(
   if (llaves.length > TOPE_FOTOS_PARTIDA) {
     throw new ErrorEntrada(`Máximo ${TOPE_FOTOS_PARTIDA} fotos por hallazgo`);
   }
-  // Una llave que el servidor no generó no entra: debe vivir bajo el prefijo
-  // de ESTA visita.
-  const prefijo = `photos/${segmento(tk.t)}/taller-partidas/${segmento(visitaKey)}/`;
+  // Una llave que el servidor no generó no entra: la FORMA COMPLETA debe
+  // calzar (prefijo de ESTA visita + un solo segmento con el charset/tope de
+  // segmento() + una extensión permitida) — no solo el prefijo.
   for (const k of llaves) {
-    if (!k.startsWith(prefijo)) throw new ErrorEntrada("llave de foto no válida");
+    if (!llaveFotoValida(tk.t, visitaKey, k)) throw new ErrorEntrada("llave de foto no válida");
   }
 
   const ahora = new Date().toISOString();
@@ -315,7 +389,11 @@ async function crearPartida(
   return data;
 }
 
-async function actualizarVisita(tk: PortalToken, body: Record<string, unknown>) {
+async function actualizarVisita(
+  tk: PortalToken,
+  body: Record<string, unknown>,
+  visita: Schema["Taller"]["type"],
+) {
   const client = await getDataClient();
 
   const input: Record<string, unknown> = {
@@ -346,15 +424,9 @@ async function actualizarVisita(tk: PortalToken, body: Record<string, unknown>) 
     input.fsalidaEst = f;
     // El COMPROMISO se escribe una sola vez: es contra esta fecha que se mide
     // el incumplimiento, así que el taller no la puede reescribir para borrar
-    // su propio retraso.
-    const { data: actual, errors: errActual } = await client.models.Taller.get({
-      tenantId: tk.t,
-      unitUid: tk.u,
-      fechaEntrada: tk.f,
-    });
-    if (errActual) throw new Error(`Taller.get: ${JSON.stringify(errActual)}`);
-    if (!actual) throw new ErrorLigaInvalida("visita no encontrada");
-    if (!actual.fsalidaEstCompromiso) input.fsalidaEstCompromiso = f;
+    // su propio retraso. `visita` ya viene cargada del portón — sin la
+    // segunda lectura que hacía este bloque antes.
+    if (!visita.fsalidaEstCompromiso) input.fsalidaEstCompromiso = f;
   }
 
   const { data, errors } = await client.models.Taller.update(input as never);

@@ -4,7 +4,9 @@ import {
   TOPE_BYTES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
+  ligaRevocada,
   llaveFoto,
+  llaveFotoValida,
   validarPartidaEntrante,
   validarTamanoFoto,
 } from "../amplify/functions/taller-portal/validacion";
@@ -104,5 +106,57 @@ describe("validarTamanoFoto — el tope de subida es real, no un techo de cortes
 
   it('un tamaño omitido se rechaza — nunca hay un "sin límite" por default', () => {
     expect(() => validarTamanoFoto(undefined)).toThrow();
+  });
+});
+
+describe("ligaRevocada — el único interruptor de revocación", () => {
+  it("no está revocada si la versión coincide", () => {
+    expect(ligaRevocada(3, { v: 3 })).toBe(false);
+  });
+
+  it("está revocada si la versión no coincide", () => {
+    expect(ligaRevocada(2, { v: 3 })).toBe(true);
+  });
+
+  it("una versión ausente se trata como 1, no como sin-límite", () => {
+    expect(ligaRevocada(undefined, { v: 1 })).toBe(false);
+    expect(ligaRevocada(undefined, { v: 2 })).toBe(true);
+  });
+
+  it("compara con !==, no con < — una versión mayor también revoca", () => {
+    // Si comparara con "<", una liga vieja (tk.v menor que la actual) nunca
+    // se detectaría como revocada. El interruptor no es un contador.
+    expect(ligaRevocada(5, { v: 3 })).toBe(true);
+  });
+});
+
+describe("llaveFotoValida — valida la FORMA completa, no solo el prefijo", () => {
+  const tenantId = "gpa";
+  const visitaKey = "JV98698|2026-09-01";
+
+  it("acepta exactamente la llave que genera llaveFoto", () => {
+    const k = llaveFoto(tenantId, visitaKey, "abc123", "image/jpeg");
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(true);
+  });
+
+  it('rechaza ".." en la cola', () => {
+    const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/../evil.jpg`;
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+
+  it("rechaza un segmento demasiado largo", () => {
+    const largo = "a".repeat(200);
+    const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/${largo}.jpg`;
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+
+  it("rechaza un segmento extra de ruta", () => {
+    const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/sub/evil.jpg`;
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+
+  it("rechaza una llave de otra visita", () => {
+    const k = llaveFoto(tenantId, "OTRA123|2026-01-01", "abc123", "image/jpeg");
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
   });
 });
