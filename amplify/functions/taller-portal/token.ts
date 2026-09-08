@@ -62,6 +62,9 @@ export function verificarToken(
   const esperada = firma(cuerpo, secreto);
   const a = Buffer.from(dada, "utf8");
   const b = Buffer.from(esperada, "utf8");
+  // El chequeo de longitud va PRIMERO: timingSafeEqual LANZA con longitudes
+  // distintas, así que sin él una firma forjada escapa como RangeError en vez
+  // de rechazarse como ErrorToken.
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new ErrorToken("firma-invalida");
 
   let payload: PortalToken;
@@ -71,7 +74,24 @@ export function verificarToken(
     throw new ErrorToken("malformado");
   }
 
-  if (!payload || typeof payload !== "object" || !payload.t || !payload.u || !payload.f) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.t !== "string" ||
+    !payload.t ||
+    typeof payload.u !== "string" ||
+    !payload.u ||
+    typeof payload.f !== "string" ||
+    !payload.f
+  ) {
+    throw new ErrorToken("malformado");
+  }
+  // `v` (ligaVersion) es el ÚNICO mecanismo de revocación: el token no se
+  // guarda en la base, así que subir `v` en la visita es la forma de invalidar
+  // ligas ya emitidas. JSON.stringify omite las claves `undefined`, así que un
+  // payload firmado sin `v` numérico debe rechazarse aquí — no dejar que la
+  // ambigüedad (¿"sin versión" cuenta como vigente?) la resuelva quien llame.
+  if (typeof payload.v !== "number" || !Number.isFinite(payload.v)) {
     throw new ErrorToken("malformado");
   }
   if (typeof payload.exp !== "number" || payload.exp <= ahora) throw new ErrorToken("expirado");

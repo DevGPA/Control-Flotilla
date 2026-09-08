@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
   ErrorToken,
@@ -26,6 +27,15 @@ function motivo(fn: () => unknown): string {
     return e instanceof ErrorToken ? e.motivo : `otro:${String(e)}`;
   }
   return "no-lanzo";
+}
+
+// Firma un cuerpo JSON "crudo" (sin pasar por firmarToken) para poder probar
+// cuerpos firmados que son estructuralmente inválidos — algo que firmarToken
+// nunca produciría, pero que verificarToken debe rechazar igual porque llega
+// con firma válida (no puede confiar en que solo esta app emite tokens).
+function firmarCrudo(cuerpoJson: string): string {
+  const cuerpo = Buffer.from(cuerpoJson, "utf8").toString("base64url");
+  return `${cuerpo}.${createHmac("sha256", SECRETO).update(cuerpo).digest("base64url")}`;
 }
 
 describe("token de la liga", () => {
@@ -78,5 +88,48 @@ describe("token de la liga", () => {
 
   it("la vigencia por defecto son 90 días", () => {
     expect(VIGENCIA_LIGA_MS).toBe(90 * 24 * 60 * 60 * 1000);
+  });
+});
+
+// Los tests de "basura y formas raras" arriba son todos NO firmados: mueren
+// en el chequeo de forma del token o en la firma, antes de llegar a validar
+// el payload. Este bloque firma cuerpos válidamente pero estructuralmente
+// incompletos para probar que esa validación de payload existe y hace algo
+// (borrar esas líneas hace que estos tests, y solo estos, fallen).
+describe("payload firmado pero con forma inválida — la firma sola no basta", () => {
+  it("rechaza un cuerpo firmado que no es JSON", () => {
+    const t = firmarCrudo("esto no es json");
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("malformado");
+  });
+
+  it.each(["t", "u", "f"] as const)("rechaza un cuerpo firmado sin '%s'", (campo) => {
+    const cuerpo: Record<string, unknown> = { ...payload() };
+    delete cuerpo[campo];
+    const t = firmarCrudo(JSON.stringify(cuerpo));
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("malformado");
+  });
+
+  it("rechaza un cuerpo firmado sin 'v' — es el único mecanismo de revocación", () => {
+    const cuerpo: Record<string, unknown> = { ...payload() };
+    delete cuerpo.v;
+    const t = firmarCrudo(JSON.stringify(cuerpo));
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("malformado");
+  });
+
+  it("rechaza un cuerpo firmado con 'v' no numérico", () => {
+    const t = firmarCrudo(JSON.stringify({ ...payload(), v: "1" }));
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("malformado");
+  });
+
+  it("rechaza un cuerpo firmado sin 'exp'", () => {
+    const cuerpo: Record<string, unknown> = { ...payload() };
+    delete cuerpo.exp;
+    const t = firmarCrudo(JSON.stringify(cuerpo));
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("expirado");
+  });
+
+  it("rechaza un cuerpo firmado con 'exp' no numérico", () => {
+    const t = firmarCrudo(JSON.stringify({ ...payload(), exp: "mañana" }));
+    expect(motivo(() => verificarToken(t, SECRETO, AHORA))).toBe("expirado");
   });
 });
