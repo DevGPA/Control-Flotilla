@@ -44,6 +44,7 @@ import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
 import { normalizaRefaccion } from "../analyzer/refaccion";
+import { placaVigente } from "../fleet/placaVigente";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
@@ -782,13 +783,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Cada checklist es una FILA de inspección con uid sintético único
   // (`placa__fecha`) para que la misma unidad pueda aparecer varias veces sin
   // colisionar en selección/detalle. Preserva eco/plate/fecha reales.
-  const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
+  // El cruce va por la placa VIGENTE, no por la placa tal cual quedo escrita. Las fuentes de
+  // ingesta siguen enviando la placa vieja de las unidades reemplazadas, y con el cruce literal
+  // esos registros no encontraban su unidad: la camioneta salia "sin una sola inspeccion"
+  // mientras sus inspecciones aparecian aparte, con la placa en la columna Economico.
+  const unitByPlaca = new Map(units.map((u) => [placaVigente(u.placa), u] as const));
   const inspections: Unit[] = [];
   for (const c of checklistsVigentes) {
     const fecha = String(c.fecha ?? "");
     if (!monthOf(fecha)) continue; // requiere fecha parseable
     const u =
-      unitByPlaca.get(c.unitUid) ?? ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
+      unitByPlaca.get(placaVigente(c.unitUid)) ??
+      ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
     const row = mergeUnitWithChecklist(u, c);
     row.uid = `${row.plate ?? c.unitUid}__${fecha}`; // único por inspección
     inspections.push(row);
@@ -800,10 +806,29 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // independiente del rango). Alimenta los KPIs hero + dona Operativa/Taller.
   const latestByUnit = new Map<string, Schema["Checklist"]["type"]>();
   for (const c of checklistsVigentes) {
-    const e = latestByUnit.get(c.unitUid);
-    if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(c.unitUid, c);
+    const llave = placaVigente(c.unitUid);
+    const e = latestByUnit.get(llave);
+    if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(llave, c);
   }
-  window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
+  window.__fleetUnits = units.map((u) =>
+    mergeUnitWithChecklist(u, latestByUnit.get(placaVigente(u.placa))),
+  );
+  // Un registro cuya placa no existe en el catalogo es un historial partido: no es un error
+  // silencioso, se avisa para poder re-archivarlo (scripts/reparar-identidad-placas.mjs).
+  {
+    const delCatalogo = new Set(units.map((u) => placaVigente(u.placa)));
+    const huerfanas = new Set(
+      checklistsVigentes
+        .map((c) => placaVigente(c.unitUid))
+        .filter((p) => p && !delCatalogo.has(p)),
+    );
+    if (huerfanas.size) {
+      console.warn(
+        `[cloudHydrate] ${huerfanas.size} placa(s) con inspecciones pero SIN unidad en el catalogo: ` +
+          `${[...huerfanas].join(", ")} — el historial de esas unidades esta partido.`,
+      );
+    }
+  }
 
   // ── Hydrate cumplimiento → window.complianceEntries ───────────
   // ComplianceDoc → ComplianceEntry[] (estado vencido/por-vencer derivado vs hoy). Se
@@ -872,12 +897,15 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // Fallback: sin checklists con fecha parseable → latest-per-unit plano.
     const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
     for (const c of checklistsVigentes) {
-      const existing = checklistByUnit.get(c.unitUid);
+      const llave = placaVigente(c.unitUid);
+      const existing = checklistByUnit.get(llave);
       if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
-        checklistByUnit.set(c.unitUid, c);
+        checklistByUnit.set(llave, c);
       }
     }
-    legacyUnits = units.map((u) => mergeUnitWithChecklist(u, checklistByUnit.get(u.placa)));
+    legacyUnits = units.map((u) =>
+      mergeUnitWithChecklist(u, checklistByUnit.get(placaVigente(u.placa))),
+    );
     window.units = legacyUnits;
   }
 
