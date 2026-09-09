@@ -361,7 +361,7 @@ export async function uploadSemanalesToCloud(
 }
 
 /** Shape mínima de entry de taller legacy. */
-interface LegacyTallerEntry {
+export interface LegacyTallerEntry {
   id: string;
   unitKey?: string;
   eco?: string;
@@ -457,5 +457,7 @@ export async function uploadTallerToCloud(
   return result;
 }
 
-/** Type re-export para que cloudWire pueda tipar legacy units. */
-export type { LegacyUnit, LegacySemanalEntry, LegacyTallerEntry };
+/** Type re-export para que cloudWire pueda tipar legacy units.
+ *  LegacyTallerEntry ya no va aquí — Task 7 le agregó `export` directo en su
+ *  declaración (arriba), y reexportarla también aquí es un conflicto (TS2484). */
+export type { LegacyUnit, LegacySemanalEntry };

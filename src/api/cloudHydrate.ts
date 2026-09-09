@@ -40,6 +40,8 @@ import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
+import { fetchPartidas, agruparPorVisita } from "./tallerPartidas";
+import type { Partida } from "../taller/partidas";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
@@ -95,6 +97,9 @@ declare global {
     tallerEntries?: TallerEntry[];
     updateTallerBadge?: () => void;
     renderTaller?: () => void;
+    /** Partidas de taller (ciclo de firma), agrupadas por visitaKey. Alimenta
+     *  el badge de la pestaña Taller — cuenta lo que espera la firma de Riesgos. */
+    __tallerPartidas?: Map<string, Partida[]>;
     /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
      *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
     __cloudPhotoUrlMap?: Map<string, PhotoUrlEntry>;
@@ -698,6 +703,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       };
     });
     window.tallerEntries = tallerEntries;
+    // Ciclo de firma (Task 7): partidas agrupadas por visita — de aquí sale el
+    // conteo de "esperando tu autorización" que prende el badge de la pestaña.
+    const partidas = await fetchPartidas(tenantId);
+    window.__tallerPartidas = agruparPorVisita(partidas);
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
     if (typeof window.renderTaller === "function") window.renderTaller();
     console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);
