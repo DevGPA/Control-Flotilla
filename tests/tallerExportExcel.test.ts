@@ -195,11 +195,22 @@ describe("gastoDerivado — el gasto no se captura, se calcula", () => {
   });
 
   it("SIN partidas conserva lo capturado — las visitas historicas no se tocan", () => {
-    const r = gastoDerivado({ ...base, gasto: 7000, gastoRef: 100, gastoMO: 200 }, []);
+    const r = gastoDerivado({ ...base, gasto: 7000, gastoRef: 0, gastoMO: 0 }, []);
     expect(r.gasto).toBe(7000);
-    expect(r.gastoRef).toBe(100);
-    expect(r.gastoMO).toBe(200);
+    expect(r.gastoRef).toBe(0);
+    expect(r.gastoMO).toBe(0);
     expect(r.cotizado).toBe(0);
+  });
+
+  // Fix ronda 2 (Task 9, Important 3): esta rama reimplementaba su PROPIA fórmula
+  // (`entry.gasto ?? ref+mo`, el legado ganando siempre) en vez de llamar a
+  // gastoTotalDe — para este mismo entry, gastoTotalDe ya daba 150 (el desglose
+  // manda) mientras gastoDerivado(e, []) daba 9999. Dos derivaciones del mismo dato.
+  it("SIN partidas, el desglose manda sobre el legado si ambos existen — la MISMA regla que gastoTotalDe", () => {
+    const r = gastoDerivado({ gasto: 9999, gastoRef: 100, gastoMO: 50 }, []);
+    expect(r.gasto).toBe(150); // NO 9999
+    expect(r.gastoRef).toBe(100);
+    expect(r.gastoMO).toBe(50);
   });
 
   it("el desglose siempre cuadra con el total", () => {
@@ -216,6 +227,14 @@ describe("gastoDerivado — el gasto no se captura, se calcula", () => {
       },
     ]);
     expect(r.gastoRef + r.gastoMO).toBe(r.gasto);
+  });
+
+  // Fix ronda 2: `gasto: 0` explícito NO debe leerse como "presente" (`??` no trata 0
+  // como ausente) — antes esta rama devolvía `gasto: 0` con un desglose de 150,
+  // rompiendo el invariante de arriba exactamente en este caso.
+  it("el desglose siempre cuadra con el total, incluso con `gasto: 0` explícito", () => {
+    const r = gastoDerivado({ gasto: 0, gastoRef: 100, gastoMO: 50 }, []);
+    expect(r.gastoRef + r.gastoMO).toBe(r.gasto); // 150 === 150, no 0
   });
 });
 

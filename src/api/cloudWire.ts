@@ -30,6 +30,8 @@ import {
   type LegacySemanalEntry,
   type LegacyTallerEntry,
 } from "./batchUpload";
+import { visitaKeyDe } from "./tallerPartidas";
+import type { Partida } from "../taller/partidas";
 import {
   listUnits,
   upsertUnit,
@@ -289,13 +291,20 @@ export function setupCloud(): void {
     return res;
   };
 
+  // Fix ronda 2 (Task 9, Critical 1): resuelve las partidas de la visita de un entry por
+  // su clave ACTUAL (visitaKeyDe/juntaVisitaKey — nunca una llave hecha a mano), para que
+  // uploadTallerToCloud sepa cuándo quitar gasto/gastoRef/gastoMO del payload — esos
+  // campos ya no son la fuente de verdad de una visita con partidas.
+  const partidasDeEntry = (e: LegacyTallerEntry): Partida[] | undefined =>
+    window.__tallerPartidas?.get(visitaKeyDe(e));
+
   window.__cloudSyncTaller = async (entries: LegacyTallerEntry[]): Promise<BatchResult> => {
     const session = await ensureSession();
     if (entries.length === 0) {
       return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
     }
     window.notify?.(`Subiendo ${entries.length} taller a DynamoDB…`, "info", 2500);
-    const res = await uploadTallerToCloud(entries, session.tenantId);
+    const res = await uploadTallerToCloud(entries, session.tenantId, partidasDeEntry);
     const summary = `Cloud taller: ${res.semanal} OK · ${res.errors.length} errors`;
     if (res.errors.length > 0) {
       console.warn("[cloudSyncTaller] errors:", res.errors);
@@ -335,7 +344,7 @@ export function setupCloud(): void {
   // simplemente no encuentra filas que borrar.
   window.__cloudReplaceTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const res = await uploadTallerToCloud([entry], session.tenantId);
+    const res = await uploadTallerToCloud([entry], session.tenantId, partidasDeEntry);
     if (res.errors.length) {
       throw new Error(`replaceTaller upsert falló: ${res.errors[0]?.error ?? "?"}`);
     }
@@ -658,9 +667,7 @@ function hydrateSerialized(tenantId: string): Promise<HydrateResult> {
   document.body.setAttribute("data-hydrating", "1");
   const next = hydrateChain.catch(() => {}).then(() => hydrateFromCloud(tenantId));
   hydrateChain = next.catch(() => {}); // la cadena nunca queda en estado rechazado
-  void next
-    .catch(() => {})
-    .finally(() => document.body.removeAttribute("data-hydrating"));
+  void next.catch(() => {}).finally(() => document.body.removeAttribute("data-hydrating"));
   return next;
 }
 

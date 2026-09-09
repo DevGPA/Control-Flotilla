@@ -5,6 +5,7 @@ import {
   autorizar,
   esEditablePorProveedor,
   estadoCompuesto,
+  montoPendienteDeFirma,
   partidasPendientesDeFirma,
   pendientesDeFirma,
   puedeCancelar,
@@ -153,6 +154,35 @@ describe("totales — el gasto es la suma de lo firmado", () => {
     expect(pendientes.every((p) => p.estado === "propuesta")).toBe(true);
     expect(pendientes.length).toBe(pendientesDeFirma(ps));
     expect(partidasPendientesDeFirma([])).toEqual([]);
+  });
+
+  // Fix ronda 2 (Task 9, Important 2): antes la leyenda de #tf-gasto calculaba esto
+  // como un residuo (`cotizado - autorizado - rechazado`), que solo cuadraba porque
+  // `autorizar()` congela `precioAutorizado = p.precio`. montoPendienteDeFirma suma
+  // directo el `precio` de lo pendiente — no le importa qué pasó con lo ya decidido.
+  it("montoPendienteDeFirma suma el precio COTIZADO de lo pendiente, nada más", () => {
+    expect(montoPendienteDeFirma(ps)).toBe(500); // solo "d" (propuesta)
+    expect(montoPendienteDeFirma([])).toBe(0);
+  });
+
+  it("montoPendienteDeFirma no se mueve si lo YA decidido se autorizó a un precio negociado — el residuo sí se hubiera movido", () => {
+    const psConNegociacion = [
+      ...ps,
+      // Autorizada a un precio MENOR al cotizado (negociación) — precioAutorizado
+      // existe como campo aparte de precio justo para este caso.
+      P({
+        partidaId: "z",
+        estado: "autorizada",
+        precio: 3000,
+        precioAutorizado: 2000,
+        tipo: "refaccion",
+      }),
+    ];
+    // El residuo totalesVisita().cotizado - .autorizado - .rechazado SÍ cambiaría aquí
+    // (cotizado sube 3000, autorizado solo 2000 → el residuo "ve" 1000 de más
+    // esperando firma que en realidad ya se decidió). montoPendienteDeFirma no:
+    // "z" es autorizada, no propuesta, así que no cuenta.
+    expect(montoPendienteDeFirma(psConNegociacion)).toBe(500);
   });
 
   it("terminada también cuenta hacia el gasto — es una autorizada que ya se cerró", () => {

@@ -9,6 +9,7 @@
 import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
 import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
+import type { Partida } from "../taller/partidas";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
 interface LegacyUnit {
@@ -410,9 +411,36 @@ export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEn
   return { unitUid, fechaEntrada };
 }
 
+/**
+ * Fix ronda 2 (Task 9, Critical 1): si la visita YA tiene partidas, `gasto`/`gastoRef`/
+ * `gastoMO` del entry dejan de ser la fuente de verdad (`gastoDerivado` lo es) — subirlos
+ * tal cual deja un dinero "duro" en DynamoDB. El formulario los escribe en 0 al CREAR el
+ * ingreso (antes de que existan partidas — `saveTallerEntry`, ~L9999) y nada más los toca
+ * después: `finalizarUnidad` sube el entry COMPLETO sin pasar por esa lógica. Ese cero
+ * sobrevive indistinguible de un cero real si las partidas se vuelven inalcanzables más
+ * tarde (visita anulada y restaurada, o la placa cambia — `tallerCloudKey` usa `plate ||
+ * eco`, y el reemplacamiento de la flota está en curso). Quita las 3 llaves por completo
+ * (no las pone en `undefined`) — un payload sin la llave, no una llave vacía.
+ */
+export function sinGastoSiTienePartidas(
+  e: LegacyTallerEntry,
+  tienePartidas: boolean,
+): LegacyTallerEntry {
+  if (!tienePartidas) return e;
+  const limpio: LegacyTallerEntry = { ...e };
+  delete limpio.gasto;
+  delete limpio.gastoRef;
+  delete limpio.gastoMO;
+  return limpio;
+}
+
 export async function uploadTallerToCloud(
   entries: LegacyTallerEntry[],
   tenantId: string,
+  /** Fix ronda 2 (Task 9, Critical 1): resuelve las partidas de la visita de un entry —
+   *  vía `visitaKeyDe`/`juntaVisitaKey` en el llamador, nunca una llave hecha a mano aquí
+   *  (esta capa no puede depender de `src/api/tallerPartidas.ts` sin crear un ciclo). */
+  partidasDe?: (e: LegacyTallerEntry) => Partida[] | undefined,
 ): Promise<BatchResult> {
   const start = Date.now();
   const result: BatchResult = {
@@ -433,6 +461,7 @@ export async function uploadTallerToCloud(
     try {
       const estatus = e.fsalidaReal ? ("cerrado" as const) : ("abierto" as const);
       const motivo = e.tipo || e.estado || "Sin motivo";
+      const tienePartidas = (partidasDe?.(e)?.length ?? 0) > 0;
       await upsertTaller({
         tenantId,
         unitUid: String(unitUid),
@@ -441,7 +470,7 @@ export async function uploadTallerToCloud(
         folio: e.id,
         motivo,
         estatus,
-        datos: e,
+        datos: sinGastoSiTienePartidas(e, tienePartidas),
       });
       // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
       // pero el caller solo necesita totales agregados. Sumamos a semanal

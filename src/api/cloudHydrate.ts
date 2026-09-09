@@ -56,7 +56,7 @@ import {
   pendientesDeFirma,
   MOTIVOS_RECHAZO,
   gastoDerivado,
-  totalesVisita,
+  montoPendienteDeFirma,
   type Partida,
   type TotalesVisita,
   type GastoDerivado,
@@ -97,6 +97,22 @@ const VALID_RISKS: ReadonlySet<RiskLevel> = new Set<RiskLevel>([
 function asRisk(v: unknown): RiskLevel | undefined {
   const s = String(v ?? "");
   return VALID_RISKS.has(s as RiskLevel) ? (s as RiskLevel) : undefined;
+}
+
+/**
+ * Fix ronda 2 (Task 9, Critical 1): `gasto`/`gastoRef`/`gastoMO` NUNCA se hidratan a `0` cuando
+ * `datos` no trae el campo — antes `Number(datos.gasto) || 0` fabricaba un cero indistinguible
+ * de un cero real. Con partidas, ese `0` fabricado se re-sube tal cual en el próximo
+ * `finalizarUnidad`/guardado (uploadTallerToCloud sube el entry entero) y el registro cloud
+ * queda con un $0 "duro" que ya no dice "no capturado" — dice "cero", y si las partidas se
+ * volvieran inalcanzables (visita anulada y restaurada, o la placa cambia — tallerCloudKey usa
+ * `plate || eco`, y el reemplacamiento de la flota está en curso) el dinero firmado desaparece
+ * sin rastro. `Number(v)` no-finito (basura, `"abc"`) también se trata como ausente, nunca 0.
+ */
+export function numOrUndef(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 declare global {
@@ -154,12 +170,16 @@ declare global {
       ps: Partida[],
     ) => GastoDerivado;
     /**
-     * Fix ronda 1 (Task 9): mismos Cotizado/Autorizado/Rechazado que pinta la
-     * bandeja de firmas (Task 8). El monolito la usa para que `#tf-gasto` en
-     * solo lectura pueda decir "$X esperando firma" — un número de dinero
-     * declara su alcance en vez de dejar el campo mudo sobre lo pendiente.
+     * Fix ronda 2 (Task 9, Important 2): cuánto de las partidas de la visita sigue
+     * esperando firma. El monolito la usa para que `#tf-gasto` en solo lectura
+     * pueda decir "$X esperando firma" — un número de dinero declara su alcance
+     * en vez de dejar el campo mudo sobre lo pendiente. Reemplaza al bridge
+     * `__totalesVisita` de la ronda 1: ese residuo (`cotizado - autorizado -
+     * rechazado`) solo cuadraba porque `autorizar()` congela `precioAutorizado
+     * = precio` — el día que se autorice a un precio negociado distinto, el
+     * residuo se desalinea. `montoPendienteDeFirma` no es un residuo.
      */
-    __totalesVisita?: (ps: Partida[]) => TotalesVisita;
+    __montoPendienteDeFirma?: (ps: Partida[]) => number;
     /** Menú CERRADO de motivos de rechazo — nunca un texto libre a mano. */
     __MOTIVOS_RECHAZO?: readonly string[];
     /** Misma derivación de visitaKey que agrupa `__tallerPartidas` — para que
@@ -822,9 +842,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         fsalidaEst: String(datos.fsalidaEst ?? ""),
         fsalidaReal: String(datos.fsalidaReal ?? t.fechaSalida ?? ""),
         km: Number(datos.km) || 0,
-        gasto: Number(datos.gasto) || 0,
-        gastoRef: Number(datos.gastoRef) || 0,
-        gastoMO: Number(datos.gastoMO) || 0,
+        gasto: numOrUndef(datos.gasto),
+        gastoRef: numOrUndef(datos.gastoRef),
+        gastoMO: numOrUndef(datos.gastoMO),
         tecnico: String(datos.tecnico ?? ""),
         pedidoErp: String(datos.pedidoErp ?? ""),
         refacciones: String(datos.refacciones ?? ""),
@@ -861,9 +881,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // Task 9: mismo seam — la aritmética de "el gasto se calcula" vive en src/,
     // el monolito solo la invoca para pintar #tf-gasto en solo lectura.
     window.__gastoDerivado = gastoDerivado;
-    // Fix ronda 1 (Task 9): mismo bridge que usa la bandeja de firmas para
-    // Cotizado/Ya autorizado/Rechazado — el modal la reusa para "$X esperando firma".
-    window.__totalesVisita = totalesVisita;
+    // Fix ronda 2 (Task 9, Important 2): reemplaza al bridge __totalesVisita de la
+    // ronda 1 — la leyenda de #tf-gasto ya no calcula un residuo en el inline script.
+    window.__montoPendienteDeFirma = montoPendienteDeFirma;
     window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
     window.__visitaKeyDe = visitaKeyDe;
     window.__urlFotoPartida = urlFotoPartida;

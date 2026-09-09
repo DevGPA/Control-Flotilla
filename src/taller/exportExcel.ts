@@ -14,8 +14,14 @@
  * formato de Excel (`formato` → `cell.z`). Antes las fechas iban como texto "14/08/2026", así
  * que Excel las ordenaba alfabéticamente y filtrar por rango no servía.
  */
-import { gastoDerivado, totalesVisita, type Partida } from "./partidas";
+import { gastoDerivado, gastoTotalDe, totalesVisita, type Partida } from "./partidas";
 import type { TallerEntry } from "./types";
+
+// Re-exportada: `gastoTotalDe` vive en ./partidas (fix ronda 2, Important 3 — junto a
+// `gastoDerivado`, con quien comparte la regla "sin partidas", para evitar el ciclo
+// partidas.ts → exportExcel.ts → partidas.ts). Se re-exporta aquí para no romper los
+// imports existentes (`tallerExcel.ts`, `renderHistorial.ts`, `opsTablero.ts`, tests).
+export { gastoTotalDe };
 
 export type TipoColumna = "texto" | "numero" | "moneda" | "fecha";
 
@@ -60,33 +66,6 @@ function fecha(v: unknown): Date | "" {
 }
 
 const texto = (v: unknown): string => String(v ?? "").trim();
-
-/**
- * Gasto total del ingreso. El desglose (refacciones + mano de obra) MANDA; el campo `gasto`
- * es el respaldo de los registros anteriores al desglose — sin él el total salía en $0
- * (auditoría 2026-06-04).
- *
- * Task 9 (el gasto se calcula, no se captura): con `ps` no vacío, el resultado YA NO sale
- * de los campos del entry — sale de `gastoDerivado` (la suma de lo FIRMADO). Sin `ps`
- * (ausente o `[]`) el comportamiento es EXACTAMENTE el de antes de este parámetro: todo
- * consumidor que aún no le pasa las partidas de la visita no pierde nada ni cambia de
- * resultado. Esta es la ÚNICA función que cualquier consumidor de "cuánto costó esta
- * visita" debe llamar — nunca sumar `gastoRef`/`gastoMO`/`gasto` por su cuenta.
- *
- * Fix ronda 1 (Task 9): el parámetro acepta el `Pick` mínimo (no `TallerEntry` completo) a
- * propósito — así `src/taller/renderHistorial.ts` y `src/analytics/opsTablero.ts`, que traen
- * sus propios tipos de fila más angostos, pueden llamar a ÉSTA función en vez de mantener
- * cada uno su propia copia de "Ref+MO, con `gasto` de respaldo" (el bug que este archivo
- * existe para cerrar, multiplicado por tres módulos).
- */
-export function gastoTotalDe(
-  e: Pick<TallerEntry, "gasto" | "gastoRef" | "gastoMO">,
-  ps?: Partida[],
-): number {
-  if (ps && ps.length) return gastoDerivado(e, ps).gasto;
-  const desglose = (e.gastoRef ?? 0) + (e.gastoMO ?? 0);
-  return desglose > 0 ? desglose : (e.gasto ?? 0);
-}
 
 /**
  * Gasto y visitas de un año, por eco — el número de contexto que convierte

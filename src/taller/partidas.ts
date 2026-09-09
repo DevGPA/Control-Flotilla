@@ -148,6 +148,23 @@ export function pendientesDeFirma(ps: Partida[]): number {
   return partidasPendientesDeFirma(ps).length;
 }
 
+/**
+ * Cuánto sigue esperando FIRMA (fix ronda 2, Important 2). Reusa
+ * `partidasPendientesDeFirma` — nunca reimplementa `estado === "propuesta"` — y suma
+ * `precio` (lo COTIZADO, nunca `precioAutorizado`: una partida "propuesta" no tiene
+ * precio autorizado todavía).
+ *
+ * Deliberadamente NO es un residuo (`totalesVisita(ps).cotizado - .autorizado -
+ * .rechazado`): ese cálculo solo cuadra hoy porque `autorizar()` congela
+ * `precioAutorizado = p.precio` — el día que se autorice a un precio NEGOCIADO distinto
+ * (la razón de ser de `precioAutorizado` como campo aparte de `precio`), o llegue una
+ * `terminada` sin `precioAutorizado`, el residuo se desalinea y sobre-reporta "esperando
+ * firma" sobre partidas que ya se decidieron.
+ */
+export function montoPendienteDeFirma(ps: Partida[]): number {
+  return partidasPendientesDeFirma(ps).reduce((s, p) => s + (p.precio ?? 0), 0);
+}
+
 export type GastoDerivado = {
   gasto: number;
   gastoRef: number;
@@ -157,23 +174,52 @@ export type GastoDerivado = {
 };
 
 /**
+ * Gasto total de un entry — LA fórmula (Task 9, fix ronda 2, Important 3). Vive aquí, junto a
+ * `gastoDerivado`, porque las dos comparten la MISMA regla para "sin partidas": el desglose
+ * (Ref+MO) manda si es `> 0`; `gasto` (legado) es el respaldo de los registros anteriores al
+ * desglose — sin él el total salía en $0 (auditoría 2026-06-04). ANTES `gastoDerivado(e, [])`
+ * tenía su PROPIA respuesta (`entry.gasto ?? ref+mo`, el legado ganando siempre) — para
+ * `{gasto: 9999, gastoRef: 100, gastoMO: 50}` esta función daba 150 y la otra 9999: dos
+ * derivaciones del mismo dato. `gastoDerivado` ahora llama a ÉSTA para su rama sin partidas.
+ *
+ * Re-exportada desde `./exportExcel` (fix ronda 1) para no romper los imports existentes —
+ * moverla aquí evita el ciclo `partidas.ts` → `exportExcel.ts` → `partidas.ts` que se hubiera
+ * creado si `gastoDerivado` (aquí) llamara a una función que vive en `exportExcel.ts`.
+ *
+ * Con `ps` no vacío, el resultado sale de `gastoDerivado` (la suma de lo FIRMADO). Sin `ps`
+ * (ausente o `[]`) el comportamiento es el de siempre: todo consumidor que aún no le pasa las
+ * partidas de la visita no pierde nada ni cambia de resultado. Esta es la ÚNICA función que
+ * cualquier consumidor de "cuánto costó esta visita" debe llamar — nunca sumar
+ * `gastoRef`/`gastoMO`/`gasto` por su cuenta.
+ */
+export function gastoTotalDe(
+  e: { gasto?: number; gastoRef?: number; gastoMO?: number },
+  ps?: Partida[],
+): number {
+  if (ps && ps.length) return gastoDerivado(e, ps).gasto;
+  const desglose = (e.gastoRef ?? 0) + (e.gastoMO ?? 0);
+  return desglose > 0 ? desglose : (e.gasto ?? 0);
+}
+
+/**
  * El gasto de una visita con partidas es la suma de lo FIRMADO — nunca un
  * número tecleado. Si el proveedor tecleara un subtotal y además precios por
  * partida, van a discrepar y no habría forma de saber cuál es verdad.
  *
- * Las visitas históricas (sin partidas) conservan lo que se capturó a mano.
+ * Las visitas históricas (sin partidas) conservan lo que se capturó a mano —
+ * vía `gastoTotalDe`, la MISMA regla que usa el Excel (fix ronda 2, Important
+ * 3: antes esta rama reimplementaba su propia fórmula, que discrepaba de
+ * `gastoTotalDe` cuando el legado y el desglose venían ambos poblados).
  */
 export function gastoDerivado(
   entry: { gasto?: number; gastoRef?: number; gastoMO?: number },
   ps: Partida[],
 ): GastoDerivado {
   if (!ps.length) {
-    const ref = entry.gastoRef ?? 0;
-    const mo = entry.gastoMO ?? 0;
     return {
-      gasto: entry.gasto ?? ref + mo,
-      gastoRef: ref,
-      gastoMO: mo,
+      gasto: gastoTotalDe(entry),
+      gastoRef: entry.gastoRef ?? 0,
+      gastoMO: entry.gastoMO ?? 0,
       cotizado: 0,
       rechazado: 0,
     };

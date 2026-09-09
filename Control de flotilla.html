@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-6wykiJ/zNDXaKcRQVD3zLwDevf7hRc4WZQ2m4EEG2P8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uARYfR0QekAUKG3K9fOZEKATWyj6dgyne9tVNeDZipE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5897,7 +5897,9 @@ function showResumenEjecutivo(){
     // Patrón canónico de gasto (audit 2026-06-10 #8): Ref+MO con fallback a
     // e.gasto — el form solo captura e.gasto, así que sin el fallback este KPI
     // reportaba $0 a Tesorería aunque hubiera gasto capturado.
-    const gastoTotal=enTaller.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
+    // Fix ronda 2 (Task 9, Critical 2): _gastoDe ahora ve lo FIRMADO por
+    // partidas también — este resumen es texto que Tesorería copia y pega.
+    const gastoTotal=enTaller.reduce((s,e)=>s+_gastoDe(e),0);
     if(gastoTotal) text+=`• Gasto acumulado activas: $${gastoTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}\n`;
     text+=`\n`;
   }
@@ -6849,7 +6851,26 @@ function updateTallerBadge(){
 // Responde en pantalla la pregunta más frecuente de Tesorería (antes: exportar
 // Excel y sumar a mano). Gasto con el patrón canónico Ref+MO→fallback gasto;
 // ancla temporal = fentrada || freporte.
-function _gastoDe(e){ return ((e.gastoRef||0)+(e.gastoMO||0)>0)?((e.gastoRef||0)+(e.gastoMO||0)):(e.gasto||0); }
+// Fix ronda 2 (Task 9, Critical 2): _gastoDe leía SOLO los campos del entry —
+// una visita cuyo gasto llegó por partidas firmadas se veía en $0 en esta
+// tarjeta (la primera que Tesorería lee al abrir la app). window.__gastoDerivado
+// y _partidasDeVisita ya existen en este mismo archivo — esto es un call swap,
+// no un rediseño. Sin el bridge (hidratación aún no corrió) cae al mismo
+// cálculo de siempre.
+function _gastoDe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function"
+    ? window.__gastoDerivado(e, ps).gasto
+    : ((e.gastoRef||0)+(e.gastoMO||0)>0?((e.gastoRef||0)+(e.gastoMO||0)):(e.gasto||0));
+}
+function _gastoRefDe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function" ? window.__gastoDerivado(e, ps).gastoRef : (e.gastoRef||0);
+}
+function _gastoMODe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function" ? window.__gastoDerivado(e, ps).gastoMO : (e.gastoMO||0);
+}
 function _mesDe(e){ return String(e.fentrada||e.freporte||"").slice(0,7); }
 function _fmtMon(v){ return "$"+Number(v||0).toLocaleString("es-MX",{maximumFractionDigits:0}); }
 function buildGastoKPI(){
@@ -6898,8 +6919,8 @@ function openGastoModal(){
   const sucs=[...porSuc.entries()].sort((a,b)=>b[1].total-a[1].total);
   const maxSuc=Math.max(...sucs.map(([,v])=>v.total),1);
   const gTot=delMes.reduce((s,e)=>s+_gastoDe(e),0);
-  const gRef=delMes.reduce((s,e)=>s+(e.gastoRef||0),0);
-  const gMO=delMes.reduce((s,e)=>s+(e.gastoMO||0),0);
+  const gRef=delMes.reduce((s,e)=>s+_gastoRefDe(e),0);
+  const gMO=delMes.reduce((s,e)=>s+_gastoMODe(e),0);
   let html=`<div style="font-size:11px;color:var(--s1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Mes actual</div>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px">
       <span style="font-size:26px;font-weight:800;color:var(--G)">${_fmtMon(gTot)}</span>
@@ -9249,11 +9270,15 @@ function renderHistorial(){
       // Aplicar filtro por tipo de mantenimiento
       if(!tipoMatch(e)) return;
       u.closedCount++;
-      const gRef = e.gastoRef||0, gMO = e.gastoMO||0;
-      const gTot = (gRef+gMO>0) ? gRef+gMO : (e.gasto||0);
-      u.totalGasto    += gTot;
-      u.totalGastoRef += gRef||(e.gastoRef||0);
-      u.totalGastoMO  += gMO||(e.gastoMO||0);
+      // Fix ronda 2 (Task 9, Critical 2): esta es la implementación LEGACY de
+      // Historial — sigue siendo la que corre en producción (renderHistorialNew,
+      // src/taller/renderHistorial.ts, solo pinta detrás del flag opt-in
+      // USE_NEW_TALLER). Antes leía gastoRef/gastoMO/gasto crudos: una unidad
+      // cuyo gasto llegó por partidas firmadas resumía en $0 justo en la
+      // pantalla donde Riesgos revisa el historial cerrado.
+      u.totalGasto    += _gastoDe(e);
+      u.totalGastoRef += _gastoRefDe(e);
+      u.totalGastoMO  += _gastoMODe(e);
       if(!u.latestClosed||(e.updatedAt||"")>(u.latestClosed.updatedAt||"")) u.latestClosed=e;
     }
   });
@@ -9418,6 +9443,15 @@ function renderHistorial(){
 async function exportTallerActivasExcel(){
   const activas=tallerEntries.filter(e=>e.estado!=="Finalizado");
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
+  // Fix ronda 2 (Task 9, "también en esta ronda"): sin window.__tallerPartidas
+  // cargado (hidratación todavía no corrió, o falló), _partidasDeVisita siempre
+  // resuelve [] y el Excel saldría con ceros de confianza para toda visita con
+  // partidas. Un archivo que sale del edificio nunca debe mentir así — se
+  // rechaza el export en vez de generarlo con datos incompletos.
+  if(!window.__tallerPartidas){
+    window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
+    return;
+  }
   try{
     const api=await window.__tallerExport();
     // Task 9: partidasDe deriva Ref/MO/Total y Cotizado/Autorizado/Rechazado
@@ -9433,6 +9467,12 @@ async function exportTallerActivasExcel(){
 async function exportTallerHistorialExcel(){
   if(!tallerEntries.some(e=>e.estado==="Finalizado")){
     window.notify("No hay visitas finalizadas en el historial.","warn",4000);return;
+  }
+  // Fix ronda 2 (Task 9): mismo candado que Activas — sin partidas cargadas el
+  // Resumen y el $/1,000 km saldrían con ceros de confianza.
+  if(!window.__tallerPartidas){
+    window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
+    return;
   }
   try{
     const api=await window.__tallerExport();
@@ -9595,9 +9635,12 @@ function openTallerModal(id){
   // (visitas históricas y captura manual).
   // Fix ronda 1: el valor SIEMPRE se pinta como número (nunca "" vacío) — un
   // campo en blanco con partidas cotizadas pero nada autorizado leía como
-  // "esta visita no cuesta nada". Y la leyenda declara lo que falta por
-  // firmar (totalesVisita: cotizado - autorizado - rechazado), la misma
-  // aritmética tested que ya usa la bandeja de firmas — nunca calculada aquí.
+  // "esta visita no cuesta nada".
+  // Fix ronda 2 (Important 2): la leyenda declara lo pendiente con
+  // montoPendienteDeFirma (src/taller/partidas.ts) — NUNCA un residuo
+  // calculado aquí (cotizado - autorizado - rechazado solo cuadraba porque
+  // autorizar() congela precioAutorizado = precio; con una autorización a
+  // precio negociado el residuo mentiría).
   {
     const gastoInput = document.getElementById("tf-gasto");
     const gastoHint  = document.getElementById("tf-gasto-hint");
@@ -9607,9 +9650,8 @@ function openTallerModal(id){
       gastoInput.value = String(derivado.gasto);
       gastoInput.disabled = true;
       let leyenda = "Suma de las partidas autorizadas";
-      if(typeof window.__totalesVisita === "function"){
-        const t = window.__totalesVisita(psGasto);
-        const pendiente = Math.max(0, t.cotizado - t.autorizado - t.rechazado);
+      if(typeof window.__montoPendienteDeFirma === "function"){
+        const pendiente = window.__montoPendienteDeFirma(psGasto);
         if(pendiente > 0) leyenda += ` · ${_fmtMon(pendiente)} esperando firma`;
       }
       gastoInput.title = leyenda;
@@ -9698,7 +9740,8 @@ function renderHistorialModal(){
   // Patrón canónico de gasto (audit 2026-06-10 #9): e.gasto con fallback a
   // Ref+MO — las entradas hidratadas del cloud traen el desglose con gasto=0,
   // y esta tarjeta reportaba $0 mientras su propia fila Subtotal sí sumaba bien.
-  const totalGasto = allEntries.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
+  // Fix ronda 2 (Task 9, Critical 2): _gastoDe ahora ve lo FIRMADO por partidas.
+  const totalGasto = allEntries.reduce((s,e)=>s+_gastoDe(e),0);
   const nCor  = allEntries.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = allEntries.filter(e=>e.tipo==="Preventivo").length;
   const nSinTipo = allEntries.filter(e=>!e.tipo).length;
@@ -9762,6 +9805,9 @@ function renderHistorialModal(){
     const diasReales = e.fentrada&&e.fsalidaReal ? Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/(86400*1000))) : null;
     const idxInAll = allEntries.indexOf(e);
     const numLabel = allEntries.length - idxInAll;
+    // Fix ronda 2 (Task 9, Critical 2): antes leía e.gasto/e.gastoRef+e.gastoMO
+    // directo — una visita firmada por partidas mostraba "—" aquí.
+    const gastoDeFila = _gastoDe(e);
     return `<div class="hist-item" style="${rowBg}">
       <div class="hist-num${isLatest?"":" old"}">${numLabel}</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -9781,7 +9827,7 @@ function renderHistorialModal(){
       </div>
       <div class="hist-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px">
         <div class="hist-grid-cell"><span>Kilometraje</span><b>${e.km>0?Number(e.km).toLocaleString("es-MX")+" km":"—"}</b></div>
-        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${e.gasto>0?"$"+Number(e.gasto).toLocaleString("es-MX",{minimumFractionDigits:2}):(e.gastoRef+e.gastoMO)>0?"$"+Number(e.gastoRef+e.gastoMO).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"}</b></div>
+        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${gastoDeFila>0?"$"+Number(gastoDeFila).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"}</b></div>
         <div class="hist-grid-cell"><span>Tecnico</span><b>${escHtml(e.tecnico)||"—"}</b></div>
         <div class="hist-grid-cell"><span>Pedido ERP</span><b>${escHtml(e.pedidoErp||"")||"—"}</b></div>
       </div>
@@ -9976,7 +10022,17 @@ async function saveTallerEntry(){
   // partidas, no se escribe un `gasto` tecleado — se deriva al pintar y al
   // exportar (gastoDerivado/gastoTotalDe). Escribirlo aquí dejaría dos
   // fuentes de verdad del mismo dinero que pueden discrepar.
-  const psVisita = _partidasDeVisita({ id: newEntryId, unitKey, eco, plate, fentrada, freporte });
+  // Fix ronda 2 (Task 9, Important 1): el candado es "¿openTallerModal pintó
+  // el campo solo-lectura?" (#tf-gasto.disabled), NUNCA recomputar la
+  // visitaKey con los valores ACTUALES del formulario. La visitaKey es
+  // plate||eco + fentrada||freporte — si el usuario corrige la fecha de
+  // entrada (o la placa/económico) de una visita CON partidas, la clave
+  // recomputada ya no es la de las partidas, psVisita.length daría 0 aunque
+  // la visita siga teniendo partidas bajo la clave vieja, y se terminaría
+  // escribiendo el DERIVADO que el propio campo pintó como si fuera un
+  // número tecleado a mano. #tf-gasto.disabled no depende de la key: lo fijó
+  // openTallerModal con las partidas de la visita ORIGINAL al abrir el modal.
+  const gastoInputEl = document.getElementById("tf-gasto");
   const entry={
     id:          newEntryId,
     unitKey,
@@ -9992,9 +10048,12 @@ async function saveTallerEntry(){
     fsalidaEst:  document.getElementById("tf-fsalida-est").value,
     fsalidaReal: document.getElementById("tf-fsalida-real").value,
     km:          parseInt(document.getElementById("tf-km").value)||0,
-    gastoRef:    0,
-    gastoMO:     0,
-    gasto:       psVisita.length ? undefined : (parseFloat(document.getElementById("tf-gasto").value)||0),
+    // Fix ronda 2: mismo candado que `gasto` — gastoRef/gastoMO tampoco tienen
+    // de dónde salir tecleados a mano (el formulario no los desglosa), así
+    // que si la visita tiene partidas no se persiste un 0 que las suplante.
+    gastoRef:    gastoInputEl.disabled ? undefined : 0,
+    gastoMO:     gastoInputEl.disabled ? undefined : 0,
+    gasto:       gastoInputEl.disabled ? undefined : (parseFloat(gastoInputEl.value)||0),
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),
