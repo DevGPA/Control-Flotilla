@@ -97,17 +97,28 @@ const portalUrl = portalFn.addFunctionUrl({
   authType: FunctionUrlAuthType.NONE,
   cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.GET, HttpMethod.POST] },
 });
-// Put Y Get, ambos acotados al MISMO prefijo de partidas de taller — ni
-// Delete, ni el resto del bucket de fotos de inspección. La fuente de este
-// Lambda es pública y su input es enteramente controlado por quien tenga
-// una liga: el radio de daño de un rol comprometido queda acotado a ESE
-// prefijo, no al bucket de fotos de producción completo. El Get existe
+// Put: bucket.grantPut ya es solo-objeto (actionsOnObjectKeys), acotado al
+// prefijo de partidas de taller — ni Delete, ni nada sobre el ARN del
+// bucket. Get: NO usa bucket.grantRead. grantRead() pasa por
+// BucketGrants.read() → actionsOnBucketAndObjectKeys, que además de
+// s3:GetObject* sobre el patrón de objeto otorga s3:GetBucket* y
+// s3:List* sobre el ARN DEL BUCKET COMPLETO (verificado en este repo,
+// aws-cdk-lib@2.256.1: aws-s3/lib/bucket-grants.js + perms.js) — con esta
+// Function URL pública y sin auth, eso deja a cualquiera con una liga a un
+// paso de enumerar TODO el bucket de fotos, incluidas las del módulo de
+// inspecciones: justo lo que el spec §7.3 prohíbe ("nunca listar el
+// bucket"). En su lugar, un statement explícito de solo s3:GetObject
+// sobre el patrón de llave — nada sobre el ARN del bucket. El Get existe
 // para que la página del taller (Tarea 6) le muestre al proveedor sus
-// propias fotos al reabrir la liga (§7.3: presigned GET, nunca listar el
-// bucket) — nada de grantReadWrite, que abriría Delete y el resto del
-// bucket sin necesidad.
+// propias fotos al reabrir la liga (presigned GET de minutos, nunca un
+// listado) — nada de grantReadWrite, que además abriría Delete.
 bucket.grantPut(portalFn, "photos/*/taller-partidas/*");
-bucket.grantRead(portalFn, "photos/*/taller-partidas/*");
+portalFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["s3:GetObject"],
+    resources: [bucket.arnForObjects("photos/*/taller-partidas/*")],
+  }),
+);
 (portalFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
 
 backend.addOutput({ custom: { tallerPortalUrl: portalUrl.url } });

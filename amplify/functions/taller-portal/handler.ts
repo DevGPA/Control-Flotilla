@@ -503,8 +503,20 @@ async function enviarAAutorizacion(
   // Espejo SERVIDOR de la regla de UI de la Tarea 6 (el botón "Enviar a
   // autorización" nace deshabilitado sin estos datos): el botón es
   // cortesía, esto es lo que de verdad lo impide si alguien llama la ruta
-  // directo.
-  if (!puedeEnviarAAutorizacion(visita)) {
+  // directo. Mismo fallback a `datos` que ya usa `leerVisita`: hoy SOLO
+  // este portal escribe las columnas promovidas (`Taller.km`/`fsalidaEst`);
+  // la app de escritorio de Administración de Riesgos sigue mandando ambos
+  // campos dentro del blob `datos` (src/api/client.ts no los declara,
+  // src/api/batchUpload.ts manda `datos: e` entero). Sin este fallback, el
+  // portón de esta ruta rechazaba TODA visita real aunque la página ya
+  // mostrara los valores y habilitara el botón leyéndolos de `datos`.
+  const d = parseDatos(visita.datos);
+  if (
+    !puedeEnviarAAutorizacion({
+      km: visita.km ?? d.km,
+      fsalidaEst: visita.fsalidaEst ?? d.fsalidaEst,
+    })
+  ) {
     throw new ErrorEntrada(
       "Falta kilometraje o fecha estimada de salida para enviar a autorización",
     );
