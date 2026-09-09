@@ -40,8 +40,8 @@ import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
-import { fetchPartidas, agruparPorVisita, partesDeVisitaKey } from "./tallerPartidas";
-import type { Partida } from "../taller/partidas";
+import { fetchPartidas, agruparPorVisita, juntaVisitaKey } from "./tallerPartidas";
+import { pendientesDeFirma, type Partida } from "../taller/partidas";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
@@ -100,6 +100,11 @@ declare global {
     /** Partidas de taller (ciclo de firma), agrupadas por visitaKey. Alimenta
      *  el badge de la pestaña Taller — cuenta lo que espera la firma de Riesgos. */
     __tallerPartidas?: Map<string, Partida[]>;
+    /** Bridge (fix ronda 2, Finding 1): la MISMA `pendientesDeFirma` de
+     *  src/taller/partidas.ts, publicada para que el badge del monolito la
+     *  consuma en vez de reimplementar el filtro "estado === propuesta" —
+     *  Task 8 (bandeja de firma) contará con esta misma función. */
+    __pendientesDeFirma?: (ps: Partida[]) => number;
     /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
      *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
     __cloudPhotoUrlMap?: Map<string, PhotoUrlEntry>;
@@ -196,22 +201,46 @@ export function esMontacargasProducto(productoToka: string | null | undefined): 
 }
 
 /**
- * Excluye del ciclo de firma las partidas cuya VISITA está anulada — misma regla
- * de "anulación, nunca borrado" que ya aplica a `tallerEntries` (ver
- * `tallerVigente` más abajo). Sin este filtro, una visita anulada con partidas
- * en "propuesta" seguiría prendiendo el badge de Taller y mandaría a Riesgos a
- * perseguir una firma para un registro que ya no existe en la vista.
+ * El set de `visitaKey` de las visitas de Taller ANULADAS — construidas
+ * hacia ADELANTE con `juntaVisitaKey` sobre las filas cloud de Taller (que ya
+ * traen `unitUid`/`fechaEntrada` resueltos como columnas del identifier), no
+ * separando de vuelta una `visitaKey` existente (fix ronda 2, Finding 2: la
+ * versión anterior de este filtro invertía `visitaKey` a mano y un `unitUid`
+ * con un "|" propio la hacía fallar en silencio — construir siempre hacia
+ * adelante retira esa clase de bug en vez de documentarla).
  *
  * Reusa `esTallerAnulado` — el MISMO predicado que ya decide la anulación de
- * Taller — en vez de reimplementar el criterio; `partesDeVisitaKey` solo
- * separa `visitaKey` en los dos campos que ese predicado espera. Pura y
- * exportada para test (nada de Amplify aquí).
+ * `tallerEntries` (ver `tallerVigente` más abajo) — en vez de reimplementar
+ * el criterio. Pura y exportada para test (nada de Amplify aquí).
  */
-export function partidasVigentes(
-  ps: Partida[],
+export function visitasAnuladasKeys(
+  tallerRows: readonly { unitUid?: unknown; fechaEntrada?: unknown }[],
   anuladas: ReadonlyMap<string, AnulacionInfo>,
-): Partida[] {
-  return ps.filter((p) => !esTallerAnulado(partesDeVisitaKey(p.visitaKey), anuladas));
+): Set<string> {
+  const out = new Set<string>();
+  for (const t of tallerRows) {
+    if (esTallerAnulado(t, anuladas)) {
+      out.add(
+        juntaVisitaKey({
+          unitUid: String(t.unitUid ?? ""),
+          fechaEntrada: String(t.fechaEntrada ?? ""),
+        }),
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Excluye del ciclo de firma las partidas cuya `visitaKey` está en el set de
+ * visitas anuladas — misma regla de "anulación, nunca borrado" que ya aplica
+ * a `tallerEntries`. Sin este filtro, una visita anulada con partidas en
+ * "propuesta" seguiría prendiendo el badge de Taller y mandaría a Riesgos a
+ * perseguir una firma para un registro que ya no existe en la vista.
+ * Pura y exportada para test.
+ */
+export function partidasVigentes(ps: Partida[], visitasAnuladas: ReadonlySet<string>): Partida[] {
+  return ps.filter((p) => !visitasAnuladas.has(p.visitaKey));
 }
 
 /** Exportada para tests (el cableado de la refacción vivía aquí como bug). */
@@ -724,11 +753,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     window.tallerEntries = tallerEntries;
     // Ciclo de firma (Task 7): partidas agrupadas por visita — de aquí sale el
     // conteo de "esperando tu autorización" que prende el badge de la pestaña.
-    // Fix ronda 1: las de una visita ANULADA se excluyen ANTES de agrupar —
-    // se recalcula en cada hidratación, así que restaurar la anulación las
-    // trae de vuelta solas, sin caché que limpiar.
+    // Fix ronda 1: las de una visita ANULADA se excluyen ANTES de agrupar — se
+    // recalcula en cada hidratación, así que restaurar la anulación las trae
+    // de vuelta solas, sin caché que limpiar. Fix ronda 2: el set de visitas
+    // anuladas se construye hacia ADELANTE (visitasAnuladasKeys), nunca
+    // separando de vuelta una visitaKey existente.
+    const visitasAnuladas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
     const partidas = await fetchPartidas(tenantId);
-    window.__tallerPartidas = agruparPorVisita(partidasVigentes(partidas, anuladasActivas));
+    window.__tallerPartidas = agruparPorVisita(partidasVigentes(partidas, visitasAnuladas));
+    // Bridge (fix ronda 2, Finding 1): publica la MISMA pendientesDeFirma que
+    // usará la bandeja de firma (Task 8) — el badge del monolito la consume
+    // en vez de reimplementar el filtro "estado === propuesta".
+    window.__pendientesDeFirma = pendientesDeFirma;
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
     if (typeof window.renderTaller === "function") window.renderTaller();
     console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);

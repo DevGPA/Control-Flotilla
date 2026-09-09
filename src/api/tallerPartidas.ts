@@ -5,23 +5,21 @@ import { getClient, type Schema } from "./amplifyClient";
 import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
 import type { Partida } from "../taller/partidas";
 
+/** Junta `{unitUid, fechaEntrada}` en la MISMA llave que usa `Partida.visitaKey`.
+ *  Fix ronda 2 (Finding 2): esta plantilla vive en UN solo lugar y solo se usa
+ *  hacia ADELANTE (para componer una llave), nunca hacia atrás (para separar
+ *  una existente) — un `unitUid` que trajera un "|" propio (poco común, pero
+ *  posible: viene de plate/eco/unitKey/id) haría que separar de vuelta
+ *  fallara en silencio. Construir siempre hacia adelante retira esa clase de
+ *  bug en vez de documentarla. */
+export function juntaVisitaKey(k: { unitUid: string; fechaEntrada: string }): string {
+  return `${k.unitUid}|${k.fechaEntrada}`;
+}
+
 /** La llave de la visita se DERIVA de tallerCloudKey para que las dos nunca
  *  divergan: si cambia la regla de la clave cloud, esta la sigue sola. */
 export function visitaKeyDe(e: LegacyTallerEntry): string {
-  const { unitUid, fechaEntrada } = tallerCloudKey(e);
-  return `${unitUid}|${fechaEntrada}`;
-}
-
-/** Inverso exacto de `visitaKeyDe`: separa `unitUid|fechaEntrada` en sus dos
- *  partes. Corta en el PRIMER "|" — unitUid nunca lo lleva (viene de
- *  plate/eco/unitKey/id) y fechaEntrada tampoco en la práctica (ISO o
- *  `sin-fecha:<id>`). Existe para que el filtro de anulación de la
- *  hidratación (cloudHydrate) pueda llamar a `esTallerAnulado` con la MISMA
- *  identidad que ya usa, en vez de reconstruirla a mano por su cuenta. */
-export function partesDeVisitaKey(visitaKey: string): { unitUid: string; fechaEntrada: string } {
-  const i = visitaKey.indexOf("|");
-  if (i === -1) return { unitUid: visitaKey, fechaEntrada: "" };
-  return { unitUid: visitaKey.slice(0, i), fechaEntrada: visitaKey.slice(i + 1) };
+  return juntaVisitaKey(tallerCloudKey(e));
 }
 
 export function agruparPorVisita(ps: Partida[]): Map<string, Partida[]> {
