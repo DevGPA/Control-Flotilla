@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-pKtdGO2hoxmDfYl0KB45oNFoSNdmy/90ADp+1mYBYdU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-N+xXsIGQ4zVugV6A7nJCfKpY7nh9tVnIndjH46/dC28=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2672,11 +2672,17 @@ function anularInspeccion(uid){
   const parts=String(uid).split("__");
   const placa=u.plate||parts[0]||"";
   const fecha=parts[1]||u.fecha||"";
+  // La llave del refId es la ALMACENADA (u.unitUid), no la del catalogo. Si un registro
+  // quedo archivado bajo una placa retirada, u.plate trae la VIGENTE y el refId no
+  // coincidiria con el que busca esChecklistAnulado (que lee el unitUid crudo): la
+  // anulacion se guardaria sin excluir nada, EN SILENCIO. Fallback a placa para las filas
+  // legadas que no traen unitUid.
+  const llaveAnulacion=u.unitUid||placa;
   window.__anulacionUI.openAnular({
     etiqueta:`Inspección · unidad ${u.eco||placa} (${placa}) · ${fecha}`,
     confirmText:placa,
     onConfirm:async(motivo)=>{
-      await window.__anulaciones.anular(`checklist|${placa}|${fecha}`,"checklist",motivo);
+      await window.__anulaciones.anular(`checklist|${llaveAnulacion}|${fecha}`,"checklist",motivo);
       _anulacionRefresh("Inspección anulada: fuera de KPIs y alertas (reversible).");
     }
   });

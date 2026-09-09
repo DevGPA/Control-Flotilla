@@ -6,27 +6,35 @@
  * (src/api/cloudHydrate.ts), así que **dos escrituras de la misma camioneta con placas
  * distintas parten su historial en dos** y la unidad aparece "sin una sola inspección".
  *
- * GPA reemplazó 11 unidades entre 2025 y 2026 y las fuentes de ingesta (el catálogo de
- * MoreApp y el de Operaciones-GPA) **siguen enviando la placa vieja**. La migración única
- * de 2026-08-27 (`scripts/migrar-placas.mjs`) re-archivó el historial bajo la placa vigente,
- * pero no podía durar: cada inspección nueva volvía a crear la unidad bajo la placa retirada
- * (verificado 2026-09-08 — 8 registros nuevos entre el 31-ago y el 2-sep, y 7 de las 11
- * unidades resucitadas en el catálogo con su placa vieja).
+ * GPA reemplazó 11 unidades entre 2025 y 2026 y la fuente de ingesta (el catálogo de
+ * Operaciones-GPA) **sigue enviando la placa vieja**. La migración única de 2026-08-27
+ * re-archivó el historial bajo la placa vigente, pero no podía durar: cada inspección nueva
+ * volvía a crear la unidad bajo la placa retirada. Verificado en prod el 2026-09-08: 7 de las
+ * 11 unidades resucitadas en el catálogo con su placa vieja y 20 registros nuevos archivados
+ * ahí entre el 31-ago y el 2-sep.
  *
  * Este módulo es la única fuente de verdad de esa equivalencia. Se aplica en los DOS extremos:
- *  - **Ingesta** (webhook de MoreApp y puente de Ops-GPA): normaliza antes de escribir, para
- *    que ningún registro nuevo nazca bajo una placa retirada.
- *  - **Lectura** (cloudHydrate): normaliza el cruce, para que un registro que se colara igual
- *    encuentre su unidad.
+ *  - **Ingesta**: el puente de Ops-GPA (`src/opsgpa/mapChecklist.ts`) y la carga por Excel/ZIP
+ *    (`src/api/batchUpload.ts`) normalizan antes de escribir, para que ningún registro nuevo
+ *    nazca bajo una placa retirada.
+ *  - **Lectura**: el cruce de `cloudHydrate` normaliza, para que un registro que se colara
+ *    igual encuentre su unidad.
+ *
+ * ⚠️ La normalización de LECTURA es una red, no la garantía. La garantía es que todo escritor
+ * normalice. Mientras exista un registro cuyo `unitUid` no sea su placa vigente, la fila
+ * renderizada tiene una placa (la del catálogo, canónica) distinta de su llave almacenada, y
+ * cualquier identidad derivada de la fila divergiría de la almacenada. Por eso la fila carga
+ * su llave cruda en `unitUid` y el `refId` de anulación se compone SIEMPRE de esa llave
+ * cruda — ver `mergeUnitWithChecklist` en cloudHydrate y `anularInspeccion` en el monolito.
  *
  * Cuando GPA reemplace otra unidad: agregar el par aquí y correr
  * `scripts/reparar-identidad-placas.mjs` para re-archivar lo que ya entró con la placa vieja.
  */
 
 /**
- * Placa retirada → placa vigente. Verificado contra la tarjeta de circulación de cada
- * unidad; varios comprobantes de refrendo de Jalisco imprimen el campo "PLACA ANT."
- * confirmando la sustitución. El comentario es el número económico de la unidad.
+ * Placa retirada → placa vigente, por REEMPLACAMIENTO. Verificado contra la tarjeta de
+ * circulación de cada unidad; varios comprobantes de refrendo de Jalisco imprimen el campo
+ * "PLACA ANT." confirmando la sustitución. El comentario es el número económico.
  */
 export const PLACAS_SUSTITUIDAS: Readonly<Record<string, string>> = Object.freeze({
   JT98490: "JB4479A", // eco 06
@@ -43,16 +51,37 @@ export const PLACAS_SUSTITUIDAS: Readonly<Record<string, string>> = Object.freez
 });
 
 /**
- * Forma canónica de una placa para COMPARAR: sin espacios, guiones ni minúsculas.
- * MoreApp y Ops-GPA capturan la misma placa como "JB4255A", "jb4255a" o "JB-4255-A"
- * según quién la escriba, y cada variante abría una unidad nueva.
+ * Placas MAL CAPTURADAS a mano en el panel admin. No son reemplacamientos, son errores de
+ * dedo; van aparte para no confundir las dos causas, pero resuelven igual porque el efecto es
+ * el mismo (el historial de la unidad se parte) y `normalizaPlaca` NO puede arreglarlos: no es
+ * un separador ni una mayúscula, es un carácter de más.
  *
- * No valida el formato: el catálogo incluye montacargas y remolques cuyo "placa" es un
- * número de serie ("G25NXP58", "560XM", "H50FT"), y descartarlos los dejaría sin identidad.
+ * eco 75: el catálogo decía "JY138152", ocho caracteres, con un "1" de más. La placa real es
+ * JY38152 — lo confirman las 7,332 cargas de combustible, que identifican por número económico
+ * y traen la placa como dato. Bajo JY38152 había 10 inspecciones mensuales, 27 semanales y 2
+ * ingresos a taller que no encontraban su unidad.
+ */
+export const PLACAS_MAL_CAPTURADAS: Readonly<Record<string, string>> = Object.freeze({
+  JY138152: "JY38152", // eco 75
+});
+
+/** Todo lo que resuelve a otra placa, de las dos causas. */
+const EQUIVALENCIAS: Readonly<Record<string, string>> = Object.freeze({
+  ...PLACAS_SUSTITUIDAS,
+  ...PLACAS_MAL_CAPTURADAS,
+});
+
+/**
+ * Forma canónica de una placa para COMPARAR: sin espacios, guiones ni minúsculas. La misma
+ * placa se captura como "JB4255A", "jb4255a" o "JB-4255-A" según quién la escriba, y cada
+ * variante abría una unidad nueva.
+ *
+ * No valida el formato: el catálogo incluye montacargas y remolques cuyo "placa" es un número
+ * de serie ("G25NXP58", "560XM", "H50FT"), y descartarlos los dejaría sin identidad.
  */
 export function normalizaPlaca(valor: unknown): string {
-  // Un objeto NO es una placa: MoreApp manda {} cuando el campo va vacio y String() lo
-  // volveria "[object Object]", una identidad falsa que abriria una unidad basura.
+  // Un objeto NO es una placa: la ingesta manda {} cuando el campo va vacío y String() lo
+  // volvería "[object Object]", una identidad falsa que abriría una unidad basura.
   if (valor !== null && typeof valor === "object") return "";
   return String(valor ?? "")
     .toUpperCase()
@@ -65,10 +94,5 @@ export function normalizaPlaca(valor: unknown): string {
  */
 export function placaVigente(valor: unknown): string {
   const p = normalizaPlaca(valor);
-  return PLACAS_SUSTITUIDAS[p] ?? p;
-}
-
-/** `true` si la placa dada quedó retirada por un reemplacamiento. */
-export function esPlacaRetirada(valor: unknown): boolean {
-  return normalizaPlaca(valor) in PLACAS_SUSTITUIDAS;
+  return EQUIVALENCIAS[p] ?? p;
 }

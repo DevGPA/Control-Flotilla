@@ -1,28 +1,34 @@
 #!/usr/bin/env node
 /**
  * REPARACION DE IDENTIDAD DE UNIDAD — re-archiva bajo la placa VIGENTE todo registro que
- * quedo bajo una placa retirada, y corrige el catalogo.
+ * quedo bajo una placa retirada o mal capturada, y corrige el catalogo.
  *
- * POR QUE EXISTE (y por que no basto la migracion unica de 2026-08-27)
+ * POR QUE EXISTE (y por que una migracion unica no basta)
  * `Unit` se identifica por [tenantId, placa] y Checklist/Semanal/CheckDone/Taller por
- * `unitUid` (= la placa). El cruce de la app es `unit.placa === registro.unitUid`. Las
- * fuentes de ingesta (el catalogo de MoreApp y el de Operaciones-GPA) SIGUEN enviando la
- * placa vieja de las 11 unidades que GPA reemplazo, asi que cada inspeccion nueva volvia a
- * crear la unidad bajo la placa retirada y le partia el historial en dos: la camioneta
- * aparecia "sin una sola inspeccion" mientras sus inspecciones salian aparte, con la placa
- * en la columna Economico.
+ * `unitUid` (= la placa). El cruce de la app es `unit.placa === registro.unitUid`. La fuente
+ * de ingesta (el catalogo de Operaciones-GPA) SIGUE enviando la placa vieja de las 11 unidades
+ * que GPA reemplazo, asi que cada inspeccion nueva volvia a crear la unidad bajo la placa
+ * retirada y le partia el historial en dos: la camioneta aparecia "sin una sola inspeccion".
  *
  * Medido en prod el 2026-09-08: 7 de las 11 unidades resucitadas en el catalogo con su placa
- * vieja (ecos 21, 23, 24, 47, 54, 55, 76) y una veintena de registros nuevos archivados bajo
- * placa retirada entre el 31-ago y el 2-sep.
+ * vieja (ecos 21, 23, 24, 47, 54, 55, 76) y una veintena de registros nuevos archivados ahi
+ * entre el 31-ago y el 2-sep.
  *
- * La causa se cerro en el codigo (`src/fleet/placaVigente.ts`, aplicado en los dos extremos:
- * ingesta y lectura). Este script limpia lo que ya entro. Comparte el mapa con ese modulo,
- * asi que no hay dos verdades: agregar un par alli y volver a correr esto.
+ * La causa se cerro en el codigo: `src/fleet/placaVigente.ts` se aplica en la ingesta (puente
+ * de Ops-GPA y carga por Excel/ZIP) y en la lectura. Este script limpia lo que ya entro.
+ * COMPARTE el mapa con ese modulo, asi que no hay dos verdades: agregar un par alli y volver a
+ * correr esto.
  *
- * ORDEN SEGURO (igual que scripts/migrar-placas.mjs): respalda la pre-imagen, escribe la
- * llave nueva, la verifica leyendola, y solo entonces borra la vieja. Idempotente y
- * reanudable. Si el destino ya existe NO lo pisa: lo reporta como colision y deja ambos.
+ * ORDEN SEGURO
+ *  1. Escanea y arma el plan completo.
+ *  2. Escribe el RESPALDO (pre-imagen de todo lo afectado) a disco ANTES de tocar nada.
+ *  3. Por registro: Put CONDICIONAL (falla si el destino ya existe, en vez de pisarlo) ->
+ *     lo verifica leyendolo -> y solo entonces borra la llave vieja.
+ * Idempotente y reanudable. Si el destino esta ocupado NO lo pisa: lo reporta como colision y
+ * deja ambos, para triage manual.
+ *
+ * REQUIERE Node >= 23.6 (importa un modulo .ts directo). En Node 22.x:
+ *   node --experimental-strip-types scripts/reparar-identidad-placas.mjs ...
  *
  * Uso:
  *   node scripts/reparar-identidad-placas.mjs --api t5zfjwkc6bgpvhxzlpjak3rlfa
@@ -37,7 +43,7 @@ import {
   GetItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
-import { PLACAS_SUSTITUIDAS, placaVigente } from "../src/fleet/placaVigente.ts";
+import { placaVigente } from "../src/fleet/placaVigente.ts";
 
 const args = process.argv.slice(2);
 const iApi = args.indexOf("--api");
@@ -48,31 +54,42 @@ if (!API || API.startsWith("--")) {
   process.exit(1);
 }
 
-/**
- * Correcciones de CAPTURA en el catalogo. No son reemplacamientos: son placas mal escritas
- * a mano en el panel admin. Se listan aparte para no confundir las dos cosas.
- *
- * eco 75: el catalogo decia "JY138152", ocho caracteres, con un "1" de mas. La placa real es
- * JY38152 — lo confirman las 7,332 cargas de combustible, que identifican por numero
- * economico y traen la placa como dato: eco 75 => JY38152. Bajo JY38152 habia 10 inspecciones
- * mensuales, 27 semanales y 2 ingresos a taller sin poder encontrar su unidad.
- */
-const CORRECCIONES_DE_CAPTURA = { JY138152: "JY38152" };
-
-/** placa escrita => placa vigente, de las dos fuentes. */
-const MAPA = { ...PLACAS_SUSTITUIDAS, ...CORRECCIONES_DE_CAPTURA };
-
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "us-east-1" });
 const tabla = (m) => `${m}-${API}-NONE`;
 
-/** Avisos que el script NO corrige por si solo (no inventa datos). */
+/** Avisos que el script NO corrige por si solo: no inventa datos. */
 const avisos = [];
+
+/**
+ * El `refId` de una Anulacion NO tiene un formato uniforme — la placa vive en un segmento
+ * distinto segun el modulo (ver src/anulacion/anulacion.ts):
+ *   checklist|<unitUid>|<fecha>                  -> placa en [1]
+ *   semanal|<periodoId>|<unitUid>                -> placa en [2]
+ *   taller|<unitUid>|<fechaEntrada>              -> placa en [1]
+ *   combustible|<economicoId>|<tipo>|<eventoId>  -> NO lleva placa, jamas se toca
+ * Leer siempre [1] resucitaria en silencio los semanales anulados de una unidad re-archivada:
+ * el tombstone quedaria apuntando a una llave que ya no existe y el reporte volveria a los
+ * KPIs. Esto es exactamente lo que el estandar "anulacion, nunca borrado" busca evitar.
+ */
+const SEGMENTO_DE_PLACA = { checklist: 1, semanal: 2, taller: 1 };
+
+function placaDeRefId(refId) {
+  const partes = String(refId ?? "").split("|");
+  const modulo = partes[0] ?? "";
+  if (modulo === "combustible") return undefined;
+  const i = SEGMENTO_DE_PLACA[modulo];
+  if (i === undefined) {
+    avisos.push(`Anulacion con modulo desconocido en el refId, NO se toca: "${refId}"`);
+    return undefined;
+  }
+  return partes[i];
+}
 
 /**
  * Blob `datos` de Taller: puede venir como string JSON o como objeto. Se preserva la forma.
  * Actualiza los campos que guardan la PLACA. `datos.eco` guarda el numero economico en la
- * mayoria de los registros; si alguno trae una placa retirada ahi, se AVISA en vez de
- * adivinar el numero (la migracion de agosto ya corrigio el unico caso conocido, la eco 24).
+ * mayoria de los registros; si alguno trae una placa ahi, se AVISA en vez de adivinar el
+ * numero.
  */
 function transformaDatos(datos, vieja, nueva, folio) {
   if (datos == null) return { valor: datos, cambios: [] };
@@ -92,7 +109,7 @@ function transformaDatos(datos, vieja, nueva, folio) {
   }
   if (obj.eco === vieja) {
     avisos.push(
-      `Taller ${folio}: datos.eco guarda la placa retirada "${vieja}" en vez del numero economico. Corregir a mano en el panel.`,
+      `Taller ${folio}: datos.eco guarda la placa "${vieja}" en vez del numero economico. Corregir a mano en el panel.`,
     );
   }
   return { valor: eraString ? JSON.stringify(obj) : obj, cambios };
@@ -129,15 +146,24 @@ const TABLAS = [
     }),
   },
   {
+    // OJO: `CheckDone.unitUid` NO es una placa a secas — es el uid de la inspeccion,
+    // `placa__fecha` (las filas viejas si traen la placa sola). La identidad es la PARTE de
+    // la placa; normalizar la cadena completa aplanaria el separador y destruiria la llave
+    // de los hallazgos ya marcados.
     modelo: "CheckDone",
     rangoAttr: "unitUid#itemKey",
-    viejaDe: (it) => it.unitUid,
+    viejaDe: (it) => String(it.unitUid ?? "").split("__")[0],
     rango: (it) => `${it.unitUid}#${it.itemKey}`,
-    transforma: (it, vieja, nueva) => ({
-      ...it,
-      unitUid: nueva,
-      "unitUid#itemKey": `${nueva}#${it.itemKey}`,
-    }),
+    transforma: (it, vieja, nueva) => {
+      const partes = String(it.unitUid ?? "").split("__");
+      const resto = partes.slice(1).join("__");
+      const uid = resto ? `${nueva}__${resto}` : nueva;
+      return {
+        ...it,
+        unitUid: uid,
+        "unitUid#itemKey": `${uid}#${it.itemKey}`,
+      };
+    },
   },
   {
     modelo: "Taller",
@@ -160,12 +186,13 @@ const TABLAS = [
   {
     modelo: "Anulacion",
     rangoAttr: "refId",
-    // refId = "<modulo>|<unitUid>|<fecha>" — la placa es el segundo segmento.
-    viejaDe: (it) => String(it.refId ?? "").split("|")[1],
+    viejaDe: (it) => placaDeRefId(it.refId),
     rango: (it) => it.refId,
     transforma: (it, vieja, nueva) => {
       const partes = String(it.refId).split("|");
-      partes[1] = nueva;
+      const i = SEGMENTO_DE_PLACA[partes[0] ?? ""];
+      if (i === undefined) throw new Error(`refId no mapeable: ${it.refId}`);
+      partes[i] = nueva;
       return { ...it, refId: partes.join("|") };
     },
   },
@@ -195,106 +222,160 @@ console.log(raya);
 console.log(`REPARACION DE IDENTIDAD DE PLACAS  (${APPLY ? "APLICAR" : "SIMULACION"})`);
 console.log(raya);
 
-let plan = 0;
-let escritos = 0;
-let borrados = 0;
-let saltados = 0;
-let errores = 0;
-let colisiones = 0;
-const respaldo = [];
+// ── FASE 1: escanear y armar el plan ────────────────────────────────────────
+const plan = [];
 const porTabla = [];
-
 for (const t of TABLAS) {
   let items;
   try {
     items = await scan(t.modelo);
   } catch (e) {
     console.log(`\n-- ${t.modelo}: NO LEIDO (${e.name})`);
+    porTabla.push([t.modelo, "?", 0]);
     continue;
   }
-  const afectados = items.filter((it) => MAPA[t.viejaDe(it)]);
-  porTabla.push([t.modelo, items.length, afectados.length]);
-  if (!afectados.length) continue;
-  console.log(
-    `\n-- ${t.modelo}: ${items.length} registros, ${afectados.length} bajo placa retirada`,
-  );
-  plan += afectados.length;
-  const extras = new Set();
-
-  for (const it of afectados) {
+  let afectados = 0;
+  for (const it of items) {
     const vieja = t.viejaDe(it);
-    const nueva = MAPA[vieja];
+    if (vieja == null || vieja === "") continue;
+    // Filtro CANONICO, no exacto: asi tambien alcanza las variantes de captura
+    // ("jv50090", "JV-50090"), que un `MAPA[vieja]` literal dejaba fuera — y la auditoria
+    // final SI las normaliza, asi que el desajuste imprimia "sin huerfanos" en falso.
+    const nueva = placaVigente(vieja);
+    if (!nueva || nueva === vieja) continue;
     const res = t.transforma(it, vieja, nueva);
     const nuevoItem = res.item ?? res;
-    for (const c of res.extra ?? []) extras.add(c);
-    const rangoViejo = t.rango(it);
-    const rangoNuevo = nuevoItem[t.rangoAttr];
-    respaldo.push({ modelo: t.modelo, rangoAttr: t.rangoAttr, rangoViejo, rangoNuevo, item: it });
-
-    const ocupado = await existe(t.modelo, it.tenantId, t.rangoAttr, rangoNuevo);
-    console.log(
-      `   ${vieja} -> ${nueva}  ${String(rangoViejo).padEnd(26)} => ${String(rangoNuevo).padEnd(26)} ${ocupado ? "[DESTINO OCUPADO, no se pisa]" : ""}`,
-    );
-    if (ocupado) {
-      colisiones++;
-      continue;
-    }
-    if (!APPLY) continue;
-
-    try {
-      await client.send(
-        new PutItemCommand({
-          TableName: tabla(t.modelo),
-          Item: marshall(nuevoItem, { removeUndefinedValues: true }),
-        }),
-      );
-      escritos++;
-      // Verificar que quedo escrita ANTES de borrar la vieja.
-      if (!(await existe(t.modelo, it.tenantId, t.rangoAttr, rangoNuevo))) {
-        errores++;
-        console.log("      NO VERIFICADO, no se borra el viejo");
-        continue;
-      }
-      if (rangoViejo !== rangoNuevo) {
-        await client.send(
-          new DeleteItemCommand({
-            TableName: tabla(t.modelo),
-            Key: marshall({ tenantId: it.tenantId, [t.rangoAttr]: rangoViejo }),
-          }),
-        );
-        borrados++;
-      } else {
-        saltados++;
-      }
-    } catch (e) {
-      errores++;
-      console.log(`      FALLO: ${String(e).slice(0, 160)}`);
-    }
+    plan.push({
+      t,
+      item: it,
+      vieja,
+      nueva,
+      rangoViejo: t.rango(it),
+      rangoNuevo: nuevoItem[t.rangoAttr],
+      nuevoItem,
+      extra: res.extra ?? [],
+    });
+    afectados++;
   }
+  porTabla.push([t.modelo, items.length, afectados]);
+}
+
+for (const [m, tot, af] of porTabla) {
+  if (af) console.log(`\n-- ${m}: ${tot} registros, ${af} bajo placa a corregir`);
+  for (const p of plan.filter((p) => p.t.modelo === m)) {
+    console.log(
+      `   ${p.vieja} -> ${p.nueva}  ${String(p.rangoViejo).padEnd(26)} => ${p.rangoNuevo}`,
+    );
+  }
+  const extras = new Set(plan.filter((p) => p.t.modelo === m).flatMap((p) => p.extra));
   if (extras.size) console.log(`   campos del blob actualizados: ${[...extras].join(", ")}`);
 }
 
-// Respaldo: pre-imagen completa de todo lo afectado, reversible a mano si hiciera falta.
-if (respaldo.length) {
+// ── FASE 2: respaldo a disco ANTES de escribir nada ─────────────────────────
+if (plan.length) {
   mkdirSync(".scratch/reparacion-placas", { recursive: true });
   const sello = new Date().toISOString().replace(/[:.]/g, "-");
   const ruta = `.scratch/reparacion-placas/respaldo-${sello}.json`;
-  writeFileSync(ruta, JSON.stringify(respaldo, null, 1));
-  console.log(`\nRespaldo de ${respaldo.length} registros (pre-imagen): ${ruta}`);
+  writeFileSync(
+    ruta,
+    JSON.stringify(
+      plan.map((p) => ({
+        modelo: p.t.modelo,
+        rangoAttr: p.t.rangoAttr,
+        rangoViejo: p.rangoViejo,
+        rangoNuevo: p.rangoNuevo,
+        item: p.item,
+      })),
+      null,
+      1,
+    ),
+  );
+  console.log(`\nRespaldo de ${plan.length} registros (pre-imagen) ESCRITO ANTES de tocar nada:`);
+  console.log(`  ${ruta}`);
 }
 
-// Auditoria final: que sigue sin poder encontrar su unidad en el catalogo.
+// ── FASE 3: escribir ───────────────────────────────────────────────────────
+let escritos = 0;
+let borrados = 0;
+let colisiones = 0;
+let errores = 0;
+
+for (const p of plan) {
+  const { t } = p;
+  if (!APPLY) {
+    if (await existe(t.modelo, p.item.tenantId, t.rangoAttr, p.rangoNuevo)) {
+      colisiones++;
+      console.log(`   [DESTINO OCUPADO, no se pisaria] ${t.modelo} ${p.rangoNuevo}`);
+    }
+    continue;
+  }
+  try {
+    // Put CONDICIONAL: si el receptor creo el destino entre el scan y ahora, esto falla en
+    // vez de reemplazarlo (el Put a secas era una carrera de perdida de escritura, y el
+    // receptor ahora escribe exactamente las llaves canonicas que este script persigue).
+    await client.send(
+      new PutItemCommand({
+        TableName: tabla(t.modelo),
+        Item: marshall(p.nuevoItem, { removeUndefinedValues: true }),
+        ConditionExpression: "attribute_not_exists(tenantId)",
+      }),
+    );
+    escritos++;
+  } catch (e) {
+    if (e.name === "ConditionalCheckFailedException") {
+      colisiones++;
+      console.log(`   [DESTINO OCUPADO, no se pisa] ${t.modelo} ${p.rangoNuevo}`);
+      continue;
+    }
+    errores++;
+    console.log(`   FALLO Put ${t.modelo} ${p.rangoViejo}: ${String(e).slice(0, 160)}`);
+    continue;
+  }
+  try {
+    // Verificar que quedo escrita ANTES de borrar la vieja.
+    if (!(await existe(t.modelo, p.item.tenantId, t.rangoAttr, p.rangoNuevo))) {
+      errores++;
+      console.log(`   NO VERIFICADO, no se borra el viejo: ${t.modelo} ${p.rangoNuevo}`);
+      continue;
+    }
+    if (p.rangoViejo !== p.rangoNuevo) {
+      await client.send(
+        new DeleteItemCommand({
+          TableName: tabla(t.modelo),
+          Key: marshall({ tenantId: p.item.tenantId, [t.rangoAttr]: p.rangoViejo }),
+        }),
+      );
+      borrados++;
+    }
+  } catch (e) {
+    errores++;
+    console.log(`   FALLO Delete ${t.modelo} ${p.rangoViejo}: ${String(e).slice(0, 160)}`);
+  }
+}
+
+// ── FASE 4: auditoria ──────────────────────────────────────────────────────
 console.log(`\n${raya}`);
 console.log("AUDITORIA: registros que NO encuentran su unidad en el catalogo");
 console.log(raya);
 const units = await scan("Unit");
-const delCatalogo = new Set(units.map((u) => placaVigente(u.placa)));
+const delCatalogo = new Set(units.map((u) => placaVigente(u.placa)).filter(Boolean));
+
+// Duplicados del catalogo: dos filas para la misma unidad inflan la flota y la cobertura.
+const porLlave = new Map();
+for (const u of units) {
+  const k = placaVigente(u.placa);
+  if (k) porLlave.set(k, [...(porLlave.get(k) ?? []), u.placa]);
+}
+const dup = [...porLlave].filter(([, ps]) => ps.length > 1);
+console.log(`  Unit       ${units.length} filas, ${porLlave.size} unidades distintas`);
+for (const [k, ps] of dup) console.log(`     DUPLICADA ${k} <- ${ps.join(" + ")}`);
+
 for (const modelo of ["Checklist", "Semanal", "CheckDone", "Taller"]) {
   const rows = await scan(modelo).catch(() => []);
   const huerf = new Map();
   for (const r of rows) {
     // CheckDone usa el uid compuesto `placa__fecha`; la identidad es la parte de la placa.
-    const p = placaVigente(String(r.unitUid ?? "").split("__")[0].split("#")[0]);
+    const p = placaVigente(String(r.unitUid ?? "").split("__")[0]);
     if (p && !delCatalogo.has(p)) huerf.set(p, (huerf.get(p) ?? 0) + 1);
   }
   const txt = [...huerf]
@@ -304,11 +385,39 @@ for (const modelo of ["Checklist", "Semanal", "CheckDone", "Taller"]) {
   console.log(`  ${modelo.padEnd(10)} ${huerf.size ? txt : "sin huerfanos"}`);
 }
 
+// Anulacion: un tombstone ACTIVO cuyo registro destino ya no existe es una anulacion
+// resucitada en silencio — exactamente lo que hay que reportar.
+{
+  const [anul, chk, sem, tal] = await Promise.all([
+    scan("Anulacion").catch(() => []),
+    scan("Checklist").catch(() => []),
+    scan("Semanal").catch(() => []),
+    scan("Taller").catch(() => []),
+  ]);
+  const kChk = new Set(chk.map((r) => `${r.unitUid}|${r.fecha}`));
+  const kSem = new Set(sem.map((r) => `${r.periodoId}|${r.unitUid}`));
+  const kTal = new Set(tal.map((r) => `${r.unitUid}|${r.fechaEntrada}`));
+  const rotas = [];
+  for (const a of anul) {
+    const p = String(a.refId ?? "").split("|");
+    const modulo = p[0] ?? "";
+    let ok = null;
+    if (modulo === "checklist") ok = kChk.has(`${p[1]}|${p[2]}`);
+    else if (modulo === "semanal") ok = kSem.has(`${p[1]}|${p[2]}`);
+    else if (modulo === "taller") ok = kTal.has(`${p[1]}|${p[2]}`);
+    if (ok === false) rotas.push(a.refId);
+  }
+  console.log(
+    `  Anulacion  ${anul.length} filas, ${rotas.length} apuntando a un registro que ya NO existe`,
+  );
+  for (const r of rotas) console.log(`     HUERFANA ${r}`);
+}
+
 if (avisos.length) {
   console.log(`\n${raya}`);
   console.log("AVISOS (el script no los corrige por si solo)");
   console.log(raya);
-  for (const a of avisos) console.log(`  - ${a}`);
+  for (const a of [...new Set(avisos)]) console.log(`  - ${a}`);
 }
 
 console.log(`\n${raya}`);
@@ -316,10 +425,10 @@ for (const [m, tot, af] of porTabla) {
   console.log(`  ${m.padEnd(10)} ${String(tot).padStart(5)} registros, ${af} afectados`);
 }
 if (!APPLY) {
-  console.log(`\n  A re-archivar: ${plan} registros. Colisiones: ${colisiones}.`);
+  console.log(`\n  A re-archivar: ${plan.length} registros. Colisiones: ${colisiones}.`);
   console.log("  SIMULACION. Corre con --apply para escribir.");
 } else {
   console.log(
-    `\n  escritos: ${escritos} - borrados: ${borrados} - ya estaban: ${saltados} - colisiones: ${colisiones} - errores: ${errores}`,
+    `\n  escritos: ${escritos} - borrados: ${borrados} - colisiones: ${colisiones} - errores: ${errores}`,
   );
 }

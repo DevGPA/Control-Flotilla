@@ -9,6 +9,7 @@
 import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
 import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
+import { placaVigente } from "../fleet/placaVigente";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
 interface LegacyUnit {
@@ -87,12 +88,17 @@ export async function uploadZipToCloud(zip: LoadedZip, tenantId: string): Promis
   const kind = zip.report.kind;
 
   for (const row of rows) {
-    const placa = pickStr(
-      row,
-      "# Economico - PLACAS",
-      "No. de unidad / ECO",
-      "Número de unidad",
-      "# Economico - id",
+    // El Excel/ZIP mensual sigue trayendo la placa VIEJA de las unidades reemplazadas: sin
+    // normalizar, una sola carga resucita la unidad bajo la placa retirada y le vuelve a
+    // partir el historial. Ver src/fleet/placaVigente.ts.
+    const placa = placaVigente(
+      pickStr(
+        row,
+        "# Economico - PLACAS",
+        "No. de unidad / ECO",
+        "Número de unidad",
+        "# Economico - id",
+      ),
     );
     if (!placa) {
       result.skipped++;
@@ -195,7 +201,8 @@ export async function uploadUnitsToCloud(
   };
 
   for (const u of units) {
-    const placa = String(u.plate || u.eco || u.uid || "").trim();
+    // Normaliza a la placa vigente antes de tocar el catalogo (ver el comentario de arriba).
+    const placa = placaVigente(u.plate || u.eco || u.uid);
     if (!placa) {
       result.skipped++;
       continue;
@@ -315,7 +322,8 @@ export async function uploadSemanalesToCloud(
   };
 
   for (const e of entries) {
-    const placa = String(e.plate || e.eco || e.uid || "").trim();
+    // Normaliza a la placa vigente antes de escribir (ver el comentario de arriba).
+    const placa = placaVigente(e.plate || e.eco || e.uid);
     if (!placa) {
       result.skipped++;
       continue;

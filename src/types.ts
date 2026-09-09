@@ -53,6 +53,15 @@ export type Unit = {
   uid: string;
   eco?: string;
   plate?: string;
+  /**
+   * `unitUid` TAL COMO ESTA ALMACENADO en el registro (Checklist/Semanal/Taller), que NO
+   * siempre es `plate`: `plate` viene del catalogo y es la placa vigente, mientras que un
+   * registro archivado bajo una placa retirada conserva la vieja. La identidad natural con
+   * la que se compone el `refId` de anulacion es esta, la almacenada — si se compusiera con
+   * `plate`, quien anula escribiria una llave que quien hidrata no busca y la anulacion se
+   * guardaria sin excluir nada, EN SILENCIO (ver src/anulacion/anulacion.ts).
+   */
+  unitUid?: string;
   branch?: string;
   driver?: string;
   fecha?: string;
