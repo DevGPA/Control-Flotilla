@@ -36,7 +36,15 @@ export function escaparHtml(s: unknown): string {
 
 export function paginaProveedor(token: string): string {
   const tk = escaparHtml(token);
-  const mimesJson = JSON.stringify(MIMES_FOTO);
+  // Minor B (revision de seguridad): antes estas cuatro constantes se
+  // interpolaban directo dentro de <script> (JSON.stringify + numeros). No
+  // eran explotables hoy (MIMES_FOTO es una tupla `as const` de compilacion,
+  // no dato de terceros), pero cualquier edicion futura que las reemplazara
+  // por algo dinamico quedaria a un solo cambio de una fuga hacia el script.
+  // Se mueven a atributos data-* del MISMO <meta> que ya carga el token
+  // (mismo patron "leer con getAttribute", no "interpolar en un literal de
+  // JS"): asi <script> nunca vuelve a llevar nada horneado por el servidor.
+  const mimesAttr = escaparHtml(MIMES_FOTO.join(","));
   const topeFotos = TOPE_FOTOS_PARTIDA;
   const topeBytes = TOPE_BYTES_FOTO;
   const topePartidas = TOPE_PARTIDAS_VISITA;
@@ -48,7 +56,7 @@ export function paginaProveedor(token: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex,nofollow">
-<meta id="pt-token" content="${tk}">
+<meta id="pt-token" content="${tk}" data-mimes="${mimesAttr}" data-tope-fotos="${topeFotos}" data-tope-bytes="${topeBytes}" data-tope-partidas="${topePartidas}">
 <title>GPA · Portal de taller</title>
 <style>
 /* Tokens copiados de src/styles/main.css (fuente de verdad del diseño de
@@ -146,14 +154,21 @@ textarea{min-height:72px; resize:vertical}
 }
 .draft-fotos{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px}
 .draft-foto{
-  width:64px; height:64px; border-radius:8px; overflow:hidden; position:relative;
+  width:64px; height:64px; border-radius:8px; overflow:visible; position:relative;
   background:#f1f5f9;
 }
-.draft-foto img{width:100%; height:100%; object-fit:cover}
+.draft-foto img{width:100%; height:100%; object-fit:cover; border-radius:8px}
+/* Minor A: el area de toque real es 44x44 (transparente); el glifo visible
+   sigue siendo el circulo chico de 20px dentro, vía <span>. */
 .draft-foto button{
-  position:absolute; top:2px; right:2px; width:20px; height:20px; min-height:0;
-  border-radius:50%; border:none; background:rgba(15,23,42,.7); color:#fff;
-  font-size:12px; line-height:1; padding:0; cursor:pointer;
+  position:absolute; top:-10px; right:-10px; width:44px; height:44px; min-height:0;
+  display:flex; align-items:center; justify-content:center;
+  border:none; background:transparent; padding:0; cursor:pointer;
+}
+.draft-foto button span{
+  display:flex; align-items:center; justify-content:center;
+  width:20px; height:20px; border-radius:50%;
+  background:rgba(15,23,42,.7); color:#fff; font-size:12px; line-height:1;
 }
 .draft-acciones{display:flex; gap:8px; margin-top:10px}
 .draft-acciones .btn{flex:1}
@@ -266,18 +281,21 @@ textarea{min-height:72px; resize:vertical}
 (function () {
   "use strict";
 
-  var TOKEN = document.getElementById("pt-token").getAttribute("content");
-  var MIMES = ${mimesJson};
-  var TOPE_FOTOS = ${topeFotos};
-  var TOPE_BYTES = ${topeBytes};
-  var TOPE_PARTIDAS = ${topePartidas};
+  var metaConfig = document.getElementById("pt-token");
+  var TOKEN = metaConfig.getAttribute("content");
+  var MIMES = metaConfig.getAttribute("data-mimes").split(",");
+  var TOPE_FOTOS = parseInt(metaConfig.getAttribute("data-tope-fotos"), 10);
+  var TOPE_BYTES = parseInt(metaConfig.getAttribute("data-tope-bytes"), 10);
+  var TOPE_PARTIDAS = parseInt(metaConfig.getAttribute("data-tope-partidas"), 10);
 
   var RUTA_VISITA = "/api/visita";
   var RUTA_PARTIDA = "/api/partida";
   var RUTA_SUBIDA = "/api/subida";
+  var RUTA_FOTO = "/api/foto";
 
   var estado = null; // { unidad, visita, partidas } tal como lo devuelve /api/visita
-  var fotosDraft = []; // File[] pendientes de subir para el hallazgo en captura
+  var fotosDraft = []; // { file: File, key: string|null }[] — key se llena
+  // al subir; un reintento no vuelve a subir lo que ya tiene key (Important 5)
   var tipoDraft = null; // "refaccion" | "manoObra"
   var previewsLocal = {}; // partidaId -> object URL, solo para lo creado en esta sesión
 
@@ -380,21 +398,51 @@ textarea{min-height:72px; resize:vertical}
     return e;
   }
 
+  // Important 2 (revision de seguridad): /api/foto?t=...&key=... firma una
+  // URL de LECTURA por-demanda (igual patron que el resto de la app: nunca
+  // se lista el bucket). Mientras 6b no la despliegue, responde 404 y el
+  // marcador "📷 N" puesto de entrada se queda tal cual — nunca se rompe la
+  // tarjeta ni se reintenta indefinidamente.
+  function pintarFotoPartida(cont, p) {
+    var previa = previewsLocal[p.partidaId];
+    if (previa) {
+      var img = el("img", null);
+      img.src = previa;
+      img.alt = "Foto del hallazgo";
+      img.loading = "lazy";
+      cont.appendChild(img);
+      return;
+    }
+    if (!p.fotos || !p.fotos.length) {
+      cont.appendChild(document.createTextNode("📷"));
+      return;
+    }
+    cont.appendChild(document.createTextNode("📷 " + p.fotos.length));
+    fetch(conToken(RUTA_FOTO) + "&key=" + encodeURIComponent(p.fotos[0]))
+      .then(function (res) {
+        if (!res.ok) throw new Error("http-" + res.status);
+        return res.json();
+      })
+      .then(function (datos) {
+        if (!datos || !datos.url) throw new Error("sin-url");
+        var img = el("img", null);
+        img.src = datos.url;
+        img.alt = "Foto del hallazgo";
+        img.loading = "lazy";
+        cont.textContent = "";
+        cont.appendChild(img);
+      })
+      .catch(function () {
+        // Ruta ausente hoy (6b) o firma fallida: el marcador ya puesto arriba
+        // se queda como esta.
+      });
+  }
+
   function tarjetaPartida(p) {
     var card = el("div", "hallazgo");
 
     var foto = el("div", "hallazgo-foto");
-    var previa = previewsLocal[p.partidaId];
-    if (previa) {
-      var img = document.createElement("img");
-      img.src = previa;
-      img.alt = "Foto del hallazgo";
-      foto.appendChild(img);
-    } else if (p.fotos && p.fotos.length) {
-      foto.appendChild(document.createTextNode("📷 " + p.fotos.length));
-    } else {
-      foto.appendChild(document.createTextNode("📷"));
-    }
+    pintarFotoPartida(foto, p);
     card.appendChild(foto);
 
     var cuerpo = el("div", "hallazgo-cuerpo");
@@ -404,7 +452,15 @@ textarea{min-height:72px; resize:vertical}
     cuerpo.appendChild(desc);
 
     var tipoTxt = p.tipo === "manoObra" ? "Mano de obra" : "Refacción";
-    var meta = el("p", "hallazgo-meta" + (tachado ? " tachado" : ""), tipoTxt + " · " + moneda(p.precio));
+    // Important 1: autorizada muestra el precio CONGELADO (precioAutorizado),
+    // no el capturado — se degrada a precio mientras 6b no manda el campo, y
+    // en cualquier otro estado (todavia no hay precioAutorizado que mostrar).
+    var precioMostrado = p.precioAutorizado ?? p.precio;
+    var meta = el(
+      "p",
+      "hallazgo-meta" + (tachado ? " tachado" : ""),
+      tipoTxt + " · " + moneda(precioMostrado),
+    );
     cuerpo.appendChild(meta);
 
     var pill = el("span", "pill pill-" + p.estado, etiquetaEstado(p.estado));
@@ -453,7 +509,7 @@ textarea{min-height:72px; resize:vertical}
       if (p.estado === "propuesta" || p.estado === "autorizada" || p.estado === "rechazada") {
         cot += p.precio || 0;
       }
-      if (p.estado === "autorizada") aut += p.precio || 0;
+      if (p.estado === "autorizada") aut += (p.precioAutorizado ?? p.precio) || 0;
       if (p.estado === "borrador") nBorrador++;
     });
     document.getElementById("tot-cotizado").textContent = moneda(cot);
@@ -543,17 +599,21 @@ textarea{min-height:72px; resize:vertical}
   function pintarFotosDraft() {
     var cont = document.getElementById("draft-fotos");
     cont.textContent = "";
-    fotosDraft.forEach(function (f, idx) {
+    fotosDraft.forEach(function (item, idx) {
       var chip = el("div", "draft-foto");
       var img = document.createElement("img");
-      img.src = URL.createObjectURL(f);
+      img.src = URL.createObjectURL(item.file);
       img.alt = "Foto " + (idx + 1);
       chip.appendChild(img);
       var quitar = document.createElement("button");
       quitar.type = "button";
       quitar.setAttribute("aria-label", "Quitar foto");
-      quitar.textContent = "×";
+      var glifo = el("span", null, "×");
+      quitar.appendChild(glifo);
       quitar.addEventListener("click", function () {
+        // Quitar la foto es el otro punto (junto con guardar con exito) en
+        // el que se permite perder una llave ya subida — deja de haber
+        // partida que la referencie, así que no hace falta rastrearla mas.
         fotosDraft.splice(idx, 1);
         pintarFotosDraft();
       });
@@ -603,7 +663,7 @@ textarea{min-height:72px; resize:vertical}
       abrirDraft();
       return;
     }
-    fotosDraft.push(f);
+    fotosDraft.push({ file: f, key: null });
     var draftEstabaAbierto = !document.getElementById("draft").hidden;
     abrirDraft();
     if (!draftEstabaAbierto) document.getElementById("in-desc").focus();
@@ -623,25 +683,38 @@ textarea{min-height:72px; resize:vertical}
     cerrarDraft();
   });
 
-  function subirFotos(files) {
-    var claves = [];
+  // Important 5 (revision de seguridad): un reintento tras un fallo de
+  // /api/partida (el caso central de esta pantalla: mala señal en el taller)
+  // NO debe volver a firmar ni volver a subir fotos que ya llegaron a S3 —
+  // eso deja objetos de 10 MB huerfanos en el bucket de produccion cada vez
+  // que alguien reintenta. Cada elemento de fotosDraft es
+  // { file: File, key: string|null }; subirFotos() se salta cualquier item
+  // que ya tenga key (subido en un intento anterior) y solo sube lo que
+  // falta. La key solo se limpia al guardar con éxito (cerrarDraft) o al
+  // quitar la foto (pintarFotosDraft), nunca por un fallo de guardado.
+  function subirFotos(items) {
     var cadena = Promise.resolve();
-    files.forEach(function (f) {
+    items.forEach(function (item) {
+      if (item.key) return; // ya subida en un intento anterior: no repetir
       cadena = cadena.then(function () {
-        return peticionJson(RUTA_SUBIDA, { mime: f.type, tamano: f.size }).then(function (firma) {
-          return fetch(firma.url, {
-            method: "PUT",
-            headers: { "content-type": f.type },
-            body: f,
-          }).then(function (resPut) {
-            if (!resPut.ok) throw new Error("subida");
-            claves.push(firma.key);
-          });
-        });
+        return peticionJson(RUTA_SUBIDA, { mime: item.file.type, tamano: item.file.size }).then(
+          function (firma) {
+            return fetch(firma.url, {
+              method: "PUT",
+              headers: { "content-type": item.file.type },
+              body: item.file,
+            }).then(function (resPut) {
+              if (!resPut.ok) throw new Error("subida");
+              item.key = firma.key;
+            });
+          },
+        );
       });
     });
     return cadena.then(function () {
-      return claves;
+      return items.map(function (item) {
+        return item.key;
+      });
     });
   }
 
@@ -672,8 +745,7 @@ textarea{min-height:72px; resize:vertical}
     btnGuardar.disabled = true;
     msg.textContent = "Guardando…";
 
-    var fotosACargar = fotosDraft.slice();
-    subirFotos(fotosACargar)
+    subirFotos(fotosDraft)
       .then(function (claves) {
         return peticionJson(RUTA_PARTIDA, {
           descripcion: desc,
@@ -684,6 +756,7 @@ textarea{min-height:72px; resize:vertical}
       })
       .then(function (nueva) {
         var partidaId = nueva && nueva.partidaId;
+        var primerArchivo = fotosDraft[0] && fotosDraft[0].file;
         estado.partidas.push({
           partidaId: partidaId,
           descripcion: desc,
@@ -693,8 +766,8 @@ textarea{min-height:72px; resize:vertical}
           motivoRechazo: null,
           fotos: (nueva && nueva.fotos) || [],
         });
-        if (partidaId && fotosACargar[0]) {
-          previewsLocal[partidaId] = URL.createObjectURL(fotosACargar[0]);
+        if (partidaId && primerArchivo) {
+          previewsLocal[partidaId] = URL.createObjectURL(primerArchivo);
         }
         cerrarDraft();
         pintarPartidas();
