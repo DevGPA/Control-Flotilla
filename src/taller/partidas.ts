@@ -148,6 +148,46 @@ export function pendientesDeFirma(ps: Partida[]): number {
   return partidasPendientesDeFirma(ps).length;
 }
 
+export type GastoDerivado = {
+  gasto: number;
+  gastoRef: number;
+  gastoMO: number;
+  cotizado: number;
+  rechazado: number;
+};
+
+/**
+ * El gasto de una visita con partidas es la suma de lo FIRMADO — nunca un
+ * número tecleado. Si el proveedor tecleara un subtotal y además precios por
+ * partida, van a discrepar y no habría forma de saber cuál es verdad.
+ *
+ * Las visitas históricas (sin partidas) conservan lo que se capturó a mano.
+ */
+export function gastoDerivado(
+  entry: { gasto?: number; gastoRef?: number; gastoMO?: number },
+  ps: Partida[],
+): GastoDerivado {
+  if (!ps.length) {
+    const ref = entry.gastoRef ?? 0;
+    const mo = entry.gastoMO ?? 0;
+    return {
+      gasto: entry.gasto ?? ref + mo,
+      gastoRef: ref,
+      gastoMO: mo,
+      cotizado: 0,
+      rechazado: 0,
+    };
+  }
+  const t = totalesVisita(ps);
+  return {
+    gasto: t.autorizado,
+    gastoRef: t.gastoRef,
+    gastoMO: t.gastoMO,
+    cotizado: t.cotizado,
+    rechazado: t.rechazado,
+  };
+}
+
 const OPERATIVO_A_ESTADO: Record<EstadoOperativo, TallerEstado> = {
   revisando: "En Diagnóstico",
   reparando: "En Reparación",

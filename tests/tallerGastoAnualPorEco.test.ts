@@ -72,4 +72,41 @@ describe("gastoAnualPorEco", () => {
     expect(gastoAnualPorEco([entry({ eco: "" })], 2026).size).toBe(0);
     expect(gastoAnualPorEco([entry({ fentrada: "", freporte: "" })], 2026).size).toBe(0);
   });
+
+  // Task 9 (ruling del controlador): una unidad cuyo gasto llegó ENTERO por partidas
+  // firmadas no puede aparecer en $0 aquí — es justo el número que evita firmar a
+  // ciegas sobre una unidad que ya gastó su año (el chip "Esta unidad: $X en <año>"
+  // de la bandeja de firmas, Task 8).
+  it("con partidasDe, una unidad sin gasto tecleado pero con partidas FIRMADAS lleva su total signado, no 0", () => {
+    const visita = entry({ id: "v1", gasto: 0, gastoRef: 0, gastoMO: 0 });
+    const ps = [
+      {
+        partidaId: "p1",
+        visitaKey: "clave-v1",
+        descripcion: "Balatas",
+        estado: "autorizada" as const,
+        precio: 1200,
+        precioAutorizado: 1200,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+      {
+        partidaId: "p2",
+        visitaKey: "clave-v1",
+        descripcion: "Mano de obra",
+        estado: "rechazada" as const,
+        precio: 300,
+        tipo: "manoObra" as const,
+        fotos: [],
+      },
+    ];
+    const out = gastoAnualPorEco([visita], 2026, (e) => (e.id === "v1" ? ps : undefined));
+    // 1200 autorizado; el rechazado NO cuenta como gasto.
+    expect(out.get("42")).toEqual({ gasto: 1200, visitas: 1 });
+  });
+
+  it("sin partidasDe (el llamador no las conoce todavía), se comporta EXACTAMENTE como antes", () => {
+    const out = gastoAnualPorEco([entry({ gastoRef: 1000, gastoMO: 500 })], 2026);
+    expect(out.get("42")).toEqual({ gasto: 1500, visitas: 1 });
+  });
 });

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-DZryzlQDA2+uDIPP5d1SR5YNpgOBvB3Sl72m620jH0w=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JxmOnqbSU9hmt9jrbzSnvsTCp06AzSDUlaP2vXV0DFg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1366,6 +1366,9 @@
       <div class="tl-field">
         <label for="tf-gasto">Subtotal ($)</label>
         <input id="tf-gasto" type="number" min="0" step="0.01" placeholder="0.00"/>
+        <!-- Task 9: con partidas, este campo pasa a solo lectura (el gasto se
+             calcula, no se captura) y openTallerModal() muestra esta leyenda. -->
+        <div id="tf-gasto-hint" style="display:none;font-size:10px;color:var(--s2)">Suma de las partidas autorizadas</div>
       </div>
       <div class="tl-field">
         <label for="tf-pedido">No. de Pedido (ERP)</label>
@@ -7588,6 +7591,18 @@ function tlSort(key){
   renderTaller();
 }
 
+// Localiza las partidas de la visita de UN entry — mismo match en todo el
+// módulo (window.__visitaKeyDe + window.__tallerPartidas), nunca un
+// `${a}|${b}` hecho a mano. Task 9 la reusa en el modal, en "Guardar" y en
+// los exports de Excel. NO se usa dentro de renderTaller(): el cálculo del
+// badge de abajo es un literal que tests/tallerBadgePendientesDeFirma.test.ts
+// extrae y ejecuta tal cual desde el HTML (new Function) — moverlo a esta
+// función rompería esa extracción sin ganar nada (ese bloque ya no crece).
+function _partidasDeVisita(e){
+  const vk = e && window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+  return vk ? (window.__tallerPartidas?.get(vk) || []) : [];
+}
+
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
   // El badge de la pestaña Taller pasa a contar lo que espera TU firma, via
@@ -7654,8 +7669,11 @@ function renderBandeja(){
   const entries = scopeBySucursal(tallerEntries || []);
   const porVisita = window.__tallerPartidas || new Map();
   const anio = new Date().getFullYear();
+  // Task 9: el gasto anual también tiene que ver lo FIRMADO por partidas — una
+  // visita cerrada de años/meses anteriores cuyo gasto llegó entero por
+  // partidas no puede desaparecer del "Esta unidad: $X en <año>".
   const anual = typeof window.__gastoAnualPorEco === "function"
-    ? window.__gastoAnualPorEco(entries, anio)
+    ? window.__gastoAnualPorEco(entries, anio, _partidasDeVisita)
     : new Map();
   const filas = window.__filasBandeja(entries, porVisita, anual);
   const motivos = window.__MOTIVOS_RECHAZO || [];
@@ -9395,7 +9413,10 @@ async function exportTallerActivasExcel(){
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
   try{
     const api=await window.__tallerExport();
-    await api.downloadTallerActivasXlsx(activas,{hoy:new Date()});
+    // Task 9: partidasDe deriva Ref/MO/Total y Cotizado/Autorizado/Rechazado
+    // de lo FIRMADO — sin esto, el Excel volvería a mentir para las visitas
+    // que ya no capturan un Subtotal a mano.
+    await api.downloadTallerActivasXlsx(activas,{hoy:new Date(), partidasDe:_partidasDeVisita});
   }catch(e){
     console.error("[exportTallerActivasExcel]",e);
     window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
@@ -9409,7 +9430,9 @@ async function exportTallerHistorialExcel(){
   try{
     const api=await window.__tallerExport();
     // El módulo filtra cerradas y arma el Resumen por unidad (resumenPorUnidad, testeado).
-    await api.downloadTallerHistorialXlsx(tallerEntries,{hoy:new Date()});
+    // Task 9: mismo partidasDe que Activas — el Resumen y el $/1,000 km también
+    // dependen de gastoTotalDe.
+    await api.downloadTallerHistorialXlsx(tallerEntries,{hoy:new Date(), partidasDe:_partidasDeVisita});
   }catch(e){
     console.error("[exportTallerHistorialExcel]",e);
     window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
@@ -9559,7 +9582,27 @@ function openTallerModal(id){
   document.getElementById("tf-fsalida-est").value  = e?.fsalidaEst||"";
   document.getElementById("tf-fsalida-real").value = e?.fsalidaReal||"";
   document.getElementById("tf-km").value           = e?.km||"";
-  document.getElementById("tf-gasto").value        = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+  // Task 9 (el gasto se calcula, no se captura): con partidas para esta visita,
+  // el campo pasa a solo lectura mostrando lo derivado (gastoDerivado,
+  // src/taller/partidas.ts) — sin partidas, sigue editable como siempre
+  // (visitas históricas y captura manual).
+  {
+    const gastoInput = document.getElementById("tf-gasto");
+    const gastoHint  = document.getElementById("tf-gasto-hint");
+    const psGasto = e ? _partidasDeVisita(e) : [];
+    if(psGasto.length && typeof window.__gastoDerivado === "function"){
+      const derivado = window.__gastoDerivado(e, psGasto);
+      gastoInput.value = derivado.gasto || "";
+      gastoInput.disabled = true;
+      gastoInput.title = "Suma de las partidas autorizadas";
+      if(gastoHint) gastoHint.style.display = "";
+    } else {
+      gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+      gastoInput.disabled = false;
+      gastoInput.removeAttribute("title");
+      if(gastoHint) gastoHint.style.display = "none";
+    }
+  }
   document.getElementById("tf-pedido").value       = e?.pedidoErp||"";
   document.getElementById("tf-tecnico").value      = e?.tecnico||"";
   document.getElementById("tf-refacciones").value  = e?.refacciones||"";
@@ -9581,6 +9624,13 @@ function clearTallerEntryFields(){
   // tf-pedido incluido: cada visita (reingreso) gestiona su PROPIO pedido en el ERP.
   ["tf-km","tf-gasto","tf-pedido","tf-freporte","tf-fentrada","tf-fsalida-est","tf-fsalida-real","tf-tecnico","tf-refacciones","tf-comentario"]
     .forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  // Task 9: un reingreso es una visita NUEVA sin partidas todavía — este flujo
+  // no pasa por openTallerModal(), así que el candado de solo-lectura de
+  // #tf-gasto (si venía de editar una visita con partidas) se resetea aquí.
+  const gastoInput = document.getElementById("tf-gasto");
+  if(gastoInput){ gastoInput.disabled = false; gastoInput.removeAttribute("title"); }
+  const gastoHint = document.getElementById("tf-gasto-hint");
+  if(gastoHint) gastoHint.style.display = "none";
 }
 
 function reingresoTaller(){
@@ -9902,6 +9952,13 @@ async function saveTallerEntry(){
   const newEntryId = _tallerEditId || "tl_"+Date.now();
   const srcEntry = _tallerEditId ? tallerEntries.find(x=>x.id===_tallerEditId) : null;
   const unitKey = _tallerReingresoKey || (srcEntry && (srcEntry.unitKey||srcEntry.id)) || newEntryId;
+  const freporte = document.getElementById("tf-freporte").value;
+  const fentrada = document.getElementById("tf-fentrada").value;
+  // Task 9 (el gasto se calcula, no se captura): si esta visita YA tiene
+  // partidas, no se escribe un `gasto` tecleado — se deriva al pintar y al
+  // exportar (gastoDerivado/gastoTotalDe). Escribirlo aquí dejaría dos
+  // fuentes de verdad del mismo dinero que pueden discrepar.
+  const psVisita = _partidasDeVisita({ id: newEntryId, unitKey, eco, plate, fentrada, freporte });
   const entry={
     id:          newEntryId,
     unitKey,
@@ -9912,14 +9969,14 @@ async function saveTallerEntry(){
     area:        document.getElementById("tf-area").value,
     estado:      document.getElementById("tf-estado").value,
     tipo:        document.getElementById("tf-tipo").value,
-    freporte:    document.getElementById("tf-freporte").value,
-    fentrada:    document.getElementById("tf-fentrada").value,
+    freporte,
+    fentrada,
     fsalidaEst:  document.getElementById("tf-fsalida-est").value,
     fsalidaReal: document.getElementById("tf-fsalida-real").value,
     km:          parseInt(document.getElementById("tf-km").value)||0,
     gastoRef:    0,
     gastoMO:     0,
-    gasto:       parseFloat(document.getElementById("tf-gasto").value)||0,
+    gasto:       psVisita.length ? undefined : (parseFloat(document.getElementById("tf-gasto").value)||0),
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),

@@ -24,6 +24,7 @@ import {
   type ContextoExport,
   type ResumenUnidad,
 } from "./exportExcel";
+import { gastoDerivado, type Partida } from "./partidas";
 import type { TallerEntry } from "./types";
 
 // Paleta GPA Aqua — la misma de solicitudesExcel.ts, para que todos los Excel de la
@@ -45,7 +46,14 @@ const FILA_HEADER = 4; // la 3 es un separador delgado
  */
 function utcWallClock(d: Date): Date {
   return new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()),
+    Date.UTC(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      d.getHours(),
+      d.getMinutes(),
+      d.getSeconds(),
+    ),
   );
 }
 
@@ -123,13 +131,15 @@ function hojaProfesional(
     row.values = fila.map(celda);
     if (i % 2 === 1)
       row.eachCell({ includeEmpty: true }, (c, colN) => {
-        if (colN <= nCols) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C_ZEBRA } };
+        if (colN <= nCols)
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C_ZEBRA } };
       });
     row.eachCell({ includeEmpty: true }, (c, colN) => {
       if (colN <= nCols) c.border = { bottom: { style: "hair", color: { argb: C_LINEA } } };
     });
     columnas.forEach((col, ci) => {
-      if (col.formato && fila[ci] !== "" && fila[ci] != null) row.getCell(ci + 1).numFmt = col.formato;
+      if (col.formato && fila[ci] !== "" && fila[ci] != null)
+        row.getCell(ci + 1).numFmt = col.formato;
     });
   });
 
@@ -168,15 +178,32 @@ const subtituloDe = (partes: string[], hoy: Date): string =>
   ].join("  ·  ");
 
 /** Índices (base 0) de las columnas de dinero que suman en la fila TOTAL. */
-const TOTALES_TALLER = ["gastoRef", "gastoMO", "_gastoTotal", "gasto"]
+const TOTALES_TALLER = [
+  "gastoRef",
+  "gastoMO",
+  "_gastoTotal",
+  "gasto",
+  "_cotizado",
+  "_autorizado",
+  "_rechazado",
+]
   .map((campo) => COLUMNAS_TALLER.findIndex((c: ColumnaTaller) => c.campo === campo))
   .filter((i) => i >= 0);
 
 /**
  * Agregado del historial por unidad — la lógica que vivía inline en el monolito, ahora
  * pura y testeable. Solo las visitas CERRADAS cuentan; ordena por gasto descendente.
+ *
+ * `partidasDe` (Task 9, opcional): resuelve las partidas de la visita de cada entry para
+ * que el gasto/desglose de esta unidad también vea lo FIRMADO (gastoTotalDe/gastoDerivado)
+ * — sin esto, una unidad que gastó todo su historial vía partidas aparecería en $0 aquí y
+ * en el $/1,000 km que de este agregado depende.
  */
-export function resumenPorUnidad(entries: readonly TallerEntry[], hoy: Date): ResumenUnidad[] {
+export function resumenPorUnidad(
+  entries: readonly TallerEntry[],
+  hoy: Date,
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined,
+): ResumenUnidad[] {
   const porUnidad = new Map<string, TallerEntry[]>();
   // Km último por unidad: sobre TODAS las visitas (una abierta trae la lectura más
   // reciente del odómetro y su gasto aún no cuenta — el km sí).
@@ -194,10 +221,16 @@ export function resumenPorUnidad(entries: readonly TallerEntry[], hoy: Date): Re
     const ultima = [...cerradas].sort((a, b) =>
       String(a.updatedAt ?? "").localeCompare(String(b.updatedAt ?? "")),
     )[cerradas.length - 1]!;
-    const entradas = cerradas.map((e) => e.fentrada).filter(Boolean).sort() as string[];
-    const salidas = cerradas.map((e) => e.fsalidaReal).filter(Boolean).sort() as string[];
+    const entradas = cerradas
+      .map((e) => e.fentrada)
+      .filter(Boolean)
+      .sort() as string[];
+    const salidas = cerradas
+      .map((e) => e.fsalidaReal)
+      .filter(Boolean)
+      .sort() as string[];
     const dias = cerradas.map((e) => diasEnTaller(e, hoy)).filter((d): d is number => d !== "");
-    const gastoTotal = cerradas.reduce((a, e) => a + gastoTotalDe(e), 0);
+    const gastoTotal = cerradas.reduce((a, e) => a + gastoTotalDe(e, partidasDe?.(e)), 0);
     const kmU = kmMax.get(k) ?? 0;
     out.push({
       kmUltimo: kmU > 0 ? kmU : "",
@@ -209,8 +242,8 @@ export function resumenPorUnidad(entries: readonly TallerEntry[], hoy: Date): Re
       area: ultima.area,
       visitas: cerradas.length,
       gastoTotal,
-      gastoRef: cerradas.reduce((a, e) => a + (e.gastoRef ?? 0), 0),
-      gastoMO: cerradas.reduce((a, e) => a + (e.gastoMO ?? 0), 0),
+      gastoRef: cerradas.reduce((a, e) => a + gastoDerivado(e, partidasDe?.(e) ?? []).gastoRef, 0),
+      gastoMO: cerradas.reduce((a, e) => a + gastoDerivado(e, partidasDe?.(e) ?? []).gastoMO, 0),
       primerIngreso: entradas[0],
       ultimaSalida: salidas[salidas.length - 1],
       diasPromedio: dias.length ? dias.reduce((a, b) => a + b, 0) / dias.length : "",
@@ -233,7 +266,7 @@ export async function buildActivasWorkbook(
     const db = diasEnTaller(b, ctx.hoy);
     return (db === "" ? -1 : db) - (da === "" ? -1 : da);
   });
-  const gasto = orden.reduce((a, e) => a + gastoTotalDe(e), 0);
+  const gasto = orden.reduce((a, e) => a + gastoTotalDe(e, ctx.partidasDe?.(e)), 0);
 
   hojaProfesional(wb.addWorksheet("Activas en Taller"), {
     titulo: "Unidades Activas en Taller · GPA",
@@ -260,7 +293,7 @@ export async function buildHistorialWorkbook(
   wb.creator = "Control Flotilla · GPA";
   wb.created = ctx.hoy;
 
-  const unidades = resumenPorUnidad(entries, ctx.hoy);
+  const unidades = resumenPorUnidad(entries, ctx.hoy, ctx.partidasDe);
   const cerradas = entries
     .filter(esCerrada)
     .sort((a, b) => String(b.fentrada ?? "").localeCompare(String(a.fentrada ?? "")));

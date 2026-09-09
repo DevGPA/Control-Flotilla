@@ -14,6 +14,7 @@
  * formato de Excel (`formato` → `cell.z`). Antes las fechas iban como texto "14/08/2026", así
  * que Excel las ordenaba alfabéticamente y filtrar por rango no servía.
  */
+import { gastoDerivado, totalesVisita, type Partida } from "./partidas";
 import type { TallerEntry } from "./types";
 
 export type TipoColumna = "texto" | "numero" | "moneda" | "fecha";
@@ -33,6 +34,17 @@ export interface ColumnaTaller {
 export interface ContextoExport {
   /** Reloj inyectado: los días en taller dependen de "hoy" y así el test es determinista. */
   hoy: Date;
+  /**
+   * Partidas de la visita de un entry (Task 9: el gasto se calcula, no se
+   * captura). Quien arma el contexto la resuelve con `visitaKeyDe`/
+   * `juntaVisitaKey` (src/api/tallerPartidas.ts) — nunca un `${a}|${b}`
+   * hecho a mano aquí, que es capa pura y no puede depender de ese módulo.
+   * Ausente, o devolviendo `undefined`/`[]` para un entry, hace que las
+   * columnas de gasto caigan al comportamiento histórico (exactamente el
+   * de antes de este campo) — un llamador que todavía no conoce las
+   * partidas de la visita no pierde nada.
+   */
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined;
 }
 
 const FMT_FECHA = "dd/mm/yyyy";
@@ -53,8 +65,16 @@ const texto = (v: unknown): string => String(v ?? "").trim();
  * Gasto total del ingreso. El desglose (refacciones + mano de obra) MANDA; el campo `gasto`
  * es el respaldo de los registros anteriores al desglose — sin él el total salía en $0
  * (auditoría 2026-06-04).
+ *
+ * Task 9 (el gasto se calcula, no se captura): con `ps` no vacío, el resultado YA NO sale
+ * de los campos del entry — sale de `gastoDerivado` (la suma de lo FIRMADO). Sin `ps`
+ * (ausente o `[]`) el comportamiento es EXACTAMENTE el de antes de este parámetro: todo
+ * consumidor que aún no le pasa las partidas de la visita no pierde nada ni cambia de
+ * resultado. Esta es la ÚNICA función que cualquier consumidor de "cuánto costó esta
+ * visita" debe llamar — nunca sumar `gastoRef`/`gastoMO`/`gasto` por su cuenta.
  */
-export function gastoTotalDe(e: TallerEntry): number {
+export function gastoTotalDe(e: TallerEntry, ps?: Partida[]): number {
+  if (ps && ps.length) return gastoDerivado(e, ps).gasto;
   const desglose = (e.gastoRef ?? 0) + (e.gastoMO ?? 0);
   return desglose > 0 ? desglose : (e.gasto ?? 0);
 }
@@ -70,10 +90,16 @@ export function gastoTotalDe(e: TallerEntry): number {
  * todavía no es gasto real. Por eso `visitas` aquí son visitas CERRADAS del
  * año, no ingresos totales; quien pinte la etiqueta debe decirlo así (nunca
  * "N visitas" a secas, que sugeriría el total).
+ *
+ * Task 9: `partidasDe` (opcional) resuelve las partidas de la visita de cada
+ * entry para que este número también vea lo FIRMADO — una unidad cuyo gasto
+ * llegó entero por partidas no puede aparecer en $0 aquí, que es justo el
+ * número que evita firmar a ciegas sobre una unidad que ya gastó su año.
  */
 export function gastoAnualPorEco(
   entries: readonly TallerEntry[],
   anio: number,
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined,
 ): Map<string, { gasto: number; visitas: number }> {
   const out = new Map<string, { gasto: number; visitas: number }>();
   const anioStr = String(anio);
@@ -84,7 +110,7 @@ export function gastoAnualPorEco(
     const eco = String(e.eco ?? "").trim();
     if (!eco) continue;
     const cur = out.get(eco) ?? { gasto: 0, visitas: 0 };
-    cur.gasto += gastoTotalDe(e);
+    cur.gasto += gastoTotalDe(e, partidasDe?.(e));
     cur.visitas += 1;
     out.set(eco, cur);
   }
@@ -205,12 +231,16 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
     valor: (e) => texto(e.refacciones),
   },
   {
+    // Task 9: con partidas, el desglose ya NO sale de los campos crudos del entry
+    // (siempre 0 desde que el formulario dejó de escribirlos a mano) — sale de
+    // gastoDerivado, que suma lo FIRMADO por tipo. Sin partidas, gastoDerivado
+    // devuelve exactamente e.gastoRef, igual que antes.
     campo: "gastoRef",
     titulo: "Gasto Refacciones",
     ancho: 16,
     tipo: "moneda",
     formato: FMT_MONEDA,
-    valor: (e) => e.gastoRef ?? 0,
+    valor: (e, ctx) => gastoDerivado(e, ctx.partidasDe?.(e) ?? []).gastoRef,
   },
   {
     campo: "gastoMO",
@@ -218,7 +248,7 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
     ancho: 17,
     tipo: "moneda",
     formato: FMT_MONEDA,
-    valor: (e) => e.gastoMO ?? 0,
+    valor: (e, ctx) => gastoDerivado(e, ctx.partidasDe?.(e) ?? []).gastoMO,
   },
   {
     campo: "_gastoTotal",
@@ -226,7 +256,7 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
     ancho: 14,
     tipo: "moneda",
     formato: FMT_MONEDA,
-    valor: (e) => gastoTotalDe(e),
+    valor: (e, ctx) => gastoTotalDe(e, ctx.partidasDe?.(e)),
   },
   // Se exporta aparte para poder auditar QUÉ registros no tienen desglose: en ésos el Gasto
   // Total viene de aquí, no de la suma.
@@ -237,6 +267,35 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
     tipo: "moneda",
     formato: FMT_MONEDA,
     valor: (e) => e.gasto ?? 0,
+  },
+  // Task 9 — ciclo de firma: cuánto llegó cotizado/autorizado/rechazado vía partidas
+  // para ESTA visita. A diferencia de Gasto Total (que cae al legado si la visita no
+  // tiene partidas), estas tres son estrictamente del ciclo de firma — 0 si la visita
+  // no tiene partidas, nunca heredan el Subtotal tecleado a mano. Mismo alcance que
+  // los chips de la bandeja de firmas (Task 8): "Cotizado" / "Ya autorizado" / "Rechazado".
+  {
+    campo: "_cotizado",
+    titulo: "Cotizado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).cotizado,
+  },
+  {
+    campo: "_autorizado",
+    titulo: "Autorizado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).autorizado,
+  },
+  {
+    campo: "_rechazado",
+    titulo: "Rechazado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).rechazado,
   },
   {
     campo: "comentario",

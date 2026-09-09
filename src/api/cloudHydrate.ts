@@ -55,8 +55,10 @@ import {
 import {
   pendientesDeFirma,
   MOTIVOS_RECHAZO,
+  gastoDerivado,
   type Partida,
   type TotalesVisita,
+  type GastoDerivado,
 } from "../taller/partidas";
 import { gastoAnualPorEco } from "../taller/exportExcel";
 import { mergeCheckDones } from "./mergeCheckDones";
@@ -131,11 +133,25 @@ declare global {
       anualPorEco: Map<string, { gasto: number; visitas: number }>,
     ) => FilaBandeja[];
     /** Gasto+visitas CERRADAS del año, por eco (Ruling A) — el contexto que
-     *  convierte firmar una partida en una decisión informada. */
+     *  convierte firmar una partida en una decisión informada. Task 9: el 3er
+     *  parámetro (opcional) resuelve las partidas de la visita de cada entry
+     *  para que este total también vea lo FIRMADO — sin él, se comporta
+     *  exactamente igual que antes de Task 9. */
     __gastoAnualPorEco?: (
       entries: readonly TallerEntry[],
       anio: number,
+      partidasDe?: (e: TallerEntry) => Partida[] | undefined,
     ) => Map<string, { gasto: number; visitas: number }>;
+    /**
+     * Task 9 (el gasto se calcula, no se captura): el gasto de una visita con
+     * partidas es la suma de lo FIRMADO, nunca un número tecleado. El monolito
+     * la usa para pintar `#tf-gasto` en solo lectura con el valor derivado —
+     * la aritmética vive en src/taller/partidas.ts, nunca reimplementada acá.
+     */
+    __gastoDerivado?: (
+      entry: { gasto?: number; gastoRef?: number; gastoMO?: number },
+      ps: Partida[],
+    ) => GastoDerivado;
     /** Menú CERRADO de motivos de rechazo — nunca un texto libre a mano. */
     __MOTIVOS_RECHAZO?: readonly string[];
     /** Misma derivación de visitaKey que agrupa `__tallerPartidas` — para que
@@ -834,6 +850,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // FUNCIÓN, no un resultado ya calculado.
     window.__filasBandeja = filasBandeja;
     window.__gastoAnualPorEco = gastoAnualPorEco;
+    // Task 9: mismo seam — la aritmética de "el gasto se calcula" vive en src/,
+    // el monolito solo la invoca para pintar #tf-gasto en solo lectura.
+    window.__gastoDerivado = gastoDerivado;
     window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
     window.__visitaKeyDe = visitaKeyDe;
     window.__urlFotoPartida = urlFotoPartida;
