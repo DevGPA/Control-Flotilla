@@ -144,6 +144,22 @@ describe("llaveFotoValida — valida la FORMA completa, no solo el prefijo", () 
     expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
   });
 
+  it('rechaza ".." aunque no traiga "/" — aísla el guard, no el charset', () => {
+    // "../evil.jpg" lo rechaza igual el charset (el "/" no está permitido),
+    // así que borrar el guard de ".." no rompería esa prueba. Esta sí:
+    // "..evil.jpg" pasa el charset (el punto está permitido) y solo cae por
+    // el guard dedicado.
+    const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/..evil.jpg`;
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+
+  it("exige el punto antes de la extensión, no un carácter cualquiera", () => {
+    // Si el regex se armara con "\." en un template literal, llegaría a
+    // RegExp como un "." pelón (cualquier carácter) y "abc123jpg" pasaría.
+    const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/abc123jpg`;
+    expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+
   it("rechaza un segmento demasiado largo", () => {
     const largo = "a".repeat(200);
     const k = `photos/${tenantId}/taller-partidas/JV98698_2026-09-01/${largo}.jpg`;

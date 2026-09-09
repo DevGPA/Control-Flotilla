@@ -265,14 +265,22 @@ async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["t
  *     `applyCompositeKeyConditionExpression`, que arma el prefijo del
  *     `begins_with` solo con los campos presentes).
  *
- * El tipo público de `generateClient` (`@aws-amplify/data-schema-types`) NO
- * expone `visitaKeyPartidaId` — solo tipa la identidad como campos planos
- * (`Partial<Record<"tenantId"|"visitaKey"|"partidaId", string>>`), así que
- * pasarlo tal cual con ese nombre no compila sin relajar el tipo. De ahí el
- * `as never` en el argumento: mismo idioma que ya usa este archivo para
- * `Taller.update(input as never)` cuando el shape exacto que exige el
- * cliente generado no vale la pena tipar a mano — el valor en sí ya está
- * verificado arriba, no es una adivinanza.
+ * El tipo público de `generateClient` SÍ expresa este argumento, así que la
+ * llamada va SIN cast y el compilador la vigila:
+ * `ClientSchema/Core/ClientModel.d.ts` define
+ * `ListOptionsPkParams = Partial<IndexQueryInput<…>>`, e `IndexQueryInput` se
+ * ramifica según `Idx["compositeSk"]`, que `MappedTypes/MapIndexes.d.ts`
+ * (`PrimaryIndexFieldsToIR`) fija al literal `"visitaKeyPartidaId"` cuando el
+ * sort key tiene dos campos; el `beginsWith?: Partial<SkIr>` viene de
+ * `util/Filters.d.ts`.
+ *
+ * Que NO haya cast es la mitad del blindaje. Si ese nombre se desfasara (un
+ * rename, un copy-paste, un refactor), `buildGraphQLVariables` lee
+ * `arg[skName]` por el nombre CALCULADO, ignora en silencio la propiedad
+ * desconocida y la consulta degrada a solo-hash: sigue siendo Query, NO
+ * lanza error, y el endpoint devolvería las partidas de TODO el tenant a
+ * quien tenga una sola liga. El compilador es lo que ahora impide eso; el
+ * filtro por `visitaKey` de abajo es el cinturón de respaldo.
  */
 async function listarPartidasDeVisita(
   tenantId: string,
@@ -291,12 +299,17 @@ async function listarPartidasDeVisita(
       visitaKeyPartidaId: { beginsWith: { visitaKey } },
       limit: 100,
       nextToken,
-    } as never);
+    });
     if (errors) throw new Error(`TallerPartida.list: ${JSON.stringify(errors)}`);
     items.push(...(data ?? []));
     nextToken = siguiente;
   } while (nextToken);
-  return items;
+  // Cinturón de respaldo, NO el mecanismo principal: el acotamiento real lo
+  // hace el `beginsWith` sobre el sort key de arriba. Esto garantiza que,
+  // incluso si ese argumento dejara de aplicarse alguna vez, el resultado
+  // degrade a lento-pero-correcto en lugar de filtrar partidas de otras
+  // visitas o del resto de la flota.
+  return items.filter((p) => p.visitaKey === visitaKey);
 }
 
 async function firmarSubida(key: string, mime: string, tamano: number) {
