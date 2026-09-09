@@ -12,6 +12,18 @@ export function visitaKeyDe(e: LegacyTallerEntry): string {
   return `${unitUid}|${fechaEntrada}`;
 }
 
+/** Inverso exacto de `visitaKeyDe`: separa `unitUid|fechaEntrada` en sus dos
+ *  partes. Corta en el PRIMER "|" — unitUid nunca lo lleva (viene de
+ *  plate/eco/unitKey/id) y fechaEntrada tampoco en la práctica (ISO o
+ *  `sin-fecha:<id>`). Existe para que el filtro de anulación de la
+ *  hidratación (cloudHydrate) pueda llamar a `esTallerAnulado` con la MISMA
+ *  identidad que ya usa, en vez de reconstruirla a mano por su cuenta. */
+export function partesDeVisitaKey(visitaKey: string): { unitUid: string; fechaEntrada: string } {
+  const i = visitaKey.indexOf("|");
+  if (i === -1) return { unitUid: visitaKey, fechaEntrada: "" };
+  return { unitUid: visitaKey.slice(0, i), fechaEntrada: visitaKey.slice(i + 1) };
+}
+
 export function agruparPorVisita(ps: Partida[]): Map<string, Partida[]> {
   const g = new Map<string, Partida[]>();
   for (const p of ps) {

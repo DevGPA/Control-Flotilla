@@ -40,7 +40,7 @@ import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
 import { uploadTallerToCloud } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
-import { fetchPartidas, agruparPorVisita } from "./tallerPartidas";
+import { fetchPartidas, agruparPorVisita, partesDeVisitaKey } from "./tallerPartidas";
 import type { Partida } from "../taller/partidas";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
@@ -193,6 +193,25 @@ export function esMontacargasProducto(productoToka: string | null | undefined): 
   return String(productoToka ?? "")
     .toLowerCase()
     .includes("gas lp");
+}
+
+/**
+ * Excluye del ciclo de firma las partidas cuya VISITA está anulada — misma regla
+ * de "anulación, nunca borrado" que ya aplica a `tallerEntries` (ver
+ * `tallerVigente` más abajo). Sin este filtro, una visita anulada con partidas
+ * en "propuesta" seguiría prendiendo el badge de Taller y mandaría a Riesgos a
+ * perseguir una firma para un registro que ya no existe en la vista.
+ *
+ * Reusa `esTallerAnulado` — el MISMO predicado que ya decide la anulación de
+ * Taller — en vez de reimplementar el criterio; `partesDeVisitaKey` solo
+ * separa `visitaKey` en los dos campos que ese predicado espera. Pura y
+ * exportada para test (nada de Amplify aquí).
+ */
+export function partidasVigentes(
+  ps: Partida[],
+  anuladas: ReadonlyMap<string, AnulacionInfo>,
+): Partida[] {
+  return ps.filter((p) => !esTallerAnulado(partesDeVisitaKey(p.visitaKey), anuladas));
 }
 
 /** Exportada para tests (el cableado de la refacción vivía aquí como bug). */
@@ -705,8 +724,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     window.tallerEntries = tallerEntries;
     // Ciclo de firma (Task 7): partidas agrupadas por visita — de aquí sale el
     // conteo de "esperando tu autorización" que prende el badge de la pestaña.
+    // Fix ronda 1: las de una visita ANULADA se excluyen ANTES de agrupar —
+    // se recalcula en cada hidratación, así que restaurar la anulación las
+    // trae de vuelta solas, sin caché que limpiar.
     const partidas = await fetchPartidas(tenantId);
-    window.__tallerPartidas = agruparPorVisita(partidas);
+    window.__tallerPartidas = agruparPorVisita(partidasVigentes(partidas, anuladasActivas));
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
     if (typeof window.renderTaller === "function") window.renderTaller();
     console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);
