@@ -241,6 +241,28 @@ describe("buildGastoMensual", () => {
     expect(buildGastoMensual(taller)).toHaveLength(12);
     expect(buildGastoMensual(taller, { maxMeses: 3 })).toHaveLength(3);
   });
+
+  // Fix ronda 1 (Task 9): prueba end-to-end de que el threading llega al consumidor
+  // real (no solo a gastoDe aislado) — una visita sin gasto tecleado pero con
+  // partidas firmadas debe aparecer en la serie mensual del tablero de Análisis.
+  it("con partidasDe, un mes cuyo único gasto llegó por partidas firmadas no desaparece de la serie", () => {
+    const ps = [
+      {
+        partidaId: "p1",
+        visitaKey: "clave-v1",
+        descripcion: "Refacción",
+        estado: "autorizada" as const,
+        precio: 2500,
+        precioAutorizado: 2500,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+    ];
+    const visita = { id: "v1", fentrada: "2026-08-05", sucursal: "GDL", gasto: 0 };
+    const out = buildGastoMensual([visita], undefined, (t) => (t.id === "v1" ? ps : undefined));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ mes: "2026-08", total: 2500, porSucursal: { GDL: 2500 } });
+  });
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -250,6 +272,39 @@ describe("gastoDe / restarMeses", () => {
     expect(gastoDe({ gastoRef: 100, gastoMO: 50, gasto: 999 })).toBe(150);
     expect(gastoDe({ gasto: 800 })).toBe(800);
     expect(gastoDe({})).toBe(0);
+  });
+
+  // Fix ronda 1 (Task 9): gastoDe reimplementaba su propia copia de la fórmula de
+  // gastoTotalDe (src/taller/exportExcel.ts) en vez de llamarla — una unidad cuyo
+  // gasto llegó ENTERO por partidas firmadas quedaba en $0 en el tablero de Análisis.
+  it("con partidas firmadas, usa el AUTORIZADO en vez del legacy — no 0", () => {
+    const ps = [
+      {
+        partidaId: "p1",
+        visitaKey: "v",
+        descripcion: "Refacción",
+        estado: "autorizada" as const,
+        precio: 4000,
+        precioAutorizado: 4000,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+      {
+        partidaId: "p2",
+        visitaKey: "v",
+        descripcion: "Rechazada",
+        estado: "rechazada" as const,
+        precio: 999,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+    ];
+    expect(gastoDe({ gasto: 0, gastoRef: 0, gastoMO: 0 }, ps)).toBe(4000);
+  });
+
+  it("sin partidas (ausente o []), se comporta EXACTAMENTE como antes", () => {
+    expect(gastoDe({ gastoRef: 100, gastoMO: 50, gasto: 999 }, [])).toBe(150);
+    expect(gastoDe({ gasto: 800 })).toBe(800);
   });
 
   it("restarMeses cruza el año", () => {

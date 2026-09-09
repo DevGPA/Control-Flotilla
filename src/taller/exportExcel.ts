@@ -72,8 +72,17 @@ const texto = (v: unknown): string => String(v ?? "").trim();
  * consumidor que aún no le pasa las partidas de la visita no pierde nada ni cambia de
  * resultado. Esta es la ÚNICA función que cualquier consumidor de "cuánto costó esta
  * visita" debe llamar — nunca sumar `gastoRef`/`gastoMO`/`gasto` por su cuenta.
+ *
+ * Fix ronda 1 (Task 9): el parámetro acepta el `Pick` mínimo (no `TallerEntry` completo) a
+ * propósito — así `src/taller/renderHistorial.ts` y `src/analytics/opsTablero.ts`, que traen
+ * sus propios tipos de fila más angostos, pueden llamar a ÉSTA función en vez de mantener
+ * cada uno su propia copia de "Ref+MO, con `gasto` de respaldo" (el bug que este archivo
+ * existe para cerrar, multiplicado por tres módulos).
  */
-export function gastoTotalDe(e: TallerEntry, ps?: Partida[]): number {
+export function gastoTotalDe(
+  e: Pick<TallerEntry, "gasto" | "gastoRef" | "gastoMO">,
+  ps?: Partida[],
+): number {
   if (ps && ps.length) return gastoDerivado(e, ps).gasto;
   const desglose = (e.gastoRef ?? 0) + (e.gastoMO ?? 0);
   return desglose > 0 ? desglose : (e.gasto ?? 0);

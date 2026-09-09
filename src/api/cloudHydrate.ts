@@ -56,6 +56,7 @@ import {
   pendientesDeFirma,
   MOTIVOS_RECHAZO,
   gastoDerivado,
+  totalesVisita,
   type Partida,
   type TotalesVisita,
   type GastoDerivado,
@@ -152,6 +153,13 @@ declare global {
       entry: { gasto?: number; gastoRef?: number; gastoMO?: number },
       ps: Partida[],
     ) => GastoDerivado;
+    /**
+     * Fix ronda 1 (Task 9): mismos Cotizado/Autorizado/Rechazado que pinta la
+     * bandeja de firmas (Task 8). El monolito la usa para que `#tf-gasto` en
+     * solo lectura pueda decir "$X esperando firma" — un número de dinero
+     * declara su alcance en vez de dejar el campo mudo sobre lo pendiente.
+     */
+    __totalesVisita?: (ps: Partida[]) => TotalesVisita;
     /** Menú CERRADO de motivos de rechazo — nunca un texto libre a mano. */
     __MOTIVOS_RECHAZO?: readonly string[];
     /** Misma derivación de visitaKey que agrupa `__tallerPartidas` — para que
@@ -853,6 +861,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // Task 9: mismo seam — la aritmética de "el gasto se calcula" vive en src/,
     // el monolito solo la invoca para pintar #tf-gasto en solo lectura.
     window.__gastoDerivado = gastoDerivado;
+    // Fix ronda 1 (Task 9): mismo bridge que usa la bandeja de firmas para
+    // Cotizado/Ya autorizado/Rechazado — el modal la reusa para "$X esperando firma".
+    window.__totalesVisita = totalesVisita;
     window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
     window.__visitaKeyDe = visitaKeyDe;
     window.__urlFotoPartida = urlFotoPartida;

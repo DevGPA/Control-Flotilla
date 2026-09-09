@@ -12,6 +12,8 @@
 // INYECTA como función para no duplicarlo (patrón fleetMap).
 
 import { monthOf, monthLabel } from "../dates";
+import { gastoTotalDe } from "../taller/exportExcel";
+import type { Partida } from "../taller/partidas";
 
 // ── 1) Sucursales: cobertura y riesgo ────────────────────────────────────────
 
@@ -225,10 +227,18 @@ type TallerRow = {
   id?: string;
 };
 
-/** Gasto canónico de una entrada de taller: Ref+MO si hay desglose, si no el subtotal legacy. */
-export function gastoDe(e: Pick<TallerRow, "gastoRef" | "gastoMO" | "gasto">): number {
-  const desglose = (e.gastoRef || 0) + (e.gastoMO || 0);
-  return desglose > 0 ? desglose : e.gasto || 0;
+/**
+ * Gasto canónico de una entrada de taller. Fix ronda 1 (Task 9): esta función reimplementaba
+ * su propia copia de "Ref+MO, si no el subtotal legacy" en vez de llamar a `gastoTotalDe`
+ * (src/taller/exportExcel.ts) — la misma fórmula vivía tres veces en el repo. Ahora delega:
+ * con `ps` (partidas de la visita) no vacío usa lo FIRMADO; sin `ps` (ausente o `[]`) el
+ * resultado es EXACTAMENTE el de antes de este parámetro.
+ */
+export function gastoDe(
+  e: Pick<TallerRow, "gastoRef" | "gastoMO" | "gasto">,
+  ps?: Partida[],
+): number {
+  return gastoTotalDe(e, ps);
 }
 
 /** Resta meses a un "YYYY-MM" (aritmética pura, sin Date). */
@@ -264,6 +274,9 @@ export function buildReincidentes(
   inspections: ReadonlyArray<InspRow>,
   taller: ReadonlyArray<TallerRow>,
   opts?: { mesesVentana?: number; maxItems?: number },
+  /** Fix ronda 1 (Task 9): resuelve las partidas de la visita de un `TallerRow`
+   *  para que el gasto de reincidencia también vea lo FIRMADO. */
+  partidasDe?: (t: TallerRow) => Partida[] | undefined,
 ): Reincidente[] {
   const mesesVentana = opts?.mesesVentana ?? 6;
   const maxItems = opts?.maxItems ?? 10;
@@ -334,7 +347,7 @@ export function buildReincidentes(
     const a = accDe(key);
     if (!a.eco) a.eco = String(t.eco ?? t.plate ?? "").trim();
     a.visitas++;
-    a.gasto += gastoDe(t);
+    a.gasto += gastoDe(t, partidasDe?.(t));
     const expKey = String(t.unitKey ?? t.id ?? "");
     if (expKey && ym >= a.tallerKeyYm) {
       a.tallerKey = expKey;
@@ -376,13 +389,15 @@ export type GastoMes = {
 export function buildGastoMensual(
   taller: ReadonlyArray<TallerRow & { sucursal?: string }>,
   opts?: { maxMeses?: number },
+  /** Fix ronda 1 (Task 9): resuelve las partidas de la visita de un `TallerRow`. */
+  partidasDe?: (t: TallerRow) => Partida[] | undefined,
 ): GastoMes[] {
   const maxMeses = opts?.maxMeses ?? 12;
   const porMes = new Map<string, GastoMes>();
   for (const t of taller) {
     const ym = monthOf(t.fentrada);
     if (!ym) continue;
-    const g = gastoDe(t);
+    const g = gastoDe(t, partidasDe?.(t));
     if (!g) continue;
     let row = porMes.get(ym);
     if (!row) {
@@ -415,13 +430,15 @@ export type PrevCorrMes = {
 export function buildPrevCorrectivo(
   taller: ReadonlyArray<TallerRow & { tipo?: string }>,
   opts?: { maxMeses?: number },
+  /** Fix ronda 1 (Task 9): resuelve las partidas de la visita de un `TallerRow`. */
+  partidasDe?: (t: TallerRow) => Partida[] | undefined,
 ): PrevCorrMes[] {
   const maxMeses = opts?.maxMeses ?? 12;
   const porMes = new Map<string, PrevCorrMes>();
   for (const t of taller) {
     const ym = monthOf(t.fentrada);
     if (!ym) continue;
-    const g = gastoDe(t);
+    const g = gastoDe(t, partidasDe?.(t));
     if (!g) continue;
     let row = porMes.get(ym);
     if (!row) {
@@ -468,6 +485,8 @@ export function buildCostoUnidad(
   taller: ReadonlyArray<TallerRow & { sucursal?: string }>,
   fleet: ReadonlyArray<FleetInfoRow>,
   opts?: { maxMeses?: number; maxItems?: number },
+  /** Fix ronda 1 (Task 9): resuelve las partidas de la visita de un `TallerRow`. */
+  partidasDe?: (t: TallerRow) => Partida[] | undefined,
 ): CostoUnidad[] {
   const maxMeses = opts?.maxMeses ?? 12;
   const maxItems = opts?.maxItems ?? 8;
@@ -497,7 +516,7 @@ export function buildCostoUnidad(
   for (const t of taller) {
     const ym = monthOf(t.fentrada);
     if (!ym || ym < cutoff) continue;
-    const g = gastoDe(t);
+    const g = gastoDe(t, partidasDe?.(t));
     if (!g) continue;
     const key = ecoKeyDe(t.eco, t.plate);
     if (!key) continue;

@@ -98,6 +98,8 @@ import {
 } from "./taller/renderHistorial";
 import type { SortKey as TallerSortKey } from "./taller/tallerStore";
 import type { TallerEntry } from "./taller/types";
+import { visitaKeyDe } from "./api/tallerPartidas";
+import type { Partida } from "./taller/partidas";
 import {
   renderTableSemanales as renderTableSemanalesNew,
   type WeeklyRiskFilter,
@@ -630,6 +632,24 @@ if (readFlag("USE_NEW_DETAIL")) {
   );
 }
 
+// Fix ronda 1 (Task 9): resuelve las partidas de la visita de UN entry — mismo
+// match que el resto del módulo (visitaKeyDe + window.__tallerPartidas, ambos
+// bridge de cloudHydrate.ts), nunca un `${a}|${b}` hecho a mano. `visitaKeyDe`
+// pide un shape angosto (no `km`, que difiere de tipo entre TallerEntry y
+// LegacyTallerEntry) — se construye aparte para no forzar un cast.
+function partidasDeVisita(e: TallerEntry): Partida[] | undefined {
+  return window.__tallerPartidas?.get(
+    visitaKeyDe({
+      id: e.id,
+      unitKey: e.unitKey,
+      eco: e.eco,
+      plate: e.plate,
+      fentrada: e.fentrada,
+      freporte: e.freporte,
+    }),
+  );
+}
+
 // ─── Feature flag: Taller Activas + Historial (P4 fase 3) ────────────
 if (readFlag("USE_NEW_TALLER")) {
   const legacyRenderActivas = window.renderActivas;
@@ -783,6 +803,9 @@ if (readFlag("USE_NEW_TALLER")) {
         onOpen: (key) => window.openHistorialModal?.(key),
         onReingreso: (key) => window.reingresoDesdeHistorial?.(key),
         onSort: (col) => window.tlSort?.(col),
+        // Fix ronda 1 (Task 9): sin esto, una unidad cuyo gasto llegó entero por
+        // partidas firmadas resumía en $0 en la pestaña Historial.
+        partidasDe: partidasDeVisita,
       });
     } catch (err) {
       console.error("[renderHistorial/new] falló, fallback a legado:", err);

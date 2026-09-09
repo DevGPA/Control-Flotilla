@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JxmOnqbSU9hmt9jrbzSnvsTCp06AzSDUlaP2vXV0DFg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-6wykiJ/zNDXaKcRQVD3zLwDevf7hRc4WZQ2m4EEG2P8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3778,7 +3778,9 @@ function buildAnalytics(){
   const gastoEl = document.getElementById("chart-gasto");
   const gastoEmpty = document.getElementById("chart-gasto-empty");
   if(gastoEl){
-    const serie = ops.buildGastoMensual(tallerScoped);
+    // Fix ronda 1 (Task 9): sin partidasDe, un mes cuyo único gasto llegó por
+    // partidas firmadas desaparecía de la serie (gastoDe/gastoTotalDe daba 0).
+    const serie = ops.buildGastoMensual(tallerScoped, undefined, _partidasDeVisita);
     if(serie.length && typeof window.renderGastoMensualChart === "function"){
       gastoEl.style.display = "";
       if(gastoEmpty) gastoEmpty.hidden = true;
@@ -3795,7 +3797,8 @@ function buildAnalytics(){
   const pcEl = document.getElementById("chart-prevcorr");
   const pcEmpty = document.getElementById("chart-prevcorr-empty");
   if(pcEl){
-    const seriePc = ops.buildPrevCorr(tallerScoped);
+    // Fix ronda 1 (Task 9): mismo partidasDe que Gasto Mensual.
+    const seriePc = ops.buildPrevCorr(tallerScoped, undefined, _partidasDeVisita);
     if(seriePc.length && typeof window.renderPrevCorrChart === "function"){
       pcEl.style.display = "";
       if(pcEmpty) pcEmpty.hidden = true;
@@ -3811,7 +3814,9 @@ function buildAnalytics(){
   const costoEl = document.getElementById("costo-unidad");
   if(costoEl){
     try {
-      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits)), (r)=>{
+      // Fix ronda 1 (Task 9): mismo partidasDe — el Top de costo por unidad no
+      // puede excluir visitas cuyo gasto llegó entero por partidas firmadas.
+      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits), undefined, _partidasDeVisita), (r)=>{
         if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
       });
     } catch(e){ console.warn("[analytics] costo por unidad falló:", e); }
@@ -3843,7 +3848,9 @@ function buildAnalytics(){
   if(reincEl){
     try {
       const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
-      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped), (r)=>{
+      // Fix ronda 1 (Task 9): mismo partidasDe — reincidencia por gasto no
+      // puede subestimar una unidad cuyo gasto llegó entero por partidas.
+      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped, undefined, _partidasDeVisita), (r)=>{
         if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
       });
     } catch(e){ console.warn("[analytics] reincidentes falló:", e); }
@@ -9586,16 +9593,27 @@ function openTallerModal(id){
   // el campo pasa a solo lectura mostrando lo derivado (gastoDerivado,
   // src/taller/partidas.ts) — sin partidas, sigue editable como siempre
   // (visitas históricas y captura manual).
+  // Fix ronda 1: el valor SIEMPRE se pinta como número (nunca "" vacío) — un
+  // campo en blanco con partidas cotizadas pero nada autorizado leía como
+  // "esta visita no cuesta nada". Y la leyenda declara lo que falta por
+  // firmar (totalesVisita: cotizado - autorizado - rechazado), la misma
+  // aritmética tested que ya usa la bandeja de firmas — nunca calculada aquí.
   {
     const gastoInput = document.getElementById("tf-gasto");
     const gastoHint  = document.getElementById("tf-gasto-hint");
     const psGasto = e ? _partidasDeVisita(e) : [];
     if(psGasto.length && typeof window.__gastoDerivado === "function"){
       const derivado = window.__gastoDerivado(e, psGasto);
-      gastoInput.value = derivado.gasto || "";
+      gastoInput.value = String(derivado.gasto);
       gastoInput.disabled = true;
-      gastoInput.title = "Suma de las partidas autorizadas";
-      if(gastoHint) gastoHint.style.display = "";
+      let leyenda = "Suma de las partidas autorizadas";
+      if(typeof window.__totalesVisita === "function"){
+        const t = window.__totalesVisita(psGasto);
+        const pendiente = Math.max(0, t.cotizado - t.autorizado - t.rechazado);
+        if(pendiente > 0) leyenda += ` · ${_fmtMon(pendiente)} esperando firma`;
+      }
+      gastoInput.title = leyenda;
+      if(gastoHint) { gastoHint.textContent = leyenda; gastoHint.style.display = ""; }
     } else {
       gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
       gastoInput.disabled = false;
