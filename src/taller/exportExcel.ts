@@ -60,6 +60,38 @@ export function gastoTotalDe(e: TallerEntry): number {
 }
 
 /**
+ * Gasto y visitas de un año, por eco — el número de contexto que convierte
+ * firmar una partida en una decisión (Task 8, bandeja de firmas): "esta
+ * unidad ya lleva $X este año" antes de sumarle una firma más.
+ *
+ * Reusa `gastoTotalDe` (nunca una suma propia) para que este número y el del
+ * Excel jamás diverjan. Mismo criterio que `resumenPorUnidad` (tallerExcel.ts):
+ * solo cuentan visitas CERRADAS — el costo tecleado de una visita abierta
+ * todavía no es gasto real. Por eso `visitas` aquí son visitas CERRADAS del
+ * año, no ingresos totales; quien pinte la etiqueta debe decirlo así (nunca
+ * "N visitas" a secas, que sugeriría el total).
+ */
+export function gastoAnualPorEco(
+  entries: readonly TallerEntry[],
+  anio: number,
+): Map<string, { gasto: number; visitas: number }> {
+  const out = new Map<string, { gasto: number; visitas: number }>();
+  const anioStr = String(anio);
+  for (const e of entries) {
+    if (e.estado !== "Finalizado") continue;
+    const anioEntrada = String(e.fentrada || e.freporte || "").slice(0, 4);
+    if (anioEntrada !== anioStr) continue;
+    const eco = String(e.eco ?? "").trim();
+    if (!eco) continue;
+    const cur = out.get(eco) ?? { gasto: 0, visitas: 0 };
+    cur.gasto += gastoTotalDe(e);
+    cur.visitas += 1;
+    out.set(eco, cur);
+  }
+  return out;
+}
+
+/**
  * Días que la unidad lleva (o llevó) en taller. Hasta la salida real si ya salió; hasta `hoy`
  * si sigue abierta. `""` sin fecha de entrada — no se inventa un número.
  */
@@ -81,7 +113,13 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
   { campo: "eco", titulo: "No. Unidad", ancho: 12, tipo: "texto", valor: (e) => texto(e.eco) },
   { campo: "plate", titulo: "Placas", ancho: 12, tipo: "texto", valor: (e) => texto(e.plate) },
   { campo: "brand", titulo: "Modelo", ancho: 22, tipo: "texto", valor: (e) => texto(e.brand) },
-  { campo: "sucursal", titulo: "Sucursal", ancho: 14, tipo: "texto", valor: (e) => texto(e.sucursal) },
+  {
+    campo: "sucursal",
+    titulo: "Sucursal",
+    ancho: 14,
+    tipo: "texto",
+    valor: (e) => texto(e.sucursal),
+  },
   { campo: "area", titulo: "Área", ancho: 16, tipo: "texto", valor: (e) => texto(e.area) },
   { campo: "tipo", titulo: "Tipo", ancho: 13, tipo: "texto", valor: (e) => texto(e.tipo) },
   { campo: "estado", titulo: "Estado", ancho: 15, tipo: "texto", valor: (e) => texto(e.estado) },
@@ -99,30 +137,138 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
       return Number.isFinite(n) && n > 0 ? n : "";
     },
   },
-  { campo: "freporte", titulo: "F. Reporte", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.freporte) },
-  { campo: "fentrada", titulo: "F. Entrada", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fentrada) },
-  { campo: "fsalidaEst", titulo: "F. Salida Est.", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fsalidaEst) },
+  {
+    campo: "freporte",
+    titulo: "F. Reporte",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.freporte),
+  },
+  {
+    campo: "fentrada",
+    titulo: "F. Entrada",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fentrada),
+  },
+  {
+    campo: "fsalidaEst",
+    titulo: "F. Salida Est.",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fsalidaEst),
+  },
   // Faltaba en Activas: una unidad "Por recuperar" ya tiene salida real y no se veía.
-  { campo: "fsalidaReal", titulo: "F. Salida Real", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fsalidaReal) },
-  { campo: "fcierre", titulo: "F. Cierre", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fcierre) },
-  { campo: "_dias", titulo: "Días en Taller", ancho: 13, tipo: "numero", formato: "0", valor: (e, c) => diasEnTaller(e, c.hoy) },
+  {
+    campo: "fsalidaReal",
+    titulo: "F. Salida Real",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fsalidaReal),
+  },
+  {
+    campo: "fcierre",
+    titulo: "F. Cierre",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fcierre),
+  },
+  {
+    campo: "_dias",
+    titulo: "Días en Taller",
+    ancho: 13,
+    tipo: "numero",
+    formato: "0",
+    valor: (e, c) => diasEnTaller(e, c.hoy),
+  },
   { campo: "tecnico", titulo: "Técnico", ancho: 20, tipo: "texto", valor: (e) => texto(e.tecnico) },
   // Referencia cruzada con el ERP (NetSuite): el pedido con el que se gestiona la
   // compra/servicio. Va junto a técnico y refacciones — es la cadena de gestión.
-  { campo: "pedidoErp", titulo: "Pedido ERP", ancho: 15, tipo: "texto", valor: (e) => texto(e.pedidoErp) },
+  {
+    campo: "pedidoErp",
+    titulo: "Pedido ERP",
+    ancho: 15,
+    tipo: "texto",
+    valor: (e) => texto(e.pedidoErp),
+  },
   // Faltaba en el Detalle del historial: sin esto el historial no dice qué se le puso.
-  { campo: "refacciones", titulo: "Refacciones", ancho: 34, tipo: "texto", valor: (e) => texto(e.refacciones) },
-  { campo: "gastoRef", titulo: "Gasto Refacciones", ancho: 16, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gastoRef ?? 0 },
-  { campo: "gastoMO", titulo: "Gasto Mano de Obra", ancho: 17, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gastoMO ?? 0 },
-  { campo: "_gastoTotal", titulo: "Gasto Total", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => gastoTotalDe(e) },
+  {
+    campo: "refacciones",
+    titulo: "Refacciones",
+    ancho: 34,
+    tipo: "texto",
+    valor: (e) => texto(e.refacciones),
+  },
+  {
+    campo: "gastoRef",
+    titulo: "Gasto Refacciones",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e) => e.gastoRef ?? 0,
+  },
+  {
+    campo: "gastoMO",
+    titulo: "Gasto Mano de Obra",
+    ancho: 17,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e) => e.gastoMO ?? 0,
+  },
+  {
+    campo: "_gastoTotal",
+    titulo: "Gasto Total",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e) => gastoTotalDe(e),
+  },
   // Se exporta aparte para poder auditar QUÉ registros no tienen desglose: en ésos el Gasto
   // Total viene de aquí, no de la suma.
-  { campo: "gasto", titulo: "Gasto sin desglose", ancho: 16, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gasto ?? 0 },
-  { campo: "comentario", titulo: "Comentario", ancho: 44, tipo: "texto", valor: (e) => texto(e.comentario) },
+  {
+    campo: "gasto",
+    titulo: "Gasto sin desglose",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e) => e.gasto ?? 0,
+  },
+  {
+    campo: "comentario",
+    titulo: "Comentario",
+    ancho: 44,
+    tipo: "texto",
+    valor: (e) => texto(e.comentario),
+  },
   { campo: "id", titulo: "ID registro", ancho: 16, tipo: "texto", valor: (e) => texto(e.id) },
-  { campo: "unitKey", titulo: "Llave de unidad", ancho: 14, tipo: "texto", valor: (e) => texto(e.unitKey) },
-  { campo: "createdAt", titulo: "Creado", ancho: 17, tipo: "fecha", formato: "dd/mm/yyyy hh:mm", valor: (e) => fecha(e.createdAt) },
-  { campo: "updatedAt", titulo: "Actualizado", ancho: 17, tipo: "fecha", formato: "dd/mm/yyyy hh:mm", valor: (e) => fecha(e.updatedAt) },
+  {
+    campo: "unitKey",
+    titulo: "Llave de unidad",
+    ancho: 14,
+    tipo: "texto",
+    valor: (e) => texto(e.unitKey),
+  },
+  {
+    campo: "createdAt",
+    titulo: "Creado",
+    ancho: 17,
+    tipo: "fecha",
+    formato: "dd/mm/yyyy hh:mm",
+    valor: (e) => fecha(e.createdAt),
+  },
+  {
+    campo: "updatedAt",
+    titulo: "Actualizado",
+    ancho: 17,
+    tipo: "fecha",
+    formato: "dd/mm/yyyy hh:mm",
+    valor: (e) => fecha(e.updatedAt),
+  },
 ];
 
 /**
@@ -183,14 +329,62 @@ export const COLUMNAS_RESUMEN: ColumnaResumen[] = [
   { titulo: "Sucursal", ancho: 14, tipo: "texto", valor: (u) => texto(u.sucursal) },
   { titulo: "Área", ancho: 16, tipo: "texto", valor: (u) => texto(u.area) },
   { titulo: "Visitas", ancho: 9, tipo: "numero", formato: "0", valor: (u) => u.visitas },
-  { titulo: "Gasto Total", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoTotal },
-  { titulo: "Refacciones", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoRef },
-  { titulo: "Mano de Obra", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoMO },
-  { titulo: "Días Promedio", ancho: 13, tipo: "numero", formato: "0.0", valor: (u) => u.diasPromedio ?? "" },
-  { titulo: "KM Último", ancho: 11, tipo: "numero", formato: "#,##0", valor: (u) => u.kmUltimo ?? "" },
-  { titulo: "$ / 1,000 km", ancho: 13, tipo: "moneda", formato: '"$"#,##0.00', valor: (u) => u.costoPorMilKm ?? "" },
-  { titulo: "Primer Ingreso", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.primerIngreso) },
-  { titulo: "Última Salida", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.ultimaSalida) },
+  {
+    titulo: "Gasto Total",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoTotal,
+  },
+  {
+    titulo: "Refacciones",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoRef,
+  },
+  {
+    titulo: "Mano de Obra",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoMO,
+  },
+  {
+    titulo: "Días Promedio",
+    ancho: 13,
+    tipo: "numero",
+    formato: "0.0",
+    valor: (u) => u.diasPromedio ?? "",
+  },
+  {
+    titulo: "KM Último",
+    ancho: 11,
+    tipo: "numero",
+    formato: "#,##0",
+    valor: (u) => u.kmUltimo ?? "",
+  },
+  {
+    titulo: "$ / 1,000 km",
+    ancho: 13,
+    tipo: "moneda",
+    formato: '"$"#,##0.00',
+    valor: (u) => u.costoPorMilKm ?? "",
+  },
+  {
+    titulo: "Primer Ingreso",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (u) => fecha(u.primerIngreso),
+  },
+  {
+    titulo: "Última Salida",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (u) => fecha(u.ultimaSalida),
+  },
 ];
 
 /** Filas de la hoja de resumen. */

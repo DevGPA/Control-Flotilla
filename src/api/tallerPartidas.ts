@@ -1,9 +1,17 @@
 // Lectura y escritura de partidas de taller desde la app. Archivo aparte:
 // batchUpload.ts ya es grande y tiene otra responsabilidad.
 
+import { getUrl } from "aws-amplify/storage";
 import { getClient, type Schema } from "./amplifyClient";
 import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
-import type { Partida } from "../taller/partidas";
+import {
+  autorizar,
+  pendientesDeFirma,
+  rechazar,
+  totalesVisita,
+  type Partida,
+  type TotalesVisita,
+} from "../taller/partidas";
 
 /** Junta `{unitUid, fechaEntrada}` en la MISMA llave que usa `Partida.visitaKey`.
  *  Fix ronda 2 (Finding 2): esta plantilla vive en UN solo lugar y solo se usa
@@ -31,6 +39,82 @@ export function agruparPorVisita(ps: Partida[]): Map<string, Partida[]> {
     g.set(p.visitaKey, arr);
   }
   return g;
+}
+
+/**
+ * Una fila de la bandeja de firmas (Task 8): una VISITA, no una partida
+ * suelta. Agrupar por visita es deliberado — autorizar partidas aisladas
+ * ciega al conjunto: se pueden firmar cuatro de $1,800 sin notar que van
+ * $7,200 en una unidad que ya lleva $38 mil en el año.
+ */
+export type FilaBandeja = {
+  visitaKey: string;
+  eco: string;
+  placa: string;
+  submarca: string;
+  sucursal: string;
+  area: string;
+  tipo: string;
+  proveedor: string;
+  fechaEntrada: string;
+  fsalidaEst: string;
+  km: number | null;
+  totales: TotalesVisita;
+  pendientes: number;
+  /** Contexto que convierte la firma en decisión: lo que esa unidad ya gastó
+   *  este año (Ruling A: solo visitas CERRADAS — ver gastoAnualPorEco). */
+  gastoAnual: number;
+  visitasAnual: number;
+  esperandoDesde: string;
+};
+
+/**
+ * Filas de la bandeja: una por visita con al menos una partida "propuesta",
+ * ordenadas por lo que lleva MÁS tiempo esperando la firma primero. Una
+ * visita sin pendientes no aparece — la bandeja es "lo que falta firmar",
+ * no un inventario de todo.
+ */
+export function filasBandeja(
+  entries: LegacyTallerEntry[],
+  porVisita: Map<string, Partida[]>,
+  anualPorEco: Map<string, { gasto: number; visitas: number }>,
+): FilaBandeja[] {
+  const filas: FilaBandeja[] = [];
+  for (const e of entries) {
+    const visitaKey = visitaKeyDe(e);
+    const ps = porVisita.get(visitaKey) ?? [];
+    const pendientes = pendientesDeFirma(ps);
+    if (!pendientes) continue;
+
+    const anual = anualPorEco.get(String(e.eco ?? "")) ?? { gasto: 0, visitas: 0 };
+    const esperas = ps
+      .filter((p) => p.estado === "propuesta")
+      .map((p) => p.propuestoEn ?? p.creadoEn ?? "")
+      .filter(Boolean)
+      .sort();
+
+    filas.push({
+      visitaKey,
+      eco: String(e.eco ?? ""),
+      placa: String(e.plate ?? ""),
+      submarca: String(e.brand ?? ""),
+      sucursal: String(e.sucursal ?? ""),
+      area: String(e.area ?? ""),
+      tipo: String(e.tipo ?? ""),
+      proveedor: String(e.tecnico ?? ""),
+      fechaEntrada: String(e.fentrada ?? ""),
+      fsalidaEst: String(e.fsalidaEst ?? ""),
+      km: typeof e.km === "number" ? e.km : null,
+      totales: totalesVisita(ps),
+      pendientes,
+      gastoAnual: anual.gasto,
+      visitasAnual: anual.visitas,
+      esperandoDesde: esperas[0] ?? "",
+    });
+  }
+  // Lo que lleva más tiempo esperando tu firma, primero.
+  filas.sort((a, b) => (a.esperandoDesde || "9").localeCompare(b.esperandoDesde || "9"));
+  return filas;
 }
 
 /**
@@ -93,4 +177,69 @@ export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
     decididoPor: r.decididoPor ?? undefined,
     terminadoEn: r.terminadoEn ?? undefined,
   }));
+}
+
+export type DecisionPartida = "autorizar" | "rechazar";
+
+/**
+ * Persiste la firma de UNA partida: aplica `autorizar`/`rechazar` (la lógica
+ * pura de `src/taller/partidas.ts` — nunca reimplementada aquí) y escribe el
+ * resultado en DynamoDB. La autorización es un REGISTRO, no una bandera: se
+ * guardan `decididoPor` + `decididoEn` + `precioAutorizado` (y el motivo/nota
+ * en un rechazo), nunca solo un booleano — así una segunda instancia de firma
+ * el día de mañana es agregar un campo, no rehacer el módulo.
+ *
+ * No valida rol: igual que el resto de la escritura de esta app, el gate real
+ * es AppSync (`operativo`/`admin`); esto solo persiste lo que la UI, ya
+ * gateada para viewer, permitió intentar.
+ */
+export async function guardarDecisionPartida(args: {
+  tenantId: string;
+  partida: Partida;
+  decision: DecisionPartida;
+  quien: string;
+  cuando: string;
+  motivo?: string;
+  nota?: string;
+}): Promise<Partida> {
+  const { tenantId, partida, decision, quien, cuando, motivo, nota } = args;
+  const nueva =
+    decision === "autorizar"
+      ? autorizar(partida, quien, cuando)
+      : rechazar(partida, motivo ?? "", nota, quien, cuando);
+
+  const c = getClient();
+  const { errors } = await c.models.TallerPartida.update({
+    tenantId,
+    visitaKey: partida.visitaKey,
+    partidaId: partida.partidaId,
+    estado: nueva.estado,
+    precioAutorizado: nueva.precioAutorizado,
+    motivoRechazo: nueva.motivoRechazo,
+    motivoRechazoNota: nueva.motivoRechazoNota,
+    decididoPor: nueva.decididoPor,
+    decididoEn: nueva.decididoEn,
+  });
+  if (errors) throw new Error(`TallerPartida.update (decisión): ${JSON.stringify(errors)}`);
+  return nueva;
+}
+
+/**
+ * URL firmada para UNA foto de partida, tal cual está en `Partida.fotos`.
+ *
+ * A propósito NO reusa `getCloudPhotoUrl` (src/api/photoFetch.ts): ese helper
+ * está pensado para basenames planos de MoreApp y por eso normaliza a
+ * minúsculas antes de firmar. La llave de una foto de partida
+ * (`llaveFoto` en `amplify/functions/taller-portal/validacion.ts`) es una
+ * ruta COMPLETA que incluye la visitaKey con mayúsculas (la placa) —
+ * bajarla a minúsculas produce una llave que no existe en S3 y la foto
+ * jamás carga. Aquí se firma la llave tal cual, sin tocarla.
+ */
+export async function urlFotoPartida(key: string): Promise<string | null> {
+  try {
+    const result = await getUrl({ path: key });
+    return result.url.toString();
+  } catch {
+    return null;
+  }
 }

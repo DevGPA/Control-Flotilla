@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-SbE2gUywop3UZiv2t1fF7HzFiTQXiacNkLvVbonzp0U=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-cSfXiJVNAE75rp2pqzlqv2vTsL9wtMt5s5JTWI7r5ro=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -625,6 +625,11 @@
       Operaciones Activas
       <span class="tl-subbadge" id="tl-act-cnt" style="display:none">0</span>
     </button>
+    <button class="tl-subtab" id="tltab-bandeja" role="tab" aria-selected="false" onclick="tlSwitch('bandeja')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+      Por autorizar
+      <span class="tl-subbadge" id="tl-bandeja-cnt" style="display:none">0</span>
+    </button>
     <button class="tl-subtab" id="tltab-historial" role="tab" aria-selected="false" onclick="tlSwitch('historial')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       Historial / Expedientes
@@ -754,6 +759,10 @@
       <tbody id="acc-tbody"></tbody>
     </table>
   </div>
+  <!-- Bandeja de firmas (Task 8): contenedor PROPIO, pintado por renderBandeja()
+       con createElement/textContent — la descripción y la nota de rechazo las
+       escribe un proveedor NO autenticado, nunca innerHTML con esos datos. -->
+  <div id="tl-bandeja" style="display:none"></div>
 </div>
 
 <!-- ═══ MÓDULO SEMANALES ══════════════════════════════════ -->
@@ -6921,8 +6930,8 @@ window.openGastoModal=openGastoModal;
 // ── Cambiar sub-vista del Taller ──────────────────────────
 function tlSwitch(v){
   tlSubView = v;
-  // 3 sub-pestañas: activas · historial · accesorios (limpiabrisas y batería por unidad).
-  const tabs = { activas:"tltab-activas", historial:"tltab-historial", accesorios:"tltab-accesorios" };
+  // 4 sub-pestañas: activas · bandeja (por autorizar) · historial · accesorios (limpiabrisas y batería por unidad).
+  const tabs = { activas:"tltab-activas", bandeja:"tltab-bandeja", historial:"tltab-historial", accesorios:"tltab-accesorios" };
   for(const [key,id] of Object.entries(tabs)){
     const el = document.getElementById(id);
     if(!el) continue;
@@ -6944,7 +6953,10 @@ function tlSwitch(v){
   const wrapAcc = document.getElementById("acc-table-wrap");
   if(wrapAcc) wrapAcc.style.display = v==="accesorios" ? "" : "none";
   const wrapTl = document.getElementById("tl-table-wrap");
-  if(wrapTl) wrapTl.style.display = v==="accesorios" ? "none" : "";
+  if(wrapTl) wrapTl.style.display = (v==="accesorios"||v==="bandeja") ? "none" : "";
+  // La bandeja de firmas tiene su propio contenedor (pintado por renderBandeja()).
+  const bandeja = document.getElementById("tl-bandeja");
+  if(bandeja) bandeja.style.display = v==="bandeja" ? "" : "none";
   tlSortCol = null; tlSortDir = 1;
   renderTaller();
 }
@@ -7591,13 +7603,411 @@ function renderTaller(){
     _bdg.style.display = _pend ? "" : "none";
     _bdg.title = _pend ? `${_pend} partida(s) esperando tu autorización` : "";
   }
+  // Mismo conteo para la sub-pestaña "Por autorizar" — un solo _pend, nunca
+  // un segundo cálculo que pueda desalinearse del badge o de la bandeja.
+  const _bnCnt = document.getElementById("tl-bandeja-cnt");
+  if (_bnCnt) {
+    _bnCnt.textContent = String(_pend);
+    _bnCnt.style.display = _pend ? "inline-flex" : "none";
+  }
   // Perf F1-1: no reconstruir la vista Taller si no está activa (el badge se
   // actualiza aparte vía updateTallerBadge; showView re-invoca renderTaller al entrar).
   if(document.body.dataset.view!=="taller") return;
   // Accesorios lo pinta su módulo (src/accesorios/wire.ts), no los renders legacy.
   if(tlSubView==="accesorios") return window.renderAccesorios && window.renderAccesorios();
   if(tlSubView==="historial") return renderHistorial();
+  if(tlSubView==="bandeja") return renderBandeja();
   renderActivas();
+}
+
+// ── Bandeja de firmas (Task 8) ─────────────────────────────
+// Agrupada por VISITA, no por partida suelta: autorizar partidas aisladas
+// ciega al conjunto — se pueden firmar cuatro de $1,800 sin notar que van
+// $7,200 en una unidad que ya lleva $38 mil en el año. Las filas y el gasto
+// anual los arma src/ (filasBandeja/gastoAnualPorEco, testeadas); aquí solo
+// se pinta, y SIEMPRE con createElement/textContent — la descripción y la
+// nota de rechazo las escribe un proveedor NO autenticado desde la liga.
+function renderBandeja(){
+  const cont = document.getElementById("tl-bandeja");
+  if(!cont) return;
+  cont.replaceChildren();
+
+  if(typeof window.__filasBandeja !== "function"){
+    const cargando = document.createElement("div");
+    cargando.style.cssText = "padding:24px 16px;color:var(--s2);font-size:12px;text-align:center";
+    cargando.textContent = "Cargando…";
+    cont.appendChild(cargando);
+    return;
+  }
+
+  // Mismo universo de entries que Activas/Historial: tallerEntries ya excluye
+  // anuladas (cloudHydrate filtra con esTallerAnulado antes de publicarlas), y
+  // scopeBySucursal aplica el mismo candado de sucursal que el resto del módulo.
+  const entries = scopeBySucursal(tallerEntries || []);
+  const porVisita = window.__tallerPartidas || new Map();
+  const anio = new Date().getFullYear();
+  const anual = typeof window.__gastoAnualPorEco === "function"
+    ? window.__gastoAnualPorEco(entries, anio)
+    : new Map();
+  const filas = window.__filasBandeja(entries, porVisita, anual);
+  const motivos = window.__MOTIVOS_RECHAZO || [];
+
+  const entryPorVisita = new Map();
+  if(typeof window.__visitaKeyDe === "function"){
+    entries.forEach(e => entryPorVisita.set(window.__visitaKeyDe(e), e));
+  }
+
+  if(!filas.length){
+    const vacio = document.createElement("div");
+    vacio.style.cssText = "padding:32px 16px;color:var(--s2);font-size:12px;text-align:center";
+    vacio.textContent = "No hay partidas esperando tu firma.";
+    cont.appendChild(vacio);
+    return;
+  }
+
+  filas.forEach(fila => {
+    const ps = (porVisita.get(fila.visitaKey) || []).filter(p => p.estado === "propuesta");
+    cont.appendChild(_bnGrupo(fila, ps, entryPorVisita.get(fila.visitaKey), motivos, anio));
+  });
+
+  if(window.refreshIcons) window.refreshIcons();
+}
+
+function _bnChip(texto){
+  const s = document.createElement("span");
+  s.style.cssText = "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg3);font-size:11px;color:var(--w1);font-weight:600;white-space:nowrap";
+  s.textContent = texto;
+  return s;
+}
+
+function _bnGrupo(fila, ps, entry, motivos, anio){
+  const card = document.createElement("div");
+  card.className = "bandeja-grupo";
+  card.style.cssText = "background:var(--bg2);border:1px solid var(--ln);border-radius:10px;margin:0 16px 14px;overflow:hidden";
+
+  const head = document.createElement("div");
+  head.style.cssText = "padding:12px 16px;border-bottom:1px solid var(--ln)";
+
+  const titulo = document.createElement("div");
+  titulo.style.cssText = "font-size:14px;font-weight:700;color:var(--w1)";
+  titulo.textContent = `ECO ${fila.eco || "—"} · ${fila.placa || "—"}${fila.submarca ? " · " + fila.submarca : ""}`;
+  head.appendChild(titulo);
+
+  const sub = document.createElement("div");
+  sub.style.cssText = "font-size:11px;color:var(--s2);margin-top:2px";
+  sub.textContent = [fila.sucursal, fila.area, fila.tipo].filter(Boolean).join(" · ") || "—";
+  head.appendChild(sub);
+
+  const meta = document.createElement("div");
+  meta.style.cssText = "font-size:11px;color:var(--s2);margin-top:4px";
+  let metaTxt = `Proveedor: ${fila.proveedor || "—"} · Entrada ${fmtDate(fila.fechaEntrada)}`;
+  if(fila.fsalidaEst) metaTxt += ` · Salida est. ${fmtDate(fila.fsalidaEst)}`;
+  if(fila.km) metaTxt += ` · ${Number(fila.km).toLocaleString("es-MX")} km`;
+  meta.textContent = metaTxt;
+  head.appendChild(meta);
+
+  const nVisitasAnual = fila.visitasAnual;
+  const chips = document.createElement("div");
+  chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px";
+  chips.appendChild(_bnChip(`Cotizado ${_fmtMon(fila.totales.cotizado)}`));
+  chips.appendChild(_bnChip(`Ya autorizado ${_fmtMon(fila.totales.autorizado)}`));
+  chips.appendChild(_bnChip(`Esta unidad: ${_fmtMon(fila.gastoAnual)} en ${anio} · ${nVisitasAnual} visita${nVisitasAnual===1?"":"s"} cerrada${nVisitasAnual===1?"":"s"}`));
+  head.appendChild(chips);
+
+  card.appendChild(head);
+
+  const lista = document.createElement("div");
+  ps.forEach(p => lista.appendChild(_bnPartida(fila, p, motivos)));
+  card.appendChild(lista);
+
+  card.appendChild(_bnFooter(fila, ps, entry));
+
+  return card;
+}
+
+// Miniatura de la primera foto de la partida. Firma bajo demanda (nunca lista
+// el bucket) via __urlFotoPartida — distinto del imgUrl legacy porque ese
+// normaliza a minúsculas (pensado para basenames planos de MoreApp) y la
+// llave de una foto de partida trae la placa en mayúsculas dentro de la ruta.
+function _bnThumb(p){
+  const box = document.createElement("div");
+  box.style.cssText = "width:56px;height:56px;border-radius:8px;background:var(--bg3);flex:0 0 auto;overflow:hidden;display:flex;align-items:center;justify-content:center";
+  const key = p.fotos && p.fotos[0];
+  if(!key){
+    const sinFoto = document.createElement("span");
+    sinFoto.style.cssText = "font-size:9px;color:var(--s2);text-align:center;padding:2px";
+    sinFoto.textContent = "Sin foto";
+    box.appendChild(sinFoto);
+    return box;
+  }
+  const img = document.createElement("img");
+  img.alt = "Foto del hallazgo";
+  img.style.cssText = "width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s ease";
+  box.appendChild(img);
+  if(typeof window.__urlFotoPartida === "function"){
+    window.__urlFotoPartida(key).then(url => {
+      if(url){ img.src = url; img.style.opacity = "1"; return; }
+      box.replaceChildren();
+      const err = document.createElement("span");
+      err.style.cssText = "font-size:9px;color:var(--s2)";
+      err.textContent = "No disp.";
+      box.appendChild(err);
+    }).catch(() => {});
+  }
+  return box;
+}
+
+function _bnPartida(fila, p, motivos){
+  const contenedor = document.createElement("div");
+  contenedor.style.cssText = "width:100%";
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--ln);align-items:flex-start;flex-wrap:wrap";
+  wrap.appendChild(_bnThumb(p));
+
+  const info = document.createElement("div");
+  info.style.cssText = "flex:1;min-width:180px";
+
+  const desc = document.createElement("div");
+  desc.style.cssText = "font-size:12.5px;color:var(--w1);font-weight:600";
+  desc.textContent = p.descripcion || "(sin descripción)";
+  info.appendChild(desc);
+
+  const tienePrecio = typeof p.precio === "number";
+  const tipoLbl = p.tipo==="manoObra" ? "Mano de obra" : p.tipo==="refaccion" ? "Refacción" : "Sin tipo";
+  const precioLbl = document.createElement("div");
+  precioLbl.style.cssText = `font-size:12px;margin-top:3px;font-weight:700;color:${tienePrecio ? "var(--w1)" : "var(--R)"}`;
+  precioLbl.textContent = tienePrecio ? `${tipoLbl} · ${_fmtMon(p.precio)}` : `${tipoLbl} · sin precio`;
+  info.appendChild(precioLbl);
+
+  const autoria = document.createElement("div");
+  autoria.style.cssText = "font-size:10.5px;color:var(--s2);margin-top:3px";
+  const proveedorPartida = p.proveedorNombre || fila.proveedor || "—";
+  autoria.textContent = `Subió ${proveedorPartida} · ${fmtDate(p.creadoEn || p.propuestoEn)} · desde la liga`;
+  info.appendChild(autoria);
+
+  wrap.appendChild(info);
+
+  const cola = document.createElement("div");
+  cola.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:150px";
+
+  const btnAutorizar = document.createElement("button");
+  btnAutorizar.type = "button";
+  btnAutorizar.className = "needs-write bandeja-firma-btn";
+  btnAutorizar.style.cssText = "padding:8px 14px;border-radius:8px;border:none;background:var(--G);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+  btnAutorizar.textContent = "✓ Autorizar";
+  if(!tienePrecio){
+    btnAutorizar.disabled = true;
+    btnAutorizar.title = "No se puede autorizar sin precio.";
+    btnAutorizar.style.opacity = "0.5";
+    btnAutorizar.style.cursor = "not-allowed";
+  }
+
+  const btnRechazar = document.createElement("button");
+  btnRechazar.type = "button";
+  btnRechazar.className = "needs-write bandeja-firma-btn";
+  btnRechazar.style.cssText = "padding:8px 14px;border-radius:8px;border:1px solid var(--R);background:none;color:var(--R);font-size:12px;font-weight:700;cursor:pointer";
+  btnRechazar.textContent = "✕ No autorizar";
+
+  cola.appendChild(btnAutorizar);
+  cola.appendChild(btnRechazar);
+  wrap.appendChild(cola);
+
+  contenedor.appendChild(wrap);
+  const panel = _bnPanelRechazo(fila, p, motivos);
+  contenedor.appendChild(panel);
+
+  btnAutorizar.addEventListener("click", () => _bnAutorizar(fila, p, btnAutorizar));
+  btnRechazar.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+
+  return contenedor;
+}
+
+// Panel de rechazo: menú CERRADO de MOTIVOS_RECHAZO (nunca texto libre a
+// mano); "Otro" habilita la nota y el botón de confirmar queda deshabilitado
+// mientras esa nota esté vacía — nunca deja confirmar un "Otro" en blanco.
+function _bnPanelRechazo(fila, p, motivos){
+  const panel = document.createElement("div");
+  panel.hidden = true;
+  panel.style.cssText = "width:100%;padding:10px 16px 14px;background:var(--bg3);border-top:1px dashed var(--ln);display:flex;flex-direction:column;gap:8px";
+
+  const lbl = document.createElement("label");
+  lbl.style.cssText = "font-size:10.5px;color:var(--s2);font-weight:600;text-transform:uppercase;letter-spacing:.4px";
+  lbl.textContent = "Motivo del rechazo";
+  panel.appendChild(lbl);
+
+  const sel = document.createElement("select");
+  sel.className = "field-input";
+  sel.style.cssText = "max-width:280px";
+  const optPlaceholder = document.createElement("option");
+  optPlaceholder.value = "";
+  optPlaceholder.textContent = "Selecciona un motivo…";
+  sel.appendChild(optPlaceholder);
+  motivos.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m;
+    o.textContent = m;
+    sel.appendChild(o);
+  });
+  panel.appendChild(sel);
+
+  const nota = document.createElement("textarea");
+  nota.className = "field-input";
+  nota.placeholder = "Describe el motivo…";
+  nota.rows = 2;
+  nota.hidden = true;
+  nota.style.cssText = "max-width:400px;resize:vertical";
+  panel.appendChild(nota);
+
+  const errorMsg = document.createElement("div");
+  errorMsg.style.cssText = "font-size:10.5px;color:var(--R);display:none";
+  errorMsg.textContent = 'El motivo "Otro" necesita una nota.';
+  panel.appendChild(errorMsg);
+
+  const acciones = document.createElement("div");
+  acciones.style.cssText = "display:flex;gap:8px";
+
+  const btnConfirmar = document.createElement("button");
+  btnConfirmar.type = "button";
+  btnConfirmar.className = "needs-write bandeja-firma-btn";
+  btnConfirmar.style.cssText = "padding:8px 14px;border-radius:8px;border:none;background:var(--R);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+  btnConfirmar.textContent = "Confirmar rechazo";
+  btnConfirmar.disabled = true;
+
+  const btnCancelar = document.createElement("button");
+  btnCancelar.type = "button";
+  btnCancelar.style.cssText = "padding:8px 14px;border-radius:8px;border:1px solid var(--ln);background:none;color:var(--s1);font-size:12px;cursor:pointer";
+  btnCancelar.textContent = "Cancelar";
+
+  acciones.appendChild(btnConfirmar);
+  acciones.appendChild(btnCancelar);
+  panel.appendChild(acciones);
+
+  function actualizarValidez(){
+    const motivo = sel.value;
+    const esOtro = motivo === "Otro";
+    nota.hidden = !esOtro;
+    const notaVacia = esOtro && !nota.value.trim();
+    errorMsg.style.display = (esOtro && notaVacia) ? "" : "none";
+    btnConfirmar.disabled = !motivo || notaVacia;
+  }
+  sel.addEventListener("change", actualizarValidez);
+  nota.addEventListener("input", actualizarValidez);
+
+  btnCancelar.addEventListener("click", () => {
+    sel.value = "";
+    nota.value = "";
+    nota.hidden = true;
+    errorMsg.style.display = "none";
+    btnConfirmar.disabled = true;
+    panel.hidden = true;
+  });
+
+  btnConfirmar.addEventListener("click", () => {
+    const motivo = sel.value;
+    const notaTxt = nota.value.trim();
+    // Cinturón de respaldo: el disabled de arriba ya bloquea este caso, pero
+    // un "Otro" sin nota jamás debe poder confirmarse aunque algo más habilite
+    // el botón a mano (p.ej. devtools).
+    if(!motivo || (motivo === "Otro" && !notaTxt)){
+      actualizarValidez();
+      return;
+    }
+    _bnRechazar(fila, p, motivo, notaTxt, btnConfirmar);
+  });
+
+  return panel;
+}
+
+function _bnFooter(fila, ps, entry){
+  const foot = document.createElement("div");
+  foot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:var(--bg3)";
+
+  const autorizables = ps.filter(p => typeof p.precio === "number");
+  const montoBulk = fila.totales.autorizado + autorizables.reduce((s,p) => s + p.precio, 0);
+  const sinPrecio = ps.length - autorizables.length;
+
+  const txt = document.createElement("div");
+  txt.style.cssText = "font-size:11.5px;color:var(--s1);flex:1;min-width:220px";
+  let msg = autorizables.length
+    ? `Si firmas las ${autorizables.length}, lo autorizado de esta visita pasa a ${_fmtMon(montoBulk)}.`
+    : "Ninguna partida propuesta tiene precio: no hay nada que autorizar en lote.";
+  if(sinPrecio > 0 && autorizables.length){
+    msg += ` (${sinPrecio} sin precio, no incluida${sinPrecio===1?"":"s"}.)`;
+  }
+  txt.textContent = msg;
+  foot.appendChild(txt);
+
+  if(autorizables.length){
+    const btnBulk = document.createElement("button");
+    btnBulk.type = "button";
+    btnBulk.className = "needs-write bandeja-firma-btn";
+    btnBulk.style.cssText = "padding:8px 16px;border-radius:8px;border:none;background:var(--G);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+    btnBulk.textContent = `✓ Autorizar las ${autorizables.length}`;
+    btnBulk.addEventListener("click", () => _bnAutorizarLote(fila, autorizables, btnBulk));
+    foot.appendChild(btnBulk);
+  }
+
+  const btnExp = document.createElement("button");
+  btnExp.type = "button";
+  btnExp.style.cssText = "padding:8px 16px;border-radius:8px;border:1px solid var(--ln);background:none;color:var(--s1);font-size:12px;cursor:pointer";
+  btnExp.textContent = "Abrir expediente";
+  btnExp.addEventListener("click", () => {
+    if(typeof openHistorialModal !== "function") return;
+    const key = entry ? (entry.unitKey || entry.id) : (fila.placa || fila.eco);
+    openHistorialModal(key);
+  });
+  foot.appendChild(btnExp);
+
+  return foot;
+}
+
+async function _bnAutorizar(fila, p, btn){
+  if(typeof window.__guardarDecisionPartida !== "function") return;
+  btn.disabled = true;
+  try{
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+    if(window.notify) window.notify("Partida autorizada.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+  }catch(e){
+    console.error("[bandeja] autorizar:", e);
+    if(window.notify) window.notify("No se pudo autorizar. Intenta de nuevo.", "error", 5000);
+    btn.disabled = false;
+  }
+}
+
+async function _bnRechazar(fila, p, motivo, nota, btn){
+  if(typeof window.__guardarDecisionPartida !== "function") return;
+  btn.disabled = true;
+  try{
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined);
+    if(window.notify) window.notify("Partida rechazada.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+  }catch(e){
+    console.error("[bandeja] rechazar:", e);
+    if(window.notify) window.notify("No se pudo rechazar. Intenta de nuevo.", "error", 5000);
+    btn.disabled = false;
+  }
+}
+
+async function _bnAutorizarLote(fila, partidas, btn){
+  if(typeof window.__guardarDecisionPartida !== "function") return;
+  btn.disabled = true;
+  let ok = 0, fail = 0;
+  for(const p of partidas){
+    try{
+      await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+      ok++;
+    }catch(e){
+      console.error("[bandeja] autorizar lote:", p.partidaId, e);
+      fail++;
+    }
+  }
+  if(window.notify){
+    if(fail) window.notify(`${ok} autorizada(s), ${fail} fallaron. Revisa e intenta de nuevo.`, "warn", 6000);
+    else window.notify(`${ok} partida(s) autorizada(s).`, "ok", 3500);
+  }
+  if(window.__cloudHydrate) await window.__cloudHydrate();
 }
 
 // ════════════════════════════════════════════════════════════

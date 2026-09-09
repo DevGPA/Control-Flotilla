@@ -38,10 +38,21 @@ import { monthOf } from "../dates";
 import { buildAccesorioEntries } from "../accesorios/mapEntry";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
-import { uploadTallerToCloud } from "./batchUpload";
+import { uploadTallerToCloud, type LegacyTallerEntry } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
-import { fetchPartidas, agruparPorVisita, juntaVisitaKey } from "./tallerPartidas";
-import { pendientesDeFirma, type Partida } from "../taller/partidas";
+import {
+  fetchPartidas,
+  agruparPorVisita,
+  juntaVisitaKey,
+  visitaKeyDe,
+  filasBandeja,
+  guardarDecisionPartida,
+  urlFotoPartida,
+  type DecisionPartida,
+  type FilaBandeja,
+} from "./tallerPartidas";
+import { pendientesDeFirma, MOTIVOS_RECHAZO, type Partida } from "../taller/partidas";
+import { gastoAnualPorEco } from "../taller/exportExcel";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
@@ -105,6 +116,41 @@ declare global {
      *  consuma en vez de reimplementar el filtro "estado === propuesta" —
      *  Task 8 (bandeja de firma) contará con esta misma función. */
     __pendientesDeFirma?: (ps: Partida[]) => number;
+    /** Bridges de Task 8 (bandeja de firmas) — mismo motivo que los de arriba:
+     *  el `<script>` inline del monolito no puede `import`, así que las
+     *  funciones puras de src/ se publican para que las invoque directo. */
+    __filasBandeja?: (
+      entries: LegacyTallerEntry[],
+      porVisita: Map<string, Partida[]>,
+      anualPorEco: Map<string, { gasto: number; visitas: number }>,
+    ) => FilaBandeja[];
+    /** Gasto+visitas CERRADAS del año, por eco (Ruling A) — el contexto que
+     *  convierte firmar una partida en una decisión informada. */
+    __gastoAnualPorEco?: (
+      entries: readonly TallerEntry[],
+      anio: number,
+    ) => Map<string, { gasto: number; visitas: number }>;
+    /** Menú CERRADO de motivos de rechazo — nunca un texto libre a mano. */
+    __MOTIVOS_RECHAZO?: readonly string[];
+    /** Misma derivación de visitaKey que agrupa `__tallerPartidas` — para que
+     *  la bandeja pueda ubicar el `TallerEntry` original de una fila sin
+     *  hand-rollear el match. */
+    __visitaKeyDe?: (e: LegacyTallerEntry) => string;
+    /** URL firmada de una foto de partida (llave completa, sin normalizar). */
+    __urlFotoPartida?: (key: string) => Promise<string | null>;
+    /**
+     * Persiste la firma de una partida (autorizar/rechazar) y re-hidrata.
+     * Único punto de escritura que la bandeja de firmas expone al monolito —
+     * la lógica real (autorizar/rechazar + el registro con quién/cuándo) vive
+     * en `guardarDecisionPartida` (src/api/tallerPartidas.ts).
+     */
+    __guardarDecisionPartida?: (
+      partidaId: string,
+      visitaKey: string,
+      decision: DecisionPartida,
+      motivo?: string,
+      nota?: string,
+    ) => Promise<void>;
     /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
      *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
     __cloudPhotoUrlMap?: Map<string, PhotoUrlEntry>;
@@ -765,6 +811,35 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // usará la bandeja de firma (Task 8) — el badge del monolito la consume
     // en vez de reimplementar el filtro "estado === propuesta".
     window.__pendientesDeFirma = pendientesDeFirma;
+    // Task 8 (bandeja de firmas): mismo seam de bridge que arriba — funciones
+    // puras de src/ publicadas para que el <script> inline las invoque (no
+    // puede `import`). `filasBandeja`/`gastoAnualPorEco` se llaman con datos
+    // frescos en cada render (no solo al hidratar), así que se publica la
+    // FUNCIÓN, no un resultado ya calculado.
+    window.__filasBandeja = filasBandeja;
+    window.__gastoAnualPorEco = gastoAnualPorEco;
+    window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
+    window.__visitaKeyDe = visitaKeyDe;
+    window.__urlFotoPartida = urlFotoPartida;
+    window.__guardarDecisionPartida = async (partidaId, visitaKey, decision, motivo, nota) => {
+      const ps = window.__tallerPartidas?.get(visitaKey) ?? [];
+      const partida = ps.find((p) => p.partidaId === partidaId);
+      if (!partida) {
+        throw new Error(
+          `[guardarDecisionPartida] partida no encontrada: ${partidaId} (${visitaKey})`,
+        );
+      }
+      const quien = window.__cloudSession?.email || "desconocido";
+      await guardarDecisionPartida({
+        tenantId,
+        partida,
+        decision,
+        quien,
+        cuando: new Date().toISOString(),
+        motivo,
+        nota,
+      });
+    };
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
     if (typeof window.renderTaller === "function") window.renderTaller();
     console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);
