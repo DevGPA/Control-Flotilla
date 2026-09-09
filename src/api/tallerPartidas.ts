@@ -6,7 +6,7 @@ import { getClient, type Schema } from "./amplifyClient";
 import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
 import {
   autorizar,
-  pendientesDeFirma,
+  partidasPendientesDeFirma,
   rechazar,
   totalesVisita,
   type Partida,
@@ -61,6 +61,12 @@ export type FilaBandeja = {
   km: number | null;
   totales: TotalesVisita;
   pendientes: number;
+  /** Las partidas que esperan firma, YA filtradas (`partidasPendientesDeFirma`,
+   *  src/taller/partidas.ts) — el monolito pinta esta lista directo y nunca
+   *  vuelve a preguntar `estado === "propuesta"` por su cuenta. Fix ronda 1
+   *  de Task 8 (Important 1): una sola definición de "esperando firma", no
+   *  el mismo filtro copiado en dos/tres lugares. */
+  partidasPendientes: Partida[];
   /** Contexto que convierte la firma en decisión: lo que esa unidad ya gastó
    *  este año (Ruling A: solo visitas CERRADAS — ver gastoAnualPorEco). */
   gastoAnual: number;
@@ -83,12 +89,11 @@ export function filasBandeja(
   for (const e of entries) {
     const visitaKey = visitaKeyDe(e);
     const ps = porVisita.get(visitaKey) ?? [];
-    const pendientes = pendientesDeFirma(ps);
-    if (!pendientes) continue;
+    const partidasPendientes = partidasPendientesDeFirma(ps);
+    if (!partidasPendientes.length) continue;
 
     const anual = anualPorEco.get(String(e.eco ?? "")) ?? { gasto: 0, visitas: 0 };
-    const esperas = ps
-      .filter((p) => p.estado === "propuesta")
+    const esperas = partidasPendientes
       .map((p) => p.propuestoEn ?? p.creadoEn ?? "")
       .filter(Boolean)
       .sort();
@@ -106,7 +111,8 @@ export function filasBandeja(
       fsalidaEst: String(e.fsalidaEst ?? ""),
       km: typeof e.km === "number" ? e.km : null,
       totales: totalesVisita(ps),
-      pendientes,
+      pendientes: partidasPendientes.length,
+      partidasPendientes,
       gastoAnual: anual.gasto,
       visitasAnual: anual.visitas,
       esperandoDesde: esperas[0] ?? "",
@@ -115,6 +121,23 @@ export function filasBandeja(
   // Lo que lleva más tiempo esperando tu firma, primero.
   filas.sort((a, b) => (a.esperandoDesde || "9").localeCompare(b.esperandoDesde || "9"));
   return filas;
+}
+
+/**
+ * El resumen de "firmar todas las pendientes de esta visita en un solo
+ * click": cuáles se pueden (tienen precio — Ruling B: nunca se autoriza en
+ * silencio una partida sin precio), cuánto queda autorizado si se firman, y
+ * cuántas se quedan fuera. Vive en `src/` (fix ronda 1, Important 2) porque
+ * es exactamente la aritmética que Ruling B existe para proteger — antes
+ * vivía en el `<script>` inline, donde ningún test la alcanzaba.
+ */
+export function resumenLoteFirma(
+  ps: Partida[],
+  totales: TotalesVisita,
+): { autorizables: Partida[]; monto: number; sinPrecio: number } {
+  const autorizables = ps.filter((p) => typeof p.precio === "number");
+  const monto = totales.autorizado + autorizables.reduce((s, p) => s + (p.precio ?? 0), 0);
+  return { autorizables, monto, sinPrecio: ps.length - autorizables.length };
 }
 
 /**

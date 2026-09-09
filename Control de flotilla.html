@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-cSfXiJVNAE75rp2pqzlqv2vTsL9wtMt5s5JTWI7r5ro=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-DZryzlQDA2+uDIPP5d1SR5YNpgOBvB3Sl72m620jH0w=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7592,11 +7592,19 @@ function tlSort(key){
 function renderTaller(){
   // El badge de la pestaña Taller pasa a contar lo que espera TU firma, via
   // __pendientesDeFirma (bridge de src/taller/partidas.ts — la MISMA función
-  // que usará la bandeja de firma de Task 8, no una copia del filtro acá).
+  // que usa la bandeja de firma, no una copia del filtro acá). Fix ronda 1
+  // (Important 3): escopado por sucursal via scopeBySucursal(tallerEntries) —
+  // antes sumaba TODO __tallerPartidas sin candado, así que un usuario fijado
+  // a una sucursal veía en el badge/sub-pestaña un número que la bandeja
+  // jamás mostraba (la bandeja sí escopa). window.__visitaKeyDe ubica la
+  // llave de cada entry visible — nunca se hand-rollea el match.
   // Corre ANTES del guard de vista de abajo a propósito: un badge de
   // notificación tiene que prender aunque el usuario esté en otra pestaña.
-  const _pend = [...(window.__tallerPartidas?.values() ?? [])]
-    .reduce((n, ps) => n + (window.__pendientesDeFirma?.(ps) ?? 0), 0);
+  const _pend = window.scopeBySucursal(window.tallerEntries || []).reduce((n, e) => {
+    const vk = window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+    const ps = vk ? window.__tallerPartidas?.get(vk) : undefined;
+    return n + (window.__pendientesDeFirma?.(ps ?? []) ?? 0);
+  }, 0);
   const _bdg = document.getElementById("taller-badge");
   if (_bdg) {
     _bdg.textContent = _pend ? String(_pend) : "";
@@ -7666,16 +7674,23 @@ function renderBandeja(){
   }
 
   filas.forEach(fila => {
-    const ps = (porVisita.get(fila.visitaKey) || []).filter(p => p.estado === "propuesta");
-    cont.appendChild(_bnGrupo(fila, ps, entryPorVisita.get(fila.visitaKey), motivos, anio));
+    // Fix ronda 1 (Important 1): la fila YA trae sus partidas pendientes
+    // (filasBandeja las arma con partidasPendientesDeFirma) — el monolito
+    // nunca vuelve a preguntar estado==="propuesta" por su cuenta.
+    cont.appendChild(_bnGrupo(fila, fila.partidasPendientes, entryPorVisita.get(fila.visitaKey), motivos, anio));
   });
 
   if(window.refreshIcons) window.refreshIcons();
 }
 
-function _bnChip(texto){
+// subtle=true (fix ronda 1, Important 4): la etiqueta de rechazado es
+// contexto de fondo, no un número que compita visualmente con cotizado/
+// autorizado — mismo tono apagado que el resto de metadatos secundarios.
+function _bnChip(texto, subtle){
   const s = document.createElement("span");
-  s.style.cssText = "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg3);font-size:11px;color:var(--w1);font-weight:600;white-space:nowrap";
+  s.style.cssText = subtle
+    ? "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg);border:1px dashed var(--ln);font-size:10.5px;color:var(--s2);font-weight:500;white-space:nowrap"
+    : "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg3);font-size:11px;color:var(--w1);font-weight:600;white-space:nowrap";
   s.textContent = texto;
   return s;
 }
@@ -7711,6 +7726,14 @@ function _bnGrupo(fila, ps, entry, motivos, anio){
   chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px";
   chips.appendChild(_bnChip(`Cotizado ${_fmtMon(fila.totales.cotizado)}`));
   chips.appendChild(_bnChip(`Ya autorizado ${_fmtMon(fila.totales.autorizado)}`));
+  // Fix ronda 1 (Important 4): "Cotizado" incluye lo YA rechazado (totalesVisita
+  // suma todo lo no-borrador/no-cancelada) — sin esta etiqueta, "Cotizado -
+  // Autorizado" se lee como "lo que falta decidir" cuando en realidad una
+  // parte de esa diferencia ya se decidió que NO. Solo se pinta si hay algo
+  // que mostrar, y queda subordinada (fondo apagado) frente a las otras dos.
+  if(fila.totales.rechazado > 0){
+    chips.appendChild(_bnChip(`Rechazado ${_fmtMon(fila.totales.rechazado)}`, true));
+  }
   chips.appendChild(_bnChip(`Esta unidad: ${_fmtMon(fila.gastoAnual)} en ${anio} · ${nVisitasAnual} visita${nVisitasAnual===1?"":"s"} cerrada${nVisitasAnual===1?"":"s"}`));
   head.appendChild(chips);
 
@@ -7923,9 +7946,12 @@ function _bnFooter(fila, ps, entry){
   const foot = document.createElement("div");
   foot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:var(--bg3)";
 
-  const autorizables = ps.filter(p => typeof p.precio === "number");
-  const montoBulk = fila.totales.autorizado + autorizables.reduce((s,p) => s + p.precio, 0);
-  const sinPrecio = ps.length - autorizables.length;
+  // Fix ronda 1 (Important 2): la aritmética del lote (quién entra, cuánto
+  // suma, cuántas quedan fuera) vive en src/ (resumenLoteFirma, testeada) —
+  // el monolito solo pinta lo que devuelve, nunca la vuelve a calcular.
+  const { autorizables, monto: montoBulk, sinPrecio } = window.__resumenLoteFirma
+    ? window.__resumenLoteFirma(ps, fila.totales)
+    : { autorizables: [], monto: fila.totales.autorizado, sinPrecio: ps.length };
 
   const txt = document.createElement("div");
   txt.style.cssText = "font-size:11.5px;color:var(--s1);flex:1;min-width:220px";

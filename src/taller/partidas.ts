@@ -132,8 +132,20 @@ export function totalesVisita(ps: Partida[]): TotalesVisita {
   return t;
 }
 
+/**
+ * Las partidas de una visita que esperan TU firma. Única definición del
+ * predicado "esperando firma" — `pendientesDeFirma` es su `.length` y
+ * `filasBandeja` (src/api/tallerPartidas.ts) la usa directo para pintar,
+ * en vez de reimplementar `estado === "propuesta"` a mano. El día que
+ * "esperando firma" gane un segundo estado (recotización, una segunda
+ * instancia de firma), este es el único lugar que cambia.
+ */
+export function partidasPendientesDeFirma(ps: Partida[]): Partida[] {
+  return ps.filter((p) => p.estado === "propuesta");
+}
+
 export function pendientesDeFirma(ps: Partida[]): number {
-  return ps.reduce((n, p) => (p.estado === "propuesta" ? n + 1 : n), 0);
+  return partidasPendientesDeFirma(ps).length;
 }
 
 const OPERATIVO_A_ESTADO: Record<EstadoOperativo, TallerEstado> = {

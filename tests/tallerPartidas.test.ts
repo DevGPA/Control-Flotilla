@@ -5,6 +5,7 @@ import {
   autorizar,
   esEditablePorProveedor,
   estadoCompuesto,
+  partidasPendientesDeFirma,
   pendientesDeFirma,
   puedeCancelar,
   rechazar,
@@ -141,6 +142,17 @@ describe("totales — el gasto es la suma de lo firmado", () => {
   it("cuenta lo que espera firma", () => {
     expect(pendientesDeFirma(ps)).toBe(1);
     expect(pendientesDeFirma([])).toBe(0);
+  });
+
+  // Fix ronda 1 de Task 8 (Important 1): pendientesDeFirma es el .length de
+  // partidasPendientesDeFirma — una sola definición de "esperando firma",
+  // que filasBandeja (src/api/tallerPartidas.ts) y el badge comparten.
+  it("partidasPendientesDeFirma es la MISMA lista de la que pendientesDeFirma saca el conteo", () => {
+    const pendientes = partidasPendientesDeFirma(ps);
+    expect(pendientes.map((p) => p.partidaId)).toEqual(["d"]);
+    expect(pendientes.every((p) => p.estado === "propuesta")).toBe(true);
+    expect(pendientes.length).toBe(pendientesDeFirma(ps));
+    expect(partidasPendientesDeFirma([])).toEqual([]);
   });
 
   it("terminada también cuenta hacia el gasto — es una autorizada que ya se cerró", () => {

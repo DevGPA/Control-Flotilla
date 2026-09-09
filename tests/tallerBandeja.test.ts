@@ -56,6 +56,9 @@ describe("filasBandeja — solo visitas que esperan firma", () => {
     expect(fila.totales.autorizado).toBe(2400);
     expect(fila.gastoAnual).toBe(38400);
     expect(fila.visitasAnual).toBe(4);
+    // Fix ronda 1 (Important 1): la fila trae las partidas pendientes YA
+    // filtradas — el monolito nunca vuelve a preguntar estado==="propuesta".
+    expect(fila.partidasPendientes.map((p) => p.partidaId)).toEqual(["a"]);
   });
 
   it("sin historial anual, la fila existe con ceros y no truena", () => {

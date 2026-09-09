@@ -48,10 +48,16 @@ import {
   filasBandeja,
   guardarDecisionPartida,
   urlFotoPartida,
+  resumenLoteFirma,
   type DecisionPartida,
   type FilaBandeja,
 } from "./tallerPartidas";
-import { pendientesDeFirma, MOTIVOS_RECHAZO, type Partida } from "../taller/partidas";
+import {
+  pendientesDeFirma,
+  MOTIVOS_RECHAZO,
+  type Partida,
+  type TotalesVisita,
+} from "../taller/partidas";
 import { gastoAnualPorEco } from "../taller/exportExcel";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
@@ -138,6 +144,16 @@ declare global {
     __visitaKeyDe?: (e: LegacyTallerEntry) => string;
     /** URL firmada de una foto de partida (llave completa, sin normalizar). */
     __urlFotoPartida?: (key: string) => Promise<string | null>;
+    /**
+     * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
+     * partidas se pueden firmar en lote (tienen precio — Ruling B), a
+     * cuánto queda el autorizado si se firman, y cuántas quedan fuera.
+     * El monolito solo pinta lo que esto devuelve, nunca lo calcula.
+     */
+    __resumenLoteFirma?: (
+      ps: Partida[],
+      totales: TotalesVisita,
+    ) => { autorizables: Partida[]; monto: number; sinPrecio: number };
     /**
      * Persiste la firma de una partida (autorizar/rechazar) y re-hidrata.
      * Único punto de escritura que la bandeja de firmas expone al monolito —
@@ -821,6 +837,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
     window.__visitaKeyDe = visitaKeyDe;
     window.__urlFotoPartida = urlFotoPartida;
+    window.__resumenLoteFirma = resumenLoteFirma;
     window.__guardarDecisionPartida = async (partidaId, visitaKey, decision, motivo, nota) => {
       const ps = window.__tallerPartidas?.get(visitaKey) ?? [];
       const partida = ps.find((p) => p.partidaId === partidaId);
