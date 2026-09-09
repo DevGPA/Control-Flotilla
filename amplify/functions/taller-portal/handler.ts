@@ -13,7 +13,7 @@
 //   firmar una subida — no solo "no puede leer".
 
 import { randomUUID } from "node:crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
@@ -29,6 +29,7 @@ import {
   ligaRevocada,
   llaveFoto,
   llaveFotoValida,
+  puedeEnviarAAutorizacion,
   validarPartidaEntrante,
   validarTamanoFoto,
   type PartidaEntrante,
@@ -133,11 +134,28 @@ export const handler = async (event: any) => {
       return json(200, await leerVisita(tk, visitaKey, visita));
     }
 
+    if (metodo === "GET" && ruta === "/api/foto") {
+      // Misma validación que ya protege POST /api/partida: la llave debe
+      // calzar la FORMA COMPLETA del prefijo de ESTA visita — nunca fotos de
+      // otra visita ni de inspecciones (§7.3).
+      const key = String(event?.queryStringParameters?.key ?? "");
+      if (!llaveFotoValida(tk.t, visitaKey, key)) throw new ErrorEntrada("llave de foto no válida");
+      bitacora("leer-foto", tk, { key });
+      return json(200, await firmarLecturaFoto(key));
+    }
+
     if (metodo === "POST" && ruta === "/api/partida") {
       const body = parseBody(event);
       const datos = validarPartidaEntrante(body);
       bitacora("crear-partida", tk);
       return json(200, await crearPartida(tk, visitaKey, datos, body.fotos));
+    }
+
+    if (metodo === "POST" && ruta === "/api/enviar") {
+      // §6.2: borrador → propuesta, disparado UNA vez por el proveedor, para
+      // que a Riesgos (Task 8) le llegue un solo aviso por hallazgo. Sin
+      // esta ruta nada de lo capturado por el taller llegaba a autorización.
+      return json(200, await enviarAAutorizacion(tk, visitaKey, visita));
     }
 
     if (metodo === "POST" && ruta === "/api/visita") {
@@ -324,6 +342,22 @@ async function firmarSubida(key: string, mime: string, tamano: number) {
   return { url, key };
 }
 
+/**
+ * Presigned GET para que el taller vea sus propias fotos al reabrir la liga
+ * (§7.3: nunca se lista el bucket, siempre una URL firmada de minutos por
+ * llave puntual). La llave ya viene validada por `llaveFotoValida` contra
+ * ESTA visita antes de llegar aquí — este helper no vuelve a decidir nada,
+ * solo firma.
+ */
+async function firmarLecturaFoto(key: string) {
+  const url = await getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+    { expiresIn: 300 }, // mismo tope que la subida — nunca una liga larga
+  );
+  return { url };
+}
+
 async function leerVisita(tk: PortalToken, visitaKey: string, visita: Schema["Taller"]["type"]) {
   const d = parseDatos(visita.datos);
 
@@ -353,6 +387,10 @@ async function leerVisita(tk: PortalToken, visitaKey: string, visita: Schema["Ta
         descripcion: p.descripcion,
         tipo: p.tipo,
         precio: p.precio,
+        // Congelado en el momento de la firma (Task 8): la página lo usa
+        // para sumar "Autorizado" con lo REALMENTE firmado, no con la
+        // cotización original.
+        precioAutorizado: p.precioAutorizado ?? null,
         estado: p.estado,
         motivoRechazo: p.motivoRechazo ?? null,
         fotos: p.fotos ?? [],
@@ -445,4 +483,54 @@ async function actualizarVisita(
   const { data, errors } = await client.models.Taller.update(input as never);
   if (errors) throw new Error(`Taller.update: ${JSON.stringify(errors)}`);
   return data;
+}
+
+/**
+ * §6.2: mueve TODAS las partidas en "borrador" de esta visita a "propuesta",
+ * en una sola pasada, para que a Riesgos (Task 8) le llegue un solo aviso
+ * por hallazgo. Es la ruta que le faltaba al plan original — sin ella nada
+ * de lo que captura el taller llega jamás a la bandeja de autorización.
+ *
+ * Idempotente por diseño: si ya no quedan borradores (reintento tras un
+ * click doble, o una visita que ya se envio) responde 0 sin fallar — un
+ * reintento de red nunca debe convertirse en un 400 para el taller.
+ */
+async function enviarAAutorizacion(
+  tk: PortalToken,
+  visitaKey: string,
+  visita: Schema["Taller"]["type"],
+) {
+  // Espejo SERVIDOR de la regla de UI de la Tarea 6 (el botón "Enviar a
+  // autorización" nace deshabilitado sin estos datos): el botón es
+  // cortesía, esto es lo que de verdad lo impide si alguien llama la ruta
+  // directo.
+  if (!puedeEnviarAAutorizacion(visita)) {
+    throw new ErrorEntrada(
+      "Falta kilometraje o fecha estimada de salida para enviar a autorización",
+    );
+  }
+
+  const client = await getDataClient();
+  const partidas = await listarPartidasDeVisita(tk.t, visitaKey);
+  const borradores = partidas.filter((p) => p.estado === "borrador");
+
+  const ahora = new Date().toISOString();
+  for (const p of borradores) {
+    const { errors } = await client.models.TallerPartida.update({
+      tenantId: tk.t,
+      visitaKey,
+      partidaId: p.partidaId,
+      estado: "propuesta",
+      propuestoEn: ahora,
+    });
+    if (errors) throw new Error(`TallerPartida.update: ${JSON.stringify(errors)}`);
+  }
+
+  // La bitácora se escribe DESPUÉS de que las mutaciones ya sucedieron, con
+  // el conteo REAL de lo enviado — no la intención de antes de escribir
+  // (la revisión de la Tarea 5 señaló justo este patrón en las demás
+  // rutas; aquí se hace bien desde el inicio).
+  bitacora("enviar-autorizacion", tk, { enviadas: borradores.length });
+
+  return { enviadas: borradores.length };
 }

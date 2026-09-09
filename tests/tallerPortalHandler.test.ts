@@ -7,6 +7,7 @@ import {
   ligaRevocada,
   llaveFoto,
   llaveFotoValida,
+  puedeEnviarAAutorizacion,
   validarPartidaEntrante,
   validarTamanoFoto,
 } from "../amplify/functions/taller-portal/validacion";
@@ -174,5 +175,35 @@ describe("llaveFotoValida — valida la FORMA completa, no solo el prefijo", () 
   it("rechaza una llave de otra visita", () => {
     const k = llaveFoto(tenantId, "OTRA123|2026-01-01", "abc123", "image/jpeg");
     expect(llaveFotoValida(tenantId, visitaKey, k)).toBe(false);
+  });
+});
+
+describe("puedeEnviarAAutorizacion — espejo servidor del botón 'Enviar a autorización' (§8.2)", () => {
+  it("acepta km y fsalidaEst presentes", () => {
+    expect(puedeEnviarAAutorizacion({ km: 85000, fsalidaEst: "2026-09-12" })).toBe(true);
+  });
+
+  it("rechaza sin km", () => {
+    expect(puedeEnviarAAutorizacion({ fsalidaEst: "2026-09-12" })).toBe(false);
+  });
+
+  it("rechaza km en cero", () => {
+    expect(puedeEnviarAAutorizacion({ km: 0, fsalidaEst: "2026-09-12" })).toBe(false);
+  });
+
+  it("acepta km como string numérico (columnas que llegan como texto)", () => {
+    expect(puedeEnviarAAutorizacion({ km: "85000", fsalidaEst: "2026-09-12" })).toBe(true);
+  });
+
+  it("rechaza km como string no numérico", () => {
+    expect(puedeEnviarAAutorizacion({ km: "abc", fsalidaEst: "2026-09-12" })).toBe(false);
+  });
+
+  it("rechaza sin fsalidaEst", () => {
+    expect(puedeEnviarAAutorizacion({ km: 85000 })).toBe(false);
+  });
+
+  it("rechaza fsalidaEst vacio", () => {
+    expect(puedeEnviarAAutorizacion({ km: 85000, fsalidaEst: "" })).toBe(false);
   });
 });

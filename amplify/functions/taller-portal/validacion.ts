@@ -134,3 +134,21 @@ export function llaveFotoValida(tenantId: string, visitaKey: string, key: string
   if (cola.includes("..")) return false;
   return new RegExp(`^[A-Za-z0-9_.:@+-]{1,120}\\.(?:${EXTENSIONES_FOTO})$`).test(cola);
 }
+
+/**
+ * §8.2: se puede subir fotos y capturar hallazgos desde el minuto uno, pero
+ * NO se puede mandar la visita a autorización sin kilometraje ni fecha
+ * estimada de salida. Espejo SERVIDOR de la regla que ya deshabilita el
+ * botón "Enviar a autorización" en la página (Tarea 6): el botón es
+ * cortesía de UI, esto es lo que de verdad lo impide.
+ *
+ * `km` puede llegar como número o como string numérico según el origen del
+ * dato (mismo caso que ya normaliza actualizarVisita en handler.ts), asi
+ * que se acepta cualquiera de los dos siempre que sea finito y positivo.
+ */
+export function puedeEnviarAAutorizacion(v: { km?: unknown; fsalidaEst?: unknown }): boolean {
+  const km = typeof v.km === "number" ? v.km : Number(v.km);
+  return (
+    Number.isFinite(km) && km > 0 && typeof v.fsalidaEst === "string" && v.fsalidaEst.length > 0
+  );
+}

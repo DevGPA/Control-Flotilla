@@ -97,12 +97,17 @@ const portalUrl = portalFn.addFunctionUrl({
   authType: FunctionUrlAuthType.NONE,
   cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.GET, HttpMethod.POST] },
 });
-// Solo PutObject bajo el prefijo de partidas de taller — ni Delete, ni
-// Get, ni el resto del bucket de fotos de inspección. La fuente de este
+// Put Y Get, ambos acotados al MISMO prefijo de partidas de taller — ni
+// Delete, ni el resto del bucket de fotos de inspección. La fuente de este
 // Lambda es pública y su input es enteramente controlado por quien tenga
 // una liga: el radio de daño de un rol comprometido queda acotado a ESE
-// prefijo, no al bucket de fotos de producción completo.
+// prefijo, no al bucket de fotos de producción completo. El Get existe
+// para que la página del taller (Tarea 6) le muestre al proveedor sus
+// propias fotos al reabrir la liga (§7.3: presigned GET, nunca listar el
+// bucket) — nada de grantReadWrite, que abriría Delete y el resto del
+// bucket sin necesidad.
 bucket.grantPut(portalFn, "photos/*/taller-partidas/*");
+bucket.grantRead(portalFn, "photos/*/taller-partidas/*");
 (portalFn as LambdaFunction).addEnvironment("CAPTURE_BUCKET", bucket.bucketName);
 
 backend.addOutput({ custom: { tallerPortalUrl: portalUrl.url } });
