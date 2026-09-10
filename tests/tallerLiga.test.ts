@@ -21,22 +21,53 @@ import { ligaRevocada } from "../amplify/functions/taller-portal/validacion";
 const schema = readFileSync("amplify/data/resource.ts", "utf8");
 const handlerSrc = readFileSync("amplify/functions/taller-portal/handler.ts", "utf8");
 
+/**
+ * Ronda 1 de review, Important 1: `schema.slice(indexOf(nombre))` SIN un
+ * límite superior se extiende hasta el FINAL DEL ARCHIVO — así que
+ * `bloque.toContain('allow.group("admin")')` lo satisface la restricción de
+ * CUALQUIER mutación posterior, no la propia. Concretamente: si alguien
+ * cambiara `generarLigaTaller` a `[allow.authenticated()]` y dejara
+ * `revocarLigaTaller` intacta, la prueba seguía en verde (0 `viewer` en todo
+ * el archivo, y el `admin` de la otra mutación "cuenta"). Esta función aísla
+ * el bloque de UNA declaración hasta la SIGUIENTE declaración de nivel
+ * superior del schema (4 espacios de indentación + `nombre: a`) — nunca hasta
+ * el "próximo `: a`" a secas, que atraparía como falso corte cosas como
+ * `unitUid: a.string()` dentro de `.arguments({...})` (6 espacios).
+ */
+function finDeBloque(texto: string, inicio: number): number {
+  const resto = texto.slice(inicio + 1);
+  const m = resto.match(/\n {4}[A-Za-z]+: a\b/);
+  return m && m.index !== undefined ? inicio + 1 + m.index : texto.length;
+}
+
 describe("la emisión de ligas NO cuelga de la URL pública", () => {
   it("existe como mutación de AppSync", () => {
     expect(schema).toContain("generarLigaTaller: a");
     expect(schema).toContain("revocarLigaTaller: a");
   });
 
-  it("solo admin y el grupo de Riesgos pueden emitir — verificado en AppSync", () => {
-    const bloque = schema.slice(schema.indexOf("generarLigaTaller: a"));
-    expect(bloque).toContain('allow.group("admin")');
-    expect(bloque).not.toContain('allow.group("viewer")');
-  });
+  it("solo admin y operativo pueden emitir/revocar — AISLADO por mutación, nunca 'viewer' ni auth genérica", () => {
+    const inicioGenerar = schema.indexOf("generarLigaTaller: a");
+    const inicioRevocar = schema.indexOf("revocarLigaTaller: a");
+    expect(inicioGenerar).toBeGreaterThan(-1);
+    expect(inicioRevocar).toBeGreaterThan(inicioGenerar);
 
-  it("revocarLigaTaller tiene la misma restricción de grupo", () => {
-    const bloque = schema.slice(schema.indexOf("revocarLigaTaller: a"));
-    expect(bloque).toContain('allow.group("admin")');
-    expect(bloque).not.toContain('allow.group("viewer")');
+    const bloqueGenerar = schema.slice(inicioGenerar, inicioRevocar);
+    const bloqueRevocar = schema.slice(inicioRevocar, finDeBloque(schema, inicioRevocar));
+
+    for (const [nombre, bloque] of [
+      ["generarLigaTaller", bloqueGenerar],
+      ["revocarLigaTaller", bloqueRevocar],
+    ] as const) {
+      expect(bloque, `${nombre}: falta allow.group("admin")`).toContain('allow.group("admin")');
+      expect(bloque, `${nombre}: falta allow.group("operativo")`).toContain(
+        'allow.group("operativo")',
+      );
+      expect(bloque, `${nombre}: NO debe permitir "viewer"`).not.toContain('allow.group("viewer")');
+      expect(bloque, `${nombre}: NO debe degradar a allow.authenticated()`).not.toContain(
+        "allow.authenticated",
+      );
+    }
   });
 
   it("el handler del portal no expone ninguna ruta HTTP de emisión", () => {
@@ -98,39 +129,100 @@ describe("la liga emitida", () => {
 
 // R65: el brief leía/escribía `ligaVersion` dentro del blob `datos`, pero
 // `ligaRevocada` (validacion.ts) compara contra la COLUMNA real de Taller —
-// bumpearla dentro de `datos` no revocaría nada. Estas pruebas fijan el
-// contrato real con las piezas puras (firmarToken/verificarToken/ligaRevocada)
-// sin depender del cliente de datos ni de AWS: simulan exactamente lo que
-// emitirLiga/revocarLiga hacen con la columna.
-describe("revocar invalida los tokens emitidos ANTES (R65) — el interruptor es la COLUMNA, no datos.ligaVersion", () => {
-  const secreto = "s";
-  const base = { t: "gpa", u: "JV98698", f: "2026-09-01" };
+// bumpearla dentro de `datos` no revocaría nada.
+//
+// Ronda 1 de review, Important 2: la versión anterior de estas pruebas hacía
+// `const columnaTrasRevocar = 1 + 1` dentro del PROPIO test — es decir,
+// RE-IMPLEMENTABA lo que se supone que revocarLiga hace, y solo volvía a
+// probar `ligaRevocada` (ya cubierta en tallerPortalHandler.test.ts). Las
+// tres pruebas seguirían en verde aunque `revocarLiga` escribiera
+// `ligaVersion` DENTRO de `datos` vía `JSON.stringify` — el bug exacto que
+// R65 existe para prevenir. La corrección es estructural, sobre el código
+// REAL de handler.ts: verifica que `emitirLiga` lee la COLUMNA
+// (`visita.ligaVersion`, nunca `datos.ligaVersion`/`d.ligaVersion`) y que
+// tanto `emitirLiga` como `revocarLiga` pasan sus campos de liga en el 4º
+// argumento de `actualizarVisita` — nunca dentro de un objeto `datos` ni via
+// `JSON.stringify` (la firma real de la revocación, no una simulación).
+describe("emitirLiga/revocarLiga tocan la COLUMNA a través de actualizarVisita, nunca datos/JSON.stringify (R65)", () => {
+  it("emitirLiga lee ligaVersion de la COLUMNA de la visita, nunca de datos.ligaVersion, y escribe el rastro por actualizarVisita", () => {
+    const inicioFn = handlerSrc.indexOf("async function emitirLiga(");
+    const finFn = handlerSrc.indexOf("async function revocarLiga(");
+    expect(inicioFn).toBeGreaterThan(-1);
+    expect(finFn).toBeGreaterThan(inicioFn);
+    const cuerpo = handlerSrc.slice(inicioFn, finFn);
 
-  it("un token firmado con la versión vieja se rechaza en cuanto la columna sube", () => {
-    // Visita sin liga previa: ligaVersion ausente se trata como 1 (mismo
-    // criterio que ligaRevocada ya prueba en tallerPortalHandler.test.ts).
-    const emitidoV1 = firmarToken({ ...base, v: 1, exp: Date.now() + VIGENCIA_LIGA_MS }, secreto);
-    const payload = verificarToken(emitidoV1, secreto);
-    // Esto es lo que revocarLiga escribe en la COLUMNA: (visita.ligaVersion ?? 1) + 1.
-    const columnaTrasRevocar = 1 + 1;
-    expect(ligaRevocada(columnaTrasRevocar, payload)).toBe(true);
+    expect(cuerpo).toContain("visita.ligaVersion");
+    expect(cuerpo).not.toContain("d.ligaVersion");
+    expect(cuerpo).not.toContain("datos.ligaVersion");
+
+    const inicioLlamada = cuerpo.indexOf("actualizarVisita(");
+    expect(inicioLlamada).toBeGreaterThan(-1);
+    const llamada = cuerpo.slice(inicioLlamada, cuerpo.indexOf(");", inicioLlamada));
+    expect(llamada).toContain("ligaCreadaEn");
+    expect(llamada).toContain("ligaCreadaPor");
+    expect(llamada).not.toContain("datos");
+    expect(llamada).not.toContain("JSON.stringify");
   });
 
-  it("emitir DESPUÉS de revocar firma con la versión NUEVA, y ese token sí sirve", () => {
-    const nuevaVersion = 2;
-    const reemitido = firmarToken(
-      { ...base, v: nuevaVersion, exp: Date.now() + VIGENCIA_LIGA_MS },
-      secreto,
+  it("revocarLiga sube ligaVersion en el 4º argumento de actualizarVisita — nunca dentro de datos/JSON.stringify", () => {
+    const inicioFn = handlerSrc.indexOf("async function revocarLiga(");
+    expect(inicioFn).toBeGreaterThan(-1);
+    const cuerpo = handlerSrc.slice(inicioFn);
+
+    const inicioLlamada = cuerpo.indexOf("actualizarVisita(");
+    expect(inicioLlamada).toBeGreaterThan(-1);
+    const llamada = cuerpo.slice(inicioLlamada, cuerpo.indexOf(");", inicioLlamada));
+    expect(llamada).toContain("ligaVersion: nueva");
+    expect(llamada).toContain("ligaRevocadaEn");
+    expect(llamada).toContain("ligaRevocadaPor");
+    expect(llamada).not.toContain("datos");
+    expect(llamada).not.toContain("JSON.stringify");
+  });
+
+  // Se conservan las pruebas de ida y vuelta del token puro (firmarToken/
+  // verificarToken/ligaRevocada) — no re-implementan revocarLiga, solo fijan
+  // que el interruptor de versión sigue funcionando como pieza aislada.
+  it("un token firmado con una versión ya no vigente se rechaza (ligaRevocada, pieza real)", () => {
+    const t = firmarToken(
+      { t: "gpa", u: "JV98698", f: "2026-09-01", v: 1, exp: Date.now() + VIGENCIA_LIGA_MS },
+      "s",
     );
-    const payload = verificarToken(reemitido, secreto);
-    expect(ligaRevocada(nuevaVersion, payload)).toBe(false);
+    const payload = verificarToken(t, "s");
+    expect(ligaRevocada(2, payload)).toBe(true);
   });
 
-  it("revocar dos veces sigue subiendo la columna — el segundo token viejo también se rechaza", () => {
-    const v2 = firmarToken({ ...base, v: 2, exp: Date.now() + VIGENCIA_LIGA_MS }, secreto);
-    const payloadV2 = verificarToken(v2, secreto);
-    const columnaTrasSegundaRevocacion = 2 + 1; // revocar() vuelve a sumar 1
-    expect(ligaRevocada(columnaTrasSegundaRevocacion, payloadV2)).toBe(true);
+  it("un token firmado con la versión vigente actual se acepta (ligaRevocada, pieza real)", () => {
+    const t = firmarToken(
+      { t: "gpa", u: "JV98698", f: "2026-09-01", v: 2, exp: Date.now() + VIGENCIA_LIGA_MS },
+      "s",
+    );
+    const payload = verificarToken(t, "s");
+    expect(ligaRevocada(2, payload)).toBe(false);
+  });
+});
+
+// R76 (ruling del controlador, ronda 1 de review): dos Minors del revisor se
+// elevan a este round por estar en la ruta que acuña ligas.
+describe("el resolver falla cerrado sin identidad o sin autor identificable (R76)", () => {
+  // Región de la rama de resolver ANTES de la llamada real a emitirLiga — es
+  // donde deben vivir los dos candados: si estuvieran después, ya habrían
+  // leído/escrito la visita antes de rechazar.
+  const inicioResolver = handlerSrc.indexOf("event?.info?.fieldName");
+  const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioResolver);
+  const bloqueAntesDeEmitir = handlerSrc.slice(inicioResolver, inicioLlamadaEmitir);
+
+  it("existe la región a revisar (guarda contra un refactor que mueva los marcadores)", () => {
+    expect(inicioResolver).toBeGreaterThan(-1);
+    expect(inicioLlamadaEmitir).toBeGreaterThan(inicioResolver);
+  });
+
+  it('sin event.identity o sin tenantId resuelto, la rama rechaza con "no autorizado" ANTES de leer la visita', () => {
+    expect(bloqueAntesDeEmitir).toMatch(/!event\?\.identity/);
+    expect(bloqueAntesDeEmitir).toContain("no autorizado");
+  });
+
+  it('quien === "desconocido" nunca acuña ni revoca — una liga sin responsable identificable viola la decisión 20 del spec', () => {
+    expect(bloqueAntesDeEmitir).toContain('quien === "desconocido"');
   });
 });
 

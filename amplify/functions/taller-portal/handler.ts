@@ -158,8 +158,20 @@ export const handler = async (event: any) => {
   if (campoResolver === "generarLigaTaller" || campoResolver === "revocarLigaTaller") {
     try {
       if (!SECRETO) return { error: "portal no configurado" };
-      const { unitUid, fechaEntrada } = (event.arguments ?? {}) as Record<string, unknown>;
       const { tenantId, quien } = identidadDeResolver(event);
+      // R76 (ronda 1 de review): AppSync ya valida el grupo del invocador
+      // antes de invocar esta Lambda, pero hasta aquí la rama confiaba en eso
+      // IMPLÍCITAMENTE — fallaba cerrado solo por accidente (un tenantId
+      // vacío no encuentra ninguna visita). Estas dos líneas hacen la
+      // propiedad INTENCIONAL y auditable, ANTES de tocar la base:
+      if (!event?.identity || !tenantId) return { error: "no autorizado" };
+      // Una liga sin autor identificable viola la decisión 20 del spec ("una
+      // liga filtrada tiene un responsable identificable"). `quien ===
+      // "desconocido"` es prácticamente inalcanzable desde un resolver de
+      // user pool real, pero si ocurriera, no debe acuñar ni revocar nada —
+      // fallar cerrado, nunca mentir con un autor inventado.
+      if (quien === "desconocido") return { error: "no autorizado" };
+      const { unitUid, fechaEntrada } = (event.arguments ?? {}) as Record<string, unknown>;
       return campoResolver === "generarLigaTaller"
         ? await emitirLiga(tenantId, String(unitUid), String(fechaEntrada), quien)
         : await revocarLiga(tenantId, String(unitUid), String(fechaEntrada), quien);
@@ -662,8 +674,9 @@ async function emitirLiga(tenantId: string, unitUid: string, fechaEntrada: strin
   if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
   if (!visita) throw new ErrorEntrada("La visita no existe");
 
-  // Columna real, NUNCA `datos.ligaVersion` (R65): es la que `ligaRevocada`
-  // compara contra el token dentro de `cargarVisitaVigente`.
+  // Columna real de la visita — NUNCA el campo homónimo dentro del blob
+  // `datos` (R65): es la columna la que `ligaRevocada` compara contra el
+  // token dentro de `cargarVisitaVigente`.
   const ligaVersion = visita.ligaVersion ?? 1;
   const ahora = Date.now();
   const exp = ahora + VIGENCIA_LIGA_MS;
