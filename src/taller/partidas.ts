@@ -313,6 +313,14 @@ export function partidaManual(
   autorSub: string,
   ahora: string,
 ): Partida {
+  // Fix ronda 1 (Important 3): un `autorSub` vacío/en blanco escribiría
+  // literalmente `creadoPor: "user:"` — sin autor, exactamente lo que R74
+  // prohíbe (una evidencia cuya autoría no se puede rastrear). Validado
+  // AQUÍ, no solo en el llamador de main.ts, para que cualquier futuro
+  // llamador quede cubierto por construcción, no por disciplina.
+  if (!String(autorSub ?? "").trim()) {
+    throw new Error("Falta el autor (sub de Cognito) de la captura manual");
+  }
   const descripcion = String(datos.descripcion ?? "")
     .trim()
     .slice(0, LARGO_DESCRIPCION_PARTIDA);
@@ -372,4 +380,20 @@ export function origenPartida(p: Partida): string {
   if (creadoPor.startsWith("user:")) return "Capturada por GPA";
   if (creadoPor.startsWith("liga:")) return "desde la liga";
   return "origen desconocido";
+}
+
+/**
+ * R79 — la etiqueta de "quién subió" la partida, coherente con
+ * `origenPartida`. La bandeja (Task 8) venía pintando siempre "Subió
+ * <proveedor>" — para una captura manual (Task 12) eso es FALSO: ningún
+ * taller subió nada, lo tecleó alguien de GPA. Deriva del MISMO origen que
+ * ya calcula `origenPartida` (nunca vuelve a mirar el prefijo "user:" por su
+ * cuenta) para que las dos etiquetas no puedan desalinearse.
+ *
+ * `proveedorFallback` es el nombre de proveedor YA resuelto por el llamador
+ * (en la bandeja: `p.proveedorNombre || fila.proveedor || "—"`) — esta
+ * función no decide ese fallback, solo decide si nombrarlo o no.
+ */
+export function autorPartidaEtiqueta(p: Partida, proveedorFallback: string): string {
+  return origenPartida(p) === "Capturada por GPA" ? "Capturó GPA" : `Subió ${proveedorFallback}`;
 }

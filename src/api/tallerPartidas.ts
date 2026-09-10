@@ -178,10 +178,15 @@ async function listTallerPartidas(tenantId: string): Promise<Schema["TallerParti
   return out;
 }
 
-/** Lee las partidas del tenant desde cloud y las mapea al tipo puro `Partida`. */
-export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
-  const rows = await listTallerPartidas(tenantId);
-  return rows.map((r) => ({
+/**
+ * Mapea UNA fila cruda de DynamoDB (`TallerPartida`) al tipo puro `Partida`.
+ * Extraída de `fetchPartidas` (fix ronda 1, Task 12) para que
+ * `enviarPartidaAAutorizacion` — que lee UNA fila con `.get()`, no una lista
+ * con `.list()` — no reimplemente el mismo mapeo con otro riesgo de divergir
+ * (p.ej. olvidar el fallback `estado ?? "borrador"` en un solo lugar).
+ */
+function rowToPartida(r: Schema["TallerPartida"]["type"]): Partida {
+  return {
     partidaId: r.partidaId,
     visitaKey: r.visitaKey,
     descripcion: r.descripcion,
@@ -202,7 +207,13 @@ export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
     decididoEn: r.decididoEn ?? undefined,
     decididoPor: r.decididoPor ?? undefined,
     terminadoEn: r.terminadoEn ?? undefined,
-  }));
+  };
+}
+
+/** Lee las partidas del tenant desde cloud y las mapea al tipo puro `Partida`. */
+export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
+  const rows = await listTallerPartidas(tenantId);
+  return rows.map(rowToPartida);
 }
 
 export type DecisionPartida = "autorizar" | "rechazar";
@@ -252,18 +263,25 @@ export async function guardarDecisionPartida(args: {
 
 /**
  * Task 12 (la salida de emergencia) — captura manual de Riesgos: el taller
- * mandó su cotización por WhatsApp en vez de usar la liga. Compone las DOS
- * transiciones puras de src/taller/partidas.ts en el mismo golpe de
- * escritura — nace en `borrador` (`partidaManual`, valida los tres campos)
- * y se manda a autorización (`proponer`) ANTES de persistir — nunca queda
- * nada a medias en DynamoDB: si `partidaManual` lanza (descripción vacía,
- * precio fuera de rango, tipo inválido), no se llama ni una vez a AppSync.
+ * mandó su cotización por WhatsApp en vez de usar la liga.
  *
- * Mismo shape de manejo de error que `guardarDecisionPartida`: `if (errors)
- * throw`. Mismo no-valida-rol: el gate real es AppSync (operativo/admin,
- * ver amplify/data/resource.ts) — esto solo persiste lo que la UI, ya
- * gateada para viewer y para el apagador del esquema (needs-hibrido), dejó
- * intentar.
+ * Fix ronda 1 (Important 1 / R78): esta función SOLO crea — nace en
+ * `borrador` y se queda ahí. Antes componía `partidaManual` + `proponer` y
+ * la escribía directo como `propuesta`; el ruling de la revisión es que el
+ * brief (Step 5 bullet 1) y R69(b) piden el envío EXPLÍCITO por una razón
+ * de negocio, no solo de robustez: Riesgos necesita poder ver lo que
+ * tecleó ANTES de que caiga en su propia bandeja de firma — hoy un precio
+ * mal tecleado solo se corrige rechazándolo, lo que ensucia el registro con
+ * un rechazo que nunca ocurrió. `enviarPartidaAAutorizacion` (abajo) es el
+ * paso explícito que faltaba.
+ *
+ * Sigue sin persistir nada a medias: si `partidaManual` lanza (descripción
+ * vacía, precio fuera de rango, tipo inválido, autor vacío), no se llama ni
+ * una vez a AppSync. Mismo shape de manejo de error que
+ * `guardarDecisionPartida`: `if (errors) throw`. Mismo no-valida-rol: el
+ * gate real es AppSync (operativo/admin, ver amplify/data/resource.ts) —
+ * esto solo persiste lo que la UI, ya gateada para viewer y para el
+ * apagador del esquema (needs-hibrido), dejó intentar.
  */
 export async function crearPartidaManual(args: {
   tenantId: string;
@@ -274,24 +292,70 @@ export async function crearPartidaManual(args: {
 }): Promise<Partida> {
   const { tenantId, datos, visitaKey, autorSub, ahora } = args;
   const borrador = partidaManual(datos, visitaKey, autorSub, ahora);
-  const propuesta = proponer(borrador, ahora);
 
   const c = getClient();
   const { errors } = await c.models.TallerPartida.create({
     tenantId,
-    visitaKey: propuesta.visitaKey,
-    partidaId: propuesta.partidaId,
-    descripcion: propuesta.descripcion,
-    tipo: propuesta.tipo,
-    precio: propuesta.precio,
-    estado: propuesta.estado,
-    fotos: propuesta.fotos,
-    creadoPor: propuesta.creadoPor,
-    creadoEn: propuesta.creadoEn,
-    propuestoEn: propuesta.propuestoEn,
+    visitaKey: borrador.visitaKey,
+    partidaId: borrador.partidaId,
+    descripcion: borrador.descripcion,
+    tipo: borrador.tipo,
+    precio: borrador.precio,
+    estado: borrador.estado,
+    fotos: borrador.fotos,
+    creadoPor: borrador.creadoPor,
+    creadoEn: borrador.creadoEn,
     version: 1,
   });
   if (errors) throw new Error(`TallerPartida.create (captura manual): ${JSON.stringify(errors)}`);
+  return borrador;
+}
+
+/**
+ * R78 — el envío explícito que faltaba: lee la partida TAL COMO ESTÁ en
+ * DynamoDB ahora mismo (nunca la copia que el cliente tenga cacheada — dos
+ * pestañas de Riesgos, o la liga del proveedor, pudieron haberla movido
+ * mientras tanto), aplica la transición pura `proponer` (src/taller/
+ * partidas.ts) y persiste. Si la partida ya no está en `borrador` (alguien
+ * más ya la envió, o ya se decidió), `proponer` lanza y ese error sube tal
+ * cual al llamador — nunca un reintento silencioso que la reenvíe.
+ *
+ * Mismo shape de error que el resto de este archivo: `if (errors) throw`.
+ */
+export async function enviarPartidaAAutorizacion(args: {
+  tenantId: string;
+  visitaKey: string;
+  partidaId: string;
+  ahora: string;
+}): Promise<Partida> {
+  const { tenantId, visitaKey, partidaId, ahora } = args;
+  const c = getClient();
+
+  const { data, errors: getErrors } = await c.models.TallerPartida.get({
+    tenantId,
+    visitaKey,
+    partidaId,
+  });
+  if (getErrors) {
+    throw new Error(`TallerPartida.get (enviar a autorización): ${JSON.stringify(getErrors)}`);
+  }
+  if (!data) {
+    throw new Error(`Partida no encontrada: ${partidaId} (${visitaKey})`);
+  }
+
+  const actual = rowToPartida(data);
+  const propuesta = proponer(actual, ahora);
+
+  const { errors } = await c.models.TallerPartida.update({
+    tenantId,
+    visitaKey: propuesta.visitaKey,
+    partidaId: propuesta.partidaId,
+    estado: propuesta.estado,
+    propuestoEn: propuesta.propuestoEn,
+  });
+  if (errors) {
+    throw new Error(`TallerPartida.update (enviar a autorización): ${JSON.stringify(errors)}`);
+  }
   return propuesta;
 }
 

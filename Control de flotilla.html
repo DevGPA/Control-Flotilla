@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-cDOhA6Q59S5tQKgmGIWTlyplqCxr3ONcEWPl3E1Jd9s=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-6B/m0m3ARLZVaX2txfTTBPTXPRiNxCbY/WRGOT6AHLY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7921,11 +7921,20 @@ function _bnPartida(fila, p, motivos){
   // R74: el origen real (liga vs. captura manual de Riesgos, Task 12) —
   // antes era un literal fijo que le mentía a la evidencia de una captura a
   // mano diciendo "desde la liga". window.__origenPartida es el bridge de
-  // src/taller/partidas.ts (cableado en src/main.ts).
+  // src/taller/partidas.ts (cableado en src/main.ts). Fix ronda 1
+  // (Important 2): sin el bridge, el fallback es "origen desconocido" —
+  // NUNCA "desde la liga" (eso era justo el default que R74 prohibía).
   const origen = typeof window.__origenPartida === "function"
     ? window.__origenPartida(p)
-    : "desde la liga";
-  autoria.textContent = `Subió ${proveedorPartida} · ${fmtDate(p.creadoEn || p.propuestoEn)} · ${origen}`;
+    : "origen desconocido";
+  // R79 (fix ronda 1): "Subió <taller>" es falso para una captura manual —
+  // ningún taller subió nada. window.__autorPartidaEtiqueta (bridge de
+  // src/taller/partidas.ts) decide "Capturó GPA" vs "Subió <proveedor>" a
+  // partir del MISMO origen de arriba, nunca por su cuenta.
+  const quienSubio = typeof window.__autorPartidaEtiqueta === "function"
+    ? window.__autorPartidaEtiqueta(p, proveedorPartida)
+    : `Subió ${proveedorPartida}`;
+  autoria.textContent = `${quienSubio} · ${fmtDate(p.creadoEn || p.propuestoEn)} · ${origen}`;
   info.appendChild(autoria);
 
   wrap.appendChild(info);
@@ -10030,7 +10039,7 @@ function renderHistorialModal(){
       </div>
       ${e.refacciones?`<div style="margin-top:8px;font-size:10px;color:var(--w1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ac)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">REFACCIONES / TRABAJOS</span>${escHtml(e.refacciones)}</div>`:""}
       ${e.comentario?`<div style="margin-top:6px;font-size:10px;color:var(--s1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ln)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">COMENTARIO</span>${escHtml(e.comentario)}</div>`:""}
-      ${_hallazgoManualHtml(e, isCl)}
+      ${_hallazgoManualHtml(e, isCl, _partidasDeVisita(e))}
     </div>`;
   }).join("")
   : `<div style="padding:32px 20px;text-align:center;color:var(--s2);font-size:11px">
@@ -10061,10 +10070,26 @@ function closeHistorialModal(){
 // apagado no debe ni mostrar el formulario) + needs-write en el botón
 // (R61: defensa en profundidad sobre el permiso real de AppSync, mismo
 // patrón que #btn-liga-copiar/#btn-liga-revocar).
-function _hallazgoManualHtml(e, isCl){
+//
+// Fix ronda 1 (Important 1 / R78): la partida capturada aquí nace en
+// `borrador` y se QUEDA ahí hasta que alguien la mande a autorización a
+// propósito — así Riesgos puede revisar lo que tecleó antes de que aparezca
+// en su propia bandeja de firma. Por eso este bloque también LISTA las
+// partidas en `borrador` de ESTA visita (de cualquier origen — liga o
+// manual, la spec no distingue) con su botón "Enviar a autorización": sin
+// esa lista, una captura recién hecha desaparecería sin dejar rastro visible
+// hasta que alguien la mandara a firmar. `ps` = `_partidasDeVisita(e)`, la
+// MISMA fuente que ya usa el resto del expediente (_gastoDe, etc.) — nunca
+// una segunda lectura de window.__tallerPartidas.
+function _hallazgoManualHtml(e, isCl, ps){
   if(isCl) return "";
   const id = escAttr(e.id);
+  const borradores = (ps||[]).filter(p=>p.estado==="borrador");
+  const listaHtml = borradores.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">${borradores.map(p=>_borradorManualItemHtml(p)).join("")}</div>`
+    : "";
   return `<div class="needs-hibrido" style="margin-top:10px;padding:10px 12px;background:var(--bg2);border:1px dashed var(--ln);border-radius:6px">
+    ${listaHtml}
     <div style="font-size:10px;color:var(--s2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">+ Agregar hallazgo a mano</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
       <input type="text" class="field-input" id="hm-desc-${id}" placeholder="Descripción del hallazgo" maxlength="500" style="flex:2;min-width:160px">
@@ -10076,6 +10101,21 @@ function _hallazgoManualHtml(e, isCl){
     </div>
     <button type="button" class="needs-write needs-hibrido" data-action="agregarHallazgoManual" data-arg1="${id}" style="padding:6px 14px;border-radius:6px;border:none;background:var(--ac);color:#fff;font-size:11px;font-weight:700;cursor:pointer">+ Agregar hallazgo</button>
     <div style="font-size:9.5px;color:var(--s2);margin-top:6px;font-style:italic">Úsalo cuando el taller mandó la cotización por fuera. Queda registrado que la capturaste tú.</div>
+  </div>`;
+}
+
+// Una fila "en borrador, esperando que lo mandes tú" — descripción · tipo ·
+// precio · el botón que la envía. `descripcion` la puede haber escrito un
+// tercero no autenticado (si el borrador viene de la liga) o Riesgos (si es
+// manual) — en cualquier caso, nunca innerHTML crudo: se pasa por escHtml()
+// como el resto de este render (mismo patrón que e.comentario/e.refacciones
+// arriba, ya cubierto por audit:xss).
+function _borradorManualItemHtml(p){
+  const tipoLbl = p.tipo==="manoObra" ? "Mano de obra" : p.tipo==="refaccion" ? "Refacción" : "Sin tipo";
+  const precioTxt = typeof p.precio === "number" ? _fmtMon(p.precio) : "sin precio";
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;background:var(--bg);border-radius:6px;border:1px solid var(--ln)">
+    <div style="flex:1;min-width:140px;font-size:11px;color:var(--w1)">${escHtml(p.descripcion)}<span style="color:var(--s2)"> · ${tipoLbl} · ${precioTxt}</span></div>
+    <button type="button" class="needs-write needs-hibrido" data-action="enviarHallazgoManual" data-arg1="${escAttr(p.partidaId)}" data-arg2="${escAttr(p.visitaKey)}" style="padding:5px 10px;border-radius:6px;border:none;background:var(--G);color:#fff;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Enviar a autorización</button>
   </div>`;
 }
 
@@ -10117,7 +10157,10 @@ async function agregarHallazgoManual(id){
   _hmEnVuelo.add(id);
   try{
     await window.__crearPartidaManual(datos, visitaKey);
-    if(window.notify) window.notify("Hallazgo capturado y enviado a autorización.", "ok", 3500);
+    // Fix ronda 1 (R78): ya NO se manda a autorización sola — nace en
+    // borrador y queda listada arriba, en esta misma tarjeta, con su propio
+    // botón "Enviar a autorización" (_borradorManualItemHtml).
+    if(window.notify) window.notify("Hallazgo capturado. Revísalo y mándalo a autorización cuando esté listo.", "ok", 4000);
     if(window.__cloudHydrate) await window.__cloudHydrate();
     renderHistorialModal();
   }catch(err){
@@ -10126,6 +10169,32 @@ async function agregarHallazgoManual(id){
     if(window.notify) window.notify(msg, "error", 5000);
   }finally{
     _hmEnVuelo.delete(id);
+  }
+}
+
+// Set de "partidaId|visitaKey" en vuelo — mismo espíritu que _hmEnVuelo,
+// para el botón "Enviar a autorización" de cada borrador listado arriba.
+const _hmSendEnVuelo = new Set();
+
+async function enviarHallazgoManual(partidaId, visitaKey){
+  const key = partidaId + "|" + visitaKey;
+  if(_hmSendEnVuelo.has(key)) return;
+  if(typeof window.__enviarPartidaAAutorizacion !== "function"){
+    if(window.notify) window.notify("No se pudo enviar a autorización — intenta de nuevo.", "error", 5000);
+    return;
+  }
+  _hmSendEnVuelo.add(key);
+  try{
+    await window.__enviarPartidaAAutorizacion(partidaId, visitaKey);
+    if(window.notify) window.notify("Hallazgo enviado a autorización.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    renderHistorialModal();
+  }catch(err){
+    console.error("[expediente] enviarHallazgoManual:", err);
+    const msg = err && err.message ? err.message : "No se pudo enviar a autorización. Intenta de nuevo.";
+    if(window.notify) window.notify(msg, "error", 5000);
+  }finally{
+    _hmSendEnVuelo.delete(key);
   }
 }
 
