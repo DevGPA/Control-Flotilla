@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-vq+tsfRqsKUTlBOZw8MVgREzD5niuxy5CwxmaFSsYQc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Z6c/zdyN+CWfCoPx9bDLshjlHKtt43y5dTKixiPjc1Q=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1393,6 +1393,12 @@
       <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
       <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
+      <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
+           ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+           needs-write + needs-hibrido (R61) SUMADAS al permiso real de AppSync
+           (grupo admin/operativo, ver amplify/data/resource.ts). -->
+      <button class="tl-exp-btn needs-write needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
+      <button class="tl-exp-btn needs-write needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
       <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
@@ -9724,6 +9730,28 @@ function openTallerModal(id){
   document.getElementById("tf-refacciones").value  = e?.refacciones||"";
   document.getElementById("tf-comentario").value   = e?.comentario||"";
 
+  // Task 11 (ciclo de firma): liga del proveedor. "Copiar liga" tiene sentido
+  // para cualquier registro YA persistido (unitUid/fechaEntrada reales); un
+  // ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+  // "Revocar liga" solo si YA se generó una — se confirma con __tallerLiga.estado
+  // (lee ligaCreadaEn, la columna de auditoría real, no un dato en cache que
+  // pueda estar viejo). Fix: se guarda `id` en closure para no pisar el botón
+  // si el modal cambió de registro mientras la consulta seguía en vuelo.
+  {
+    const btnCopiarLiga  = document.getElementById("btn-liga-copiar");
+    const btnRevocarLiga = document.getElementById("btn-liga-revocar");
+    if(btnCopiarLiga) btnCopiarLiga.style.display = e ? "" : "none";
+    if(btnRevocarLiga){
+      btnRevocarLiga.style.display = "none";
+      if(e && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
+        const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+        window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
+          if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";
+        }).catch(()=>{});
+      }
+    }
+  }
+
   buildTallerSucOptions();
   openModal("taller-modal");
   document.getElementById("tf-eco").focus();
@@ -9733,6 +9761,102 @@ function closeTallerModal(){
   closeModal("taller-modal");
   _tallerEditId=null;
   _tallerReingresoKey=null;
+}
+
+// ── Task 11: emitir/copiar y revocar la liga del proveedor ──────────────────
+// El gate de ROL real es AppSync (grupo admin/operativo, data/resource.ts);
+// needs-write + needs-hibrido en el botón son cortesía de UI. unitUid/
+// fechaEntrada SIEMPRE via window.__tallerCloudKey(e) (R44) — nunca leídos de
+// un campo de formulario crudo, para no apuntar a una visita que el backend
+// no encuentra.
+async function copiarLigaProveedor(){
+  const e = tallerEntries.find(x=>x.id===_tallerEditId);
+  if(!e || !window.__tallerLiga || typeof window.__tallerCloudKey !== "function"){
+    window.notify?.("No se pudo identificar la visita.","error");
+    return;
+  }
+  const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+  const btn = document.getElementById("btn-liga-copiar");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await window.__tallerLiga.emitir(unitUid, fechaEntrada);
+    if(!r || "error" in r){
+      window.notify?.((r && r.error) || "No se pudo generar la liga.","error");
+      return;
+    }
+    const msg = window.__tallerLiga.mensajeWhatsApp({ eco: e.eco||"", placa: e.plate||"", url: r.url });
+    let copiado = false;
+    try{
+      await navigator.clipboard.writeText(msg);
+      copiado = true;
+    }catch{ copiado = false; }
+    if(copiado){
+      window.notify?.("Liga copiada. Pégala en WhatsApp.","ok");
+    } else {
+      // El portapapeles puede fallar (permiso denegado, contexto inseguro):
+      // nunca dejar al usuario sin forma de obtener la liga.
+      mostrarTextoParaCopiar(msg);
+    }
+    // El botón "Revocar liga" aparece en cuanto existe al menos una liga.
+    const btnRevocar = document.getElementById("btn-liga-revocar");
+    if(btnRevocar) btnRevocar.style.display = "";
+  }catch(err){
+    window.notify?.(err?.message || "No se pudo generar la liga.","error");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function revocarLigaProveedor(){
+  const e = tallerEntries.find(x=>x.id===_tallerEditId);
+  if(!e || !window.__tallerLiga || typeof window.__tallerCloudKey !== "function") return;
+  if(!confirm("¿Revocar la liga del proveedor? Las ligas ya enviadas dejarán de servir.")) return;
+  const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+  const btn = document.getElementById("btn-liga-revocar");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await window.__tallerLiga.revocar(unitUid, fechaEntrada);
+    if(!r || "error" in r){
+      window.notify?.((r && r.error) || "No se pudo revocar la liga.","error");
+      return;
+    }
+    window.notify?.("Liga revocada.","ok");
+  }catch(err){
+    window.notify?.(err?.message || "No se pudo revocar la liga.","error");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+/** Fallback del portapapeles (permiso denegado / contexto inseguro): muestra el
+ *  texto en un <textarea> seleccionable — nunca deja al usuario sin salida.
+ *  XSS: todo por createElement + .value/.textContent, nada de innerHTML con
+ *  el mensaje (que trae la liga real). */
+function mostrarTextoParaCopiar(texto){
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px";
+  const box = document.createElement("div");
+  box.style.cssText = "background:var(--bg);border:1px solid var(--ln);border-radius:10px;padding:16px;max-width:480px;width:100%";
+  const p = document.createElement("p");
+  p.style.cssText = "font-size:12px;color:var(--s1);margin:0 0 8px";
+  p.textContent = "No se pudo copiar automáticamente. Selecciona y copia el texto:";
+  const ta = document.createElement("textarea");
+  ta.readOnly = true;
+  ta.value = texto;
+  ta.style.cssText = "width:100%;min-height:140px;font-size:12px;padding:8px;box-sizing:border-box;font-family:inherit";
+  const btnCerrar = document.createElement("button");
+  btnCerrar.type = "button";
+  btnCerrar.className = "tl-cancel";
+  btnCerrar.style.cssText = "margin-top:10px";
+  btnCerrar.textContent = "Cerrar";
+  btnCerrar.onclick = () => overlay.remove();
+  box.appendChild(p);
+  box.appendChild(ta);
+  box.appendChild(btnCerrar);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  ta.focus();
+  ta.select();
 }
 
 // ── Reingresar unidad al taller (nuevo registro, misma unidad) ──

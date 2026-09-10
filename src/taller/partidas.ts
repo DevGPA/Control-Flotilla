@@ -269,3 +269,20 @@ export function esquemaHibridoActivo(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
   return (config as Record<string, unknown>).tallerHibrido === true;
 }
+
+/**
+ * Task 11 — el mensaje que Administración de Riesgos pega en WhatsApp al
+ * proveedor. Dice qué se espera del taller: un "hola, aquí está la liga" no
+ * logra que alguien la use. No promete lo que el sistema no hace (nadie lee
+ * la respuesta del WhatsApp del taller — la liga es el único canal real).
+ */
+export function mensajeWhatsApp(f: { eco: string; placa: string; url: string }): string {
+  const unidad = f.eco ? `unidad ${f.eco} (${f.placa})` : `unidad ${f.placa}`;
+  return [
+    `Hola. Para la ${unidad} que está en su taller, por favor use esta liga de GPA:`,
+    "",
+    f.url,
+    "",
+    "Ahí puede subir cada hallazgo con su foto y su precio (sin IVA), y ver qué reparaciones le autorizamos. No necesita cuenta ni instalar nada.",
+  ].join("\n");
+}

@@ -42,3 +42,19 @@ export function getClient(): ReturnType<typeof generateClient<Schema>> {
 
 /** Re-export del tipo Schema para que consumers tipen Inputs/Outputs. */
 export type { Schema };
+
+/**
+ * URL pública del portal del taller (`custom.tallerPortalUrl`), publicada por
+ * `amplify/backend.ts` (`backend.addOutput`) — mismo patrón que
+ * `custom.moreappWebhookUrl`/`custom.opsgpaReceptorUrl`. Lectura DEFENSIVA a
+ * propósito (Task 11, R66): el `amplify_outputs.json` local de esta rama
+ * refleja el backend YA desplegado en PROD, que todavía no incluye el Lambda
+ * del portal — así que la clave está AUSENTE hasta el primer deploy de esta
+ * rama. Ningún consumer debe asumir que existe; este es el ÚNICO lugar que
+ * lee `outputs.custom` para este fin (nada de una segunda lectura suelta).
+ */
+export function tallerPortalUrl(): string | null {
+  const custom = (outputs as { custom?: Record<string, unknown> }).custom;
+  const url = custom?.tallerPortalUrl;
+  return typeof url === "string" && url ? url : null;
+}

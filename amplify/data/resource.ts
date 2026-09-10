@@ -96,6 +96,20 @@ const schema = a
          *  que la LEE (ligaRevocada, en taller-portal/validacion.ts) trata la
          *  ausencia como versión 1. */
         ligaVersion: a.integer(),
+        /** Rastro de auditoría de la liga (Task 11, decisión 20 del spec):
+         *  quién la generó/revocó y cuándo, para que una liga filtrada tenga
+         *  un responsable identificable. Columnas reales, NO `datos`, por el
+         *  MISMO motivo que `ligaVersion` de arriba: `datos` se reemplaza
+         *  completo en cada guardado de escritorio (upsertTaller,
+         *  src/api/client.ts), así que un rastro guardado ahí desaparecería
+         *  en silencio con la siguiente edición del registro. Ausentes en
+         *  toda fila existente — nada las escribe todavía (Task 11); el
+         *  botón "Revocar liga" usa `ligaCreadaEn` para decidir si ya se
+         *  generó una (visitas previas a esta feature: ausente ⇒ oculto). */
+        ligaCreadaEn: a.string(),
+        ligaCreadaPor: a.string(),
+        ligaRevocadaEn: a.string(),
+        ligaRevocadaPor: a.string(),
         // comentario, updatedAt). JSON arbitrary para no migrar schema en cada cambio.
         datos: a.json(),
         version: a.integer().default(1),
@@ -631,6 +645,34 @@ const schema = a
       .returns(a.json())
       .handler(a.handler.function(adminUsers))
       .authorization((allow) => [allow.group("admin")]),
+
+    // ── Ciclo de firma del taller — liga del proveedor (Task 11, decisión 20) ──
+    // La emisión NO vive en la Function URL pública del portal (taller-portal):
+    // esa URL solo la protege la firma del token, así que una ruta de emisión
+    // ahí dejaría a cualquiera en internet acuñar una liga para cualquier
+    // unidad. Va por mutación de AppSync con permiso de grupo, mismo patrón
+    // que adminCreateUser de arriba: AppSync valida el grupo ANTES de invocar
+    // la Lambda. `viewer` NUNCA, bajo ninguna circunstancia. `operativo` es
+    // hoy un grupo GLOBAL de escritura (no "Administración de Riesgos"
+    // específicamente) — deuda técnica ya asentada en el spec §7.7; inocua
+    // con un solo tenant (gpa).
+    generarLigaTaller: a
+      .mutation()
+      .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(tallerPortal))
+      .authorization((allow) => [allow.group("admin"), allow.group("operativo")]),
+
+    /** Sube `ligaVersion` (columna real de Taller) — el único interruptor de
+     *  revocación (ver ligaRevocada en taller-portal/validacion.ts): un token
+     *  firmado con la versión anterior deja de servir de inmediato, sin
+     *  necesidad de guardar el token mismo en la base. */
+    revocarLigaTaller: a
+      .mutation()
+      .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(tallerPortal))
+      .authorization((allow) => [allow.group("admin"), allow.group("operativo")]),
   })
   // Acceso IAM para Lambdas del backend. El grant resource es a nivel schema
   // (la API no lo soporta por-modelo). El webhook MoreApp fue retirado 2026-08-20

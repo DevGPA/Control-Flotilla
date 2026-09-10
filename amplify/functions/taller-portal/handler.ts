@@ -20,7 +20,13 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/taller-portal";
 import type { Schema } from "../../data/resource";
-import { ErrorToken, verificarToken, type PortalToken } from "./token";
+import {
+  ErrorToken,
+  verificarToken,
+  firmarToken,
+  VIGENCIA_LIGA_MS,
+  type PortalToken,
+} from "./token";
 import {
   ErrorEntrada,
   MIMES_FOTO,
@@ -67,8 +73,17 @@ const PAGINA_LIGA_INVALIDA = `<!doctype html><meta charset="utf-8"><meta name="v
  </div>`;
 
 /** Cada apertura y cada escritura se registra (§7.6 del spec). No se loggea el
- *  token completo: solo un prefijo, suficiente para correlacionar. */
-function bitacora(accion: string, tk: PortalToken | null, extra: Record<string, unknown> = {}) {
+ *  token completo: solo un prefijo, suficiente para correlacionar.
+ *
+ *  El tipo acepta solo `u`/`f`/`v` (no el `PortalToken` completo): emitirLiga/
+ *  revocarLiga (Task 11) llaman esto sin un token real que firmar/verificar
+ *  — solo tienen la visita y la versión de la columna — así que exigirles un
+ *  `exp`/`t` de relleno solo para cuadrar el tipo sería ruido sin sentido. */
+function bitacora(
+  accion: string,
+  tk: Pick<PortalToken, "u" | "f" | "v"> | null,
+  extra: Record<string, unknown> = {},
+) {
   console.info(
     JSON.stringify({
       canal: "taller-portal",
@@ -89,7 +104,73 @@ function parseBody(event: unknown): Record<string, unknown> {
   }
 }
 
+/** Grupos de ROL de Cognito (amplify/auth/resource.ts) — todo lo demás en
+ *  `cognito:groups` es el tenant del usuario. Local a este archivo (no se
+ *  importa de admin-users/handler.ts: cada Lambda es su propio módulo, sin
+ *  acoplarse a los internos de otra función). */
+const ROLES_TALLER = new Set(["admin", "operativo", "viewer"]);
+
+/**
+ * El tenant y quién invoca, tomados del `identity`/`claims` de AppSync que ya
+ * validó el grupo (mismo patrón que `getIdentity` en
+ * amplify/functions/admin-users/handler.ts): el tenant NO sale de un env var
+ * inventado (no existe `TALLER_TENANT_ID`) — hoy es el único grupo Cognito del
+ * usuario que no es un rol (admin/operativo/viewer), y con un segundo tenant
+ * seguirá siendo correcto sin tocar este código. `quien` prioriza el correo
+ * (identificable a simple vista en la bitácora y en `ligaCreadaPor`) sobre el
+ * sub (un GUID); si ninguno viaja en el token, "desconocido" — una liga sin
+ * autor no debe bloquear la emisión, pero tampoco debe mentir con un valor
+ * inventado.
+ */
+function identidadDeResolver(event: any): { tenantId: string; quien: string } {
+  const identity = (event?.identity ?? {}) as { sub?: string; claims?: Record<string, unknown> };
+  const claims = identity.claims ?? {};
+  const gruposRaw = claims["cognito:groups"];
+  const grupos = Array.isArray(gruposRaw) ? (gruposRaw as string[]) : [];
+  const tenantClaim = String(claims["custom:tenantId"] ?? "");
+  const tenantId = tenantClaim || grupos.find((g) => !ROLES_TALLER.has(g)) || "";
+  const quien = String(claims.email ?? "") || String(identity.sub ?? "") || "desconocido";
+  return { tenantId, quien };
+}
+
 export const handler = async (event: any) => {
+  // ── Invocación por AppSync (mutación con permiso de grupo) ──────────────
+  // generarLigaTaller / revocarLigaTaller (amplify/data/resource.ts) llegan
+  // aquí por `event.info.fieldName`, NUNCA por la URL pública del portal: esa
+  // URL solo la protege la firma del token, así que una ruta de emisión ahí
+  // dejaría a cualquiera en internet acuñar una liga para cualquier unidad
+  // (ver la cabecera del archivo). AppSync YA validó el grupo del invocador
+  // (admin/operativo) antes de invocar esta Lambda.
+  //
+  // Esta rama va ANTES de leer `rawPath`/verificar el token A PROPÓSITO: un
+  // evento de resolver no trae `rawPath` ni `?t=`. Si esta rama no fuera lo
+  // PRIMERO que el handler mira, `ruta` caería a "/" y `esPagina` a `true`
+  // más abajo, y el fallo de `verificarToken` con un token vacío devolvería
+  // la PÁGINA HTML "liga no válida" a AppSync en vez de JSON — una mutación
+  // "que funciona" pero regresa basura al cliente.
+  //
+  // El valor de retorno es el objeto JSON CRUDO, NUNCA el sobre
+  // {statusCode,headers,body} de las rutas HTTP de abajo: `.returns(a.json())`
+  // en el schema espera el valor tal cual — mismo patrón que
+  // admin-users/handler.ts, que retorna `{ok, ...}` directo, no una respuesta
+  // HTTP.
+  const campoResolver = event?.info?.fieldName;
+  if (campoResolver === "generarLigaTaller" || campoResolver === "revocarLigaTaller") {
+    try {
+      if (!SECRETO) return { error: "portal no configurado" };
+      const { unitUid, fechaEntrada } = (event.arguments ?? {}) as Record<string, unknown>;
+      const { tenantId, quien } = identidadDeResolver(event);
+      return campoResolver === "generarLigaTaller"
+        ? await emitirLiga(tenantId, String(unitUid), String(fechaEntrada), quien)
+        : await revocarLiga(tenantId, String(unitUid), String(fechaEntrada), quien);
+    } catch (e) {
+      if (e instanceof ErrorEntrada) return { error: e.message };
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(JSON.stringify({ canal: "taller-portal", accion: "error-liga", error: msg }));
+      return { error: "error interno" };
+    }
+  }
+
   const ruta = String(event?.rawPath ?? "/");
   const metodo = String(event?.requestContext?.http?.method ?? "GET").toUpperCase();
   const token = String(event?.queryStringParameters?.t ?? "");
@@ -441,9 +522,21 @@ async function crearPartida(
 }
 
 async function actualizarVisita(
-  tk: PortalToken,
+  tk: Pick<PortalToken, "t" | "u" | "f">,
   body: Record<string, unknown>,
   visita: Schema["Taller"]["type"],
+  // Task 11 (R65): columnas de la liga, escritas SOLO por llamadores internos
+  // (emitirLiga/revocarLiga) — la ruta pública POST /api/visita nunca pasa
+  // este 4º argumento, así que el `body` que manda el taller, sin importar
+  // qué contenga, no puede tocar `ligaVersion` ni el rastro de auditoría. Sin
+  // este aislamiento, un taller malicioso podría reescribir `ligaVersion` en
+  // su propio body y resucitar un token ya revocado.
+  columnasLiga?: Partial<
+    Pick<
+      Schema["Taller"]["type"],
+      "ligaVersion" | "ligaCreadaEn" | "ligaCreadaPor" | "ligaRevocadaEn" | "ligaRevocadaPor"
+    >
+  >,
 ) {
   const client = await getDataClient();
 
@@ -479,6 +572,8 @@ async function actualizarVisita(
     // segunda lectura que hacía este bloque antes.
     if (!visita.fsalidaEstCompromiso) input.fsalidaEstCompromiso = f;
   }
+
+  if (columnasLiga) Object.assign(input, columnasLiga);
 
   const { data, errors } = await client.models.Taller.update(input as never);
   if (errors) throw new Error(`Taller.update: ${JSON.stringify(errors)}`);
@@ -545,4 +640,77 @@ async function enviarAAutorizacion(
   bitacora("enviar-autorizacion", tk, { enviadas: borradores.length });
 
   return { enviadas: borradores.length };
+}
+
+/**
+ * Task 11 — mutación `generarLigaTaller`. Firma un token nuevo apuntando a la
+ * versión ACTUAL de la columna `ligaVersion` (una visita sin liga previa se
+ * trata como versión 1 — mismo criterio que `ligaRevocada`). Emitir NO sube
+ * la versión: un token nuevo con la MISMA versión convive con los que ya se
+ * hubieran repartido antes, todos vigentes hasta la próxima revocación. El
+ * rastro de auditoría (`ligaCreadaEn/Por`) se escribe a través del MISMO
+ * `actualizarVisita` que ya usa la ruta pública — nunca un segundo helper de
+ * escritura — pasando el 4º argumento que esa ruta jamás pasa.
+ */
+async function emitirLiga(tenantId: string, unitUid: string, fechaEntrada: string, quien: string) {
+  const client = await getDataClient();
+  const { data: visita, errors } = await client.models.Taller.get({
+    tenantId,
+    unitUid,
+    fechaEntrada,
+  });
+  if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
+  if (!visita) throw new ErrorEntrada("La visita no existe");
+
+  // Columna real, NUNCA `datos.ligaVersion` (R65): es la que `ligaRevocada`
+  // compara contra el token dentro de `cargarVisitaVigente`.
+  const ligaVersion = visita.ligaVersion ?? 1;
+  const ahora = Date.now();
+  const exp = ahora + VIGENCIA_LIGA_MS;
+  const token = firmarToken(
+    { t: tenantId, u: unitUid, f: fechaEntrada, v: ligaVersion, exp },
+    SECRETO,
+  );
+
+  await actualizarVisita({ t: tenantId, u: unitUid, f: fechaEntrada }, {}, visita, {
+    ligaCreadaEn: new Date(ahora).toISOString(),
+    ligaCreadaPor: quien,
+  });
+
+  bitacora("emitir-liga", { u: unitUid, f: fechaEntrada, v: ligaVersion }, { quien });
+  // Devuelve el TOKEN, no una URL (R66): componer `${TALLER_PORTAL_URL}?t=...`
+  // en este Lambda leyendo la URL de su PROPIA Function URL como env var crea
+  // un ciclo Function→FunctionUrl→Function que falla el synth de CDK. La URL
+  // la compone el FRONTEND (amplify_outputs.json → custom.tallerPortalUrl,
+  // ya publicado por amplify/backend.ts).
+  return { token, expira: exp };
+}
+
+/**
+ * Task 11 — mutación `revocarLigaTaller`. Sube `ligaVersion` (la COLUMNA,
+ * R65): es el único interruptor de revocación — `ligaRevocada` compara con
+ * `!==`, así que CUALQUIER cambio de versión invalida todos los tokens
+ * firmados antes, sin tocar el token mismo (nunca se guarda en la base).
+ */
+async function revocarLiga(tenantId: string, unitUid: string, fechaEntrada: string, quien: string) {
+  const client = await getDataClient();
+  const { data: visita, errors } = await client.models.Taller.get({
+    tenantId,
+    unitUid,
+    fechaEntrada,
+  });
+  if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
+  if (!visita) throw new ErrorEntrada("La visita no existe");
+
+  const nueva = (visita.ligaVersion ?? 1) + 1;
+  const ahora = new Date().toISOString();
+
+  await actualizarVisita({ t: tenantId, u: unitUid, f: fechaEntrada }, {}, visita, {
+    ligaVersion: nueva,
+    ligaRevocadaEn: ahora,
+    ligaRevocadaPor: quien,
+  });
+
+  bitacora("revocar-liga", { u: unitUid, f: fechaEntrada, v: nueva }, { quien });
+  return { ligaVersion: nueva };
 }
