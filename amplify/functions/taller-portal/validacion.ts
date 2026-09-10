@@ -12,8 +12,8 @@ export const TOPE_PARTIDAS_VISITA = 60;
 // válida podría empujar archivos sin límite hacia el bucket de producción
 // mientras el token siga vigente.
 export const TOPE_BYTES_FOTO = 10 * 1024 * 1024;
-const LARGO_DESCRIPCION = 500;
-const PRECIO_MAX = 10_000_000;
+export const LARGO_DESCRIPCION = 500;
+export const PRECIO_MAX = 10_000_000;
 
 const EXT: Record<string, string> = {
   "image/jpeg": "jpg",

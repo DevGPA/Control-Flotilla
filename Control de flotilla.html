@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Z6c/zdyN+CWfCoPx9bDLshjlHKtt43y5dTKixiPjc1Q=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-cDOhA6Q59S5tQKgmGIWTlyplqCxr3ONcEWPl3E1Jd9s=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7899,16 +7899,33 @@ function _bnPartida(fila, p, motivos){
   info.appendChild(desc);
 
   const tienePrecio = typeof p.precio === "number";
+  // R69(c): un precio tecleado en $0 (garantía, cortesía) es alcanzable —la
+  // validación de partidaManual/validarPartidaEntrante acepta >= 0— y NO es
+  // el mismo caso que "sin precio" (p.precio undefined, arriba): ese es un
+  // dato que falta; $0 es un dato completo que dice "no cuesta". Si se
+  // pintaran igual, Riesgos autorizaría un $0 sin darse cuenta de que lo es.
+  const esCero = tienePrecio && p.precio === 0;
   const tipoLbl = p.tipo==="manoObra" ? "Mano de obra" : p.tipo==="refaccion" ? "Refacción" : "Sin tipo";
   const precioLbl = document.createElement("div");
   precioLbl.style.cssText = `font-size:12px;margin-top:3px;font-weight:700;color:${tienePrecio ? "var(--w1)" : "var(--R)"}`;
-  precioLbl.textContent = tienePrecio ? `${tipoLbl} · ${_fmtMon(p.precio)}` : `${tipoLbl} · sin precio`;
+  precioLbl.textContent = !tienePrecio
+    ? `${tipoLbl} · sin precio`
+    : esCero
+      ? `${tipoLbl} · $0 · sin costo`
+      : `${tipoLbl} · ${_fmtMon(p.precio)}`;
   info.appendChild(precioLbl);
 
   const autoria = document.createElement("div");
   autoria.style.cssText = "font-size:10.5px;color:var(--s2);margin-top:3px";
   const proveedorPartida = p.proveedorNombre || fila.proveedor || "—";
-  autoria.textContent = `Subió ${proveedorPartida} · ${fmtDate(p.creadoEn || p.propuestoEn)} · desde la liga`;
+  // R74: el origen real (liga vs. captura manual de Riesgos, Task 12) —
+  // antes era un literal fijo que le mentía a la evidencia de una captura a
+  // mano diciendo "desde la liga". window.__origenPartida es el bridge de
+  // src/taller/partidas.ts (cableado en src/main.ts).
+  const origen = typeof window.__origenPartida === "function"
+    ? window.__origenPartida(p)
+    : "desde la liga";
+  autoria.textContent = `Subió ${proveedorPartida} · ${fmtDate(p.creadoEn || p.propuestoEn)} · ${origen}`;
   info.appendChild(autoria);
 
   wrap.appendChild(info);
@@ -10013,6 +10030,7 @@ function renderHistorialModal(){
       </div>
       ${e.refacciones?`<div style="margin-top:8px;font-size:10px;color:var(--w1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ac)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">REFACCIONES / TRABAJOS</span>${escHtml(e.refacciones)}</div>`:""}
       ${e.comentario?`<div style="margin-top:6px;font-size:10px;color:var(--s1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ln)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">COMENTARIO</span>${escHtml(e.comentario)}</div>`:""}
+      ${_hallazgoManualHtml(e, isCl)}
     </div>`;
   }).join("")
   : `<div style="padding:32px 20px;text-align:center;color:var(--s2);font-size:11px">
@@ -10023,6 +10041,92 @@ function renderHistorialModal(){
 }
 function closeHistorialModal(){
   closeModal("hist-modal");
+}
+
+// ── Captura manual de partidas (Task 12 — la salida de emergencia) ───────
+// El taller que manda su cotización por WhatsApp en vez de usar la liga
+// (Task 11). Vive DENTRO de la tarjeta de UNA visita concreta del expediente
+// (R73) — nunca un bloque a nivel unidad con selector de visita: elegir mal
+// la visita pondría el gasto en el ingreso equivocado. `e.id` (ya usado por
+// los botones Editar/Borrar de esta misma tarjeta) correlaciona los inputs
+// con `agregarHallazgoManual` sin tener que re-derivar nada.
+//
+// R73 (predicado de "abierta"): la MISMA regla que ya pinta esta tarjeta
+// arriba (`isCl = e.estado==="Finalizado"`), que es la de `esCerrada()` en
+// src/taller/tallerExcel.ts — nunca una tercera definición de "cerrada". Una
+// visita finalizada ya tiene su costo final: no se le agrega nada, y esta
+// función ni siquiera pinta el bloque (no solo lo oculta con CSS).
+//
+// needs-hibrido en el contenedor completo (Task 10, R62: el esquema
+// apagado no debe ni mostrar el formulario) + needs-write en el botón
+// (R61: defensa en profundidad sobre el permiso real de AppSync, mismo
+// patrón que #btn-liga-copiar/#btn-liga-revocar).
+function _hallazgoManualHtml(e, isCl){
+  if(isCl) return "";
+  const id = escAttr(e.id);
+  return `<div class="needs-hibrido" style="margin-top:10px;padding:10px 12px;background:var(--bg2);border:1px dashed var(--ln);border-radius:6px">
+    <div style="font-size:10px;color:var(--s2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">+ Agregar hallazgo a mano</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <input type="text" class="field-input" id="hm-desc-${id}" placeholder="Descripción del hallazgo" maxlength="500" style="flex:2;min-width:160px">
+      <select class="field-input" id="hm-tipo-${id}" style="flex:1;min-width:120px">
+        <option value="refaccion">Refacción</option>
+        <option value="manoObra">Mano de obra</option>
+      </select>
+      <input type="number" class="field-input" id="hm-precio-${id}" placeholder="Precio sin IVA" min="0" step="0.01" style="flex:1;min-width:120px">
+    </div>
+    <button type="button" class="needs-write needs-hibrido" data-action="agregarHallazgoManual" data-arg1="${id}" style="padding:6px 14px;border-radius:6px;border:none;background:var(--ac);color:#fff;font-size:11px;font-weight:700;cursor:pointer">+ Agregar hallazgo</button>
+    <div style="font-size:9.5px;color:var(--s2);margin-top:6px;font-style:italic">Úsalo cuando el taller mandó la cotización por fuera. Queda registrado que la capturaste tú.</div>
+  </div>`;
+}
+
+// Set de ids en vuelo — evita doble submit mientras la escritura a AppSync
+// está pendiente (mismo espíritu que btn.disabled en _bnAutorizar, sin
+// necesitar el nodo del botón: el delegador solo pasa data-argN).
+const _hmEnVuelo = new Set();
+
+async function agregarHallazgoManual(id){
+  if(_hmEnVuelo.has(id)) return;
+  const e = tallerEntries.find(x=>x.id===id);
+  if(!e) return;
+  const descInp = document.getElementById(`hm-desc-${id}`);
+  const tipoInp = document.getElementById(`hm-tipo-${id}`);
+  const precioInp = document.getElementById(`hm-precio-${id}`);
+  if(!descInp || !tipoInp || !precioInp) return;
+  if(typeof window.__crearPartidaManual !== "function"){
+    if(window.notify) window.notify("No se pudo capturar el hallazgo — intenta de nuevo.", "error", 5000);
+    return;
+  }
+  // Guard de UI (no de negocio): un precio en blanco se lee como "0" con
+  // Number("") — sin este guard, olvidar teclear el precio crearía en
+  // silencio una partida de $0. El $0 tecleado A PROPÓSITO (R69c) sigue
+  // siendo válido; esto solo exige que alguien lo haya escrito.
+  if(precioInp.value.trim()===""){
+    if(window.notify) window.notify("Escribe un precio (puede ser 0 si no tiene costo).", "warn", 4000);
+    return;
+  }
+  const visitaKey = window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+  if(!visitaKey){
+    if(window.notify) window.notify("No se pudo ubicar la visita de esta unidad.", "error", 5000);
+    return;
+  }
+  const datos = {
+    descripcion: descInp.value,
+    tipo: tipoInp.value,
+    precio: Number(precioInp.value),
+  };
+  _hmEnVuelo.add(id);
+  try{
+    await window.__crearPartidaManual(datos, visitaKey);
+    if(window.notify) window.notify("Hallazgo capturado y enviado a autorización.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    renderHistorialModal();
+  }catch(err){
+    console.error("[expediente] agregarHallazgoManual:", err);
+    const msg = err && err.message ? err.message : "No se pudo capturar el hallazgo. Verifica los datos.";
+    if(window.notify) window.notify(msg, "error", 5000);
+  }finally{
+    _hmEnVuelo.delete(id);
+  }
 }
 
 // ── Acciones del modal ─────────────────────────────────────

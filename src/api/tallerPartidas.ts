@@ -6,10 +6,13 @@ import { getClient, type Schema } from "./amplifyClient";
 import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
 import {
   autorizar,
+  partidaManual,
   partidasPendientesDeFirma,
+  proponer,
   rechazar,
   totalesVisita,
   type Partida,
+  type PartidaTipo,
   type TotalesVisita,
 } from "../taller/partidas";
 
@@ -245,6 +248,51 @@ export async function guardarDecisionPartida(args: {
   });
   if (errors) throw new Error(`TallerPartida.update (decisión): ${JSON.stringify(errors)}`);
   return nueva;
+}
+
+/**
+ * Task 12 (la salida de emergencia) — captura manual de Riesgos: el taller
+ * mandó su cotización por WhatsApp en vez de usar la liga. Compone las DOS
+ * transiciones puras de src/taller/partidas.ts en el mismo golpe de
+ * escritura — nace en `borrador` (`partidaManual`, valida los tres campos)
+ * y se manda a autorización (`proponer`) ANTES de persistir — nunca queda
+ * nada a medias en DynamoDB: si `partidaManual` lanza (descripción vacía,
+ * precio fuera de rango, tipo inválido), no se llama ni una vez a AppSync.
+ *
+ * Mismo shape de manejo de error que `guardarDecisionPartida`: `if (errors)
+ * throw`. Mismo no-valida-rol: el gate real es AppSync (operativo/admin,
+ * ver amplify/data/resource.ts) — esto solo persiste lo que la UI, ya
+ * gateada para viewer y para el apagador del esquema (needs-hibrido), dejó
+ * intentar.
+ */
+export async function crearPartidaManual(args: {
+  tenantId: string;
+  datos: { descripcion: string; tipo: PartidaTipo; precio: number };
+  visitaKey: string;
+  autorSub: string;
+  ahora: string;
+}): Promise<Partida> {
+  const { tenantId, datos, visitaKey, autorSub, ahora } = args;
+  const borrador = partidaManual(datos, visitaKey, autorSub, ahora);
+  const propuesta = proponer(borrador, ahora);
+
+  const c = getClient();
+  const { errors } = await c.models.TallerPartida.create({
+    tenantId,
+    visitaKey: propuesta.visitaKey,
+    partidaId: propuesta.partidaId,
+    descripcion: propuesta.descripcion,
+    tipo: propuesta.tipo,
+    precio: propuesta.precio,
+    estado: propuesta.estado,
+    fotos: propuesta.fotos,
+    creadoPor: propuesta.creadoPor,
+    creadoEn: propuesta.creadoEn,
+    propuestoEn: propuesta.propuestoEn,
+    version: 1,
+  });
+  if (errors) throw new Error(`TallerPartida.create (captura manual): ${JSON.stringify(errors)}`);
+  return propuesta;
 }
 
 /**

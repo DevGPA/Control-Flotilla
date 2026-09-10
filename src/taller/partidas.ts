@@ -13,6 +13,16 @@ export type PartidaEstado =
 
 export type PartidaTipo = "refaccion" | "manoObra";
 
+/**
+ * Mismos topes que el portal del proveedor (`LARGO_DESCRIPCION`/`PRECIO_MAX`
+ * en amplify/functions/taller-portal/validacion.ts). R68: la app y el portal
+ * NUNCA deben divergir en cuánto aceptan — `tests/tallerLimitesPartida.test.ts`
+ * lo comprueba importando ambos módulos, sin que este archivo (que sí viaja
+ * al bundle del frontend) importe el Lambda.
+ */
+export const LARGO_DESCRIPCION_PARTIDA = 500;
+export const PRECIO_MAX_PARTIDA = 10_000_000;
+
 export type EstadoOperativo = "revisando" | "reparando" | "esperandoRefaccion" | "lista";
 
 export type Partida = {
@@ -285,4 +295,81 @@ export function mensajeWhatsApp(f: { eco: string; placa: string; url: string }):
     "",
     "Ahí puede subir cada hallazgo con su foto y su precio (sin IVA), y ver qué reparaciones le autorizamos. No necesita cuenta ni instalar nada.",
   ].join("\n");
+}
+
+/**
+ * Task 12 (la salida de emergencia) — partida capturada a mano por Riesgos:
+ * el taller mandó su cotización por WhatsApp en vez de usar la liga. Mismas
+ * reglas y mismo ciclo de firma que `validarPartidaEntrante` (amplify/
+ * functions/taller-portal/validacion.ts) — mismos topes (R68), mismos tres
+ * campos obligatorios — pero el autor queda como `user:<sub>` para que el
+ * rastro diga quién la metió, nunca `liga:<...>` (eso mentiría sobre el
+ * origen). El id lo genera esta función: nunca se acepta uno del formulario
+ * (evita que dos capturas coincidan o que algo externo fuerce una llave).
+ */
+export function partidaManual(
+  datos: { descripcion: string; tipo: PartidaTipo; precio: number },
+  visitaKey: string,
+  autorSub: string,
+  ahora: string,
+): Partida {
+  const descripcion = String(datos.descripcion ?? "")
+    .trim()
+    .slice(0, LARGO_DESCRIPCION_PARTIDA);
+  if (!descripcion) throw new Error("La descripción del hallazgo es obligatoria");
+  if (datos.tipo !== "refaccion" && datos.tipo !== "manoObra") {
+    throw new Error(`Tipo no válido: ${String(datos.tipo)}`);
+  }
+  const precio = Number(datos.precio);
+  if (!Number.isFinite(precio) || precio < 0 || precio > PRECIO_MAX_PARTIDA) {
+    throw new Error(`Precio no válido: ${String(datos.precio)}`);
+  }
+  return {
+    partidaId: crypto.randomUUID(),
+    visitaKey,
+    descripcion,
+    tipo: datos.tipo,
+    precio,
+    estado: "borrador",
+    fotos: [],
+    creadoPor: `user:${autorSub}`,
+    creadoEn: ahora,
+  };
+}
+
+/**
+ * R69(b) — la transición borrador → propuesta, en versión PURA e invocable
+ * desde la app. Hoy esa misma transición YA existe, pero solo dentro del
+ * handler del portal (`enviarAAutorizacion`, amplify/functions/taller-portal/
+ * handler.ts), token-gated y no alcanzable desde `src/`. Esta función no
+ * reemplaza esa ruta (queda fuera de esta tarea, ver R69(b) del brief) — es
+ * la que usa `crearPartidaManual` (src/api/tallerPartidas.ts) para que una
+ * captura a mano nazca en `borrador` y pase a "esperando firma" en el mismo
+ * golpe de escritura, nunca antes de que `partidaManual` haya validado todo.
+ * Duplica la regla del portal a propósito (mismo estado de origen, mismo
+ * campo estampado) — la unificación de ambas queda como pendiente conocido.
+ */
+export function proponer(p: Partida, cuando: string): Partida {
+  if (p.estado !== "borrador") {
+    throw new Error(`No se puede enviar a autorización una partida en estado "${p.estado}"`);
+  }
+  return {
+    ...p,
+    estado: "propuesta",
+    propuestoEn: cuando,
+  };
+}
+
+/**
+ * R74 — de dónde vino la evidencia, para que la bandeja (Task 8) no le
+ * atribuya a la liga algo que capturó una persona de GPA a mano (Task 12).
+ * Nunca asume "liga" por default: un `creadoPor` ausente o con un prefijo
+ * que no se reconoce es "origen desconocido", no una adivinanza.
+ */
+export function origenPartida(p: Partida): string {
+  const creadoPor = p.creadoPor;
+  if (typeof creadoPor !== "string") return "origen desconocido";
+  if (creadoPor.startsWith("user:")) return "Capturada por GPA";
+  if (creadoPor.startsWith("liga:")) return "desde la liga";
+  return "origen desconocido";
 }
