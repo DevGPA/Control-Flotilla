@@ -163,10 +163,23 @@ describe("uploadTallerToCloud — una visita con partidas que se CIERRA no sube 
 describe("uploadTallerToCloud — el TERCER llamador (auto-migración de huérfanos) también resuelve partidas", () => {
   it("un huérfano cuya visitaKey coincide con una visita con partidas NO sube gasto/gastoRef/gastoMO", async () => {
     upserts.length = 0;
+    // El huérfano LOCAL, con gastoRef/gastoMO en 0 (como cualquier ingreso recién capturado
+    // a mano). Va primero porque la visitaKey de la partida se DERIVA de él (R44): teclear
+    // "ABC-123|2026-08-01" dejó de coincidir en cuanto R59 canonizó la placa, y el test
+    // pasaba a probar "no hay partidas" creyendo probar la colisión de claves.
+    const huerfano: LegacyTallerEntry = {
+      id: "tl_local_huerfano",
+      plate: "ABC-123",
+      fentrada: "2026-08-01",
+      estado: "Finalizado",
+      gasto: 0,
+      gastoRef: 0,
+      gastoMO: 0,
+    };
     const ps: Partida[] = [
       {
         partidaId: "p1",
-        visitaKey: "ABC-123|2026-08-01",
+        visitaKey: visitaKeyDe(huerfano),
         descripcion: "Refacción",
         estado: "autorizada",
         precio: 50000,
@@ -179,18 +192,6 @@ describe("uploadTallerToCloud — el TERCER llamador (auto-migración de huérfa
     const porVisita = partidasVigentesPorVisita(ps, new Set());
     const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
       porVisita.get(visitaKeyDe(e));
-
-    // El huérfano LOCAL: mismo plate|fentrada que la visitaKey de arriba, con
-    // gastoRef/gastoMO en 0 (como cualquier ingreso recién capturado a mano).
-    const huerfano: LegacyTallerEntry = {
-      id: "tl_local_huerfano",
-      plate: "ABC-123",
-      fentrada: "2026-08-01",
-      estado: "Finalizado",
-      gasto: 0,
-      gastoRef: 0,
-      gastoMO: 0,
-    };
     await uploadTallerToCloud([huerfano], "tenant-x", partidasDeOrfano);
     expect(upserts).toHaveLength(1);
     const { datos } = upserts[0]!;

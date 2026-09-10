@@ -110,18 +110,6 @@ function partidasDeEntryComoCloudWire(win: {
 }
 
 describe("R62 — con el switch apagado, la derivación de partidas no aplica en ningún lado", () => {
-  const ps: Partida[] = [
-    {
-      partidaId: "p1",
-      visitaKey: "ABC-123|2026-08-01",
-      descripcion: "Refacción mayor",
-      estado: "autorizada",
-      precio: 1500,
-      precioAutorizado: 1500,
-      tipo: "refaccion",
-      fotos: [],
-    },
-  ];
   const entryConPartidas: LegacyTallerEntry = {
     id: "tl_x",
     plate: "ABC-123",
@@ -131,7 +119,23 @@ describe("R62 — con el switch apagado, la derivación de partidas no aplica en
     gastoRef: 0,
     gastoMO: 0,
   };
-  const porVisita = new Map<string, Partida[]>([["ABC-123|2026-08-01", ps]]);
+  // La llave se DERIVA del entry (R44), nunca se teclea: con el literal "ABC-123|2026-08-01"
+  // el fixture dejó de coincidir en cuanto R59 canonizó la placa, y el test pasaba a probar
+  // "no hay partidas" creyendo probar "el switch prendido recorta".
+  const claveVisita = visitaKeyDe(entryConPartidas);
+  const ps: Partida[] = [
+    {
+      partidaId: "p1",
+      visitaKey: claveVisita,
+      descripcion: "Refacción mayor",
+      estado: "autorizada",
+      precio: 1500,
+      precioAutorizado: 1500,
+      tipo: "refaccion",
+      fotos: [],
+    },
+  ];
+  const porVisita = new Map<string, Partida[]>([[claveVisita, ps]]);
 
   it("switch APAGADO: el tecleado sobrevive intacto — la visita CON partidas sube su gasto tal cual (Ruling R62)", async () => {
     upserts.length = 0;

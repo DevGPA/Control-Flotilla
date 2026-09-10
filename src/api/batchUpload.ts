@@ -414,7 +414,11 @@ export interface LegacyTallerEntry {
  * un segundo ingreso same-day upserta sobre la misma fila.
  */
 export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEntrada: string } {
-  const unitUid = String(e.plate || e.eco || e.unitKey || e.id || "");
+  // La identidad es la placa VIGENTE (src/fleet/placaVigente.ts): las partidas son la única copia
+  // del dinero firmado y cuelgan de esta llave; con la placa cruda, un reemplacamiento las deja
+  // huérfanas. `visitaKeyDe`, el token de la liga (`u`) y el strip del gasto derivan todos de aquí,
+  // así que este único cambio alinea a los tres consumidores.
+  const unitUid = placaVigente(e.plate || e.eco || e.unitKey || e.id);
   const fechaEntrada = e.fentrada || e.freporte || `sin-fecha:${e.id}`;
   return { unitUid, fechaEntrada };
 }

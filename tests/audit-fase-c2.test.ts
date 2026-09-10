@@ -12,7 +12,10 @@ describe("tallerCloudKey — clave estable (P1 #11)", () => {
 
   it("usa fentrada cuando existe", () => {
     const k = tallerCloudKey({ ...base, plate: "ABC-1", fentrada: "2026-06-01" });
-    expect(k).toEqual({ unitUid: "ABC-1", fechaEntrada: "2026-06-01" });
+    // R59: la placa pasa por `placaVigente`, que la deja en su forma canónica (sin guiones ni
+    // minúsculas) además de resolver los reemplacamientos. "ABC-1" y "ABC1" son la MISMA
+    // camioneta y ya no abren dos visitas. Ver tests/tallerCloudKeyPlacaVigente.test.ts.
+    expect(k).toEqual({ unitUid: "ABC1", fechaEntrada: "2026-06-01" });
   });
 
   it("cae a freporte si fentrada vacía", () => {
@@ -38,7 +41,10 @@ describe("tallerCloudKey — clave estable (P1 #11)", () => {
     expect(tallerCloudKey({ ...base, plate: "P", eco: "E" }).unitUid).toBe("P");
     expect(tallerCloudKey({ ...base, eco: "E", unitKey: "U" }).unitUid).toBe("E");
     expect(tallerCloudKey({ ...base, unitKey: "U" }).unitUid).toBe("U");
-    expect(tallerCloudKey({ ...base }).unitUid).toBe(base.id);
+    // R59: el último eslabón (el id) también pasa por `placaVigente`, que lo canoniza —
+    // "tl_1718000000000" queda "TL1718000000000". Sigue siendo ESTABLE y recomputable (es lo
+    // que este test protege): el mismo id da siempre la misma llave.
+    expect(tallerCloudKey({ ...base }).unitUid).toBe("TL1718000000000");
   });
 });
 
