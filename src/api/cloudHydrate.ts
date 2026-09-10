@@ -725,8 +725,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Task 10 (el apagador): se lee y publica SIEMPRE, en cada llamada — incluso
   // cuando el resto del snapshot no cambió (el short-circuit de "sin cambios"
   // más abajo se salta el rebuild completo, pero un admin puede voltear el
-  // switch sin que ni una fila de units/taller/combustible se mueva). Fila
-  // ausente, campo ausente o de otro tipo resuelven `false` (esquemaHibridoActivo).
+  // switch sin que ni una fila de units/taller/combustible se mueva — por eso
+  // appConfigRows también viaja dentro de hydrateSignature() más abajo: sin
+  // eso, ese short-circuit se pegaría al valor viejo del switch hasta que
+  // algo MÁS cambiara). Fila ausente, campo ausente o de otro tipo resuelven
+  // `false` (esquemaHibridoActivo). El Lambda del portal (taller-portal) NO
+  // se apaga con esta bandera — para cerrar la puerta del proveedor se
+  // revoca la liga (`ligaVersion`, columna de `Taller`), un mecanismo aparte.
   window.__tallerHibrido = esquemaHibridoActivo(appConfigRows[0]);
 
   // Índice refId → info de anulaciones ACTIVAS (las restauradas no excluyen). Se expone
@@ -755,6 +760,14 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // re-firman por-demanda al verse (imgUrl → lazyObserver → __cloudGetPhotoUrl), así que
   // omitir el pre-firmado proactivo no rompe evidencias. El primer hydrate (sig undefined)
   // y cualquier cambio real (alta/baja/edición → cambia cuenta o max updatedAt) sí procede.
+  // Fix ronda 1 (Task 10, Important 1): appConfigRows viaja aquí también — sin
+  // ella, un admin que voltea SOLO el switch (ninguna otra fila del tenant se
+  // movió) nunca dispara este rebuild: window.__tallerHibrido ya quedó
+  // correcto arriba, pero updateTallerBadge()/renderTaller() (llamados más
+  // abajo, dentro del bloque de taller) no vuelven a correr, así que
+  // applyTallerHibridoGate() tampoco — el badge y la sub-pestaña "Por
+  // autorizar" se quedan pegados al estado de antes del flip hasta que algo
+  // MÁS cambie o el usuario recargue.
   const snapshotSig = hydrateSignature([
     units,
     checklists,
@@ -765,6 +778,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     validaciones,
     complianceDocs,
     anulaciones,
+    appConfigRows,
   ]);
   if (window.__lastHydrateSig === snapshotSig) {
     console.info("[cloudHydrate] snapshot sin cambios — omito rebuild+render");

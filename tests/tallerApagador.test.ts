@@ -9,6 +9,9 @@
 //      ningún resolver (ni el upload strip, ni el candado de #tf-gasto, ni el
 //      guard de export, ni las analíticas) — un solo predicado, consultado en
 //      cada resolver, nunca sprinkleado en los consumidores.
+//   4. Fix ronda 1 (Important 1) — el short-circuit de "snapshot sin cambios"
+//      de hydrateFromCloud() tiene que reaccionar a un flip del switch aunque
+//      NADA más en el tenant se haya movido.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect, vi } from "vitest";
@@ -16,6 +19,7 @@ import { esquemaHibridoActivo } from "../src/taller/partidas";
 import type { Partida } from "../src/taller/partidas";
 import { visitaKeyDe } from "../src/api/tallerPartidas";
 import { uploadTallerToCloud, type LegacyTallerEntry } from "../src/api/batchUpload";
+import { hydrateSignature } from "../src/api/cloudHydrate";
 
 describe("esquemaHibridoActivo — freno de mano", () => {
   it("apagado por omisión: nada se prende por accidente", () => {
@@ -203,5 +207,67 @@ describe("_partidasDeVisita (Control de flotilla.html) — el resolver real del 
   it("switch prendido pero sin bridge __tallerPartidas (hidratación no ha corrido) da [], no revienta", () => {
     const fn = partidasDeVisitaReal({ __tallerHibrido: true, __visitaKeyDe: () => "a|1" });
     expect(fn({ id: "a" })).toEqual([]);
+  });
+});
+
+// ── Fix ronda 1, Important 1 — el flip-only nunca se pega al short-circuit ──
+// hydrateFromCloud() salta TODO el rebuild+render (incluida
+// applyTallerHibridoGate(), llamada dentro de renderTaller()) cuando
+// hydrateSignature() del snapshot actual == la de la última hidratación
+// (window.__lastHydrateSig). Antes del fix, esa firma se armaba con units/
+// checklists/semanales/tallerCloud/checkDones/combustible/validaciones/
+// complianceDocs/anulaciones — SIN appConfigRows: un admin que voltea SOLO
+// el switch (common case: nadie más tocó el tenant en ese instante) producía
+// la MISMA firma que la hidratación anterior, y updateTallerBadge()/
+// renderTaller() nunca volvían a correr — el badge y la sub-pestaña "Por
+// autorizar" quedaban pegados al estado de antes del flip hasta que algo
+// MÁS cambiara o el usuario recargara.
+//
+// Dos pruebas, complementarias:
+//   B (regresión de código fuente — la que REALMENTE falla sin el fix): que
+//      la llamada REAL a hydrateSignature() dentro de hydrateFromCloud()
+//      incluya appConfigRows en la lista. Se prefiere sobre un mock completo
+//      de hydrateFromCloud() (~11 funciones de client.ts + fetchPartidas de
+//      tallerPartidas.ts + fotos) porque esta función no tiene precedente de
+//      integration-test en el repo (todo lo demás la cubre con funciones
+//      puras extraídas o texto fuente — mismo patrón que
+//      tallerPartidaSchema.test.ts) y un mock de ese tamaño sería frágil a
+//      cualquier refactor de una parte de la función que nada tiene que ver
+//      con el apagador.
+//   A (mecanismo — documenta POR QUÉ B es suficiente): con la MISMA
+//      composición de arrays que arma el snapshot real (una lista de listas
+//      con `updatedAt`), agregar/cambiar la fila de AppConfig cambia la
+//      firma — hydrateSignature() ya está probada en general en
+//      tests/hydrateSignature.test.ts; esto solo fija el caso concreto de
+//      "AppConfig es una lista más" para que quede documentado junto al bug.
+describe("hydrateFromCloud — el snapshot sig reacciona a un flip del switch (fix ronda 1, Important 1)", () => {
+  const src = readFileSync(join(__dirname, "..", "src", "api", "cloudHydrate.ts"), "utf8");
+
+  it("B: appConfigRows viaja DENTRO de la llamada real a hydrateSignature([...]) en hydrateFromCloud()", () => {
+    const m = /const snapshotSig = hydrateSignature\(\[([\s\S]*?)\]\);/.exec(src);
+    if (!m) throw new Error("No se encontró la llamada a hydrateSignature() en hydrateFromCloud()");
+    expect(m[1]).toMatch(/\bappConfigRows\b/);
+  });
+
+  it("A: con appConfigRows en la lista, un flip SOLO en esa fila (nada más se movió) cambia la firma", () => {
+    type Row = { updatedAt?: string | null };
+    const r = (updatedAt?: string | null): Row => ({ updatedAt });
+    // Mismo shape que el snapshot real: N listas de filas, cada una con updatedAt.
+    // units/checklists/.../anulaciones se mantienen IDÉNTICOS entre "antes" y
+    // "después" — solo la última lista (appConfigRows) cambia.
+    const restoDelTenant: Row[][] = [
+      [r("2026-09-01T00:00:00Z")], // units
+      [], // checklists
+      [], // semanales
+      [], // tallerCloud
+      [], // checkDones
+      [], // combustible
+      [], // validaciones
+      [], // complianceDocs
+      [], // anulaciones
+    ];
+    const antesDelFlip = [...restoDelTenant, [] as Row[]]; // AppConfig: sin fila (switch nunca configurado)
+    const despuesDelFlip = [...restoDelTenant, [r("2026-09-10T08:00:00Z")]]; // admin crea/actualiza la fila
+    expect(hydrateSignature(antesDelFlip)).not.toBe(hydrateSignature(despuesDelFlip));
   });
 });
