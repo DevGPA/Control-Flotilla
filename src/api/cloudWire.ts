@@ -295,8 +295,12 @@ export function setupCloud(): void {
   // su clave ACTUAL (visitaKeyDe/juntaVisitaKey — nunca una llave hecha a mano), para que
   // uploadTallerToCloud sepa cuándo quitar gasto/gastoRef/gastoMO del payload — esos
   // campos ya no son la fuente de verdad de una visita con partidas.
+  // Task 10 (R62, el apagador): con el esquema apagado (window.__tallerHibrido, resuelto
+  // en cloudHydrate.ts), este resolver devuelve `undefined` SIEMPRE — sin partidas que
+  // resolver, sinGastoSiTienePartidas() no recorta nada y el gasto tecleado por Riesgos
+  // sube intacto. Es el único lugar donde se consulta la bandera para este seam.
   const partidasDeEntry = (e: LegacyTallerEntry): Partida[] | undefined =>
-    window.__tallerPartidas?.get(visitaKeyDe(e));
+    window.__tallerHibrido ? window.__tallerPartidas?.get(visitaKeyDe(e)) : undefined;
 
   window.__cloudSyncTaller = async (entries: LegacyTallerEntry[]): Promise<BatchResult> => {
     const session = await ensureSession();

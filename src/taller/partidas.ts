@@ -257,3 +257,15 @@ export function estadoCompuesto(
   if (visita.estadoOperativo) return OPERATIVO_A_ESTADO[visita.estadoOperativo];
   return visita.estado;
 }
+
+/**
+ * Task 10 (el apagador) — el esquema se prende para toda la flota y todos los
+ * talleres a la vez, sin piloto (decisión 21): el freno de mano no es opcional.
+ * Lee `AppConfig.tallerHibrido` (amplify/data/resource.ts) ya parseado por
+ * `cloudHydrate.ts`. Apagado por omisión, y solo el booleano exacto lo prende:
+ * una config corrupta o ausente NO debe encender el esquema en toda la flota.
+ */
+export function esquemaHibridoActivo(config: unknown): boolean {
+  if (!config || typeof config !== "object") return false;
+  return (config as Record<string, unknown>).tallerHibrido === true;
+}

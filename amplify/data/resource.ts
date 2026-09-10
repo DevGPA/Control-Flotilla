@@ -496,6 +496,31 @@ const schema = a
         index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
       ]),
 
+    // ── Configuración del tenant (2026-09-10) — el apagador del esquema híbrido ──
+    // El esquema de partidas de Taller (ciclo de firma, Tasks 7-9) se prende para
+    // TODA la flota y TODOS los talleres a la vez, sin piloto (decisión 21) — así
+    // que el freno de mano no es opcional: si el primer día sale mal, esta fila es
+    // la única forma de apagarlo sin volver a desplegar. UNA fila por tenant
+    // (identifier = solo tenantId — no hay una segunda dimensión que componer).
+    // Cualquier bandera futura del tenant vive aquí, no un modelo nuevo por bandera.
+    // `esquemaHibridoActivo` (src/taller/partidas.ts) exige el booleano EXACTO:
+    // fila ausente, campo ausente, o cualquier otro tipo, es apagado.
+    AppConfig: a
+      .model({
+        tenantId: a.string().required(),
+        /** El apagador (Task 10). Ver esquemaHibridoActivo en src/taller/partidas.ts. */
+        tallerHibrido: a.boolean(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId"])
+      .authorization((allow) => [
+        // Todo el tenant LEE el switch — cada cliente lo necesita para decidir qué
+        // pintar. Escribe SOLO admin: un switch que cualquiera puede voltear no es
+        // un freno de mano.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("admin"),
+      ]),
+
     // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
     // Espejo local del usuario Cognito para listados eficientes y soft-delete.
     // Identidad = (tenantId, cognitoSub) — sub inmutable de Cognito.

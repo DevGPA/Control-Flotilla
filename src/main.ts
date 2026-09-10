@@ -637,7 +637,11 @@ if (readFlag("USE_NEW_DETAIL")) {
 // bridge de cloudHydrate.ts), nunca un `${a}|${b}` hecho a mano. `visitaKeyDe`
 // pide un shape angosto (no `km`, que difiere de tipo entre TallerEntry y
 // LegacyTallerEntry) — se construye aparte para no forzar un cast.
+// Task 10 (R62, el apagador): con el esquema apagado (window.__tallerHibrido),
+// este shim de Historial tampoco ve partidas — mismo predicado que los otros
+// tres resolvers (cloudWire.ts ×2, cloudHydrate.ts, monolito).
 function partidasDeVisita(e: TallerEntry): Partida[] | undefined {
+  if (!window.__tallerHibrido) return undefined;
   return window.__tallerPartidas?.get(
     visitaKeyDe({
       id: e.id,

@@ -24,6 +24,7 @@ import {
   listComplianceDocs,
   listAccesorios,
   listAnulaciones,
+  listAppConfig,
 } from "./client";
 import {
   buildAnuladasActivas,
@@ -57,6 +58,7 @@ import {
   MOTIVOS_RECHAZO,
   gastoDerivado,
   montoPendienteDeFirma,
+  esquemaHibridoActivo,
   type Partida,
   type TotalesVisita,
   type GastoDerivado,
@@ -142,6 +144,20 @@ declare global {
     /** Partidas de taller (ciclo de firma), agrupadas por visitaKey. Alimenta
      *  el badge de la pestaña Taller — cuenta lo que espera la firma de Riesgos. */
     __tallerPartidas?: Map<string, Partida[]>;
+    /**
+     * Task 10 (el apagador) — `esquemaHibridoActivo(AppConfig)` ya resuelto, se
+     * publica en CADA hidratación (incluso si el resto del snapshot no cambió:
+     * un admin puede voltear el switch sin que el resto de los datos del tenant
+     * se muevan un bit). Default OFF: fila ausente, campo ausente, tipo
+     * incorrecto o lectura fallida resuelven `false` (ver `esquemaHibridoActivo`).
+     * El Lambda del portal (taller-portal) NO se apaga con esta bandera — para
+     * cerrar la puerta del proveedor se revoca la liga (`ligaVersion`, columna
+     * de `Taller`), un mecanismo aparte. Cada resolver de partidas del monolito
+     * y de src/api/{cloudWire,cloudHydrate}.ts consulta este MISMO booleano
+     * (R62): con el esquema apagado, TODOS ven `[]`/`undefined` — el dinero
+     * derivado deja de aplicar en cualquier lado, nunca a medias.
+     */
+    __tallerHibrido?: boolean;
     /** Bridge (fix ronda 2, Finding 1): la MISMA `pendientesDeFirma` de
      *  src/taller/partidas.ts, publicada para que el badge del monolito la
      *  consuma en vez de reimplementar el filtro "estado === propuesta" —
@@ -649,6 +665,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     complianceDocs,
     accesorioRows,
     anulaciones,
+    appConfigRows,
   ] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
@@ -696,7 +713,21 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       console.warn("[cloudHydrate] listAnulaciones falló (no-fatal):", e);
       return [] as Schema["Anulacion"]["type"][];
     }),
+    // No-fatal (Task 10): el apagador debe resolver OFF si el modelo aún no está
+    // desplegado o la lectura falla — nunca tumbar el resto de la hidratación por
+    // un switch.
+    listAppConfig(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listAppConfig falló (no-fatal, apagador → OFF):", e);
+      return [] as Schema["AppConfig"]["type"][];
+    }),
   ]);
+
+  // Task 10 (el apagador): se lee y publica SIEMPRE, en cada llamada — incluso
+  // cuando el resto del snapshot no cambió (el short-circuit de "sin cambios"
+  // más abajo se salta el rebuild completo, pero un admin puede voltear el
+  // switch sin que ni una fila de units/taller/combustible se mueva). Fila
+  // ausente, campo ausente o de otro tipo resuelven `false` (esquemaHibridoActivo).
+  window.__tallerHibrido = esquemaHibridoActivo(appConfigRows[0]);
 
   // Índice refId → info de anulaciones ACTIVAS (las restauradas no excluyen). Se expone
   // en window para los módulos legacy (Inspecciones/Semanales) y se aplica aquí abajo.
@@ -775,8 +806,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         const partidasOrfanas = await fetchPartidas(tenantId);
         const visitasAnuladasOrfanas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
         const porVisitaOrfanas = partidasVigentesPorVisita(partidasOrfanas, visitasAnuladasOrfanas);
+        // Task 10 (R62): con el esquema apagado, este resolver también ve `undefined` —
+        // el mismo predicado (window.__tallerHibrido, ya resuelto arriba) que
+        // partidasDeEntry en cloudWire.ts. Sin este candado, un huérfano migraría
+        // aquí con su gasto tecleado RECORTADO aun con el apagador en OFF.
         const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
-          porVisitaOrfanas.get(visitaKeyDe(e));
+          window.__tallerHibrido ? porVisitaOrfanas.get(visitaKeyDe(e)) : undefined;
         await uploadTallerToCloud(
           orphans.map((e) => {
             // Cast: legacy entries pueden tener campos extra (km, etc) no en TallerEntry type.

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-uARYfR0QekAUKG3K9fOZEKATWyj6dgyne9tVNeDZipE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-vq+tsfRqsKUTlBOZw8MVgREzD5niuxy5CwxmaFSsYQc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -625,7 +625,7 @@
       Operaciones Activas
       <span class="tl-subbadge" id="tl-act-cnt" style="display:none">0</span>
     </button>
-    <button class="tl-subtab" id="tltab-bandeja" role="tab" aria-selected="false" onclick="tlSwitch('bandeja')">
+    <button class="tl-subtab needs-hibrido" id="tltab-bandeja" role="tab" aria-selected="false" onclick="tlSwitch('bandeja')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
       Por autorizar
       <span class="tl-subbadge" id="tl-bandeja-cnt" style="display:none">0</span>
@@ -2753,6 +2753,26 @@ function applyRolePermissions(){
   if(typeof buildBranches==="function") buildBranches(); // re-aplica lock de sucursal
 }
 window.applyRolePermissions=applyRolePermissions;
+
+// Apagador del esquema híbrido de Taller (Task 10, decisión 21 — se prende para
+// toda la flota y todos los talleres a la vez, sin piloto). UN gate reusable,
+// mismo patrón que body.ro-viewer/.needs-write arriba: una clase en <body> +
+// una regla CSS inyectada una sola vez. Hoy lo usa la sub-pestaña "Por
+// autorizar" (#tltab-bandeja); Task 11 cuelga su botón "Generar liga" de la
+// MISMA clase .needs-hibrido — no un candado nuevo por feature.
+// El badge, el candado de #tf-gasto y los guards de export NO son visibilidad
+// estática: leen window.__tallerHibrido (o, para el candado/export/analytics,
+// consultan _partidasDeVisita, que ya lo consulta por su cuenta) directo en su
+// propio código — este gate CSS es solo para "elementos que no tienen sentido
+// con el esquema apagado".
+function applyTallerHibridoGate(){
+  if(!document.getElementById("hibrido-style")){
+    const st=document.createElement("style"); st.id="hibrido-style";
+    st.textContent="body:not(.hibrido-on) .needs-hibrido{display:none !important}";
+    document.head.appendChild(st);
+  }
+  document.body.classList.toggle("hibrido-on", window.__tallerHibrido===true);
+}
 
 // Acceso por módulo (gating de UI): oculta del nav los módulos no asignados al
 // usuario y, si la vista activa no está permitida, lo manda a su primer módulo.
@@ -7626,13 +7646,25 @@ function tlSort(key){
 // badge de abajo es un literal que tests/tallerBadgePendientesDeFirma.test.ts
 // extrae y ejecuta tal cual desde el HTML (new Function) — moverlo a esta
 // función rompería esa extracción sin ganar nada (ese bloque ya no crece).
+// Task 10 (R62, el apagador): con el esquema apagado, ESTE es el único punto
+// donde se consulta window.__tallerHibrido para todo lo que cuelga de
+// _partidasDeVisita en el monolito — _gastoDe/_gastoRefDe/_gastoMODe, el
+// candado de #tf-gasto en openTallerModal, buildAnalytics() (gastoMensual/
+// prevCorr/costoUnidad/reincidentes), gastoAnualPorEco de la bandeja y el
+// partidasDe que reciben ambos exports de Excel. Uno solo, nunca sprinkleado
+// por consumidor.
 function _partidasDeVisita(e){
+  if(!window.__tallerHibrido) return [];
   const vk = e && window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
   return vk ? (window.__tallerPartidas?.get(vk) || []) : [];
 }
 
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
+  // Apagador (Task 10): togglea la clase del body ANTES de calcular nada —
+  // la sub-pestaña "Por autorizar" (.needs-hibrido) y el resto de esta
+  // función leen window.__tallerHibrido, nunca al revés.
+  applyTallerHibridoGate();
   // El badge de la pestaña Taller pasa a contar lo que espera TU firma, via
   // __pendientesDeFirma (bridge de src/taller/partidas.ts — la MISMA función
   // que usa la bandeja de firma, no una copia del filtro acá). Fix ronda 1
@@ -7648,18 +7680,31 @@ function renderTaller(){
     const ps = vk ? window.__tallerPartidas?.get(vk) : undefined;
     return n + (window.__pendientesDeFirma?.(ps ?? []) ?? 0);
   }, 0);
-  const _bdg = document.getElementById("taller-badge");
-  if (_bdg) {
-    _bdg.textContent = _pend ? String(_pend) : "";
-    _bdg.style.display = _pend ? "" : "none";
-    _bdg.title = _pend ? `${_pend} partida(s) esperando tu autorización` : "";
-  }
-  // Mismo conteo para la sub-pestaña "Por autorizar" — un solo _pend, nunca
-  // un segundo cálculo que pueda desalinearse del badge o de la bandeja.
-  const _bnCnt = document.getElementById("tl-bandeja-cnt");
-  if (_bnCnt) {
-    _bnCnt.textContent = String(_pend);
-    _bnCnt.style.display = _pend ? "inline-flex" : "none";
+  // Apagador (Task 10): con el esquema apagado, el badge de la pestaña Taller
+  // vuelve a su comportamiento PRE-Task-7 — la cuenta de "activas" que
+  // updateTallerBadge() ya fijó en #taller-badge (SIEMPRE corre antes que
+  // renderTaller() en cada flujo que cambia tallerEntries: guardar, borrar,
+  // finalizar, decidir una firma, e hidratación). _pend se sigue calculando
+  // arriba sin condicionar nada — tests/tallerBadgePendientesDeFirma.test.ts
+  // extrae y ejecuta ese literal tal cual — pero con el esquema apagado no se
+  // PINTA, para no pisar el valor que updateTallerBadge() ya dejó correcto.
+  if(window.__tallerHibrido){
+    const _bdg = document.getElementById("taller-badge");
+    if (_bdg) {
+      _bdg.textContent = _pend ? String(_pend) : "";
+      _bdg.style.display = _pend ? "" : "none";
+      _bdg.title = _pend ? `${_pend} partida(s) esperando tu autorización` : "";
+    }
+    // Mismo conteo para la sub-pestaña "Por autorizar" — un solo _pend, nunca
+    // un segundo cálculo que pueda desalinearse del badge o de la bandeja.
+    const _bnCnt = document.getElementById("tl-bandeja-cnt");
+    if (_bnCnt) {
+      _bnCnt.textContent = String(_pend);
+      _bnCnt.style.display = _pend ? "inline-flex" : "none";
+    }
+  } else {
+    const _bnCnt = document.getElementById("tl-bandeja-cnt");
+    if (_bnCnt) _bnCnt.style.display = "none";
   }
   // Perf F1-1: no reconstruir la vista Taller si no está activa (el badge se
   // actualiza aparte vía updateTallerBadge; showView re-invoca renderTaller al entrar).
@@ -7667,6 +7712,11 @@ function renderTaller(){
   // Accesorios lo pinta su módulo (src/accesorios/wire.ts), no los renders legacy.
   if(tlSubView==="accesorios") return window.renderAccesorios && window.renderAccesorios();
   if(tlSubView==="historial") return renderHistorial();
+  // Apagador (Task 10): si el switch se apaga mientras el usuario mira "Por
+  // autorizar" (otro admin lo revocó en pleno uso — la próxima hidratación lo
+  // trae), no lo deja viendo una bandeja fantasma sin su pestaña: lo regresa
+  // a Activas.
+  if(tlSubView==="bandeja" && !window.__tallerHibrido){ tlSwitch("activas"); return; }
   if(tlSubView==="bandeja") return renderBandeja();
   renderActivas();
 }
@@ -9448,7 +9498,11 @@ async function exportTallerActivasExcel(){
   // resuelve [] y el Excel saldría con ceros de confianza para toda visita con
   // partidas. Un archivo que sale del edificio nunca debe mentir así — se
   // rechaza el export en vez de generarlo con datos incompletos.
-  if(!window.__tallerPartidas){
+  // Task 10 (el apagador): con el esquema apagado, _partidasDeVisita YA
+  // resuelve [] siempre (nunca lee window.__tallerPartidas) — este guard de
+  // "partidas todavía no cargan" deja de aplicar, exactamente el
+  // comportamiento de antes de Task 9.
+  if(window.__tallerHibrido && !window.__tallerPartidas){
     window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
     return;
   }
@@ -9470,7 +9524,9 @@ async function exportTallerHistorialExcel(){
   }
   // Fix ronda 2 (Task 9): mismo candado que Activas — sin partidas cargadas el
   // Resumen y el $/1,000 km saldrían con ceros de confianza.
-  if(!window.__tallerPartidas){
+  // Task 10 (el apagador): mismo relajo que Activas — con el esquema apagado
+  // el candado no aplica.
+  if(window.__tallerHibrido && !window.__tallerPartidas){
     window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
     return;
   }
