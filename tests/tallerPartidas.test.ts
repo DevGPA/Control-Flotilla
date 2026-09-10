@@ -185,6 +185,26 @@ describe("totales — el gasto es la suma de lo firmado", () => {
     expect(montoPendienteDeFirma(psConNegociacion)).toBe(500);
   });
 
+  // Fix ronda 3 (Task 9, Important 2 — hueco #4): montoPendienteDeFirma es inmune a esto
+  // POR CONSTRUCCIÓN — filtra en estado === "propuesta" (partidasPendientesDeFirma), así
+  // que una `terminada` sin `precioAutorizado` (dato incompleto: nunca debería llegar así,
+  // pero el schema no lo exige) jamás entra al filtro y nunca se toca su `precio`. Pinning
+  // explícito: si el día de mañana alguien amplía el filtro para incluir `terminada`, esta
+  // prueba se rompe y avisa — no se descubre en producción con una visita real.
+  it("una terminada SIN precioAutorizado no se cuenta como pendiente — el filtro es por estado, nunca por el dato", () => {
+    const psConTerminadaIncompleta = [
+      ...ps,
+      P({
+        partidaId: "y",
+        estado: "terminada",
+        precio: 4000,
+        precioAutorizado: undefined,
+        tipo: "refaccion",
+      }),
+    ];
+    expect(montoPendienteDeFirma(psConTerminadaIncompleta)).toBe(500); // solo "d", sin cambio
+  });
+
   it("terminada también cuenta hacia el gasto — es una autorizada que ya se cerró", () => {
     const psTerminadas = [
       P({

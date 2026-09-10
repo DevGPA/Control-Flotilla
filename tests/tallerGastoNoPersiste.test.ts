@@ -11,7 +11,8 @@
 //   2. El payload que sube a cloud NUNCA carga gasto/gastoRef/gastoMO cuando la visita
 //      tiene partidas (sinGastoSiTienePartidas + uploadTallerToCloud, ronda completa).
 import { describe, expect, it, vi } from "vitest";
-import { numOrUndef } from "../src/api/cloudHydrate";
+import { numOrUndef, partidasVigentesPorVisita } from "../src/api/cloudHydrate";
+import { visitaKeyDe } from "../src/api/tallerPartidas";
 import {
   sinGastoSiTienePartidas,
   uploadTallerToCloud,
@@ -38,6 +39,13 @@ describe("numOrUndef — la hidratación preserva ausencia, nunca fabrica un 0",
     expect(numOrUndef("abc")).toBeUndefined();
     expect(numOrUndef(NaN)).toBeUndefined();
     expect(numOrUndef(Infinity)).toBeUndefined();
+  });
+
+  // Fix ronda 3: `Number("") === 0` es finito — sin el guard, una string vacía o de solo
+  // espacios fabricaba el mismo cero duro que esta función existe para cerrar.
+  it("una string vacía o de solo espacios se trata como ausente, NUNCA como 0", () => {
+    expect(numOrUndef("")).toBeUndefined();
+    expect(numOrUndef("   ")).toBeUndefined();
   });
 });
 
@@ -143,5 +151,81 @@ describe("uploadTallerToCloud — una visita con partidas que se CIERRA no sube 
     await uploadTallerToCloud([entry], "tenant-x");
     const { datos } = upserts[0]! as { datos: { gasto?: number } };
     expect(datos.gasto).toBe(300);
+  });
+});
+
+// Fix ronda 3 (Task 9, Critical 1 — hueco #3): un TERCER llamador de uploadTallerToCloud
+// (la auto-migración de huérfanos dentro de hydrateFromCloud, src/api/cloudHydrate.ts) no
+// inyectaba partidasDe — un huérfano LOCAL cuya visitaKey (plate|fentrada) coincide con una
+// visita que YA tiene partidas en cloud (reingreso local el mismo día, tras un upload
+// fallido) volvía a escribir un gasto/gastoRef/gastoMO que las partidas ya poseen. Mismo
+// wiring que el fix real: partidasVigentesPorVisita + visitaKeyDe, nunca una llave a mano.
+describe("uploadTallerToCloud — el TERCER llamador (auto-migración de huérfanos) también resuelve partidas", () => {
+  it("un huérfano cuya visitaKey coincide con una visita con partidas NO sube gasto/gastoRef/gastoMO", async () => {
+    upserts.length = 0;
+    const ps: Partida[] = [
+      {
+        partidaId: "p1",
+        visitaKey: "ABC-123|2026-08-01",
+        descripcion: "Refacción",
+        estado: "autorizada",
+        precio: 50000,
+        precioAutorizado: 50000,
+        tipo: "refaccion",
+        fotos: [],
+      },
+    ];
+    // Misma composición que cloudHydrate.ts arma para el fix de huérfanos.
+    const porVisita = partidasVigentesPorVisita(ps, new Set());
+    const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
+      porVisita.get(visitaKeyDe(e));
+
+    // El huérfano LOCAL: mismo plate|fentrada que la visitaKey de arriba, con
+    // gastoRef/gastoMO en 0 (como cualquier ingreso recién capturado a mano).
+    const huerfano: LegacyTallerEntry = {
+      id: "tl_local_huerfano",
+      plate: "ABC-123",
+      fentrada: "2026-08-01",
+      estado: "Finalizado",
+      gasto: 0,
+      gastoRef: 0,
+      gastoMO: 0,
+    };
+    await uploadTallerToCloud([huerfano], "tenant-x", partidasDeOrfano);
+    expect(upserts).toHaveLength(1);
+    const { datos } = upserts[0]!;
+    expect(datos).not.toHaveProperty("gasto");
+    expect(datos).not.toHaveProperty("gastoRef");
+    expect(datos).not.toHaveProperty("gastoMO");
+  });
+
+  it("un huérfano SIN colisión de clave sube su gasto capturado a mano tal cual", async () => {
+    upserts.length = 0;
+    const ps: Partida[] = [
+      {
+        partidaId: "p1",
+        visitaKey: "OTRA-PLACA|2026-08-01",
+        descripcion: "Refacción",
+        estado: "autorizada",
+        precio: 50000,
+        precioAutorizado: 50000,
+        tipo: "refaccion",
+        fotos: [],
+      },
+    ];
+    const porVisita = partidasVigentesPorVisita(ps, new Set());
+    const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
+      porVisita.get(visitaKeyDe(e));
+
+    const huerfano: LegacyTallerEntry = {
+      id: "tl_local_sin_colision",
+      plate: "ABC-123",
+      fentrada: "2026-08-01",
+      estado: "Finalizado",
+      gasto: 850,
+    };
+    await uploadTallerToCloud([huerfano], "tenant-x", partidasDeOrfano);
+    const { datos } = upserts[0]! as { datos: { gasto?: number } };
+    expect(datos.gasto).toBe(850);
   });
 });

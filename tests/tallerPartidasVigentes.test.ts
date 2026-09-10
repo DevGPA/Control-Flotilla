@@ -10,7 +10,11 @@
 // y un `unitUid` con un "|" propio la hacía fallar en silencio.
 // `partidasVigentes` es ahora un filtro de membresía de set, puro y simple.
 import { describe, it, expect } from "vitest";
-import { partidasVigentes, visitasAnuladasKeys } from "../src/api/cloudHydrate";
+import {
+  partidasVigentes,
+  partidasVigentesPorVisita,
+  visitasAnuladasKeys,
+} from "../src/api/cloudHydrate";
 import { buildAnuladasActivas, refIdTaller } from "../src/anulacion/anulacion";
 import type { Partida } from "../src/taller/partidas";
 
@@ -114,5 +118,24 @@ describe("partidasVigentes — excluye partidas cuya visitaKey está en el set d
     );
     const ps = [P("JV98698|sin-fecha:tl_1", "p1")];
     expect(partidasVigentes(ps, anuladas)).toEqual([]);
+  });
+});
+
+// Fix ronda 3 (Task 9, Critical 1 — hueco #3): esta composición (vigentes + agrupadas por
+// visita) vivía escrita dos veces — una para window.__tallerPartidas, otra copiada a mano
+// para el fix de la migración de huérfanos, que necesita el mismo mapa ANTES de que
+// window.__tallerPartidas exista en ese punto de la hidratación. Ahora es una sola función,
+// consumida por los dos lugares.
+describe("partidasVigentesPorVisita — vigentes + agrupadas por visita, un solo lugar", () => {
+  it("agrupa por visitaKey y excluye lo anulado", () => {
+    const anuladas = new Set(["ANULADA|2026-09-01"]);
+    const ps = [P("V1|2026-09-01", "p1"), P("V1|2026-09-01", "p2"), P("ANULADA|2026-09-01", "p3")];
+    const porVisita = partidasVigentesPorVisita(ps, anuladas);
+    expect(porVisita.get("V1|2026-09-01")?.map((p) => p.partidaId)).toEqual(["p1", "p2"]);
+    expect(porVisita.has("ANULADA|2026-09-01")).toBe(false);
+  });
+
+  it("sin partidas, mapa vacío", () => {
+    expect(partidasVigentesPorVisita([], new Set()).size).toBe(0);
   });
 });

@@ -108,9 +108,15 @@ function asRisk(v: unknown): RiskLevel | undefined {
  * volvieran inalcanzables (visita anulada y restaurada, o la placa cambia — tallerCloudKey usa
  * `plate || eco`, y el reemplacamiento de la flota está en curso) el dinero firmado desaparece
  * sin rastro. `Number(v)` no-finito (basura, `"abc"`) también se trata como ausente, nunca 0.
+ *
+ * Fix ronda 3: `Number("") === 0` (finito) — sin el guard de string vacía/solo-espacios, ESTA
+ * MISMA función fabricaba el cero duro que existe para cerrar, con un `datos.gasto` vacío en
+ * vez de ausente. `datos` nunca ha traído ese shape, pero el guard es una línea y el punto de
+ * esta función es no dejar ni un solo camino hacia un cero fabricado.
  */
 export function numOrUndef(v: unknown): number | undefined {
   if (v == null) return undefined;
+  if (typeof v === "string" && !v.trim()) return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
@@ -347,6 +353,21 @@ export function visitasAnuladasKeys(
  */
 export function partidasVigentes(ps: Partida[], visitasAnuladas: ReadonlySet<string>): Partida[] {
   return ps.filter((p) => !visitasAnuladas.has(p.visitaKey));
+}
+
+/**
+ * Partidas vigentes agrupadas por visita — la MISMA composición que arma
+ * `window.__tallerPartidas` (más abajo) y que el fix de huérfanos (Task 9, fix
+ * ronda 3, Critical 1 — hueco #3) necesita para resolver `partidasDe` ANTES de
+ * que `window.__tallerPartidas` exista en este punto de la hidratación. Un
+ * solo lugar para "vigentes + agrupadas", no dos copias que puedan divergir.
+ * Pura y exportada para test.
+ */
+export function partidasVigentesPorVisita(
+  partidas: Partida[],
+  visitasAnuladas: ReadonlySet<string>,
+): Map<string, Partida[]> {
+  return agruparPorVisita(partidasVigentes(partidas, visitasAnuladas));
 }
 
 /** Exportada para tests (el cableado de la refacción vivía aquí como bug). */
@@ -743,6 +764,19 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     if (orphans.length > 0) {
       console.info(`[cloudHydrate] migrando ${orphans.length} taller entries locales al cloud`);
       try {
+        // Fix ronda 3 (Task 9, Critical 1 — hueco #3): un huérfano LOCAL puede coincidir en
+        // visitaKey (plate|fentrada, tallerCloudKey) con una visita que YA tiene partidas en
+        // cloud — un mismo día, misma placa, reingreso local tras un upload fallido. Sin
+        // resolver las partidas aquí, este upload no pasaba por el seam de cloudWire.ts y
+        // volvía a escribir un gasto/gastoRef/gastoMO que las partidas ya poseen. No se
+        // reusa `window.__tallerPartidas` — todavía no está poblado en este punto de la
+        // hidratación (se arma más abajo) — así que se resuelve aparte, con la MISMA
+        // fórmula (fetchPartidas + partidasVigentes + agruparPorVisita).
+        const partidasOrfanas = await fetchPartidas(tenantId);
+        const visitasAnuladasOrfanas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
+        const porVisitaOrfanas = partidasVigentesPorVisita(partidasOrfanas, visitasAnuladasOrfanas);
+        const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
+          porVisitaOrfanas.get(visitaKeyDe(e));
         await uploadTallerToCloud(
           orphans.map((e) => {
             // Cast: legacy entries pueden tener campos extra (km, etc) no en TallerEntry type.
@@ -773,6 +807,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
             };
           }),
           tenantId,
+          partidasDeOrfano,
         );
         // Re-fetch tallerCloud para incluir los migrados.
         const refreshed = await listTaller(tenantId);
@@ -866,7 +901,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // separando de vuelta una visitaKey existente.
     const visitasAnuladas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
     const partidas = await fetchPartidas(tenantId);
-    window.__tallerPartidas = agruparPorVisita(partidasVigentes(partidas, visitasAnuladas));
+    window.__tallerPartidas = partidasVigentesPorVisita(partidas, visitasAnuladas);
     // Bridge (fix ronda 2, Finding 1): publica la MISMA pendientesDeFirma que
     // usará la bandeja de firma (Task 8) — el badge del monolito la consume
     // en vez de reimplementar el filtro "estado === propuesta".
