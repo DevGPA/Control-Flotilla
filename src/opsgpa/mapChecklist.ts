@@ -18,6 +18,7 @@
  * analyzeRow busca substring "bajo", que "Sin Nivel" no contiene.
  */
 import { analyzeRow } from "../analyzer/analyzeRow";
+import { placaVigente } from "../fleet/placaVigente";
 import { calcEstatusSemanal, normBodyRisk, normFluidRisk, normTireRisk } from "../analyzer/risk";
 import {
   OPS_SOURCE,
@@ -81,7 +82,9 @@ export function mapSemanal(
   if (ops.tipo !== "semanal") {
     throw new Error(`CL ${ops.id}: tipo "${String(ops.tipo)}" no implementado (solo semanal)`);
   }
-  const placa = String(ops.placas ?? "").trim();
+  // Normaliza a la placa VIGENTE: Ops-GPA sigue enviando la placa vieja de las unidades
+  // reemplazadas y eso partia el historial de la unidad. Ver src/fleet/placaVigente.ts.
+  const placa = placaVigente(ops.placas);
   if (!placa) throw new Error(`CL ${ops.id}: registro sin placas — no mapeable`);
 
   const answers = (ops.answers ?? {}) as Record<string, unknown>;
@@ -304,7 +307,9 @@ export function mapMensual(
   if (ops.tipo !== "mensual") {
     throw new Error(`CL ${ops.id}: mapMensual recibió tipo "${String(ops.tipo)}"`);
   }
-  const placa = String(ops.placas ?? "").trim();
+  // Normaliza a la placa VIGENTE: Ops-GPA sigue enviando la placa vieja de las unidades
+  // reemplazadas y eso partia el historial de la unidad. Ver src/fleet/placaVigente.ts.
+  const placa = placaVigente(ops.placas);
   if (!placa) throw new Error(`CL ${ops.id}: registro sin placas — no mapeable`);
   const fecha = String(ops.fecha ?? "")
     .split(/[ T]/)[0]!

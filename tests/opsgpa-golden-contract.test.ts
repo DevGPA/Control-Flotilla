@@ -54,11 +54,18 @@ describe("contrato compartido: los golden del publisher pasan por el receptor", 
   // El golden cl-semanal-creacion.json se reconstruyó de un registro real de
   // gpa_operaciones_prod (2026-07-13): answers.answers con las llaves reales
   // aceite/radiador/carroceria/llanta_ref. Identidad anonimizada, claves S3 placeholder.
-  it("cl-semanal-creacion → Unit + Semanal (registro real eco 10 / JLL5377)", () => {
+  it("cl-semanal-creacion → Unit + Semanal (registro real eco 10, placa normalizada)", () => {
     const ev = golden("cl-semanal-creacion");
     const { unit, semanal } = mapSemanal(toOpsRecord(ev) as OpsClRecord, resolve);
-    expect(unit.placa).toBe("JLL5377");
-    expect(semanal.unitUid).toBe("JLL5377");
+    // El golden trae la placa RETIRADA de la eco 10 (JLL5377 → JTA885A). Que el publisher
+    // real siga mandando placas viejas se verifico contra prod (registros de sep-2026 con
+    // fuente ops-gpa bajo placa retirada), no aqui: este fixture esta anonimizado. Lo que
+    // esta prueba fija es el CONTRATO de los dos lados — el cable no cambia (la placa entra
+    // tal cual) y el receptor ya NO archiva bajo la placa retirada, que era lo que partia el
+    // historial de la unidad en dos.
+    expect(ev.unidad.placas).toBe("JLL5377"); // lo que manda el publisher, sin tocar
+    expect(unit.placa).toBe("JTA885A"); // lo que archiva el receptor: la placa vigente
+    expect(semanal.unitUid).toBe("JTA885A");
     expect(semanal.periodoId).toMatch(/^\d{4}-W\d{2}$/);
     const datos = JSON.parse(semanal.datos) as Record<string, unknown>;
     expect(datos.moreappId).toBe(ev.folio);

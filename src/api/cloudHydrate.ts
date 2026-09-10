@@ -68,6 +68,8 @@ import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
 import { normalizaRefaccion } from "../analyzer/refaccion";
+import { placaVigente } from "../fleet/placaVigente";
+import { indexaCatalogo, resuelveUnidad, placasSinUnidad } from "../fleet/unitIndex";
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
@@ -412,6 +414,10 @@ export function mergeUnitWithChecklist(
     uid: unit.placa,
     eco: ecoId,
     plate: unit.placa,
+    // Llave ALMACENADA del registro, que puede diferir de `plate` (la del catalogo) si el
+    // registro quedo archivado bajo una placa retirada. Con ella se compone el refId de
+    // anulacion, para que quien anula y quien hidrata busquen exactamente la misma llave.
+    unitUid: checklist?.unitUid ?? unit.placa,
     brand: unit.marca ?? undefined,
     anio: unit.anio ?? undefined,
     validationErrors: Array.isArray(r.validationErrors) ? r.validationErrors : undefined,
@@ -1081,16 +1087,73 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // Cada checklist es una FILA de inspección con uid sintético único
   // (`placa__fecha`) para que la misma unidad pueda aparecer varias veces sin
   // colisionar en selección/detalle. Preserva eco/plate/fecha reales.
-  const unitByPlaca = new Map(units.map((u) => [u.placa, u] as const));
+  // El cruce va por la placa VIGENTE, no por la placa tal cual quedo escrita. Las fuentes de
+  // ingesta siguen enviando la placa vieja de las unidades reemplazadas, y con el cruce literal
+  // esos registros no encontraban su unidad: la camioneta salia "sin una sola inspeccion"
+  // mientras sus inspecciones aparecian aparte, con la placa en la columna Economico.
+  // La capa pura (src/fleet/unitIndex.ts) ademas DELATA los duplicados y las filas sin placa,
+  // que un Map a secas resolvia quedandose con la ultima en orden de paginacion de AppSync
+  // — no deterministico: la misma data podia rendir uid distintos entre dos hidrataciones.
+  const catalogo = indexaCatalogo(units);
   const inspections: Unit[] = [];
   for (const c of checklistsVigentes) {
     const fecha = String(c.fecha ?? "");
     if (!monthOf(fecha)) continue; // requiere fecha parseable
     const u =
-      unitByPlaca.get(c.unitUid) ?? ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
+      resuelveUnidad(catalogo, c.unitUid) ??
+      ({ tenantId, placa: c.unitUid } as Schema["Unit"]["type"]);
     const row = mergeUnitWithChecklist(u, c);
     row.uid = `${row.plate ?? c.unitUid}__${fecha}`; // único por inspección
     inspections.push(row);
+  }
+  // `uid` (= `placa__fecha`) tiene que ser unico en la VISTA: el detalle y la anulacion
+  // resuelven con `find(x => x.uid === uid)`, asi que un uid repetido deja la segunda fila
+  // sin poder abrirse ni anularse. Dos inspecciones de la misma unidad y fecha archivadas
+  // bajo placas escritas distinto colapsan al mismo uid: son legales en DynamoDB pero no
+  // representables aqui, y hay que re-archivarlas a mano.
+  {
+    const vistos = new Set<string>();
+    const repetidos = new Set<string>();
+    for (const r of inspections) {
+      if (vistos.has(r.uid)) repetidos.add(r.uid);
+      else vistos.add(r.uid);
+    }
+    if (repetidos.size) {
+      console.error(
+        `[cloudHydrate] ${repetidos.size} inspeccion(es) con uid REPETIDO: ` +
+          `${[...repetidos].join(", ")} — misma unidad y fecha bajo placas distintas. ` +
+          `Requiere triage manual (scripts/reparar-identidad-placas.mjs).`,
+      );
+    }
+  }
+  // Un registro cuya placa no existe en el catalogo, un catalogo con dos filas para la misma
+  // unidad, o una fila sin placa util: los tres parten el historial y los tres fallaban en
+  // SILENCIO. Se avisan para poder re-archivarlos.
+  {
+    const huerfanas = placasSinUnidad(
+      catalogo,
+      checklistsVigentes.map((c) => c.unitUid),
+    );
+    if (huerfanas.length) {
+      console.warn(
+        `[cloudHydrate] ${huerfanas.length} placa(s) con inspecciones pero SIN unidad en el ` +
+          `catalogo: ${huerfanas.join(", ")} — el historial de esas unidades esta partido.`,
+      );
+    }
+    if (catalogo.duplicados.length) {
+      const detalle = catalogo.duplicados
+        .map((d) => `${d.llave} <- ${d.placas.join(" + ")}`)
+        .join(" | ");
+      console.error(
+        `[cloudHydrate] ${catalogo.duplicados.length} unidad(es) DUPLICADA(s) en el catalogo: ` +
+          `${detalle} — inflan el total de flota y el denominador de cobertura.`,
+      );
+    }
+    if (catalogo.sinLlave) {
+      console.warn(
+        `[cloudHydrate] ${catalogo.sinLlave} unidad(es) del catalogo sin placa utilizable.`,
+      );
+    }
   }
   // Desc por fecha (más reciente primero). Normaliza DMY→ISO para ordenar bien.
   inspections.sort((a, b) => isoDay(b.fecha).localeCompare(isoDay(a.fecha)));
@@ -1099,10 +1162,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // independiente del rango). Alimenta los KPIs hero + dona Operativa/Taller.
   const latestByUnit = new Map<string, Schema["Checklist"]["type"]>();
   for (const c of checklistsVigentes) {
-    const e = latestByUnit.get(c.unitUid);
-    if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(c.unitUid, c);
+    const llave = placaVigente(c.unitUid);
+    const e = latestByUnit.get(llave);
+    if (!e || isoDay(c.fecha) > isoDay(e.fecha)) latestByUnit.set(llave, c);
   }
-  window.__fleetUnits = units.map((u) => mergeUnitWithChecklist(u, latestByUnit.get(u.placa)));
+  window.__fleetUnits = units.map((u) =>
+    mergeUnitWithChecklist(u, latestByUnit.get(placaVigente(u.placa))),
+  );
 
   // ── Hydrate cumplimiento → window.complianceEntries ───────────
   // ComplianceDoc → ComplianceEntry[] (estado vencido/por-vencer derivado vs hoy). Se
@@ -1171,12 +1237,15 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // Fallback: sin checklists con fecha parseable → latest-per-unit plano.
     const checklistByUnit = new Map<string, Schema["Checklist"]["type"]>();
     for (const c of checklistsVigentes) {
-      const existing = checklistByUnit.get(c.unitUid);
+      const llave = placaVigente(c.unitUid);
+      const existing = checklistByUnit.get(llave);
       if (!existing || (c.fecha ?? "") > (existing.fecha ?? "")) {
-        checklistByUnit.set(c.unitUid, c);
+        checklistByUnit.set(llave, c);
       }
     }
-    legacyUnits = units.map((u) => mergeUnitWithChecklist(u, checklistByUnit.get(u.placa)));
+    legacyUnits = units.map((u) =>
+      mergeUnitWithChecklist(u, checklistByUnit.get(placaVigente(u.placa))),
+    );
     window.units = legacyUnits;
   }
 
