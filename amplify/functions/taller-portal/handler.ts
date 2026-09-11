@@ -11,8 +11,20 @@
 // - Toda ruta autenticada cruza UN SOLO portón (cargarVisitaVigente): una
 //   liga revocada no puede leer, crear partidas, actualizar la visita ni
 //   firmar una subida — no solo "no puede leer".
+//
+// ⚠️ RADIO DE EXPLOSIÓN (A-3) — este Lambda habla con AppSync por IAM, y el
+// grant `allow.resource(tallerPortal).to(["query","mutate"])` de
+// amplify/data/resource.ts es a nivel ESQUEMA (la API no lo soporta por
+// modelo): su rol tiene `appsync:GraphQL` sobre TODOS los modelos, incluido
+// `AppConfig` — la fila del apagador. Y es el ÚNICO Lambda del repo alcanzable
+// por cualquiera con una liga. Consecuencia que hay que tener presente al
+// editar este archivo: cualquier bug de lógica AQUÍ es compromiso del esquema
+// COMPLETO, no de una visita. De ahí que toda lectura/escritura de abajo esté
+// acotada a la llave del token y que ninguna ruta acepte un modelo ni una
+// llave que venga del cuerpo. La mitigación real (una API con grants por
+// modelo) es Plan 2.
 
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Amplify } from "aws-amplify";
@@ -32,12 +44,15 @@ import {
   MIMES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
+  esKmValido,
   ligaRevocada,
   llaveFoto,
   llaveFotoValida,
   puedeEnviarAAutorizacion,
+  secretoUtilizable,
   validarPartidaEntrante,
   validarTamanoFoto,
+  visitaCerrada,
   type PartidaEntrante,
 } from "./validacion";
 
@@ -47,7 +62,10 @@ import {
  *  mismo cuerpo opaco. */
 class ErrorLigaInvalida extends Error {}
 
-const SECRETO = process.env.TALLER_PORTAL_SECRET ?? "";
+// Un secreto demasiado corto se trata como AUSENTE (fail-closed): todo el
+// perímetro público es este HMAC, y aceptar en silencio un secreto de un
+// carácter es aceptar tokens forjables. Ver `secretoUtilizable` en validacion.ts.
+const SECRETO = secretoUtilizable(process.env.TALLER_PORTAL_SECRET);
 
 function json(status: number, body: unknown) {
   return {
@@ -57,10 +75,37 @@ function json(status: number, body: unknown) {
   };
 }
 
+/**
+ * A-7 — cabeceras de seguridad de la página del portal. Es la única superficie
+ * HTML del repo servida a un tercero no autenticado y la spec la llama "el
+ * riesgo nuevo y real": sin CSP, sin `nosniff` y sin protección de frame, la
+ * pantalla donde el taller teclea precios es enmarcable (clickjacking) y
+ * cualquier inyección futura no tendría un segundo muro. El documento es
+ * autocontenido (cero recursos externos), así que `default-src 'none'` con
+ * `'unsafe-inline'` solo para su propio script/estilo es el conjunto mínimo
+ * real — no un candado teórico que habría que aflojar.
+ */
+const CSP_PORTAL = [
+  "default-src 'none'",
+  "img-src blob: data: https:",
+  "connect-src 'self' https:",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 function html(status: number, cuerpo: string) {
   return {
     statusCode: status,
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy": CSP_PORTAL,
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+    },
     body: cuerpo,
   };
 }
@@ -72,8 +117,25 @@ const PAGINA_LIGA_INVALIDA = `<!doctype html><meta charset="utf-8"><meta name="v
  <p>Puede haber vencido o haber sido cancelada. Pídele una nueva a Administración de Riesgos de GPA.</p>
  </div>`;
 
-/** Cada apertura y cada escritura se registra (§7.6 del spec). No se loggea el
- *  token completo: solo un prefijo, suficiente para correlacionar.
+/**
+ * A-4 — HUELLA del token, no el token. La spec §7.6 pide poder distinguir DOS
+ * ligas de la misma visita y la misma versión ("detectar una liga filtrada"), y
+ * `liga:<u>|<f>|v<n>` las hace indistinguibles. Se loggea un HMAC truncado del
+ * token con el MISMO secreto del perímetro: es estable (la misma liga siempre
+ * da la misma huella, así que se puede correlacionar en CloudWatch) y no es
+ * reversible ni reutilizable — pegar la huella en `?t=` no abre nada.
+ * 8 hex = 32 bits: de sobra para correlacionar decenas de ligas vivas, y
+ * demasiado corto para servir de oráculo.
+ */
+function huellaToken(token: string): string {
+  if (!token || !SECRETO) return "sin-huella";
+  return createHmac("sha256", SECRETO).update(token).digest("hex").slice(0, 8);
+}
+
+/** Cada apertura y cada escritura se registra (§7.6 del spec). El token NUNCA
+ *  se loggea: solo su huella HMAC de 8 caracteres (`huellaToken`) y la IP de
+ *  quien llama — las dos cosas que hacen falta para reconstruir qué hizo una
+ *  liga filtrada y desde dónde.
  *
  *  El tipo acepta solo `u`/`f`/`v` (no el `PortalToken` completo): emitirLiga/
  *  revocarLiga (Task 11) llaman esto sin un token real que firmar/verificar
@@ -122,7 +184,7 @@ const ROLES_TALLER = new Set(["admin", "operativo", "viewer"]);
  * autor no debe bloquear la emisión, pero tampoco debe mentir con un valor
  * inventado.
  */
-function identidadDeResolver(event: any): { tenantId: string; quien: string } {
+function identidadDeResolver(event: any): { tenantId: string; quien: string; grupos: string[] } {
   const identity = (event?.identity ?? {}) as { sub?: string; claims?: Record<string, unknown> };
   const claims = identity.claims ?? {};
   const gruposRaw = claims["cognito:groups"];
@@ -130,7 +192,9 @@ function identidadDeResolver(event: any): { tenantId: string; quien: string } {
   const tenantClaim = String(claims["custom:tenantId"] ?? "");
   const tenantId = tenantClaim || grupos.find((g) => !ROLES_TALLER.has(g)) || "";
   const quien = String(claims.email ?? "") || String(identity.sub ?? "") || "desconocido";
-  return { tenantId, quien };
+  // R91: `grupos` sale de aquí para que la rama del resolver aplique el chequeo
+  // de ROL (admin) sin volver a leer `cognito:groups` por su cuenta.
+  return { tenantId, quien, grupos };
 }
 
 export const handler = async (event: any) => {
@@ -158,19 +222,30 @@ export const handler = async (event: any) => {
   if (campoResolver === "generarLigaTaller" || campoResolver === "revocarLigaTaller") {
     try {
       if (!SECRETO) return { error: "portal no configurado" };
-      const { tenantId, quien } = identidadDeResolver(event);
+      const { tenantId, quien, grupos } = identidadDeResolver(event);
       // R76 (ronda 1 de review): AppSync ya valida el grupo del invocador
       // antes de invocar esta Lambda, pero hasta aquí la rama confiaba en eso
       // IMPLÍCITAMENTE — fallaba cerrado solo por accidente (un tenantId
       // vacío no encuentra ninguna visita). Estas dos líneas hacen la
       // propiedad INTENCIONAL y auditable, ANTES de tocar la base:
       if (!event?.identity || !tenantId) return { error: "no autorizado" };
+      // R91/R84 — el chequeo de ROL, aquí y no solo en AppSync. El spec §7.7 es
+      // literal: "la restricción se aplica en la UI Y en el Lambda". Hasta
+      // ahora esta rama solo exigía identidad y tenant, así que el único muro
+      // real era la lista de `.authorization()` del esquema: un solo commit que
+      // la aflojara (o un segundo resolver que reusara esta Lambda) volvía a
+      // abrir la acuñación de ligas a `operativo`. Fail-closed y explícito.
+      if (!grupos.includes("admin")) return { error: "no autorizado" };
       // Una liga sin autor identificable viola la decisión 20 del spec ("una
       // liga filtrada tiene un responsable identificable"). `quien ===
       // "desconocido"` es prácticamente inalcanzable desde un resolver de
       // user pool real, pero si ocurriera, no debe acuñar ni revocar nada —
       // fallar cerrado, nunca mentir con un autor inventado.
       if (quien === "desconocido") return { error: "no autorizado" };
+      // R90 (A-9) — el apagador también cierra la EMISIÓN. Apagar `AppConfig`
+      // solo silenciaba la app: el resolver seguía acuñando ligas nuevas.
+      // Revocar una por una no es un freno de mano el día malo.
+      if (!(await esquemaHibridoEncendido(tenantId))) return { error: "esquema apagado" };
       const { unitUid, fechaEntrada } = (event.arguments ?? {}) as Record<string, unknown>;
       return campoResolver === "generarLigaTaller"
         ? await emitirLiga(tenantId, String(unitUid), String(fechaEntrada), quien)
@@ -187,13 +262,19 @@ export const handler = async (event: any) => {
   const metodo = String(event?.requestContext?.http?.method ?? "GET").toUpperCase();
   const token = String(event?.queryStringParameters?.t ?? "");
   const esPagina = ruta === "/" && metodo === "GET";
+  // A-4 — el rastro que la spec §7.6 pide para "detectar una liga filtrada":
+  // desde dónde y CUÁL liga. Viaja en cada entrada de bitácora de este request.
+  const rastro = {
+    ip: String(event?.requestContext?.http?.sourceIp ?? ""),
+    liga8: huellaToken(token),
+  };
 
   let tk: PortalToken;
   try {
     tk = verificarToken(token, SECRETO);
   } catch (e) {
     const motivo = e instanceof ErrorToken ? e.motivo : "malformado";
-    bitacora("rechazado", null, { motivo });
+    bitacora("rechazado", null, { ...rastro, motivo });
     // Una liga vencida o revocada merece una explicación humana, no un 401 seco.
     // El MOTIVO real (sin-secreto/firma-invalida/expirado/...) solo va a la
     // bitácora — exponerlo en la respuesta convertiría a la liga en un oráculo
@@ -217,13 +298,13 @@ export const handler = async (event: any) => {
     const visita = await cargarVisitaVigente(tk);
 
     if (metodo === "GET" && ruta === "/") {
-      bitacora("abrir", tk);
+      bitacora("abrir", tk, rastro);
       const { paginaProveedor } = await import("./pagina");
       return html(200, paginaProveedor(token));
     }
 
     if (metodo === "GET" && ruta === "/api/visita") {
-      bitacora("leer", tk);
+      bitacora("leer", tk, rastro);
       return json(200, await leerVisita(tk, visitaKey, visita));
     }
 
@@ -231,30 +312,52 @@ export const handler = async (event: any) => {
       // Misma validación que ya protege POST /api/partida: la llave debe
       // calzar la FORMA COMPLETA del prefijo de ESTA visita — nunca fotos de
       // otra visita ni de inspecciones (§7.3).
+      //
+      // ANCLA (alcance `p`, Plan 2): esta ruta NO es consciente del alcance por
+      // partida del token. Hoy es segura SOLO porque `verificarToken` rechaza
+      // de plano cualquier token con `p` (token.ts, "alcance-no-soportado", con
+      // su prueba). El día que el alcance `p` se habilite, esta ruta y
+      // `/api/enviar` deben acotarse a esa partida ANTES — no después.
       const key = String(event?.queryStringParameters?.key ?? "");
       if (!llaveFotoValida(tk.t, visitaKey, key)) throw new ErrorEntrada("llave de foto no válida");
-      bitacora("leer-foto", tk, { key });
+      bitacora("leer-foto", tk, { ...rastro, key });
       return json(200, await firmarLecturaFoto(key));
     }
 
     if (metodo === "POST" && ruta === "/api/partida") {
       const body = parseBody(event);
       const datos = validarPartidaEntrante(body);
-      bitacora("crear-partida", tk);
-      return json(200, await crearPartida(tk, visitaKey, datos, body.fotos));
+      // A-4 (minor): la bitácora va DESPUÉS de la escritura — "loggeado" tiene
+      // que significar "ocurrió", no "se intentó". Antes se escribía la línea y
+      // luego el create podía fallar.
+      const creada = await crearPartida(tk, visitaKey, datos, body.fotos);
+      bitacora("crear-partida", tk, rastro);
+      return json(200, creada);
     }
 
     if (metodo === "POST" && ruta === "/api/enviar") {
       // §6.2: borrador → propuesta, disparado UNA vez por el proveedor, para
       // que a Riesgos (Task 8) le llegue un solo aviso por hallazgo. Sin
       // esta ruta nada de lo capturado por el taller llegaba a autorización.
-      return json(200, await enviarAAutorizacion(tk, visitaKey, visita));
+      //
+      // ANCLA (alcance `p`, Plan 2): mueve TODOS los borradores de la visita —
+      // no es consciente del alcance por partida. Igual que `/api/foto`, hoy es
+      // seguro solo porque el token con `p` se rechaza en `verificarToken`.
+      return json(200, await enviarAAutorizacion(tk, visitaKey, visita, rastro));
     }
 
     if (metodo === "POST" && ruta === "/api/visita") {
       const body = parseBody(event);
-      bitacora("actualizar-visita", tk);
-      return json(200, await actualizarVisita(tk, body, visita));
+      await actualizarVisita(tk, body, visita);
+      bitacora("actualizar-visita", tk, rastro);
+      // A-1 — NUNCA la fila de `Taller`. `Taller.update` devuelve el registro
+      // entero: el blob `datos` completo (gasto, gastoRef, gastoMO, técnico,
+      // refacciones, comentario, folio) más `ligaCreadaPor`/`ligaRevocadaPor`,
+      // que son CORREOS de empleados de GPA. `leerVisita` tiene una proyección
+      // cuidada justo para que el taller no vea nada de eso; esta ruta la
+      // deshacía y le entregaba a la contraparte que cotiza el historial de lo
+      // que se le pagó. La página ignora el cuerpo: basta con el acuse.
+      return json(200, { ok: true });
     }
 
     if (metodo === "POST" && ruta === "/api/subida") {
@@ -266,8 +369,9 @@ export const handler = async (event: any) => {
       // El tamaño se valida ANTES de firmar la URL — nunca después.
       const tamano = validarTamanoFoto(body?.tamano);
       const key = llaveFoto(tk.t, visitaKey, randomUUID(), mime);
-      bitacora("firmar-subida", tk, { key, tamano });
-      return json(200, await firmarSubida(key, mime, tamano));
+      const firmada = await firmarSubida(key, mime, tamano);
+      bitacora("firmar-subida", tk, { ...rastro, key, tamano });
+      return json(200, firmada);
     }
 
     return json(404, { error: "no encontrado" });
@@ -276,11 +380,11 @@ export const handler = async (event: any) => {
     // ausente son la MISMA clase de fallo que una firma inválida desde el
     // punto de vista de quien llama: la liga, sencillamente, ya no sirve.
     if (e instanceof ErrorLigaInvalida) {
-      bitacora("rechazado-tras-verificar", tk, { motivo: e.message });
+      bitacora("rechazado-tras-verificar", tk, { ...rastro, motivo: e.message });
       return esPagina ? html(401, PAGINA_LIGA_INVALIDA) : json(401, { error: "liga no válida" });
     }
     if (e instanceof ErrorEntrada) {
-      bitacora("rechazado-entrada", tk, { motivo: e.message });
+      bitacora("rechazado-entrada", tk, { ...rastro, motivo: e.message });
       return json(400, { error: e.message });
     }
     // Cualquier otra falla (GraphQL, S3, excepción no prevista): el detalle
@@ -329,11 +433,63 @@ function parseDatos(datos: unknown): Record<string, unknown> {
 }
 
 /**
+ * R90 (A-9) — el APAGADOR, consultado del lado servidor.
+ *
+ * `AppConfig.tallerHibrido` se vendió (decisión 21 del spec) como "la única
+ * forma de apagarlo sin volver a desplegar", pero solo silenciaba la APP: toda
+ * liga ya repartida por WhatsApp seguía aceptando partidas y firmando subidas.
+ * R63 ("la puerta se cierra revocando la liga") es coherente POR VISITA e
+ * inútil como freno de mano cuando hay decenas de ligas vivas.
+ *
+ * Memoizado por CONTENEDOR con TTL corto: un GetItem por minuto por Lambda
+ * caliente, y el flip surte efecto en ≤60 s sin que cada request pague una
+ * lectura extra. Fail-closed ante un error de lectura: si no se puede saber si
+ * el esquema está prendido, la puerta pública NO se abre.
+ */
+const TTL_APAGADOR_MS = 60_000;
+let apagadorCache: { tenantId: string; valor: boolean; hasta: number } | null = null;
+
+async function esquemaHibridoEncendido(tenantId: string): Promise<boolean> {
+  const ahora = Date.now();
+  if (apagadorCache && apagadorCache.tenantId === tenantId && apagadorCache.hasta > ahora) {
+    return apagadorCache.valor;
+  }
+  let valor = false;
+  try {
+    const client = await getDataClient();
+    const { data, errors } = await client.models.AppConfig.get({ tenantId });
+    if (errors) throw new Error(JSON.stringify(errors));
+    valor = data?.tallerHibrido === true;
+  } catch (e) {
+    // Fail-closed, y SIN memoizar el fallo: el próximo request vuelve a
+    // intentar en vez de quedarse 60 s cerrado por un error transitorio.
+    console.error(
+      JSON.stringify({
+        canal: "taller-portal",
+        accion: "error-apagador",
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    return false;
+  }
+  apagadorCache = { tenantId, valor, hasta: ahora + TTL_APAGADOR_MS };
+  return valor;
+}
+
+/**
  * El portón único: una lectura de `Taller` por su llave real, seguida del
  * chequeo de revocación (`ligaRevocada`, pura, en validacion.ts). Lo cruza
  * TODA ruta autenticada — ver el comentario en `handler()`.
+ *
+ * Tres motivos de rechazo, los tres con el MISMO 401 opaco hacia afuera
+ * (`ErrorLigaInvalida`): la visita no existe, la liga fue revocada
+ * (`ligaVersion`), el esquema está apagado (R90) o la visita ya está CERRADA
+ * (A-8). Ninguno le dice al taller cuál de los cuatro fue.
  */
 async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["type"]> {
+  // R90: el apagador va PRIMERO — con el esquema apagado no se toca ni la fila
+  // de la visita.
+  if (!(await esquemaHibridoEncendido(tk.t))) throw new ErrorLigaInvalida("esquema apagado");
   const client = await getDataClient();
   const { data: v, errors } = await client.models.Taller.get({
     tenantId: tk.t,
@@ -343,6 +499,12 @@ async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["t
   if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
   if (!v) throw new ErrorLigaInvalida("visita no encontrada");
   if (ligaRevocada(v.ligaVersion, tk)) throw new ErrorLigaInvalida("liga revocada");
+  // A-8: una liga vive 90 días. Sin este candado, el taller seguía creando
+  // partidas y llamando /api/enviar sobre una visita FINALIZADA, y esas
+  // partidas caían en la bandeja de una visita cuyo costo ya se dio por final.
+  if (visitaCerrada({ estatus: v.estatus, estadoEnDatos: parseDatos(v.datos).estado })) {
+    throw new ErrorLigaInvalida("visita cerrada");
+  }
   return v;
 }
 
@@ -471,7 +633,9 @@ async function leerVisita(tk: PortalToken, visitaKey: string, visita: Schema["Ta
       km: visita.km ?? d.km ?? null,
       estadoOperativo: visita.estadoOperativo ?? null,
       fsalidaEst: visita.fsalidaEst ?? d.fsalidaEst ?? null,
-      comentario: d.comentario ?? "",
+      // `comentario` NO viaja: es texto INTERNO de Riesgos que la página del
+      // taller nunca pinta. Proyectarlo era regalarle al proveedor notas que no
+      // son suyas, sin que nadie lo notara.
     },
     partidas: partidas
       .filter((p) => p.estado !== "cancelada")
@@ -559,11 +723,12 @@ async function actualizarVisita(
   };
 
   if (body.km !== undefined) {
-    const km = Number(body.km);
-    if (!Number.isInteger(km) || km < 1 || km > 3_000_000) {
-      throw new ErrorEntrada("Kilometraje no válido");
-    }
-    input.km = km;
+    // A-15: UN solo predicado de "km válido" (esKmValido, validacion.ts) — el
+    // MISMO que usa `puedeEnviarAAutorizacion`. Antes había dos reglas para el
+    // mismo campo y la laxa (`Number(true) === 1`) era la del espejo de
+    // seguridad.
+    if (!esKmValido(body.km)) throw new ErrorEntrada("Kilometraje no válido");
+    input.km = Number(body.km);
   }
 
   if (body.estadoOperativo !== undefined) {
@@ -606,6 +771,7 @@ async function enviarAAutorizacion(
   tk: PortalToken,
   visitaKey: string,
   visita: Schema["Taller"]["type"],
+  rastro: Record<string, unknown> = {},
 ) {
   // Espejo SERVIDOR de la regla de UI de la Tarea 6 (el botón "Enviar a
   // autorización" nace deshabilitado sin estos datos): el botón es
@@ -649,7 +815,7 @@ async function enviarAAutorizacion(
   // el conteo REAL de lo enviado — no la intención de antes de escribir
   // (la revisión de la Tarea 5 señaló justo este patrón en las demás
   // rutas; aquí se hace bien desde el inicio).
-  bitacora("enviar-autorizacion", tk, { enviadas: borradores.length });
+  bitacora("enviar-autorizacion", tk, { ...rastro, enviadas: borradores.length });
 
   return { enviadas: borradores.length };
 }
@@ -673,6 +839,11 @@ async function emitirLiga(tenantId: string, unitUid: string, fechaEntrada: strin
   });
   if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
   if (!visita) throw new ErrorEntrada("La visita no existe");
+  // A-8 (lado emisión): no se acuña una liga para una visita ya cerrada — su
+  // costo es final y una puerta pública nueva solo podría cambiarlo después.
+  if (visitaCerrada({ estatus: visita.estatus, estadoEnDatos: parseDatos(visita.datos).estado })) {
+    throw new ErrorEntrada("La visita está finalizada");
+  }
 
   // Columna real de la visita — NUNCA el campo homónimo dentro del blob
   // `datos` (R65): es la columna la que `ligaRevocada` compara contra el
@@ -688,6 +859,11 @@ async function emitirLiga(tenantId: string, unitUid: string, fechaEntrada: strin
   await actualizarVisita({ t: tenantId, u: unitUid, f: fechaEntrada }, {}, visita, {
     ligaCreadaEn: new Date(ahora).toISOString(),
     ligaCreadaPor: quien,
+    // Se LIMPIA el rastro de revocación: dejarlo rancio pinta "revocada por X
+    // el D" junto a una liga emitida DESPUÉS de D — un mensaje que engaña justo
+    // durante el incidente para el que ese rastro existe.
+    ligaRevocadaEn: null,
+    ligaRevocadaPor: null,
   });
 
   bitacora("emitir-liga", { u: unitUid, f: fechaEntrada, v: ligaVersion }, { quien });

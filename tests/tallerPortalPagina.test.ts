@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { escaparHtml, paginaProveedor } from "../amplify/functions/taller-portal/pagina";
 import {
   MIMES_FOTO,
+  PRECIO_MAX,
   TOPE_BYTES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
@@ -111,5 +112,91 @@ describe("paginaProveedor", () => {
         expect(p).toContain(mime);
       }
     });
+  });
+});
+
+// ── A-6 — el script servido es ES5, sin excepciones ────────────────────────
+// El portal se abre en el celular de un taller mexicano: un WebView Android
+// anterior a Chrome 80 no PARSEA `??`, y un fallo de parseo tumba la IIFE
+// entera — ningún listener se ata y la pantalla se queda en "Cargando…" para
+// siempre, en silencio. Los dos `??` que había eran las ÚNICAS dos sintaxis
+// post-ES5 de todo el script; esta prueba impide que vuelvan.
+describe("conformidad ES5 del <script> servido (A-6)", () => {
+  const pagina = paginaProveedor("tok");
+  const servido = pagina.slice(pagina.indexOf("<script>") + 8, pagina.lastIndexOf("</script>"));
+  // Se revisa el CÓDIGO, no los comentarios: lo que hace fallar el parseo es la
+  // sintaxis, y un comentario que menciona "??" o "Cargando..." no es sintaxis.
+  const script = servido.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("el script existe y es sustancial (guarda del propio test)", () => {
+    expect(script.length).toBeGreaterThan(2000);
+    expect(script).toContain('"use strict"');
+    // Guarda del propio test: el recorte de arriba tiene que haber dejado el
+    // cuerpo real, no solo la cáscara.
+    expect(script).toContain("addEventListener");
+    expect(script).toContain("btn-guardar-draft");
+  });
+
+  const prohibidos: Array<[string, RegExp]> = [
+    ["coalescencia nula (??)", /\?\?/],
+    ["encadenamiento opcional (?.)", /\?\.[A-Za-z_$[(]/],
+    ["arrow function (=>)", /=>/],
+    ["const", /(^|[^A-Za-z0-9_$])const\s+[A-Za-z_$]/],
+    ["let", /(^|[^A-Za-z0-9_$])let\s+[A-Za-z_$]/],
+    ["template literal (`)", /`/],
+    ["class", /(^|[^A-Za-z0-9_$])class\s+[A-Za-z_$]/],
+    ["spread/rest (...)", /\.\.\./],
+  ];
+  for (const [nombre, re] of prohibidos) {
+    it(`no usa ${nombre}`, () => {
+      expect(re.test(script), `el script servido usa ${nombre}`).toBe(false);
+    });
+  }
+});
+
+// ── Tope de precio del lado cliente ─────────────────────────────────────────
+describe("PRECIO_MAX viaja por data-* y se valida ANTES de subir fotos", () => {
+  const p = paginaProveedor("tok");
+
+  it("el tope viaja en el mismo <meta> que los demás, nunca horneado en el script", () => {
+    expect(p).toContain(`data-precio-max="${PRECIO_MAX}"`);
+    expect(p).toContain('metaConfig.getAttribute("data-precio-max")');
+  });
+
+  it("el guardado corta por tope ANTES de firmar/subir — nada de 60 MB huérfanos", () => {
+    const iBoton = p.indexOf('document.getElementById("btn-guardar-draft")');
+    const bloque = p.slice(iBoton);
+    const iTope = bloque.indexOf("precio > PRECIO_MAX");
+    const iSubir = bloque.indexOf("subirFotos(fotosDraft)");
+    expect(iTope).toBeGreaterThan(-1);
+    expect(iSubir).toBeGreaterThan(-1);
+    expect(iTope).toBeLessThan(iSubir);
+  });
+});
+
+// ── El <noscript> y el catch del guardado ──────────────────────────────────
+describe("la página falla de forma visible, no en blanco", () => {
+  const p = paginaProveedor("tok");
+
+  it("tiene <noscript> — misma falla silenciosa que el `??` de A-6", () => {
+    expect(p).toContain("<noscript>");
+    expect(p).toMatch(/<noscript>[\s\S]*JavaScript[\s\S]*<\/noscript>/);
+  });
+
+  it('el catch de "No se pudo guardar" NO envuelve el render posterior al éxito', () => {
+    const iBoton = p.indexOf('document.getElementById("btn-guardar-draft").addEventListener');
+    const bloque = p.slice(iBoton, iBoton + 3000);
+    const iCatchGuardado = bloque.indexOf("No se pudo guardar.");
+    const iPintar = bloque.indexOf("pintarPartidas();");
+    expect(iCatchGuardado).toBeGreaterThan(-1);
+    expect(iPintar).toBeGreaterThan(-1);
+    // El catch del guardado va ANTES del render: un throw al pintar ya no puede
+    // caer en el mensaje que dice que no se guardó.
+    expect(iCatchGuardado).toBeLessThan(iPintar);
+    expect(bloque).toContain("Se guardó, pero no se pudo actualizar la lista.");
+  });
+
+  it("el comentario rancio de /api/enviar (404) ya no está: la ruta existe desde 6b", () => {
+    expect(p).not.toContain("hoy /api/enviar responde 404");
   });
 });

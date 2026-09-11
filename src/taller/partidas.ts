@@ -75,11 +75,20 @@ export function autorizar(p: Partida, quien: string, cuando: string): Partida {
   if (p.estado !== "propuesta") {
     throw new Error(`No se puede autorizar una partida en estado "${p.estado}"`);
   }
+  // R92 (fail-closed) — antes esto era `p.precio ?? 0`: una partida sin precio
+  // (el schema no lo exigía) o con `NaN` se firmaba en silencio por $0, que es
+  // justo la falla que el módulo existe para matar. La decisión de negocio
+  // "¿se permite firmar un $0 explícito?" queda ABIERTA para Navares; mientras
+  // tanto, un precio que no es un número finito no se firma. Un `0` tecleado a
+  // propósito (garantía, cortesía) SÍ es finito y sigue pasando.
+  if (typeof p.precio !== "number" || !Number.isFinite(p.precio)) {
+    throw new Error(`No se puede autorizar una partida sin precio: "${String(p.precio)}"`);
+  }
   return {
     ...p,
     estado: "autorizada",
     // Se autoriza un PRECIO: queda congelado aquí.
-    precioAutorizado: p.precio ?? 0,
+    precioAutorizado: p.precio,
     decididoPor: quien,
     decididoEn: cuando,
   };

@@ -145,8 +145,13 @@ const schema = a
 
         descripcion: a.string().required(),
         tipo: a.enum(["refaccion", "manoObra"]),
-        /** Sin IVA. */
-        precio: a.float(),
+        /** Sin IVA. REQUERIDO (R92): con el campo nullable, cualquier escritor
+         *  directo a AppSync creaba una partida sin precio y `autorizar`
+         *  (src/taller/partidas.ts) firmaba $0 en silencio — exactamente la
+         *  falla que este módulo existe para matar. Seguro de aplicar: cero
+         *  partidas en PROD al momento del cambio. `autorizar` además lanza si
+         *  el precio no es finito (fail-closed en la capa pura). */
+        precio: a.float().required(),
         estado: a.enum([
           "borrador",
           "propuesta",
@@ -180,8 +185,13 @@ const schema = a
       .authorization((allow) => [
         // Lectura aislada por tenant (incluye viewer). Escritura operativo/admin;
         // el Lambda del portal escribe por IAM vía el grant de schema, abajo.
+        // R92: `operativo` NO tiene `delete`. El ciclo de esta partida ya tiene
+        // `cancelada` (anulación reversible) y el estándar del repo es
+        // "anulación, nunca borrado" — el `delete` venía de copiar el
+        // boilerplate de otros modelos y concedía borrado FÍSICO sobre la única
+        // copia del dinero firmado.
         allow.groupDefinedIn("tenantId").to(["read"]),
-        allow.group("operativo").to(["create", "update", "delete"]),
+        allow.group("operativo").to(["create", "update"]),
         allow.group("admin"),
       ])
       .secondaryIndexes((index) => [
@@ -652,27 +662,34 @@ const schema = a
     // ahí dejaría a cualquiera en internet acuñar una liga para cualquier
     // unidad. Va por mutación de AppSync con permiso de grupo, mismo patrón
     // que adminCreateUser de arriba: AppSync valida el grupo ANTES de invocar
-    // la Lambda. `viewer` NUNCA, bajo ninguna circunstancia. `operativo` es
-    // hoy un grupo GLOBAL de escritura (no "Administración de Riesgos"
-    // específicamente) — deuda técnica ya asentada en el spec §7.7; inocua
-    // con un solo tenant (gpa).
+    // la Lambda.
+    //
+    // R84 — SOLO `admin`. El spec §7.7 (decisión 20) es literal: "El grupo
+    // `viewer` no puede, y `operativo` tampoco por sí solo… la restricción se
+    // aplica en la UI Y en el Lambda". El plan de T11 lo contradijo con una
+    // nota de deuda técnica; se cierra fail-closed. El Lambda repite el
+    // chequeo sobre `cognito:groups` (R91, taller-portal/handler.ts) y la UI
+    // usa `needs-admin`. Si Administración de Riesgos no es `admin`, la
+    // respuesta es promoverlos o crear el grupo `riesgos` — nunca dejar
+    // `operativo` abierto "mientras".
     generarLigaTaller: a
       .mutation()
       .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
       .returns(a.json())
       .handler(a.handler.function(tallerPortal))
-      .authorization((allow) => [allow.group("admin"), allow.group("operativo")]),
+      .authorization((allow) => [allow.group("admin")]),
 
     /** Sube `ligaVersion` (columna real de Taller) — el único interruptor de
      *  revocación (ver ligaRevocada en taller-portal/validacion.ts): un token
      *  firmado con la versión anterior deja de servir de inmediato, sin
-     *  necesidad de guardar el token mismo en la base. */
+     *  necesidad de guardar el token mismo en la base. SOLO `admin` (R84),
+     *  mismo criterio que la emisión. */
     revocarLigaTaller: a
       .mutation()
       .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
       .returns(a.json())
       .handler(a.handler.function(tallerPortal))
-      .authorization((allow) => [allow.group("admin"), allow.group("operativo")]),
+      .authorization((allow) => [allow.group("admin")]),
   })
   // Acceso IAM para Lambdas del backend. El grant resource es a nivel schema
   // (la API no lo soporta por-modelo). El webhook MoreApp fue retirado 2026-08-20

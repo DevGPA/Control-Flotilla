@@ -64,4 +64,22 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
     // de viewer causó un incidente; este guard lo previene.
     expect(bloque).not.toContain('allow.group("viewer").to(["create", "update", "delete"])');
   });
+
+  // R92 — dos huecos de integridad sobre "la única copia del dinero".
+  it("`precio` es REQUERIDO — sin él, autorizar firmaba $0 en silencio (R92)", () => {
+    const inicio = schema.indexOf("TallerPartida: a");
+    const resto = schema.slice(inicio);
+    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
+    const bloque = fin === -1 ? resto : resto.slice(0, fin);
+    expect(bloque).toMatch(/precio:\s*a\.float\(\)\.required\(\)/);
+  });
+
+  it("`operativo` NO tiene `delete` — el estándar es anulación, nunca borrado (R92)", () => {
+    const inicio = schema.indexOf("TallerPartida: a");
+    const resto = schema.slice(inicio);
+    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
+    const bloque = fin === -1 ? resto : resto.slice(0, fin);
+    expect(bloque).toContain('allow.group("operativo").to(["create", "update"])');
+    expect(bloque).not.toContain('allow.group("operativo").to(["create", "update", "delete"])');
+  });
 });

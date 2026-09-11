@@ -301,6 +301,12 @@ export async function crearPartidaManual(args: {
 }): Promise<Partida> {
   const { tenantId, datos, visitaKey, autorSub, ahora } = args;
   const borrador = partidaManual(datos, visitaKey, autorSub, ahora);
+  // R92: `precio` es REQUERIDO en el modelo. `partidaManual` ya lo validó
+  // finito y en rango — este guard solo se lo demuestra al compilador (el tipo
+  // puro `Partida` lo declara opcional porque una fila vieja puede no traerlo).
+  if (typeof borrador.precio !== "number") {
+    throw new Error("La partida manual salió sin precio — no se escribe nada");
+  }
 
   const c = getClient();
   const { errors } = await c.models.TallerPartida.create({

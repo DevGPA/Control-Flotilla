@@ -135,6 +135,31 @@ export function llaveFotoValida(tenantId: string, visitaKey: string, key: string
   return new RegExp(`^[A-Za-z0-9_.:@+-]{1,120}\\.(?:${EXTENSIONES_FOTO})$`).test(cola);
 }
 
+/** Tope superior del kilometraje aceptado (mismo que aplicaba
+ *  `actualizarVisita` a mano antes de A-15). */
+export const KM_MAX = 3_000_000;
+
+/**
+ * A-15 — UNA sola regla de "km válido" para las dos puertas que lo miran:
+ * `actualizarVisita` (handler.ts, la ESCRITURA) y `puedeEnviarAAutorizacion`
+ * (el espejo servidor del botón). Antes había dos: la escritura exigía entero
+ * en [1, 3_000_000] y el espejo aceptaba cualquier cosa que `Number()`
+ * convirtiera en algo finito y positivo — incluido `true` (`Number(true) === 1`)
+ * y los decimales. La laxa era justamente la de seguridad.
+ *
+ * Estricta a propósito: un booleano NO es un kilometraje, ni un decimal, ni un
+ * string con espacios raros. Se acepta el string numérico porque el dato llega
+ * así según el origen (el blob `datos` de la app de escritorio), pero se exige
+ * que represente un ENTERO dentro del rango.
+ */
+export function esKmValido(km: unknown): boolean {
+  if (typeof km === "boolean") return false;
+  if (typeof km !== "number" && typeof km !== "string") return false;
+  if (typeof km === "string" && km.trim() === "") return false;
+  const n = Number(km);
+  return Number.isInteger(n) && n >= 1 && n <= KM_MAX;
+}
+
 /**
  * §8.2: se puede subir fotos y capturar hallazgos desde el minuto uno, pero
  * NO se puede mandar la visita a autorización sin kilometraje ni fecha
@@ -142,13 +167,45 @@ export function llaveFotoValida(tenantId: string, visitaKey: string, key: string
  * botón "Enviar a autorización" en la página (Tarea 6): el botón es
  * cortesía de UI, esto es lo que de verdad lo impide.
  *
- * `km` puede llegar como número o como string numérico según el origen del
- * dato (mismo caso que ya normaliza actualizarVisita en handler.ts), asi
- * que se acepta cualquiera de los dos siempre que sea finito y positivo.
+ * A-15: el predicado del km es `esKmValido`, el MISMO que aplica la escritura.
  */
 export function puedeEnviarAAutorizacion(v: { km?: unknown; fsalidaEst?: unknown }): boolean {
-  const km = typeof v.km === "number" ? v.km : Number(v.km);
-  return (
-    Number.isFinite(km) && km > 0 && typeof v.fsalidaEst === "string" && v.fsalidaEst.length > 0
-  );
+  return esKmValido(v.km) && typeof v.fsalidaEst === "string" && v.fsalidaEst.length > 0;
+}
+
+/** El literal REAL de "visita cerrada" en el modelo `Taller`
+ *  (amplify/data/resource.ts: `estatus: a.enum(["abierto", "cerrado"])`). */
+export const ESTATUS_CERRADO = "cerrado";
+/** El literal de "cerrada" que la app guarda dentro del blob `datos.estado`
+ *  (TallerEstado, src/taller/types.ts) — es el que fija `finalizarUnidad`. */
+export const ESTADO_FINALIZADO = "Finalizado";
+
+/**
+ * A-8 — el portón nunca miraba si la visita ya estaba CERRADA: una liga vive 90
+ * días, así que el taller podía seguir creando partidas y llamando
+ * `/api/enviar` sobre una visita liquidada, y esas partidas caían en la bandeja
+ * de una visita cuyo costo ya se dio por final.
+ *
+ * Se miran las DOS señales porque las escribe gente distinta: la COLUMNA
+ * `estatus` la deriva el upsert de la app (`fsalidaReal ? "cerrado"`) y
+ * `datos.estado` es lo que el usuario marcó como "Finalizado". Cualquiera de
+ * las dos basta — fail-closed.
+ */
+export function visitaCerrada(v: { estatus?: unknown; estadoEnDatos?: unknown }): boolean {
+  return v.estatus === ESTATUS_CERRADO || v.estadoEnDatos === ESTADO_FINALIZADO;
+}
+
+/**
+ * Longitud mínima del secreto del portal. TODO el perímetro público es ese
+ * HMAC: un secreto de un carácter se acepta en silencio y firma tokens que
+ * cualquiera puede forjar. Por debajo de este largo se trata como AUSENTE
+ * (fail-closed: 401 en toda ruta, "portal no configurado" en el resolver), que
+ * es el diseño declarado en taller-portal/resource.ts.
+ */
+export const LARGO_MIN_SECRETO = 32;
+
+/** El secreto utilizable, o "" si no hay ninguno que merezca ese nombre. */
+export function secretoUtilizable(secreto: unknown): string {
+  const s = typeof secreto === "string" ? secreto : "";
+  return s.length >= LARGO_MIN_SECRETO ? s : "";
 }

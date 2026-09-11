@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zMqP2dR3l+idVP3bvjmf9r7icvoQi2RYLllyRm+3noQ=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-ywzSUOfblmkBEpGQ92XQC0C+9npFtgehkV50w8B35WU=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1395,10 +1395,14 @@
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
       <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
            ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
-           needs-write + needs-hibrido (R61) SUMADAS al permiso real de AppSync
-           (grupo admin/operativo, ver amplify/data/resource.ts). -->
-      <button class="tl-exp-btn needs-write needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
-      <button class="tl-exp-btn needs-write needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
+           R84: needs-ADMIN, no needs-write. El spec §7.7 (decisión 20) es
+           literal — "el grupo viewer no puede, y operativo tampoco por sí
+           solo… la restricción se aplica en la UI Y en el Lambda". El permiso
+           real lo aplican las dos mutaciones de amplify/data/resource.ts
+           (admin únicamente) y el chequeo de cognito:groups del Lambda; esto
+           es la capa de UI de esa misma regla. -->
+      <button class="tl-exp-btn needs-admin needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
+      <button class="tl-exp-btn needs-admin needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
       <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
@@ -9896,10 +9900,15 @@ function openTallerModal(id){
   {
     const btnCopiarLiga  = document.getElementById("btn-liga-copiar");
     const btnRevocarLiga = document.getElementById("btn-liga-revocar");
-    if(btnCopiarLiga) btnCopiarLiga.style.display = e ? "" : "none";
+    // C-I4: una visita FINALIZADA no abre puertas públicas nuevas. Su costo ya
+    // es final; una liga emitida después lo cambiaría a espaldas del cierre.
+    // El backend rechaza igual (emitirLiga + el portón, A-8) — esto solo evita
+    // ofrecerlo. Mismo predicado `isClosed` que usa el resto de este modal.
+    const ligaOfrecible = !!e && !isClosed(e?.estado);
+    if(btnCopiarLiga) btnCopiarLiga.style.display = ligaOfrecible ? "" : "none";
     if(btnRevocarLiga){
       btnRevocarLiga.style.display = "none";
-      if(e && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
+      if(ligaOfrecible && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
         const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
         window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
           if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";

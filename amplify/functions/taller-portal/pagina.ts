@@ -17,6 +17,7 @@
 
 import {
   MIMES_FOTO,
+  PRECIO_MAX,
   TOPE_BYTES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
@@ -48,6 +49,12 @@ export function paginaProveedor(token: string): string {
   const topeFotos = TOPE_FOTOS_PARTIDA;
   const topeBytes = TOPE_BYTES_FOTO;
   const topePartidas = TOPE_PARTIDAS_VISITA;
+  // Mismo canal data-* que los demás topes: hoy un precio por encima del máximo
+  // se rechazaba DESPUÉS de subir hasta seis fotos de 10 MB — mala experiencia
+  // y un generador garantizado de objetos huérfanos en el bucket (liga con la
+  // falta de regla de lifecycle, A-11). El servidor sigue siendo el que manda
+  // (`validarPartidaEntrante`); esto solo evita el viaje.
+  const precioMax = PRECIO_MAX;
 
   return `<!doctype html>
 <html lang="es">
@@ -56,7 +63,7 @@ export function paginaProveedor(token: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex,nofollow">
-<meta id="pt-token" content="${tk}" data-mimes="${mimesAttr}" data-tope-fotos="${topeFotos}" data-tope-bytes="${topeBytes}" data-tope-partidas="${topePartidas}">
+<meta id="pt-token" content="${tk}" data-mimes="${mimesAttr}" data-tope-fotos="${topeFotos}" data-tope-bytes="${topeBytes}" data-tope-partidas="${topePartidas}" data-precio-max="${precioMax}">
 <title>GPA · Portal de taller</title>
 <style>
 /* Tokens copiados de src/styles/main.css (fuente de verdad del diseño de
@@ -189,6 +196,9 @@ textarea{min-height:72px; resize:vertical}
 </head>
 <body>
 <div class="topbar">GPA · Control de Flotilla</div>
+<noscript>
+  <div class="estado-msg error">Esta pantalla necesita JavaScript activado. Actívalo en tu navegador y vuelve a abrir la liga, o pídele ayuda a Administración de Riesgos de GPA.</div>
+</noscript>
 <main>
   <div id="cargando" class="estado-msg">Cargando…</div>
   <div id="error" class="estado-msg error" hidden></div>
@@ -287,6 +297,7 @@ textarea{min-height:72px; resize:vertical}
   var TOPE_FOTOS = parseInt(metaConfig.getAttribute("data-tope-fotos"), 10);
   var TOPE_BYTES = parseInt(metaConfig.getAttribute("data-tope-bytes"), 10);
   var TOPE_PARTIDAS = parseInt(metaConfig.getAttribute("data-tope-partidas"), 10);
+  var PRECIO_MAX = parseFloat(metaConfig.getAttribute("data-precio-max"));
 
   var RUTA_VISITA = "/api/visita";
   var RUTA_PARTIDA = "/api/partida";
@@ -455,7 +466,11 @@ textarea{min-height:72px; resize:vertical}
     // Important 1: autorizada muestra el precio CONGELADO (precioAutorizado),
     // no el capturado — se degrada a precio mientras 6b no manda el campo, y
     // en cualquier otro estado (todavia no hay precioAutorizado que mostrar).
-    var precioMostrado = p.precioAutorizado ?? p.precio;
+    // A-6: ternario, NUNCA coalescencia nula. Este script se sirve como ES5 a
+    // telefonos arbitrarios; en un WebView Android anterior a Chrome 80 ese
+    // operador hace fallar el PARSEO de la IIFE entera: ningun listener se ata
+    // y la pantalla se queda en "Cargando..." para siempre, en silencio.
+    var precioMostrado = p.precioAutorizado != null ? p.precioAutorizado : p.precio;
     var meta = el(
       "p",
       "hallazgo-meta" + (tachado ? " tachado" : ""),
@@ -509,7 +524,9 @@ textarea{min-height:72px; resize:vertical}
       if (p.estado === "propuesta" || p.estado === "autorizada" || p.estado === "rechazada") {
         cot += p.precio || 0;
       }
-      if (p.estado === "autorizada") aut += (p.precioAutorizado ?? p.precio) || 0;
+      // A-6: ternario, nunca coalescencia nula (ver tarjetaPartida).
+      if (p.estado === "autorizada")
+        aut += (p.precioAutorizado != null ? p.precioAutorizado : p.precio) || 0;
       if (p.estado === "borrador") nBorrador++;
     });
     document.getElementById("tot-cotizado").textContent = moneda(cot);
@@ -740,6 +757,12 @@ textarea{min-height:72px; resize:vertical}
       msg.textContent = "Precio no válido.";
       return;
     }
+    // ANTES de firmar y subir las fotos: un precio fuera de tope lo rechazaba el
+    // servidor al final, después de empujar hasta 60 MB al bucket.
+    if (precio > PRECIO_MAX) {
+      msg.textContent = "El precio excede el máximo permitido.";
+      return;
+    }
 
     var btnGuardar = document.getElementById("btn-guardar-draft");
     btnGuardar.disabled = true;
@@ -754,38 +777,49 @@ textarea{min-height:72px; resize:vertical}
           fotos: claves,
         });
       })
-      .then(function (nueva) {
-        var partidaId = nueva && nueva.partidaId;
-        var primerArchivo = fotosDraft[0] && fotosDraft[0].file;
-        estado.partidas.push({
-          partidaId: partidaId,
-          descripcion: desc,
-          tipo: tipoDraft,
-          precio: precio,
-          estado: "borrador",
-          motivoRechazo: null,
-          fotos: (nueva && nueva.fotos) || [],
-        });
-        if (partidaId && primerArchivo) {
-          previewsLocal[partidaId] = URL.createObjectURL(primerArchivo);
-        }
-        cerrarDraft();
-        pintarPartidas();
-      })
+      // El catch del GUARDADO cubre SOLO el guardado. Antes envolvia tambien
+      // el render de abajo: un throw en pintarPartidas() mostraba "No se pudo
+      // guardar" DESPUÉS de un guardado exitoso, e invitaba a capturar la misma
+      // partida dos veces. El render falla con su propio mensaje; nunca con uno
+      // que mienta sobre lo que sí ocurrió.
       .catch(function () {
         msg.textContent = "No se pudo guardar. Revisa tu señal e intenta de nuevo.";
-      })
-      .then(function () {
         btnGuardar.disabled = false;
+        throw new Error("guardado");
+      })
+      .then(function (nueva) {
+        try {
+          var partidaId = nueva && nueva.partidaId;
+          var primerArchivo = fotosDraft[0] && fotosDraft[0].file;
+          estado.partidas.push({
+            partidaId: partidaId,
+            descripcion: desc,
+            tipo: tipoDraft,
+            precio: precio,
+            estado: "borrador",
+            motivoRechazo: null,
+            fotos: (nueva && nueva.fotos) || [],
+          });
+          if (partidaId && primerArchivo) {
+            previewsLocal[partidaId] = URL.createObjectURL(primerArchivo);
+          }
+          cerrarDraft();
+          pintarPartidas();
+        } catch (err) {
+          msg.textContent = "Se guardó, pero no se pudo actualizar la lista. Recarga la página.";
+        }
+        btnGuardar.disabled = false;
+      })
+      .catch(function () {
+        // El re-throw del catch de arriba aterriza aquí: ya avisó y ya
+        // re-habilitó el botón, no hay nada más que hacer.
       });
   });
 
   // ── Enviar a autorización ────────────────────────────────────────────
-  // NOTA: handler.ts (Task 5) todavía no expone una ruta que mueva partidas
-  // de "borrador" a "propuesta" — hoy /api/enviar responde 404. Se deja
-  // cableado a la ruta que le correspondería por convención para que
-  // encienda en cuanto ese endpoint exista, y falla de forma honesta
-  // mientras tanto: nunca finge un envío que no ocurrió.
+  // POST /api/enviar mueve TODOS los borradores de esta visita a "propuesta"
+  // (handler.ts, enviarAAutorizacion, desde la Tarea 6b). Es idempotente: un
+  // reintento tras un doble click responde 0 enviadas, nunca un 400.
   document.getElementById("btn-enviar").addEventListener("click", function () {
     var razon = document.getElementById("msg-enviar-razon");
     razon.className = "msg-enviar-razon";

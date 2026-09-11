@@ -61,6 +61,32 @@ describe("firma — se autoriza un precio, no una idea", () => {
     ).toThrow();
   });
 
+  // R92 (fail-closed) — antes era `p.precio ?? 0`: una partida sin precio (el
+  // schema no lo exigía) o con NaN se firmaba en silencio por $0, que es
+  // exactamente la falla que este módulo existe para matar. El schema ahora
+  // exige `precio` (a.float().required()) y la capa pura cierra la puerta que
+  // quedaba abierta desde una escritura directa a AppSync.
+  it("NO firma una partida sin precio — nunca un $0 en silencio (R92)", () => {
+    expect(() =>
+      autorizar(P({ estado: "propuesta", precio: undefined }), "user:abc", "2026-09-03T10:00:00Z"),
+    ).toThrow(/sin precio/);
+  });
+
+  it("NO firma con un precio que no es finito (NaN / Infinity)", () => {
+    expect(() =>
+      autorizar(P({ estado: "propuesta", precio: NaN }), "user:abc", "2026-09-03T10:00:00Z"),
+    ).toThrow(/sin precio/);
+    expect(() =>
+      autorizar(P({ estado: "propuesta", precio: Infinity }), "user:abc", "2026-09-03T10:00:00Z"),
+    ).toThrow(/sin precio/);
+  });
+
+  it("un $0 TECLEADO a propósito (garantía, cortesía) sigue siendo firmable — es finito", () => {
+    const r = autorizar(P({ estado: "propuesta", precio: 0 }), "user:abc", "2026-09-03T10:00:00Z");
+    expect(r.estado).toBe("autorizada");
+    expect(r.precioAutorizado).toBe(0);
+  });
+
   it("rechazar exige un motivo del menú cerrado", () => {
     const r = rechazar(
       P({ estado: "propuesta" }),

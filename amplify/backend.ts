@@ -1,5 +1,6 @@
 import { defineBackend } from "@aws-amplify/backend";
 import {
+  CfnFunction,
   FunctionUrlAuthType,
   HttpMethod,
   Function as LambdaFunction,
@@ -93,6 +94,13 @@ backend.addOutput({ custom: { opsgpaReceptorUrl: receptorUrl.url } });
 // partidas; emite PUT prefirmados para las fotos, con la llave generada por el
 // servidor bajo photos/<tenant>/taller-partidas/.
 const portalFn = backend.tallerPortal.resources.lambda;
+// A-10 (R93) — tope de concurrencia de la ÚNICA Lambda del repo expuesta a
+// internet sin auth. Una avalancha de tokens falsos es barata por request (un
+// HMAC y un 401) pero ilimitada en agregado, y sin reserva comparte el pool de
+// concurrencia de la cuenta: podría dejar sin capacidad a `opsgpa-receptor`, el
+// puente vivo con Operaciones. 20 es holgado para el uso real (decenas de
+// talleres tecleando, no miles) y acota el daño de la avalancha a este Lambda.
+(portalFn.node.defaultChild as CfnFunction).addPropertyOverride("ReservedConcurrentExecutions", 20);
 const portalUrl = portalFn.addFunctionUrl({
   authType: FunctionUrlAuthType.NONE,
   cors: { allowedOrigins: ["*"], allowedMethods: [HttpMethod.GET, HttpMethod.POST] },

@@ -36,8 +36,17 @@ const handlerSrc = readFileSync("amplify/functions/taller-portal/handler.ts", "u
  */
 function finDeBloque(texto: string, inicio: number): number {
   const resto = texto.slice(inicio + 1);
-  const m = resto.match(/\n {4}[A-Za-z]+: a\b/);
-  return m && m.index !== undefined ? inicio + 1 + m.index : texto.length;
+  // Dos cierres posibles: la SIGUIENTE declaración de nivel superior, o —para
+  // la última del esquema— el cierre del propio objeto `schema` (`\n  })`, dos
+  // espacios). Sin el segundo, el bloque de `revocarLigaTaller` corría hasta EOF
+  // y se tragaba la cadena `.authorization()` de nivel ESQUEMA: cualquier
+  // `allow.*` de ahí "contaba" como si fuera suyo (D-I1).
+  const siguiente = resto.match(/\n {4}[A-Za-z]+: a\b/);
+  const cierreSchema = resto.match(/\n {2}\}\)\n/);
+  const candidatos = [siguiente, cierreSchema]
+    .filter((m): m is RegExpMatchArray => !!m && m.index !== undefined)
+    .map((m) => inicio + 1 + (m.index as number));
+  return candidatos.length ? Math.min(...candidatos) : texto.length;
 }
 
 describe("la emisión de ligas NO cuelga de la URL pública", () => {
@@ -46,7 +55,10 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
     expect(schema).toContain("revocarLigaTaller: a");
   });
 
-  it("solo admin y operativo pueden emitir/revocar — AISLADO por mutación, nunca 'viewer' ni auth genérica", () => {
+  // R84 — SOLO admin. El spec §7.7 (decisión 20) es literal: "el grupo `viewer`
+  // no puede, y `operativo` tampoco por sí solo". El plan de T11 lo contradijo
+  // con una nota de deuda técnica; el ruling del controller cierra fail-closed.
+  it("SOLO admin puede emitir/revocar — AISLADO por mutación; ni operativo, ni viewer, ni auth genérica (R84)", () => {
     const inicioGenerar = schema.indexOf("generarLigaTaller: a");
     const inicioRevocar = schema.indexOf("revocarLigaTaller: a");
     expect(inicioGenerar).toBeGreaterThan(-1);
@@ -60,7 +72,7 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
       ["revocarLigaTaller", bloqueRevocar],
     ] as const) {
       expect(bloque, `${nombre}: falta allow.group("admin")`).toContain('allow.group("admin")');
-      expect(bloque, `${nombre}: falta allow.group("operativo")`).toContain(
+      expect(bloque, `${nombre}: "operativo" NO puede acuñar ligas (R84)`).not.toContain(
         'allow.group("operativo")',
       );
       expect(bloque, `${nombre}: NO debe permitir "viewer"`).not.toContain('allow.group("viewer")');
@@ -68,6 +80,92 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
         "allow.authenticated",
       );
     }
+  });
+
+  // R91 — el chequeo de ROL también en el Lambda: "la restricción se aplica en
+  // la UI Y en el Lambda" (spec §7.7). Hasta la ola, la rama del resolver solo
+  // exigía identidad y tenant; el único muro real era la lista de
+  // `.authorization()` del esquema.
+  it("el Lambda repite el chequeo de rol sobre cognito:groups — admin, ANTES de tocar la base (R91)", () => {
+    const inicioResolver = handlerSrc.indexOf("event?.info?.fieldName");
+    const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioResolver);
+    const bloque = handlerSrc.slice(inicioResolver, inicioLlamadaEmitir);
+    expect(bloque).toContain('grupos.includes("admin")');
+    expect(bloque).toContain("no autorizado");
+    // `grupos` sale de identidadDeResolver, que sí lee la claim real.
+    const iId = handlerSrc.indexOf("function identidadDeResolver(");
+    const cuerpoId = handlerSrc.slice(iId, handlerSrc.indexOf("\n}", iId));
+    expect(cuerpoId).toContain('claims["cognito:groups"]');
+    expect(cuerpoId).toContain("grupos");
+  });
+
+  // R90 (A-9) — apagar `AppConfig` solo silenciaba la APP: toda liga repartida
+  // seguía viva y el resolver seguía acuñando nuevas. Revocar una por una no es
+  // un freno de mano.
+  it("el apagador se consulta del lado SERVIDOR: el resolver no acuña con el esquema apagado (R90)", () => {
+    const inicioResolver = handlerSrc.indexOf("event?.info?.fieldName");
+    const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioResolver);
+    const bloque = handlerSrc.slice(inicioResolver, inicioLlamadaEmitir);
+    expect(bloque).toContain("esquemaHibridoEncendido(");
+  });
+
+  it("el PORTÓN público también lo consulta — una liga ya repartida deja de servir (R90)", () => {
+    const i = handlerSrc.indexOf("async function cargarVisitaVigente(");
+    const cuerpo = handlerSrc.slice(i, handlerSrc.indexOf("\n}", i));
+    expect(cuerpo).toContain("esquemaHibridoEncendido(tk.t)");
+    // 401 opaco: el mismo ErrorLigaInvalida que la revocación, sin decir por qué.
+    expect(cuerpo).toContain('ErrorLigaInvalida("esquema apagado")');
+    // Y va ANTES de leer la fila de la visita.
+    expect(cuerpo.indexOf("esquemaHibridoEncendido")).toBeLessThan(cuerpo.indexOf("Taller.get"));
+  });
+
+  it("la lectura del apagador está memoizada por contenedor con TTL corto, y falla CERRADA", () => {
+    const i = handlerSrc.indexOf("async function esquemaHibridoEncendido(");
+    const cuerpo = handlerSrc.slice(i, handlerSrc.indexOf("\n}\n", i));
+    expect(handlerSrc).toContain("const TTL_APAGADOR_MS = 60_000");
+    expect(cuerpo).toContain("apagadorCache");
+    expect(cuerpo).toContain("AppConfig.get({ tenantId })");
+    // Fail-closed: el catch devuelve false y NO memoiza el fallo.
+    expect(cuerpo).toContain("return false;");
+  });
+
+  // A-3 — el rol IAM del Lambda tiene appsync:GraphQL sobre TODO el esquema
+  // (el grant es a nivel esquema; la API no lo soporta por modelo). Si alguien
+  // agregara modo `iam` a una mutación, el portal podría acuñar ligas para sí.
+  it("NINGUNA mutación del esquema acepta el modo `iam` (A-3)", () => {
+    expect(schema).not.toMatch(
+      /allow\.resource\([A-Za-z]+\)\.to\(\[[^\]]*\]\)\s*,?\s*\/\/.*mutation/,
+    );
+    // La forma real de conceder `iam` a una operación: `.authorization` con
+    // `allow.resource(...)` DENTRO del bloque de una mutación custom.
+    for (const nombre of ["generarLigaTaller", "revocarLigaTaller"]) {
+      const i = schema.indexOf(`${nombre}: a`);
+      const bloque = schema.slice(i, finDeBloque(schema, i));
+      expect(bloque, `${nombre}: nada de allow.resource() a nivel de mutación`).not.toContain(
+        "allow.resource(",
+      );
+    }
+  });
+
+  it("el radio de explosión del Lambda del portal queda ANCLADO en su cabecera (A-3)", () => {
+    const cabecera = handlerSrc.slice(0, handlerSrc.indexOf("import "));
+    expect(cabecera).toContain("RADIO DE EXPLOSIÓN");
+    expect(cabecera).toContain("esquema");
+  });
+
+  // A-10 (R93) — Function URL pública sin tope de concurrencia comparte el pool
+  // de la cuenta con `opsgpa-receptor`, el puente vivo con Operaciones.
+  it("la Function URL pública tiene tope de concurrencia reservada (A-10)", () => {
+    const backendSrc = readFileSync("amplify/backend.ts", "utf8");
+    const i = backendSrc.indexOf("const portalFn = backend.tallerPortal.resources.lambda");
+    const bloque = backendSrc.slice(i, backendSrc.indexOf("backend.addOutput", i));
+    expect(bloque).toContain("ReservedConcurrentExecutions");
+    expect(bloque).toMatch(/ReservedConcurrentExecutions",\s*20/);
+  });
+
+  it("la env var TALLER_TENANT_ID (declarada y nunca leída) ya no existe", () => {
+    const resourceSrc = readFileSync("amplify/functions/taller-portal/resource.ts", "utf8");
+    expect(resourceSrc).not.toMatch(/TALLER_TENANT_ID:\s*"/);
   });
 
   it("el handler del portal no expone ninguna ruta HTTP de emisión", () => {
