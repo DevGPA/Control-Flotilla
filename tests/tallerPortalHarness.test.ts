@@ -1452,7 +1452,11 @@ describe("P11 — POST /api/visita responde un acuse, y km pasa por UN solo pred
   // voluntad del taller. Las rutas vecinas sobreviven al mismo cuerpo porque
   // usan `body?.mime` (/api/subida) o `(body ?? {})` (/api/partida): es esta
   // ruta, y solo esta, la que no lo hace.
-  it("[DEFECTO] body `null` en POST /api/visita ⇒ 500, no el 400 que promete parseBody", async () => {
+  // ARREGLADO tras el hallazgo del arnés: `parseBody` rechaza como error de
+  // ENTRADA (400) todo cuerpo JSON que no sea un objeto — `null` incluido — en
+  // vez de dejar que `actualizarVisita` reviente en 500. Estos tests ya no
+  // pinean el defecto: fijan el comportamiento correcto.
+  it("body `null` en POST /api/visita ⇒ 400 de entrada, sin escritura ni stack (antes 500)", async () => {
     const handler = await cargarHandler();
     sembrarVisita();
     const res = http(
@@ -1463,33 +1467,14 @@ describe("P11 — POST /api/visita responde un acuse, y km pasa por UN solo pred
         body: "null",
       }),
     );
-    // Comportamiento ACTUAL, pineado para que un cambio se note:
-    expect(res.statusCode).toBe(500);
-    expect(cuerpo(res)).toEqual({ error: "error interno" });
-    // Lo que sí se sostiene: no filtra el stack ni escribe nada.
+    expect(res.statusCode).toBe(400);
+    expect(cuerpo(res)).toEqual({ error: "cuerpo JSON inválido" });
     expect(res.body).not.toContain("TypeError");
     expect(res.body).not.toContain("actualizarVisita");
     expect(g.escriturasTaller).toEqual([]);
   });
 
-  it.fails(
-    "[DEFECTO] lo que DEBERÍA pasar: un cuerpo que no es objeto es 400 de entrada — quita el .fails al arreglarlo",
-    async () => {
-      const handler = await cargarHandler();
-      sembrarVisita();
-      const res = http(
-        await handler({
-          rawPath: "/api/visita",
-          requestContext: { http: { method: "POST", sourceIp: IP } },
-          queryStringParameters: { t: acunar() },
-          body: "null",
-        }),
-      );
-      expect(res.statusCode).toBe(400);
-    },
-  );
-
-  it("los demás cuerpos que no son objeto NO revientan (solo `null` lo hace)", async () => {
+  it("ningún cuerpo que no sea objeto pasa: número, arreglo, texto y booleano ⇒ 400, jamás 500", async () => {
     const handler = await cargarHandler();
     sembrarVisita();
     for (const crudo of ["123", "[]", '"texto"', "true"]) {
@@ -1501,9 +1486,25 @@ describe("P11 — POST /api/visita responde un acuse, y km pasa por UN solo pred
           body: crudo,
         }),
       );
-      expect(res.statusCode, crudo).toBe(200);
-      expect(res.body, crudo).toBe(JSON.stringify({ ok: true }));
+      expect(res.statusCode, crudo).toBe(400);
+      expect(cuerpo(res), crudo).toEqual({ error: "cuerpo JSON inválido" });
     }
+    expect(g.escriturasTaller).toEqual([]);
+  });
+
+  it("un objeto vacío sigue siendo un cuerpo válido: POST /api/visita con `{}` ⇒ 200 { ok: true }", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    const res = http(
+      await handler({
+        rawPath: "/api/visita",
+        requestContext: { http: { method: "POST", sourceIp: IP } },
+        queryStringParameters: { t: acunar() },
+        body: "{}",
+      }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe(JSON.stringify({ ok: true }));
   });
 
   it("el COMPROMISO de fecha de salida se escribe UNA vez: el taller no borra su retraso", async () => {

@@ -159,11 +159,20 @@ function bitacora(
 /** JSON.parse defensivo: un cuerpo malformado es un error de ENTRADA, no un 500. */
 function parseBody(event: unknown): Record<string, unknown> {
   const raw = (event as { body?: unknown } | null | undefined)?.body;
+  let cuerpo: unknown;
   try {
-    return JSON.parse(typeof raw === "string" ? raw : "{}");
+    cuerpo = JSON.parse(typeof raw === "string" ? raw : "{}");
   } catch {
     throw new ErrorEntrada("cuerpo JSON inválido");
   }
+  // El arnés (R83) lo encontró EJECUTANDO: `JSON.parse("null")` es `null` y el
+  // tipo de retorno lo afirmaba en falso — `actualizarVisita` hacía `body.km` y
+  // reventaba en 500. Un cuerpo que no es un objeto JSON (null, número, arreglo,
+  // texto, booleano) es un error de ENTRADA, igual que el JSON malformado.
+  if (cuerpo === null || typeof cuerpo !== "object" || Array.isArray(cuerpo)) {
+    throw new ErrorEntrada("cuerpo JSON inválido");
+  }
+  return cuerpo as Record<string, unknown>;
 }
 
 /** Grupos de Cognito que NO son el tenant (amplify/auth/resource.ts) — todo lo
