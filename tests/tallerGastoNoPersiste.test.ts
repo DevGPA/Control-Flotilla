@@ -28,6 +28,12 @@ describe("numOrUndef — la hidratación preserva ausencia, nunca fabrica un 0",
 
   it("un 0 real (capturado a mano) se conserva como 0 — no se trata como ausente", () => {
     expect(numOrUndef(0)).toBe(0);
+    // D-M1: la forma STRING del cero es EL caso que distingue "cero real" de
+    // "ausente" — `datos` viaja como JSON y un `"0"` tecleado llega así. Si
+    // esta línea se pusiera en rojo, la app estaría fabricando ausencias a
+    // partir de ceros reales (el espejo exacto del bug que cerró esta función).
+    expect(numOrUndef("0")).toBe(0);
+    expect(numOrUndef("0.00")).toBe(0);
   });
 
   it("un número válido (incluida su forma string, como llega de JSON) se convierte", () => {

@@ -67,6 +67,14 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
     const bloqueGenerar = schema.slice(inicioGenerar, inicioRevocar);
     const bloqueRevocar = schema.slice(inicioRevocar, finDeBloque(schema, inicioRevocar));
 
+    // D-I1 — auto-verificación del bound: `revocarLigaTaller` es la ÚLTIMA
+    // declaración del esquema, así que sin un cierre propio el bloque corría
+    // hasta EOF y se tragaba la cadena `.authorization()` de nivel ESQUEMA
+    // (`allow.resource(...)`). Inerte hoy, honesto por accidente de posición.
+    // Mismo patrón que tests/tallerPartidaSchema.test.ts.
+    expect(bloqueRevocar).not.toContain("allow.resource(");
+    expect(bloqueRevocar).not.toContain("export type Schema");
+
     for (const [nombre, bloque] of [
       ["generarLigaTaller", bloqueGenerar],
       ["revocarLigaTaller", bloqueRevocar],

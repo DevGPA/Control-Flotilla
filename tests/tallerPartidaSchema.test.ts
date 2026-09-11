@@ -3,6 +3,27 @@ import { readFileSync } from "node:fs";
 
 const schema = readFileSync("amplify/data/resource.ts", "utf8");
 
+/**
+ * D-M2 — acota UN modelo hasta la SIGUIENTE declaración de nivel superior.
+ * Antes cada aserción de abajo corría contra el archivo COMPLETO: `"lista"` es
+ * un literal genérico y `km:`/`fsalidaEst:` aparecen en otros modelos, así que
+ * varias pruebas pasaban sin que el bloque de `TallerPartida` (o el de
+ * `Taller`) las cumpliera.
+ *
+ * L108 — `fin === -1` significa "no encontré el cierre"; el código anterior lo
+ * trataba como "toma todo hasta EOF", que es un falso-verde silencioso sobre
+ * autorización. Ahora se afirma que el bound EXISTE.
+ */
+function bloqueDeModelo(nombre: string): string {
+  const inicio = schema.indexOf(`${nombre}: a`);
+  expect(inicio, `no se encontró el modelo ${nombre}`).toBeGreaterThan(-1);
+  const resto = schema.slice(inicio);
+  // Patrón: salto de línea + 4 espacios + palabra + ": a" + salto/espacios + ".model("
+  const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
+  expect(fin, `el bound del bloque de ${nombre} no se encontró`).not.toBe(-1);
+  return resto.slice(0, fin);
+}
+
 describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
   it("declara el modelo TallerPartida", () => {
     expect(schema).toContain("TallerPartida: a");
@@ -12,7 +33,8 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
     expect(schema).toMatch(/identifier\(\["tenantId", ?"visitaKey", ?"partidaId"\]\)/);
   });
 
-  it("declara los seis estados de partida", () => {
+  it("declara los seis estados de partida — DENTRO del bloque de TallerPartida", () => {
+    const bloque = bloqueDeModelo("TallerPartida");
     for (const e of [
       "borrador",
       "propuesta",
@@ -21,36 +43,33 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
       "terminada",
       "cancelada",
     ]) {
-      expect(schema).toContain(`"${e}"`);
+      expect(bloque).toContain(`"${e}"`);
     }
   });
 
-  it("promueve a columnas los cuatro campos que escribe el proveedor", () => {
+  it("promueve a columnas los cuatro campos que escribe el proveedor — DENTRO de Taller", () => {
+    const bloque = bloqueDeModelo("Taller");
+    // Guarda del propio bound: el bloque de `Taller` NO puede alcanzar el de
+    // `TallerPartida`, que es el siguiente modelo de nivel superior.
+    expect(bloque).not.toContain("TallerPartida: a");
     for (const c of ["km:", "estadoOperativo:", "fsalidaEst:", "fsalidaEstCompromiso:"]) {
-      expect(schema).toContain(c);
+      expect(bloque).toContain(c);
     }
   });
 
-  it("promueve a columna el interruptor de revocación de la liga", () => {
-    expect(schema).toContain("ligaVersion:");
+  it("promueve a columna el interruptor de revocación de la liga — DENTRO de Taller", () => {
+    expect(bloqueDeModelo("Taller")).toContain("ligaVersion:");
   });
 
-  it("declara los cuatro estados operativos", () => {
+  it("declara los cuatro estados operativos — DENTRO de Taller", () => {
+    const bloque = bloqueDeModelo("Taller");
     for (const e of ["revisando", "reparando", "esperandoRefaccion", "lista"]) {
-      expect(schema).toContain(`"${e}"`);
+      expect(bloque).toContain(`"${e}"`);
     }
   });
 
   it("viewer no escribe partidas: la escritura es de operativo y admin", () => {
-    // Acota el bloque de TallerPartida: el siguiente modelo de nivel superior
-    // marca el fin de su declaración. Regresión: si la búsqueda fallara, esto
-    // debería revisarse; si el bound fuera incorrecto, veremos strings que NO
-    // pertenecen a TallerPartida.
-    const inicio = schema.indexOf("TallerPartida: a");
-    const resto = schema.slice(inicio);
-    // Patrón: salto de línea + 4 espacios + palabra + ": a" + salto/espacios + ".model("
-    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
-    const bloque = fin === -1 ? resto : resto.slice(0, fin);
+    const bloque = bloqueDeModelo("TallerPartida");
 
     // Prueba que el bound funciona: el bloque NO debe contener "adminCreateUser",
     // que es un modelo posterior (Custom operations del módulo de Administración).
@@ -67,18 +86,11 @@ describe("schema — TallerPartida y las columnas nuevas de Taller", () => {
 
   // R92 — dos huecos de integridad sobre "la única copia del dinero".
   it("`precio` es REQUERIDO — sin él, autorizar firmaba $0 en silencio (R92)", () => {
-    const inicio = schema.indexOf("TallerPartida: a");
-    const resto = schema.slice(inicio);
-    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
-    const bloque = fin === -1 ? resto : resto.slice(0, fin);
-    expect(bloque).toMatch(/precio:\s*a\.float\(\)\.required\(\)/);
+    expect(bloqueDeModelo("TallerPartida")).toMatch(/precio:\s*a\.float\(\)\.required\(\)/);
   });
 
   it("`operativo` NO tiene `delete` — el estándar es anulación, nunca borrado (R92)", () => {
-    const inicio = schema.indexOf("TallerPartida: a");
-    const resto = schema.slice(inicio);
-    const fin = resto.search(/\n {4}\w+: a\n?\s*\.model\(/);
-    const bloque = fin === -1 ? resto : resto.slice(0, fin);
+    const bloque = bloqueDeModelo("TallerPartida");
     expect(bloque).toContain('allow.group("operativo").to(["create", "update"])');
     expect(bloque).not.toContain('allow.group("operativo").to(["create", "update", "delete"])');
   });

@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { filasBandeja } from "../src/api/tallerPartidas";
+import { filasBandeja, visitaKeyDe } from "../src/api/tallerPartidas";
 import type { Partida } from "../src/taller/partidas";
+
+// D-I3 — la llave se DERIVA del entry (visitaKeyDe → tallerCloudKey →
+// placaVigente), NUNCA se teclea. Con el literal, el día que "JV98698" entrara
+// a PLACAS_SUSTITUIDAS el `g.get(vk)` daría `undefined` ⇒ `[]`, que es justo lo
+// que el primer test espera: probaría "no hay partidas" creyendo probar "omite
+// las autorizadas". Es la trampa que este proceso ya cerró dos veces.
+const VK = visitaKeyDe({ id: "tl_1", plate: "JV98698", fentrada: "2026-09-01" });
+const VK_OTRA = visitaKeyDe({ id: "tl_2", plate: "JT44219", fentrada: "2026-08-28" });
 
 const P = (o: Partial<Partida>): Partida => ({
   partidaId: "p",
-  visitaKey: "JV98698|2026-09-01",
+  visitaKey: VK,
   descripcion: "x",
   estado: "propuesta",
   fotos: [],
@@ -26,16 +34,14 @@ const entry = {
 
 describe("filasBandeja — solo visitas que esperan firma", () => {
   it("omite las visitas sin partidas propuestas", () => {
-    const g = new Map([
-      ["JV98698|2026-09-01", [P({ estado: "autorizada", precioAutorizado: 100 })]],
-    ]);
+    const g = new Map([[VK, [P({ estado: "autorizada", precioAutorizado: 100 })]]]);
     expect(filasBandeja([entry], g, new Map())).toEqual([]);
   });
 
   it("arma la fila con los tres números que hacen la firma una decisión", () => {
     const g = new Map([
       [
-        "JV98698|2026-09-01",
+        VK,
         [
           P({ partidaId: "a", estado: "propuesta", precio: 1850, tipo: "refaccion" }),
           P({
@@ -62,7 +68,7 @@ describe("filasBandeja — solo visitas que esperan firma", () => {
   });
 
   it("sin historial anual, la fila existe con ceros y no truena", () => {
-    const g = new Map([["JV98698|2026-09-01", [P({ precio: 500 })]]]);
+    const g = new Map([[VK, [P({ precio: 500 })]]]);
     const fila = filasBandeja([entry], g, new Map())[0]!;
     expect(fila.gastoAnual).toBe(0);
     expect(fila.visitasAnual).toBe(0);
@@ -71,11 +77,8 @@ describe("filasBandeja — solo visitas que esperan firma", () => {
   it("ordena primero lo que lleva más tiempo esperando firma", () => {
     const otra = { ...entry, plate: "JT44219", eco: "17", fentrada: "2026-08-28" };
     const g = new Map([
-      ["JV98698|2026-09-01", [P({ propuestoEn: "2026-09-05T10:00:00Z" })]],
-      [
-        "JT44219|2026-08-28",
-        [P({ visitaKey: "JT44219|2026-08-28", propuestoEn: "2026-09-02T10:00:00Z" })],
-      ],
+      [VK, [P({ propuestoEn: "2026-09-05T10:00:00Z" })]],
+      [VK_OTRA, [P({ visitaKey: VK_OTRA, propuestoEn: "2026-09-02T10:00:00Z" })]],
     ]);
     expect(filasBandeja([entry, otra], g, new Map()).map((f) => f.eco)).toEqual(["17", "42"]);
   });

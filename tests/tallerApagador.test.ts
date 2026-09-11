@@ -169,7 +169,11 @@ describe("tri-estado (B-C2) — 'el switch está apagado' no puede disfrazarse d
   });
 });
 
-describe("R62 — con el switch apagado, la derivación de partidas no aplica en ningún lado", () => {
+// D-C2: RETITULADO. Este describe NO prueba "ningún lado": prueba el CONTRATO
+// del seam (uploadTallerToCloud + sinGastoSiTienePartidas) contra un resolver
+// ESPEJO del de cloudWire. Los cuatro resolvers reales se clavan aparte, más
+// abajo ("los tres llamadores REALES de uploadTallerToCloud").
+describe("R62 — el contrato del seam: un resolver espejo + uploadTallerToCloud", () => {
   const entryConPartidas: LegacyTallerEntry = {
     id: "tl_x",
     plate: "ABC-123",
@@ -393,5 +397,86 @@ describe("hydrateFromCloud — la lista de hydrateSignature() es completa (BC-C1
     expect(src).not.toContain("fetchPartidas(");
     const idxFirma = src.indexOf("const snapshotSig = hydrateSignature([");
     expect(src.indexOf("listTallerPartidas(tenantId)")).toBeLessThan(idxFirma);
+  });
+});
+
+// ── D-C2 — los llamadores REALES de uploadTallerToCloud, clavados ───────────
+// El agujero que cerró el área D: el cableado del dinero no tenía UN solo test.
+// `partidasDeEntryComoCloudWire` (arriba) reimplementa el gate, así que la
+// propiedad se probaba de verdad para 1 de 4 resolvers. Quitar el 3er argumento
+// en `cloudWire.ts` dejaba 1904 tests verdes mientras una visita cerrada con
+// partidas firmadas volvía a subir `gasto: 0` encima del dinero derivado.
+//
+// Agravante verificado: `window.__tallerPartidas` se asigna SIN condicionar al
+// switch, así que si `cloudWire` pierde su guard, el recorte se activa con el
+// esquema APAGADO. Por eso se clava también el guard de `src/main.ts`.
+describe("los tres llamadores REALES de uploadTallerToCloud pasan su resolver (D-C2)", () => {
+  const wire = readFileSync(join(__dirname, "..", "src", "api", "cloudWire.ts"), "utf8");
+  const hydrate = readFileSync(join(__dirname, "..", "src", "api", "cloudHydrate.ts"), "utf8");
+  const main = readFileSync(join(__dirname, "..", "src", "main.ts"), "utf8");
+
+  /**
+   * Las llamadas (no la definición ni el import) con TODOS sus argumentos.
+   * Balancea paréntesis: la llamada de la migración de huérfanos es multilínea
+   * y con paréntesis anidados (`orphans.map((e) => {...})`), así que un
+   * `[^;]*?` no-greedy la cortaría en el primer `)` y el test pasaría en falso.
+   */
+  function llamadas(src: string): string[] {
+    const out: string[] = [];
+    const marca = "uploadTallerToCloud(";
+    let desde = 0;
+    for (;;) {
+      const i = src.indexOf(marca, desde);
+      if (i === -1) break;
+      desde = i + marca.length;
+      let nivel = 1;
+      let j = desde;
+      while (j < src.length && nivel > 0) {
+        if (src[j] === "(") nivel++;
+        else if (src[j] === ")") nivel--;
+        j++;
+      }
+      out.push(src.slice(desde, j - 1));
+    }
+    // La DEFINICIÓN (`export async function uploadTallerToCloud(`) no es una llamada.
+    return out.filter((args) => !args.includes("entries: LegacyTallerEntry[]"));
+  }
+
+  it("el extractor funciona (guarda del propio test): encuentra la definición y la descarta", () => {
+    const fuente = readFileSync(join(__dirname, "..", "src", "api", "batchUpload.ts"), "utf8");
+    expect(fuente).toContain("export async function uploadTallerToCloud(");
+    expect(llamadas(fuente)).toHaveLength(0);
+  });
+
+  it("cloudWire.ts tiene EXACTAMENTE 2 llamadas y las 2 pasan partidasDeEntry", () => {
+    const args = llamadas(wire);
+    expect(args).toHaveLength(2);
+    for (const a of args) expect(a).toContain("partidasDeEntry");
+  });
+
+  it("cloudHydrate.ts (migración de huérfanos) pasa partidasDeOrfano", () => {
+    const args = llamadas(hydrate);
+    expect(args).toHaveLength(1);
+    expect(args[0]).toContain("partidasDeOrfano");
+  });
+
+  it("el resolver de cloudWire consulta el switch — sin él, el recorte aplicaría APAGADO", () => {
+    const i = wire.indexOf("const partidasDeEntry =");
+    const decl = wire.slice(i, wire.indexOf(";", i));
+    expect(decl).toContain("window.__tallerHibrido");
+    expect(decl).toContain("undefined");
+  });
+
+  it("el resolver de huérfanos consulta el MISMO switch", () => {
+    const i = hydrate.indexOf("const partidasDeOrfano =");
+    const decl = hydrate.slice(i, hydrate.indexOf(";", i));
+    expect(decl).toContain("window.__tallerHibrido");
+    expect(decl).toContain("undefined");
+  });
+
+  it("el shim de Historial en main.ts lleva su guard del switch", () => {
+    const i = main.indexOf("function partidasDeVisita(");
+    const cuerpo = main.slice(i, main.indexOf("\n}", i));
+    expect(cuerpo).toContain("if (!window.__tallerHibrido) return undefined;");
   });
 });

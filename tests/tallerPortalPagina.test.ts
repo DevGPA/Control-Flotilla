@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { escaparHtml, paginaProveedor } from "../amplify/functions/taller-portal/pagina";
 import {
+  LARGO_DESCRIPCION,
   MIMES_FOTO,
   PRECIO_MAX,
   TOPE_BYTES_FOTO,
@@ -100,17 +101,41 @@ describe("paginaProveedor", () => {
       expect(btn?.[0]).toMatch(/\bdisabled\b/);
     });
 
-    it("los topes que ve el proveedor son los mismos que valida el servidor (./validacion)", () => {
-      // Se compara contra las constantes importadas, no contra literales: si
-      // validacion.ts cambia un tope, este test debe seguir en verde sin
-      // tocarlo — y si pagina.ts se desincroniza de esas constantes, debe
-      // ponerse en rojo.
-      expect(p).toContain(String(TOPE_FOTOS_PARTIDA));
-      expect(p).toContain(String(TOPE_BYTES_FOTO));
-      expect(p).toContain(String(TOPE_PARTIDAS_VISITA));
-      for (const mime of MIMES_FOTO) {
-        expect(p).toContain(mime);
-      }
+    // D-C1 — este test era TAUTOLÓGICO e INERTE, en los dos sentidos:
+    //  (a) `pagina.ts` IMPORTA los topes de `./validacion`, así que la
+    //      desincronía que decía guardar es imposible por construcción;
+    //  (b) `toContain(String(TOPE_FOTOS_PARTIDA))` = `toContain("6")` y
+    //      `toContain("60")` son SUBCADENAS de "10485760" (el tope de bytes que
+    //      la página sí imprime) ⇒ pasaban aunque la página no mencionara ni 6
+    //      ni 60 por su cuenta.
+    // Y el ÚNICO literal que SÍ puede desincronizarse — el `maxlength="500"`
+    // escrito a mano en el <textarea> — no se afirmaba en ningún lado.
+    it("el maxlength del <textarea> es LARGO_DESCRIPCION — el único literal que puede desincronizarse", () => {
+      expect(p).toContain(`maxlength="${LARGO_DESCRIPCION}"`);
+    });
+
+    it("los topes viajan por data-* con el valor EXACTO de ./validacion, atributo completo", () => {
+      // Atributos completos, no subcadenas sueltas: así "6" no puede pasar por
+      // ser parte de "10485760".
+      expect(p).toContain(`data-tope-fotos="${TOPE_FOTOS_PARTIDA}"`);
+      expect(p).toContain(`data-tope-bytes="${TOPE_BYTES_FOTO}"`);
+      expect(p).toContain(`data-tope-partidas="${TOPE_PARTIDAS_VISITA}"`);
+    });
+
+    it("la lista de MIMES que valida el cliente es EXACTAMENTE la del servidor", () => {
+      // El atributo COMPLETO: la página construye este data-* con
+      // MIMES_FOTO.join(","), y es de ahí que el script saca su validación.
+      expect(p).toContain(`data-mimes="${MIMES_FOTO.join(",")}"`);
+    });
+
+    it('el `accept` del <input file> sigue siendo el ancho "image/*" — a propósito, y ambos lados re-chequean', () => {
+      // Diferido con ruling: `accept` es una SUGERENCIA del selector de archivos
+      // del celular (varios Android ignoran listas largas de MIME y muestran un
+      // picker vacío). El filtro REAL lo aplican `validarArchivo` en el cliente
+      // —con data-mimes, afirmado arriba— y `validarPartidaEntrante`/el mime
+      // firmado en el servidor. Se fija el valor para que un cambio sea
+      // deliberado, no accidental.
+      expect(p).toContain('accept="image/*"');
     });
   });
 });
