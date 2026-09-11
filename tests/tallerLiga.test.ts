@@ -58,7 +58,12 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
   // R84 — SOLO admin. El spec §7.7 (decisión 20) es literal: "el grupo `viewer`
   // no puede, y `operativo` tampoco por sí solo". El plan de T11 lo contradijo
   // con una nota de deuda técnica; el ruling del controller cierra fail-closed.
-  it("SOLO admin puede emitir/revocar — AISLADO por mutación; ni operativo, ni viewer, ni auth genérica (R84)", () => {
+  //
+  // Task 14 — el conjunto autorizado pasa a ser EXACTAMENTE {admin, riesgos}:
+  // `riesgos` es la credencial adicional de Administración de Riesgos (no un
+  // rol, no un admin). La prueba afirma el conjunto exacto, no "contiene
+  // admin": así un tercer grupo colado en la lista la pone en rojo.
+  it("SOLO admin y riesgos emiten/revocan — conjunto EXACTO, AISLADO por mutación; ni operativo, ni viewer, ni auth genérica (R84 + Task 14)", () => {
     const inicioGenerar = schema.indexOf("generarLigaTaller: a");
     const inicioRevocar = schema.indexOf("revocarLigaTaller: a");
     expect(inicioGenerar).toBeGreaterThan(-1);
@@ -79,32 +84,72 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
       ["generarLigaTaller", bloqueGenerar],
       ["revocarLigaTaller", bloqueRevocar],
     ] as const) {
-      expect(bloque, `${nombre}: falta allow.group("admin")`).toContain('allow.group("admin")');
+      // La línea `.authorization(...)` REAL de esta mutación, no del archivo.
+      const auth = bloque.match(/\.authorization\(\(allow\) => \[([^\]]*)\]\)/);
+      expect(auth, `${nombre}: no se encontró su .authorization()`).not.toBeNull();
+      const grupos = [...(auth?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+      expect(
+        grupos,
+        `${nombre}: el conjunto autorizado debe ser exactamente admin+riesgos`,
+      ).toEqual(["admin", "riesgos"]);
       expect(bloque, `${nombre}: "operativo" NO puede acuñar ligas (R84)`).not.toContain(
-        'allow.group("operativo")',
+        '"operativo"',
       );
-      expect(bloque, `${nombre}: NO debe permitir "viewer"`).not.toContain('allow.group("viewer")');
+      expect(bloque, `${nombre}: NO debe permitir "viewer"`).not.toContain('"viewer"');
       expect(bloque, `${nombre}: NO debe degradar a allow.authenticated()`).not.toContain(
         "allow.authenticated",
       );
     }
   });
 
+  // Task 14 — el grupo tiene que EXISTIR en el user pool, y con el orden
+  // intacto: la precedencia de grupos de Cognito depende del orden declarado,
+  // así que `riesgos` se AÑADE al final, nunca se reordena la lista.
+  it("el user pool declara exactamente admin, operativo, viewer y riesgos — en ese orden (Task 14)", () => {
+    const authSrc = readFileSync("amplify/auth/resource.ts", "utf8");
+    const m = authSrc.match(/groups:\s*\[([^\]]*)\]/);
+    expect(m, "no se encontró la lista `groups:` en amplify/auth/resource.ts").not.toBeNull();
+    const grupos = [...(m?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((g) => g[1]);
+    expect(grupos).toEqual(["admin", "operativo", "viewer", "riesgos"]);
+  });
+
   // R91 — el chequeo de ROL también en el Lambda: "la restricción se aplica en
   // la UI Y en el Lambda" (spec §7.7). Hasta la ola, la rama del resolver solo
   // exigía identidad y tenant; el único muro real era la lista de
   // `.authorization()` del esquema.
-  it("el Lambda repite el chequeo de rol sobre cognito:groups — admin, ANTES de tocar la base (R91)", () => {
+  it("el Lambda repite el chequeo de grupo sobre cognito:groups — admin O riesgos y nada más, ANTES de tocar la base (R91 + Task 14)", () => {
     const inicioResolver = handlerSrc.indexOf("event?.info?.fieldName");
     const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioResolver);
     const bloque = handlerSrc.slice(inicioResolver, inicioLlamadaEmitir);
-    expect(bloque).toContain('grupos.includes("admin")');
+    // Los DOS grupos admitidos, en una condición que exige AMBAS negaciones
+    // (fail-closed: sin grupos, `includes` es false por los dos lados y se
+    // rechaza). Un `||` aquí abriría a cualquiera con un solo grupo.
+    expect(bloque).toMatch(/!grupos\.includes\("admin"\)\s*&&\s*!grupos\.includes\("riesgos"\)/);
     expect(bloque).toContain("no autorizado");
+    // Y NINGÚN otro grupo cuela: ni operativo ni viewer aparecen en la rama.
+    expect(bloque).not.toContain('grupos.includes("operativo")');
+    expect(bloque).not.toContain('grupos.includes("viewer")');
     // `grupos` sale de identidadDeResolver, que sí lee la claim real.
     const iId = handlerSrc.indexOf("function identidadDeResolver(");
     const cuerpoId = handlerSrc.slice(iId, handlerSrc.indexOf("\n}", iId));
     expect(cuerpoId).toContain('claims["cognito:groups"]');
     expect(cuerpoId).toContain("grupos");
+  });
+
+  // Task 14, LA TRAMPA — el tenant se deriva por descarte ("el grupo que no es
+  // un rol"). Si `riesgos` faltara en ROLES_TALLER, a la persona de Riesgos se
+  // le derivaría `tenantId = "riesgos"`: un tenant fantasma donde no existe
+  // ninguna visita. La liga fallaría (o peor, tocaría otro espacio de datos).
+  it("ROLES_TALLER incluye riesgos — la credencial NUNCA se confunde con el tenant (Task 14)", () => {
+    const m = handlerSrc.match(/const ROLES_TALLER = new Set\(\[([^\]]*)\]\)/);
+    expect(m, "no se encontró ROLES_TALLER").not.toBeNull();
+    const grupos = [...(m?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((g) => g[1]);
+    expect(grupos).toContain("riesgos");
+    expect(grupos).toEqual(["admin", "operativo", "viewer", "riesgos"]);
+    // Y sigue siendo el conjunto que usa la derivación del tenant.
+    const iId = handlerSrc.indexOf("function identidadDeResolver(");
+    const cuerpoId = handlerSrc.slice(iId, handlerSrc.indexOf("\n}", iId));
+    expect(cuerpoId).toContain("ROLES_TALLER.has(g)");
   });
 
   // R90 (A-9) — apagar `AppConfig` solo silenciaba la APP: toda liga repartida

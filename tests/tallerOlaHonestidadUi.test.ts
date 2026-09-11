@@ -388,8 +388,52 @@ describe("expediente y modal — honestidad de la UI (C-I2, C-I5, C-I6, B-C4)", 
     expect(cuerpo).toContain("el.readOnly = false");
   });
 
-  it("B-I5: el estado de la liga solo se consulta con el esquema prendido y siendo admin", () => {
-    expect(html).toContain("window.__tallerHibrido && esAdmin() && window.__tallerLiga");
+  it("B-I5: el estado de la liga solo se consulta con el esquema prendido y pudiendo emitirla (Task 14)", () => {
+    expect(html).toContain("window.__tallerHibrido && puedeEmitirLiga() && window.__tallerLiga");
+    // El gate viejo (solo admin) ya no existe: Riesgos no es admin y se habría
+    // quedado sin el botón "Revocar liga" que su propia credencial le permite.
+    expect(html).not.toContain("window.__tallerHibrido && esAdmin() && window.__tallerLiga");
+  });
+
+  // ── Task 14 — la credencial `riesgos` en la capa de UI ────────────────────
+  describe("Task 14: los botones de liga cuelgan de needs-liga, no de needs-admin", () => {
+    it("puedeEmitirLiga() es exactamente admin || riesgos", () => {
+      const i = html.indexOf("function puedeEmitirLiga(");
+      expect(i).toBeGreaterThan(-1);
+      const cuerpo = html.slice(i, html.indexOf("\n", i));
+      expect(cuerpo).toContain('g.includes("admin")');
+      expect(cuerpo).toContain('g.includes("riesgos")');
+      expect(cuerpo).toContain("sessionGroups()");
+      // Ni escritura genérica ni viewer: la credencial no es "poder escribir".
+      expect(cuerpo).not.toContain('g.includes("operativo")');
+      expect(cuerpo).not.toContain('g.includes("viewer")');
+    });
+
+    it("los dos botones llevan needs-liga + needs-hibrido y NO needs-admin", () => {
+      for (const id of ["btn-liga-copiar", "btn-liga-revocar"]) {
+        const i = html.indexOf(`id="${id}"`);
+        expect(i, `no existe el botón ${id}`).toBeGreaterThan(-1);
+        // La etiqueta <button ...> completa que contiene ese id.
+        const inicioTag = html.lastIndexOf("<button", i);
+        const tag = html.slice(inicioTag, html.indexOf(">", i) + 1);
+        expect(tag, `${id}: falta needs-liga`).toContain("needs-liga");
+        expect(tag, `${id}: falta needs-hibrido`).toContain("needs-hibrido");
+        expect(tag, `${id}: needs-admin ya no aplica (Riesgos no es admin)`).not.toContain(
+          "needs-admin",
+        );
+      }
+    });
+
+    it("la regla CSS de .needs-liga y el toggle de .puede-liga existen (sin ellos el gate no oculta nada)", () => {
+      expect(html).toContain("body:not(.puede-liga) .needs-liga{display:none !important}");
+      expect(html).toContain('document.body.classList.toggle("puede-liga", puedeEmitirLiga())');
+    });
+
+    it("el gate de admin (.needs-admin / is-admin) sigue intacto para anulaciones y paneles", () => {
+      expect(html).toContain("body:not(.is-admin) .needs-admin{display:none !important}");
+      expect(html).toContain('document.body.classList.toggle("is-admin", esAdmin())');
+      expect(html).toContain('function esAdmin(){ return sessionGroups().includes("admin"); }');
+    });
   });
 
   it("minor: el toast de 'Liga copiada' dice cuándo vence", () => {

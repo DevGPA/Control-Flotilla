@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-TZh3huV0dUVyQ4obsGkpo+Fga6z8HUlUAimaytMpSS8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bn3iSZrV4iR3rjirR6sm7/WI7zUK72SV86T1VqPb+ZA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1400,14 +1400,16 @@
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
       <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
            ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
-           R84: needs-ADMIN, no needs-write. El spec §7.7 (decisión 20) es
-           literal — "el grupo viewer no puede, y operativo tampoco por sí
-           solo… la restricción se aplica en la UI Y en el Lambda". El permiso
-           real lo aplican las dos mutaciones de amplify/data/resource.ts
-           (admin únicamente) y el chequeo de cognito:groups del Lambda; esto
-           es la capa de UI de esa misma regla. -->
-      <button class="tl-exp-btn needs-admin needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
-      <button class="tl-exp-btn needs-admin needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
+           R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
+           §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
+           operativo tampoco por sí solo… la restricción se aplica en la UI Y
+           en el Lambda". needs-liga = grupo admin O grupo riesgos (la
+           credencial adicional de Administración de Riesgos, que NO es admin).
+           El permiso real lo aplican las dos mutaciones de
+           amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
+           esto es la capa de UI de esa misma regla. -->
+      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
+      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
       <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
@@ -2658,7 +2660,14 @@ function isViewer(){ const g=sessionGroups(); return g.includes("viewer") && !g.
 // Controles EXCLUSIVOS de admin (p.ej. anular registros). El enforcement real es
 // server-side (AppSync exige grupo admin); esto solo muestra/oculta la UI.
 function esAdmin(){ return sessionGroups().includes("admin"); }
+// Task 14 — CREDENCIAL, no rol: 'riesgos' se suma al rol de la persona
+// (normalmente 'operativo') y habilita EXACTAMENTE emitir y revocar la liga del
+// proveedor de Taller (spec §7.7, decisión 20). No abre ningún panel de admin.
+// Igual que esAdmin(), esto es solo UI: el permiso real lo aplican las dos
+// mutaciones de AppSync y el chequeo de cognito:groups del Lambda del portal.
+function puedeEmitirLiga(){ const g=sessionGroups(); return g.includes("admin")||g.includes("riesgos"); }
 window.canWrite=canWrite; window.isViewer=isViewer; window.esAdmin=esAdmin;
+window.puedeEmitirLiga=puedeEmitirLiga;
 // Sucursal a la que queda FIJADO el usuario (null = ve todas): admin, sin sucursal,
 // o sucursal "Todas"/"all" → sin bloqueo.
 function lockedSucursal(){
@@ -2757,7 +2766,8 @@ function applyRolePermissions(){
   if(!document.getElementById("ro-style")){
     const st=document.createElement("style"); st.id="ro-style";
     st.textContent="body.ro-viewer .needs-write{display:none !important}\n"
-      +"body:not(.is-admin) .needs-admin{display:none !important}";
+      +"body:not(.is-admin) .needs-admin{display:none !important}\n"
+      +"body:not(.puede-liga) .needs-liga{display:none !important}";
     document.head.appendChild(st);
   }
   // La regla de .needs-hibrido se inyecta AQUÍ, no solo desde renderTaller():
@@ -2775,6 +2785,8 @@ function applyRolePermissions(){
   document.body.classList.toggle("ro-viewer", ro);
   // Controles exclusivos de admin (.needs-admin): visibles solo con grupo admin.
   document.body.classList.toggle("is-admin", esAdmin());
+  // Liga del proveedor (.needs-liga, Task 14): admin O la credencial 'riesgos'.
+  document.body.classList.toggle("puede-liga", puedeEmitirLiga());
   const host=document.getElementById("user-email");
   let badge=document.getElementById("ro-badge");
   if(ro && host && host.parentElement && !badge){
@@ -10019,10 +10031,11 @@ function openTallerModal(id){
     if(btnCopiarLiga) btnCopiarLiga.style.display = ligaOfrecible ? "" : "none";
     if(btnRevocarLiga){
       btnRevocarLiga.style.display = "none";
-      // B-I5: solo se consulta si el esquema está PRENDIDO y quien mira es
-      // admin (tras R84, el único que puede emitir o revocar). Antes esta
-      // lectura pasiva corría en CADA apertura del modal para todo el mundo.
-      if(ligaOfrecible && window.__tallerHibrido && esAdmin() && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
+      // B-I5: solo se consulta si el esquema está PRENDIDO y quien mira puede
+      // emitir o revocar — tras R84 y Task 14, admin o la credencial 'riesgos'.
+      // Antes esta lectura pasiva corría en CADA apertura del modal para todo
+      // el mundo.
+      if(ligaOfrecible && window.__tallerHibrido && puedeEmitirLiga() && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
         const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
         window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
           if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";

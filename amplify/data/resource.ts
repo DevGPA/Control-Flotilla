@@ -666,32 +666,37 @@ const schema = a
     // que adminCreateUser de arriba: AppSync valida el grupo ANTES de invocar
     // la Lambda.
     //
-    // R84 — SOLO `admin`. El spec §7.7 (decisión 20) es literal: "El grupo
-    // `viewer` no puede, y `operativo` tampoco por sí solo… la restricción se
-    // aplica en la UI Y en el Lambda". El plan de T11 lo contradijo con una
-    // nota de deuda técnica; se cierra fail-closed. El Lambda repite el
-    // chequeo sobre `cognito:groups` (R91, taller-portal/handler.ts) y la UI
-    // usa `needs-admin`. Si Administración de Riesgos no es `admin`, la
-    // respuesta es promoverlos o crear el grupo `riesgos` — nunca dejar
-    // `operativo` abierto "mientras".
+    // R84 — SOLO `admin` y `riesgos`. El spec §7.7 (decisión 20) es literal:
+    // "El grupo `viewer` no puede, y `operativo` tampoco por sí solo… la
+    // restricción se aplica en la UI Y en el Lambda". El plan de T11 lo
+    // contradijo con una nota de deuda técnica; se cierra fail-closed.
+    //
+    // Task 14 — `riesgos` es la salida que esa misma nota anticipaba ("crear el
+    // grupo `riesgos`"), y NO promover a Administración de Riesgos a `admin`
+    // (eso le abriría todos los paneles de administración). Es una CREDENCIAL
+    // ADICIONAL: la persona conserva su rol `operativo` y suma `riesgos`. La
+    // credencial habilita exactamente estas dos mutaciones y nada más. El
+    // Lambda repite el chequeo sobre `cognito:groups` (R91,
+    // taller-portal/handler.ts) y la UI usa `needs-liga`.
     generarLigaTaller: a
       .mutation()
       .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
       .returns(a.json())
       .handler(a.handler.function(tallerPortal))
-      .authorization((allow) => [allow.group("admin")]),
+      .authorization((allow) => [allow.groups(["admin", "riesgos"])]),
 
     /** Sube `ligaVersion` (columna real de Taller) — el único interruptor de
      *  revocación (ver ligaRevocada en taller-portal/validacion.ts): un token
      *  firmado con la versión anterior deja de servir de inmediato, sin
-     *  necesidad de guardar el token mismo en la base. SOLO `admin` (R84),
-     *  mismo criterio que la emisión. */
+     *  necesidad de guardar el token mismo en la base. SOLO `admin` y `riesgos`
+     *  (R84 + Task 14), mismo criterio que la emisión: quien puede abrir la
+     *  puerta tiene que poder cerrarla. */
     revocarLigaTaller: a
       .mutation()
       .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
       .returns(a.json())
       .handler(a.handler.function(tallerPortal))
-      .authorization((allow) => [allow.group("admin")]),
+      .authorization((allow) => [allow.groups(["admin", "riesgos"])]),
   })
   // Acceso IAM para Lambdas del backend. El grant resource es a nivel schema
   // (la API no lo soporta por-modelo). El webhook MoreApp fue retirado 2026-08-20

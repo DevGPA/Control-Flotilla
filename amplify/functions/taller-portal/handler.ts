@@ -166,11 +166,19 @@ function parseBody(event: unknown): Record<string, unknown> {
   }
 }
 
-/** Grupos de ROL de Cognito (amplify/auth/resource.ts) — todo lo demás en
- *  `cognito:groups` es el tenant del usuario. Local a este archivo (no se
- *  importa de admin-users/handler.ts: cada Lambda es su propio módulo, sin
- *  acoplarse a los internos de otra función). */
-const ROLES_TALLER = new Set(["admin", "operativo", "viewer"]);
+/** Grupos de Cognito que NO son el tenant (amplify/auth/resource.ts) — todo lo
+ *  demás en `cognito:groups` es el tenant del usuario. Local a este archivo (no
+ *  se importa de admin-users/handler.ts: cada Lambda es su propio módulo, sin
+ *  acoplarse a los internos de otra función).
+ *
+ *  Task 14 — `riesgos` entra aquí aunque NO sea un rol sino una credencial
+ *  adicional: lo que esta lista significa de verdad es "grupos que jamás son el
+ *  tenant". Omitirlo haría que a la persona de Riesgos se le derivara
+ *  `tenantId = "riesgos"` (el primer grupo suyo que no fuera rol), y todas sus
+ *  lecturas/escrituras caerían en un tenant fantasma: la emisión de liga
+ *  fallaría con "no autorizado" por tenant vacío o, peor, tocaría filas de otro
+ *  espacio. Es la trampa de este cambio. */
+const ROLES_TALLER = new Set(["admin", "operativo", "viewer", "riesgos"]);
 
 /**
  * El tenant y quién invoca, tomados del `identity`/`claims` de AppSync que ya
@@ -235,7 +243,13 @@ export const handler = async (event: any) => {
       // real era la lista de `.authorization()` del esquema: un solo commit que
       // la aflojara (o un segundo resolver que reusara esta Lambda) volvía a
       // abrir la acuñación de ligas a `operativo`. Fail-closed y explícito.
-      if (!grupos.includes("admin")) return { error: "no autorizado" };
+      //
+      // Task 14 — `riesgos` es una CREDENCIAL ADICIONAL (no un rol): la persona
+      // de Administración de Riesgos la tiene ADEMÁS de `operativo`, y habilita
+      // exactamente esto. Sigue siendo fail-closed: sin grupos, se rechaza.
+      if (!grupos.includes("admin") && !grupos.includes("riesgos")) {
+        return { error: "no autorizado" };
+      }
       // Una liga sin autor identificable viola la decisión 20 del spec ("una
       // liga filtrada tiene un responsable identificable"). `quien ===
       // "desconocido"` es prácticamente inalcanzable desde un resolver de

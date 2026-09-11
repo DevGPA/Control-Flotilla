@@ -34,92 +34,93 @@ la visita deja de ser un número tecleado: es la suma de lo que ella firmó.
 
 ## 3. Decisiones tomadas (con quién las tomó)
 
-| # | Decisión | Elegido |
-|---|---|---|
-| 1 | Acceso del proveedor | **Liga firmada sin cuenta, por visita** (no cuenta Cognito, no MoreApp) |
-| 2 | Granularidad de la autorización | **Partida por partida** |
-| 3 | Alcance de la liga | **Todo el ciclo**: cotiza → ve lo autorizado → sube evidencia final y factura |
-| 4 | Quién firma | **Solo Administración de Riesgos** (un nivel, sin umbral de monto) |
-| 5 | Entrega de la liga | **Copiar y pegar en WhatsApp** (sin correo transaccional) |
-| 6 | Hallazgos posteriores | **La liga sigue viva**: puede agregar partidas en cualquier momento |
-| 7 | Catálogo de proveedores | **Texto libre por ahora**, acumulando datos para un catálogo en fase 2 |
-| 8 | Dónde vive el formulario | **Lambda dedicado con Function URL** (no acceso guest al identity pool) |
-| 9 | Dónde viven las partidas | **Registros propios** (modelo nuevo), no dentro del blob `datos` |
-| 10 | Pantalla del proveedor | **Lista viva** con "Agregar hallazgo" que abre la cámara de una |
-| 11 | Pantalla de Riesgos | **Bandeja de firmas** agrupada por unidad, dentro de la pestaña Taller |
+| #   | Decisión                        | Elegido                                                                       |
+| --- | ------------------------------- | ----------------------------------------------------------------------------- |
+| 1   | Acceso del proveedor            | **Liga firmada sin cuenta, por visita** (no cuenta Cognito, no MoreApp)       |
+| 2   | Granularidad de la autorización | **Partida por partida**                                                       |
+| 3   | Alcance de la liga              | **Todo el ciclo**: cotiza → ve lo autorizado → sube evidencia final y factura |
+| 4   | Quién firma                     | **Solo Administración de Riesgos** (un nivel, sin umbral de monto)            |
+| 5   | Entrega de la liga              | **Copiar y pegar en WhatsApp** (sin correo transaccional)                     |
+| 6   | Hallazgos posteriores           | **La liga sigue viva**: puede agregar partidas en cualquier momento           |
+| 7   | Catálogo de proveedores         | **Texto libre por ahora**, acumulando datos para un catálogo en fase 2        |
+| 8   | Dónde vive el formulario        | **Lambda dedicado con Function URL** (no acceso guest al identity pool)       |
+| 9   | Dónde viven las partidas        | **Registros propios** (modelo nuevo), no dentro del blob `datos`              |
+| 10  | Pantalla del proveedor          | **Lista viva** con "Agregar hallazgo" que abre la cámara de una               |
+| 11  | Pantalla de Riesgos             | **Bandeja de firmas** agrupada por unidad, dentro de la pestaña Taller        |
 
 **Revisión de gerencia (2026-09-04).** La propuesta se presentó a gerencia y **Óscar Cabrera
 Rodríguez** dejó cinco peticiones. Se incorporan así:
 
-| # | Petición de gerencia | Resolución |
-|---|---|---|
-| 12 | Recotizar la misma partida en otro taller | **Entra en Fase 1** — §6.4. Cierra el motivo "Precio alto — recotizar", que sin esto no lleva a ninguna parte |
-| 13 | Ver todas las fotos de evidencia, no solo la miniatura | **Fase 1** — galería en las dos pantallas, §9.3 |
-| 14 | Adjuntar la cotización en PDF, no obligatorio | **Fase 1**, a nivel de visita — §7.3 y §5.2. El PDF es respaldo; **las partidas son la fuente de verdad del monto** |
-| 15 | Fecha del próximo servicio, capturada por el proveedor | **Fase 1 solo la captura** (fecha + km). El **aviso** queda fuera: la app no tiene hoy alertas de servicio próximo y ese diseño es aparte — §11 |
-| 16 | Que se vea en la app de Operaciones-GPA | **Fuera de este frente.** El puente es de una vía: la auditoría del 2026-08-14 concluye que *nada regresa de FC a Ops*. Se atiende con un **brief al equipo de Eco-Admin pidiendo el canal de regreso completo** (taller + anulaciones + veredictos de tesorería), no con código aquí — §11 |
-| 17 | Vista híbrida celular + computadora (Navares) | **Fase 1** — una sola interfaz adaptativa en **ambas** pantallas, §9.4 |
+| #   | Petición de gerencia                                   | Resolución                                                                                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 12  | Recotizar la misma partida en otro taller              | **Entra en Fase 1** — §6.4. Cierra el motivo "Precio alto — recotizar", que sin esto no lleva a ninguna parte                                                                                                                                                                               |
+| 13  | Ver todas las fotos de evidencia, no solo la miniatura | **Fase 1** — galería en las dos pantallas, §9.3                                                                                                                                                                                                                                             |
+| 14  | Adjuntar la cotización en PDF, no obligatorio          | **Fase 1**, a nivel de visita — §7.3 y §5.2. El PDF es respaldo; **las partidas son la fuente de verdad del monto**                                                                                                                                                                         |
+| 15  | Fecha del próximo servicio, capturada por el proveedor | **Fase 1 solo la captura** (fecha + km). El **aviso** queda fuera: la app no tiene hoy alertas de servicio próximo y ese diseño es aparte — §11                                                                                                                                             |
+| 16  | Que se vea en la app de Operaciones-GPA                | **Fuera de este frente.** El puente es de una vía: la auditoría del 2026-08-14 concluye que _nada regresa de FC a Ops_. Se atiende con un **brief al equipo de Eco-Admin pidiendo el canal de regreso completo** (taller + anulaciones + veredictos de tesorería), no con código aquí — §11 |
+| 17  | Vista híbrida celular + computadora (Navares)          | **Fase 1** — una sola interfaz adaptativa en **ambas** pantallas, §9.4                                                                                                                                                                                                                      |
 
 **Decisiones de arranque (2026-09-08, resueltas por Navares en el tablero de decisiones).**
 
-| # | Decisión | Elegido | Consecuencia |
-|---|---|---|---|
-| 18 | Cuarto estado del proveedor | **Sí, "Esperando refacción", y esa espera NO cuenta como retraso del taller** | Obliga a registrar las transiciones de estado con hora — §6.1 |
-| 19 | Motivos de rechazo | **Arrancar con los cinco, ajustar con el uso** (no se validan antes con Riesgos) | Obliga a poder leer lo que se escriba en "Otro" — §6.2 |
-| 20 | Quién genera la liga | **Administración de Riesgos y admin** | §7.7 |
-| 21 | Arranque | **Toda la flota de una, sin piloto** | Obliga a apagador de despliegue y a hoja de instrucciones para talleres — §14 |
-| 22 | Firmas | **Una sola: Administración de Riesgos, sin umbral de monto** | Confirma la decisión 4. Ojo: lo resolvió Navares; **gerencia nunca contestó** ese punto de la propuesta |
+| #   | Decisión                    | Elegido                                                                          | Consecuencia                                                                                            |
+| --- | --------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 18  | Cuarto estado del proveedor | **Sí, "Esperando refacción", y esa espera NO cuenta como retraso del taller**    | Obliga a registrar las transiciones de estado con hora — §6.1                                           |
+| 19  | Motivos de rechazo          | **Arrancar con los cinco, ajustar con el uso** (no se validan antes con Riesgos) | Obliga a poder leer lo que se escriba en "Otro" — §6.2                                                  |
+| 20  | Quién genera la liga        | **Administración de Riesgos y admin**                                            | §7.7                                                                                                    |
+| 21  | Arranque                    | **Toda la flota de una, sin piloto**                                             | Obliga a apagador de despliegue y a hoja de instrucciones para talleres — §14                           |
+| 22  | Firmas                      | **Una sola: Administración de Riesgos, sin umbral de monto**                     | Confirma la decisión 4. Ojo: lo resolvió Navares; **gerencia nunca contestó** ese punto de la propuesta |
 
 **Descartado explícitamente:**
-- *Cuenta Cognito para el proveedor* — reusaría todo lo probado, pero la fricción de correo y
+
+- _Cuenta Cognito para el proveedor_ — reusaría todo lo probado, pero la fricción de correo y
   contraseña mata el flujo con talleres chicos.
-- *El proveedor entra a la app como invitado* — exigiría abrir acceso guest al identity pool de
+- _El proveedor entra a la app como invitado_ — exigiría abrir acceso guest al identity pool de
   PROD, y las reglas de AppSync son por modelo, no por fila: un invitado con lectura en `Taller`
   leería **todos** los registros. Rompe el aislamiento actual y es inaceptable en un repo público.
-- *Formulario en MoreApp / Ops-GPA* — exige licencia/app del lado del taller y el camino de regreso
+- _Formulario en MoreApp / Ops-GPA_ — exige licencia/app del lado del taller y el camino de regreso
   (la autorización) no existe allá.
 
 ## 4. El contrato: quién llena qué
 
 ### 4.1 Administración de Riesgos — al dar el ingreso
 
-| Campo | Origen |
-|---|---|
-| Eco, placas, submarca, sucursal | Autocompletado del catálogo (como hoy) |
-| **Área** | **Automática**, del catálogo de la unidad — ver §8.1 |
-| Tipo de mantenimiento (Preventivo/Correctivo) | Ella: es criterio de negocio, no del taller |
-| Fecha de reporte de falla, fecha de atención en taller | Ella (la segunda es parte de la llave) |
-| Proveedor (nombre) | Ella, texto libre |
-| Comentario de la falla | Lo que reportó el operador |
-| Kilometraje | **Opcional** para ella (antes obligatorio) — ver §8.2 |
+| Campo                                                  | Origen                                                |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| Eco, placas, submarca, sucursal                        | Autocompletado del catálogo (como hoy)                |
+| **Área**                                               | **Automática**, del catálogo de la unidad — ver §8.1  |
+| Tipo de mantenimiento (Preventivo/Correctivo)          | Ella: es criterio de negocio, no del taller           |
+| Fecha de reporte de falla, fecha de atención en taller | Ella (la segunda es parte de la llave)                |
+| Proveedor (nombre)                                     | Ella, texto libre                                     |
+| Comentario de la falla                                 | Lo que reportó el operador                            |
+| Kilometraje                                            | **Opcional** para ella (antes obligatorio) — ver §8.2 |
 
 Al guardar, un botón **"Copiar liga para el proveedor"**.
 
 ### 4.2 El proveedor — desde la liga
 
-| Campo | Por qué él |
-|---|---|
-| Kilometraje | Tiene el tablero enfrente |
-| Estado operativo (revisando / reparando / lista) | Es el único que sabe |
-| Fecha estimada de salida | Es su compromiso — ver §8.3 |
-| **Partidas**: fotos + descripción + tipo + precio | El corazón del esquema |
-| Próximo servicio (fecha o km) | Es quien sabe "regrésala en 6 meses o a los 10,000" |
-| Cotización en PDF — **opcional** | Su documento formal; no reemplaza las partidas (§7.3) |
-| Evidencia final del trabajo + factura | Cierre del ciclo (fase 2 de entrega) |
+| Campo                                             | Por qué él                                            |
+| ------------------------------------------------- | ----------------------------------------------------- |
+| Kilometraje                                       | Tiene el tablero enfrente                             |
+| Estado operativo (revisando / reparando / lista)  | Es el único que sabe                                  |
+| Fecha estimada de salida                          | Es su compromiso — ver §8.3                           |
+| **Partidas**: fotos + descripción + tipo + precio | El corazón del esquema                                |
+| Próximo servicio (fecha o km)                     | Es quien sabe "regrésala en 6 meses o a los 10,000"   |
+| Cotización en PDF — **opcional**                  | Su documento formal; no reemplaza las partidas (§7.3) |
+| Evidencia final del trabajo + factura             | Cierre del ciclo (fase 2 de entrega)                  |
 
 El **segundo** taller, cuando hay recotización, llena **solo su precio** sobre la descripción y las
 fotos del primero — nunca ve el precio que ya se cotizó (§6.4).
 
 ### 4.3 Administración de Riesgos — durante y al cierre
 
-| Acción | Nota |
-|---|---|
-| Autorizar / rechazar cada partida | Con motivo de menú al rechazar |
-| Pedir precio a otro taller | Al rechazar por "precio alto": emite la liga de recotización (§6.4) |
-| Cerrar la visita: `Finalizado` + fecha real de salida | El cierre del gasto **no** lo firma el taller |
-| Pedido ERP | Conciliación NetSuite, como hoy |
-| Capturar partidas a mano | Salida de emergencia: taller que no usa la liga (§7.4) |
-| ~~Subtotal~~ | **Se elimina de la captura**: es derivado — §8.4 |
+| Acción                                                | Nota                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------- |
+| Autorizar / rechazar cada partida                     | Con motivo de menú al rechazar                                      |
+| Pedir precio a otro taller                            | Al rechazar por "precio alto": emite la liga de recotización (§6.4) |
+| Cerrar la visita: `Finalizado` + fecha real de salida | El cierre del gasto **no** lo firma el taller                       |
+| Pedido ERP                                            | Conciliación NetSuite, como hoy                                     |
+| Capturar partidas a mano                              | Salida de emergencia: taller que no usa la liga (§7.4)              |
+| ~~Subtotal~~                                          | **Se elimina de la captura**: es derivado — §8.4                    |
 
 ## 5. Modelo de datos
 
@@ -170,12 +171,12 @@ Cuatro campos que el proveedor escribe **se promueven de `datos` a columnas real
 razón de concurrencia del §5.1: como columnas, DynamoDB las actualiza independientes y no hay
 lectura-modificación-escritura del blob completo.
 
-| Campo | Antes | Ahora |
-|---|---|---|
-| `km` | `datos.km` | columna `km: integer` |
-| `estadoOperativo` | — (parte de `datos.estado`) | columna `estadoOperativo: enum` |
-| `fsalidaEst` | `datos.fsalidaEst` | columna `fsalidaEst: string` |
-| `fsalidaEstCompromiso` | — | columna `string`, **se escribe una sola vez** |
+| Campo                  | Antes                       | Ahora                                         |
+| ---------------------- | --------------------------- | --------------------------------------------- |
+| `km`                   | `datos.km`                  | columna `km: integer`                         |
+| `estadoOperativo`      | — (parte de `datos.estado`) | columna `estadoOperativo: enum`               |
+| `fsalidaEst`           | `datos.fsalidaEst`          | columna `fsalidaEst: string`                  |
+| `fsalidaEstCompromiso` | —                           | columna `string`, **se escribe una sola vez** |
 
 **Sin migración de datos:** se lee la columna y, si viene vacía, se cae a `datos.<campo>`. Es el
 mismo patrón que ya usa `migrateEstado` para los estados legacy.
@@ -215,7 +216,7 @@ si hay partidas propuestas → `Cotización` (con el conteo); si no → el mapeo
 ("📦 Esperando refacción"), igual que la pill de "VENCIDA +Xd" es un adorno sobre el estado, no un
 estado más.
 
-*Detalle histórico, para que nadie se confunda después:* el estado legacy "Esperando Refacciones"
+_Detalle histórico, para que nadie se confunda después:_ el estado legacy "Esperando Refacciones"
 migra hoy a `Cotización` vía `ESTADO_MIGRATION`. Eso se queda como está — solo afecta a registros
 viejos. Los nuevos usan `estadoOperativo`.
 
@@ -260,8 +261,8 @@ Tres reglas que hacen que la firma valga algo:
 **`borrador` existe por una razón práctica:** el taller sube seis fotos con calma y aprieta "Enviar a
 autorización" **una sola vez**. Sin ese estado llegan seis avisos y se dejan de ver.
 
-**Motivos de rechazo — menú cerrado:** *No es necesario ahora · Precio alto, recotizar · Se repara en
-otro lado · No corresponde a esta unidad · Otro (escribir)*. Un menú se llena; un campo libre no —
+**Motivos de rechazo — menú cerrado:** _No es necesario ahora · Precio alto, recotizar · Se repara en
+otro lado · No corresponde a esta unidad · Otro (escribir)_. Un menú se llena; un campo libre no —
 eso ya está medido en combustible.
 
 **Decisión 19: se arranca con estos cinco sin validarlos antes con Riesgos.** La contrapartida es
@@ -282,7 +283,7 @@ El badge que **ya existe** en la pestaña Taller (`#taller-badge`) pasa a contar
 
 ### 6.4 Recotizar en otro taller
 
-Petición 12 de gerencia. Sin esto, el motivo de rechazo *"Precio alto — recotizar"* es una promesa
+Petición 12 de gerencia. Sin esto, el motivo de rechazo _"Precio alto — recotizar"_ es una promesa
 sin destino: te deja rechazando sin ofrecerte la salida.
 
 **Flujo.** Rechazas la partida con ese motivo → aparece **"Pedir precio a otro taller"** → Riesgos
@@ -351,8 +352,8 @@ El proveedor **nunca** recibe credenciales de AWS. El Lambda emite un **PUT pref
   case con lo permitido se rechaza antes de emitir la firma.
 - Vigencia corta (minutos).
 
-**Regla de negocio del PDF, y va escrita en las dos pantallas:** *el PDF es respaldo documental; las
-partidas son la fuente de verdad del monto.* Van a diferir tarde o temprano — la cotización impresa
+**Regla de negocio del PDF, y va escrita en las dos pantallas:** _el PDF es respaldo documental; las
+partidas son la fuente de verdad del monto._ Van a diferir tarde o temprano — la cotización impresa
 trae IVA, redondeos o conceptos agrupados — y hay que saber de antemano cuál gana. El gasto de la
 visita **siempre** sale de la suma de partidas autorizadas (§8.4), nunca del PDF.
 
@@ -395,6 +396,11 @@ permiso.
 Nota de implementación: hoy `operativo` y `admin` son los grupos globales de escritura del schema;
 la restricción de este permiso se aplica en la UI **y** en el Lambda que emite la liga, no solo en
 la UI.
+
+**Cómo se materializa "Administración de Riesgos" (Task 14):** es el grupo Cognito `riesgos`, una
+**credencial adicional** —no un rol— que la persona tiene ADEMÁS de su rol (`operativo`); no la
+convierte en `admin` ni le abre ningún panel de administración. Solo `admin` y `riesgos` pueden
+emitir o revocar una liga, en las tres capas (mutaciones de AppSync, Lambda del portal y UI).
 
 ## 8. Los cuatro arreglos que este frente arrastra
 
@@ -439,7 +445,7 @@ semanas.
 
 ### 8.4 El subtotal se calcula, no se captura
 
-Si el proveedor teclea un subtotal *y además* precios por partida, van a discrepar y no habrá forma
+Si el proveedor teclea un subtotal _y además_ precios por partida, van a discrepar y no habrá forma
 de saber cuál es verdad.
 
 - `gasto` de la visita = **suma de `precioAutorizado` de las partidas autorizadas**.
@@ -467,7 +473,7 @@ Una sola pantalla con scroll, móvil primero, sin navegación:
 5. **"📷 Agregar hallazgo"** — abre la cámara directo, sin pantallas intermedias. Luego tres
    preguntas: qué encontraste · qué es (Refacción / Mano de obra, dos botones) · cuánto cuesta
    ("Precio sin IVA" dicho con letras). Guarda en **borrador**.
-6. **Pie fijo**: *Cotizado* y *Autorizado* (dos números, no uno) + "Enviar N a autorización",
+6. **Pie fijo**: _Cotizado_ y _Autorizado_ (dos números, no uno) + "Enviar N a autorización",
    deshabilitado con el motivo escrito abajo.
 
 Se accede sin cuenta, funciona con una mano y con señal mala; el patrón de uso es **volver a entrar
@@ -481,7 +487,7 @@ Pestaña Taller, sub-pestaña **"Por autorizar"** junto a Activas e Historial:
 - **Un grupo por visita** (no por partida suelta), con encabezado de tres etiquetas:
   **Cotizado** · **Ya autorizado** · **"Esta unidad: $38,400 en 2026 · 4 visitas"**. Esa tercera
   etiqueta convierte la firma en una decisión y no en un trámite — y la app **ya calcula ese dato**,
-  solo no está donde se necesita. Se muestran también las banderas: *VENCIDA +2d*, *reprogramada 2 veces*.
+  solo no está donde se necesita. Se muestran también las banderas: _VENCIDA +2d_, _reprogramada 2 veces_.
 - **Renglón por partida**: miniatura (ampliable), descripción, tipo, precio grande, autoría
   ("Subió Frenos GDL · hoy 10:42 · desde la liga"), y dos botones **✓ Autorizar / ✕ No autorizar**.
   El rechazo abre el menú de motivos.
@@ -513,22 +519,22 @@ dos se usan en los dos lugares.
 **La liga del proveedor** — hoy pensada para el celular junto a la camioneta, pero también se abre
 desde la computadora de la oficina del taller:
 
-| | Celular (< 720 px) | Computadora (≥ 720 px) |
-|---|---|---|
-| Estructura | Una columna, scroll | Dos columnas: datos de la camioneta fijos a la izquierda, hallazgos a la derecha |
-| Fotos | Miniatura 40 px | Miniatura 96 px, galería en rejilla |
-| Capturar | "📷 Agregar hallazgo" abre la cámara | "Agregar hallazgo" acepta **cámara o arrastrar archivos** |
-| Pie | Fijo abajo, botón de ancho completo | En la columna izquierda, siempre visible |
+|            | Celular (< 720 px)                   | Computadora (≥ 720 px)                                                           |
+| ---------- | ------------------------------------ | -------------------------------------------------------------------------------- |
+| Estructura | Una columna, scroll                  | Dos columnas: datos de la camioneta fijos a la izquierda, hallazgos a la derecha |
+| Fotos      | Miniatura 40 px                      | Miniatura 96 px, galería en rejilla                                              |
+| Capturar   | "📷 Agregar hallazgo" abre la cámara | "Agregar hallazgo" acepta **cámara o arrastrar archivos**                        |
+| Pie        | Fijo abajo, botón de ancho completo  | En la columna izquierda, siempre visible                                         |
 
 **La bandeja de Riesgos** — hoy pensada para el escritorio, pero ella firma también desde el celular
 cuando no está en la oficina:
 
-| | Celular (< 720 px) | Computadora (≥ 720 px) |
-|---|---|---|
-| Grupo de visita | Apilado; las tres etiquetas de contexto pasan a dos renglones | Como la maqueta validada |
-| Renglón de partida | Miniatura arriba, texto debajo | Miniatura a la izquierda, precio alineado a la derecha |
-| Botones ✓ / ✕ | **Ancho completo, tamaño de pulgar** (mínimo 44 px de alto) | En línea, tamaño normal |
-| Sub-pestañas | Deslizables horizontalmente | En línea |
+|                    | Celular (< 720 px)                                            | Computadora (≥ 720 px)                                 |
+| ------------------ | ------------------------------------------------------------- | ------------------------------------------------------ |
+| Grupo de visita    | Apilado; las tres etiquetas de contexto pasan a dos renglones | Como la maqueta validada                               |
+| Renglón de partida | Miniatura arriba, texto debajo                                | Miniatura a la izquierda, precio alineado a la derecha |
+| Botones ✓ / ✕      | **Ancho completo, tamaño de pulgar** (mínimo 44 px de alto)   | En línea, tamaño normal                                |
+| Sub-pestañas       | Deslizables horizontalmente                                   | En línea                                               |
 
 Sin `min-width` que fuerce scroll horizontal del documento; el contenido ancho (tablas, galerías)
 scrollea en su propio contenedor. Es el mismo estándar que ya se aplicó en la auditoría móvil de la
@@ -568,7 +574,7 @@ Explícitamente **no** en este frente:
   anticipación, a quién, y cómo convive con las alertas de Cumplimiento— es un frente propio. No se
   inventa de pasada.
 - **Visibilidad en Operaciones-GPA** (petición 16): **no se puede construir desde este repo.** La
-  auditoría del 2026-08-14 verificó que el puente es de una vía —*nada regresa de FC a Ops*— y el
+  auditoría del 2026-08-14 verificó que el puente es de una vía —_nada regresa de FC a Ops_— y el
   lado receptor vive en `DevGPA/Eco-Admin`, otro equipo. Se atiende con un **brief que pida el canal
   de regreso completo**: taller, las 22 anulaciones y los veredictos de tesorería, que ya eran
   invisibles para Ops antes de esta petición. Documento aparte, pendiente de escribir.
@@ -633,7 +639,7 @@ Explícitamente **no** en este frente:
 - **Aparte, sin dependencia de las fases:** el brief a Eco-Admin por el canal de regreso (§11).
 
 **Nota de alcance:** gerencia aceptó que la recotización entre en Fase 1 sabiendo que la alarga. La
-razón es que el motivo de rechazo *"Precio alto — recotizar"* ya forma parte del menú: entregar sin
+razón es que el motivo de rechazo _"Precio alto — recotizar"_ ya forma parte del menú: entregar sin
 la recotización dejaría ese botón sin destino. La alternativa descartada era quitar el motivo del
 menú mientras tanto.
 
