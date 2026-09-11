@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Fm+9lXx0a/aLmLD04+MTiyEWyAOIPLRLfRxAQnkPDAA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-TZh3huV0dUVyQ4obsGkpo+Fga6z8HUlUAimaytMpSS8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -9969,7 +9969,12 @@ function openTallerModal(id){
     // una llave que ya nadie resuelve). Mismo tri-estado que ya bloquea #tf-gasto.
     {
       const idDudoso = !_partidasConfiables();
-      const idLock = psGasto.length > 0 || idDudoso;
+      // Solo para una visita YA persistida (`e`): una captura NUEVA no tiene
+      // partidas por construcción (su visitaKey no existe todavía), así que el
+      // estado "desconocido" no puede bloquearla — lo detectó el e2e
+      // kpi-taller (autocompletado): en local el tri-estado siempre es
+      // desconocido y el candado dejaba #tf-eco en readonly antes de teclear.
+      const idLock = !!e && (psGasto.length > 0 || idDudoso);
       const leyendaId = psGasto.length > 0
         ? "La visita tiene partidas: su identidad no se edita."
         : "No se pudieron cargar las partidas: la identidad no se edita hasta que carguen.";

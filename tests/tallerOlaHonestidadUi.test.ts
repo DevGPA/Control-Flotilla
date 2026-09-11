@@ -303,8 +303,11 @@ describe("expediente y modal — honestidad de la UI (C-I2, C-I5, C-I6, B-C4)", 
       return c;
     }
 
-    /** Ejecuta el bloque REAL con un `document` falso y un tri-estado dado. */
-    function corre(opts: { partidas: number; confiables: boolean }) {
+    /**
+     * Ejecuta el bloque REAL con un `document` falso y un tri-estado dado.
+     * `persistida: false` modela una captura NUEVA (`openTallerModal()` sin id ⇒ `e === null`).
+     */
+    function corre(opts: { partidas: number; confiables: boolean; persistida?: boolean }) {
       const campos: Record<string, Campo> = {};
       const hint = { textContent: "", style: { display: "" } };
       const doc = {
@@ -319,9 +322,11 @@ describe("expediente y modal — honestidad de la UI (C-I2, C-I5, C-I6, B-C4)", 
         "document",
         "psGasto",
         "_partidasConfiables",
+        "e",
         bloqueCandadoIdentidad(),
       );
-      fn(doc, new Array(opts.partidas).fill(null), () => opts.confiables);
+      const e = opts.persistida === false ? null : { id: "tl_persistida" };
+      fn(doc, new Array(opts.partidas).fill(null), () => opts.confiables, e);
       return { campos, hint };
     }
 
@@ -346,6 +351,19 @@ describe("expediente y modal — honestidad de la UI (C-I2, C-I5, C-I6, B-C4)", 
       const { campos, hint } = corre({ partidas: 0, confiables: true });
       for (const id of ["tf-fentrada", "tf-plate", "tf-eco"]) {
         expect(campos[id]!.readOnly, `${id} debe seguir editable`).toBe(false);
+      }
+      expect(hint.style.display).toBe("none");
+    });
+
+    // Regresión que atrapó el e2e kpi-taller (autocompletado): el candado no exigía
+    // una visita persistida, y en una captura NUEVA el tri-estado es "desconocido"
+    // (en local siempre; en prod hasta la primera hidratación) ⇒ #tf-eco llegaba en
+    // readonly antes de poder teclear. Una visita nueva no puede tener partidas: su
+    // visitaKey no existe todavía.
+    it("captura NUEVA (sin `e`) en estado DESCONOCIDO ⇒ la identidad sigue editable", () => {
+      const { campos, hint } = corre({ partidas: 0, confiables: false, persistida: false });
+      for (const id of ["tf-fentrada", "tf-plate", "tf-eco"]) {
+        expect(campos[id]!.readOnly, `${id} debe seguir editable en una captura nueva`).toBe(false);
       }
       expect(hint.style.display).toBe("none");
     });
