@@ -148,7 +148,9 @@ export function resumenLoteFirma(
  * mismo patrón que `listAll` en `src/api/client.ts` (sin esto, DynamoDB
  * trunca en ~100 ítems por página y el resto se pierde en silencio).
  */
-async function listTallerPartidas(tenantId: string): Promise<Schema["TallerPartida"]["type"][]> {
+export async function listTallerPartidas(
+  tenantId: string,
+): Promise<Schema["TallerPartida"]["type"][]> {
   const c = getClient();
   const out: Schema["TallerPartida"]["type"][] = [];
   let token: string | null = null;
@@ -210,10 +212,17 @@ function rowToPartida(r: Schema["TallerPartida"]["type"]): Partida {
   };
 }
 
+/** Mapea las filas CRUDAS de `TallerPartida` al tipo puro `Partida`.
+ *  Separada de la lectura (BC-C1) porque `hydrateFromCloud` necesita las filas
+ *  crudas para la FIRMA del snapshot (`updatedAt`, que el tipo puro no lleva) y
+ *  el tipo puro para todo lo demás — una sola lectura, dos usos. */
+export function mapPartidas(rows: Schema["TallerPartida"]["type"][]): Partida[] {
+  return rows.map(rowToPartida);
+}
+
 /** Lee las partidas del tenant desde cloud y las mapea al tipo puro `Partida`. */
 export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
-  const rows = await listTallerPartidas(tenantId);
-  return rows.map(rowToPartida);
+  return mapPartidas(await listTallerPartidas(tenantId));
 }
 
 export type DecisionPartida = "autorizar" | "rechazar";

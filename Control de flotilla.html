@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-f0Rt5yV8AxYFncvxxeWOimMqnUp36OruKxvTcDgA8Us=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-zMqP2dR3l+idVP3bvjmf9r7icvoQi2RYLllyRm+3noQ=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -3806,6 +3806,11 @@ function buildAnalytics(){
     }
   }
 
+  // Fix B-C2: los tableros de DINERO de Ops derivan todos de _partidasDeVisita.
+  // Con las partidas NO cargadas salen en $0 — un cero que se lee como "no hubo
+  // gasto". Se apagan diciendo POR QUÉ, en vez de reportar un cero falso.
+  const _partidasOk = _partidasConfiables();
+
   // ─── Gasto de taller por mes (stacked por sucursal, 12 meses) ─────────────
   const gastoEl = document.getElementById("chart-gasto");
   const gastoEmpty = document.getElementById("chart-gasto-empty");
@@ -3813,14 +3818,14 @@ function buildAnalytics(){
     // Fix ronda 1 (Task 9): sin partidasDe, un mes cuyo único gasto llegó por
     // partidas firmadas desaparecía de la serie (gastoDe/gastoTotalDe daba 0).
     const serie = ops.buildGastoMensual(tallerScoped, undefined, _partidasDeVisita);
-    if(serie.length && typeof window.renderGastoMensualChart === "function"){
+    if(serie.length && _partidasOk && typeof window.renderGastoMensualChart === "function"){
       gastoEl.style.display = "";
       if(gastoEmpty) gastoEmpty.hidden = true;
       try { window.renderGastoMensualChart(gastoEl, serie); }
       catch(e){ console.warn("[analytics] gasto chart falló:", e); }
     } else {
       gastoEl.style.display = "none";
-      if(gastoEmpty) gastoEmpty.hidden = false;
+      _opsVacio(gastoEmpty, _partidasOk);
     }
   }
 
@@ -3831,14 +3836,14 @@ function buildAnalytics(){
   if(pcEl){
     // Fix ronda 1 (Task 9): mismo partidasDe que Gasto Mensual.
     const seriePc = ops.buildPrevCorr(tallerScoped, undefined, _partidasDeVisita);
-    if(seriePc.length && typeof window.renderPrevCorrChart === "function"){
+    if(seriePc.length && _partidasOk && typeof window.renderPrevCorrChart === "function"){
       pcEl.style.display = "";
       if(pcEmpty) pcEmpty.hidden = true;
       try { window.renderPrevCorrChart(pcEl, seriePc); }
       catch(e){ console.warn("[analytics] prev/corr chart falló:", e); }
     } else {
       pcEl.style.display = "none";
-      if(pcEmpty) pcEmpty.hidden = false;
+      _opsVacio(pcEmpty, _partidasOk);
     }
   }
 
@@ -3848,9 +3853,13 @@ function buildAnalytics(){
     try {
       // Fix ronda 1 (Task 9): mismo partidasDe — el Top de costo por unidad no
       // puede excluir visitas cuyo gasto llegó entero por partidas firmadas.
-      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits), undefined, _partidasDeVisita), (r)=>{
-        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
-      });
+      if(!_partidasOk){
+        costoEl.textContent = "No se pudieron cargar las partidas: el costo por unidad no se puede calcular.";
+      } else {
+        ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits), undefined, _partidasDeVisita), (r)=>{
+          if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+        });
+      }
     } catch(e){ console.warn("[analytics] costo por unidad falló:", e); }
   }
   // ─── Sucursales: cobertura y riesgo (clic → filtrar Inspecciones) ─────────
@@ -3882,9 +3891,13 @@ function buildAnalytics(){
       const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
       // Fix ronda 1 (Task 9): mismo partidasDe — reincidencia por gasto no
       // puede subestimar una unidad cuyo gasto llegó entero por partidas.
-      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped, undefined, _partidasDeVisita), (r)=>{
-        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
-      });
+      if(!_partidasOk){
+        reincEl.textContent = "No se pudieron cargar las partidas: la reincidencia por gasto no se puede calcular.";
+      } else {
+        ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped, undefined, _partidasDeVisita), (r)=>{
+          if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+        });
+      }
     } catch(e){ console.warn("[analytics] reincidentes falló:", e); }
   }
 }
@@ -6918,11 +6931,20 @@ function buildGastoKPI(){
   const gAct=delMes.reduce((s,e)=>s+_gastoDe(e),0);
   const gPrev=tE.filter(e=>_mesDe(e)===mesPrev).reduce((s,e)=>s+_gastoDe(e),0);
   card.style.display="flex";
-  const kv=document.getElementById("kv_gasto"); if(kv) kv.textContent=_fmtMon(gAct);
+  // Fix B-C2: con las partidas NO cargadas, este total sale en $0 para toda
+  // visita híbrida (sus tres llaves de dinero viven en las partidas, no en la
+  // fila) — un $0 que Tesorería lee como dato. Con el tri-estado se dice
+  // "sin datos", que es lo único cierto.
+  const confiable=_partidasConfiables();
+  const kv=document.getElementById("kv_gasto"); if(kv) kv.textContent=_monDerivado(gAct);
   const ks=document.getElementById("ks_gasto");
   if(ks){
-    const delta=gPrev>0?` · ${gAct>=gPrev?"▲":"▼"} ${Math.abs(Math.round((gAct-gPrev)/gPrev*100))}% vs mes ant.`:"";
-    ks.textContent=`${delMes.length} ingreso${delMes.length!==1?"s":""}${delta}`;
+    if(!confiable){
+      ks.textContent="No se pudieron cargar las partidas";
+    } else {
+      const delta=gPrev>0?` · ${gAct>=gPrev?"▲":"▼"} ${Math.abs(Math.round((gAct-gPrev)/gPrev*100))}% vs mes ant.`:"";
+      ks.textContent=`${delMes.length} ingreso${delMes.length!==1?"s":""}${delta}`;
+    }
   }
 }
 function openGastoModal(){
@@ -6953,9 +6975,14 @@ function openGastoModal(){
   const gTot=delMes.reduce((s,e)=>s+_gastoDe(e),0);
   const gRef=delMes.reduce((s,e)=>s+_gastoRefDe(e),0);
   const gMO=delMes.reduce((s,e)=>s+_gastoMODe(e),0);
-  let html=`<div style="font-size:11px;color:var(--s1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Mes actual</div>
+  // Fix B-C2: mismo criterio que el KPI — si las partidas no se pudieron
+  // cargar, el drill-down completo está mirando ceros que no son datos. Se
+  // avisa arriba y el total del mes dice "sin datos" en vez de $0.
+  let html = _partidasConfiables() ? "" :
+    `<div style="font-size:11.5px;color:var(--A);background:var(--bg2);border:1px solid var(--ln);border-radius:6px;padding:8px 10px;margin-bottom:10px">No se pudieron cargar las partidas: los montos de esta pantalla pueden estar incompletos.</div>`;
+  html+=`<div style="font-size:11px;color:var(--s1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Mes actual</div>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px">
-      <span style="font-size:26px;font-weight:800;color:var(--G)">${_fmtMon(gTot)}</span>
+      <span style="font-size:26px;font-weight:800;color:var(--G)">${_monDerivado(gTot)}</span>
       <span style="font-size:11px;color:var(--s2)">${delMes.length} ingreso${delMes.length!==1?"s":""}${(gRef+gMO)>0?` · Ref ${_fmtMon(gRef)} · M.O. ${_fmtMon(gMO)}`:""}</span>
     </div>`;
   if(sucs.length){
@@ -7671,6 +7698,53 @@ function _partidasDeVisita(e){
   return vk ? (window.__tallerPartidas?.get(vk) || []) : [];
 }
 
+// Fix B-C2 (TRI-ESTADO) — ¿se puede CREER lo que devuelve _partidasDeVisita?
+// Devolver [] tiene dos significados incompatibles y hasta ahora se confundían:
+//   (a) "el esquema está apagado / esta visita no tiene partidas" → el [] es un
+//       DATO: el gasto tecleado manda (R62) y el campo se edita.
+//   (b) "no se pudo leer AppConfig o no se pudieron leer las partidas" → el []
+//       es una AUSENCIA: creerle desbloqueaba #tf-gasto y persistía un $0 duro
+//       encima del dinero firmado, y dejaba el KPI/Historial/drill-down en $0
+//       toda la sesión.
+// Solo (a) es confiable. Los tres valores del tri-estado los publica
+// src/api/cloudHydrate.ts: __tallerHibrido (solo tras una lectura EXITOSA de
+// AppConfig), __tallerHibridoDesconocido y __tallerPartidasCargadas.
+function _partidasConfiables(){
+  // Ninguna hidratación exitosa todavía: no se sabe ni si el esquema está prendido.
+  if(window.__tallerHibrido === undefined) return false;
+  if(window.__tallerHibridoDesconocido) return false;
+  // Apagado y CONFIRMADO: no hay partidas que consultar, el tecleado manda (R62).
+  if(!window.__tallerHibrido) return true;
+  // Prendido: solo si la lectura de partidas de la última hidratación tuvo éxito.
+  return window.__tallerPartidasCargadas === true;
+}
+
+// Dinero DERIVADO de partidas cuando el tri-estado dice que no se puede creer:
+// un "$0" ahí sería una mentira con formato de dato. Se usa en las lecturas de
+// dinero de taller (KPI del mes, drill-down, Historial, expediente).
+const _SIN_DATOS_PARTIDAS = "sin datos";
+function _monDerivado(v, fmt){
+  return _partidasConfiables() ? (fmt||_fmtMon)(v) : _SIN_DATOS_PARTIDAS;
+}
+
+// Estado vacío de una gráfica de DINERO del tablero Ops. Con `ok` en false el
+// motivo real no es "no hubo gasto" sino "no se pudieron cargar las partidas" —
+// decirlo evita leer un cero como un dato. La copia original se guarda en
+// data-* la primera vez para poder restaurarla cuando las partidas carguen.
+// XSS: solo textContent, nunca innerHTML.
+function _opsVacio(emptyEl, ok){
+  if(!emptyEl) return;
+  const t = emptyEl.querySelector(".chart-empty-title");
+  const m = emptyEl.querySelector(".chart-empty-msg");
+  if(t && emptyEl.dataset.tituloBase === undefined) emptyEl.dataset.tituloBase = t.textContent;
+  if(m && emptyEl.dataset.msgBase === undefined) emptyEl.dataset.msgBase = m.textContent;
+  if(t) t.textContent = ok ? (emptyEl.dataset.tituloBase || "") : "Sin datos de partidas";
+  if(m) m.textContent = ok
+    ? (emptyEl.dataset.msgBase || "")
+    : "No se pudieron cargar las partidas: el gasto de este periodo no se puede calcular.";
+  emptyEl.hidden = false;
+}
+
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
   // Apagador (Task 10): togglea la clase del body ANTES de calcular nada —
@@ -7745,11 +7819,18 @@ function renderBandeja(){
   if(!cont) return;
   cont.replaceChildren();
 
-  if(typeof window.__filasBandeja !== "function"){
-    const cargando = document.createElement("div");
-    cargando.style.cssText = "padding:24px 16px;color:var(--s2);font-size:12px;text-align:center";
-    cargando.textContent = "Cargando…";
-    cont.appendChild(cargando);
+  // "Cargando…" PARA SIEMPRE era el estado real cuando el puente no existía.
+  // Con el tri-estado de B-C2 los tres casos se distinguen: sin puente (la
+  // hidratación nunca corrió) sigue siendo "Cargando…"; con puente pero con la
+  // lectura de partidas FALLIDA se dice que falló; y 0 filas con todo cargado
+  // es "no hay nada que firmar" (más abajo).
+  if(typeof window.__filasBandeja !== "function" || window.__tallerPartidasCargadas === false){
+    const aviso = document.createElement("div");
+    aviso.style.cssText = "padding:24px 16px;color:var(--s2);font-size:12px;text-align:center";
+    aviso.textContent = window.__cloudSession && window.__tallerPartidasCargadas === false
+      ? "No se pudieron cargar las partidas. Reintenta en unos segundos."
+      : "Cargando…";
+    cont.appendChild(aviso);
     return;
   }
 
@@ -8122,13 +8203,29 @@ function _bnFooter(fila, ps, entry){
   return foot;
 }
 
+// Refuerzo de BC-C1: la hidratación ya trae las partidas frescas (viajan en
+// hydrateSignature), pero el repintado de la bandeja NO cuelga de ella — el
+// badge y la sub-pestaña los pinta renderTaller()/updateTallerBadge(). Sin
+// estas dos llamadas, la fila firmada seguía en pantalla "pendiente" y el badge
+// no bajaba hasta recargar.
+function _bnRepintar(){
+  if(typeof updateTallerBadge === "function") updateTallerBadge();
+  if(typeof renderTaller === "function") renderTaller();
+}
+
 async function _bnAutorizar(fila, p, btn){
-  if(typeof window.__guardarDecisionPartida !== "function") return;
+  // L884(i): un clic de DINERO que no hace nada ni avisa es peor que un error —
+  // el usuario cree que firmó. Mismo aviso que ya dan las rutas de T12.
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
   btn.disabled = true;
   try{
     await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
     if(window.notify) window.notify("Partida autorizada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
   }catch(e){
     console.error("[bandeja] autorizar:", e);
     if(window.notify) window.notify("No se pudo autorizar. Intenta de nuevo.", "error", 5000);
@@ -8137,12 +8234,16 @@ async function _bnAutorizar(fila, p, btn){
 }
 
 async function _bnRechazar(fila, p, motivo, nota, btn){
-  if(typeof window.__guardarDecisionPartida !== "function") return;
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
   btn.disabled = true;
   try{
     await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined);
     if(window.notify) window.notify("Partida rechazada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
   }catch(e){
     console.error("[bandeja] rechazar:", e);
     if(window.notify) window.notify("No se pudo rechazar. Intenta de nuevo.", "error", 5000);
@@ -8151,23 +8252,34 @@ async function _bnRechazar(fila, p, motivo, nota, btn){
 }
 
 async function _bnAutorizarLote(fila, partidas, btn){
-  if(typeof window.__guardarDecisionPartida !== "function") return;
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
   btn.disabled = true;
   let ok = 0, fail = 0;
-  for(const p of partidas){
-    try{
-      await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
-      ok++;
-    }catch(e){
-      console.error("[bandeja] autorizar lote:", p.partidaId, e);
-      fail++;
+  try{
+    for(const p of partidas){
+      try{
+        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+        ok++;
+      }catch(e){
+        console.error("[bandeja] autorizar lote:", p.partidaId, e);
+        fail++;
+      }
     }
+    if(window.notify){
+      if(fail) window.notify(`${ok} autorizada(s), ${fail} fallaron. Revisa e intenta de nuevo.`, "warn", 6000);
+      else window.notify(`${ok} partida(s) autorizada(s).`, "ok", 3500);
+    }
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
+  }finally{
+    // L884(i): si el repintado no llega a borrar el botón (falló el hydrate,
+    // la visita sigue con pendientes), no puede quedarse deshabilitado para
+    // siempre — el lote es reintentable por diseño.
+    btn.disabled = false;
   }
-  if(window.notify){
-    if(fail) window.notify(`${ok} autorizada(s), ${fail} fallaron. Revisa e intenta de nuevo.`, "warn", 6000);
-    else window.notify(`${ok} partida(s) autorizada(s).`, "ok", 3500);
-  }
-  if(window.__cloudHydrate) await window.__cloudHydrate();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -9421,7 +9533,7 @@ function renderHistorial(){
     kpiBar.style.display = units2show.length ? "" : "none";
     kpiBar.innerHTML=`
       <div class="hist-kstat">
-        <div class="hist-kstat-val" style="color:var(--G)">${fmtMXN(totalGasto)}</div>
+        <div class="hist-kstat-val" style="color:var(--G)">${_monDerivado(totalGasto, fmtMXN)}</div>
         <div class="hist-kstat-lbl">Gasto Total</div>
       </div>
       <div class="hist-kstat">
@@ -9516,7 +9628,7 @@ function renderHistorial(){
       <td style="vertical-align:top">${fmtDate(lc.fentrada)}</td>
       <td style="vertical-align:top">${fmtDate(lc.fsalidaReal)}${lcTipoPill}</td>
       <td style="text-align:center;color:var(--s2);vertical-align:top">${dias!=null?dias+"d":"—"}</td>
-      <td style="font-weight:600;color:var(--G);vertical-align:top">${totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{maximumFractionDigits:0}):"—"}${gastoBreakdown}</td>
+      <td style="font-weight:600;color:var(--G);vertical-align:top">${_partidasConfiables()?(totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{maximumFractionDigits:0}):"—"):_SIN_DATOS_PARTIDAS}${gastoBreakdown}</td>
     </tr>`;
   }).join("");
 }
@@ -9750,6 +9862,18 @@ function openTallerModal(id){
       }
       gastoInput.title = leyenda;
       if(gastoHint) { gastoHint.textContent = leyenda; gastoHint.style.display = ""; }
+    } else if(e && !_partidasConfiables()){
+      // Fix B-C2: con el esquema PRENDIDO (o sin saberlo) y las partidas NO
+      // cargadas, NO se sabe si esta visita tiene dinero firmado. Dejar el campo
+      // editable escribía `gasto:0, gastoRef:0, gastoMO:0` encima de lo firmado
+      // en cuanto se guardara cualquier otro campo — el cero indistinguible que
+      // numOrUndef existe para no fabricar. Se queda bloqueado (y por el MISMO
+      // centinela, saveTallerEntry no persiste las tres llaves).
+      gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+      gastoInput.disabled = true;
+      const leyendaSin = "No se pudieron cargar las partidas: el gasto no se edita hasta que carguen.";
+      gastoInput.title = leyendaSin;
+      if(gastoHint) { gastoHint.textContent = leyendaSin; gastoHint.style.display = ""; }
     } else {
       gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
       gastoInput.disabled = false;
@@ -9974,7 +10098,7 @@ function renderHistorialModal(){
   const summaryHtml = `<div style="display:flex;gap:12px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--ln);flex-wrap:wrap">
     <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--ac)">${allEntries.length}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Ingresos</div></div>
     <div style="width:1px;background:var(--ln)"></div>
-    <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--G)">${totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{minimumFractionDigits:0,maximumFractionDigits:0}):"—"}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Gasto Total</div></div>
+    <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--G)">${_partidasConfiables()?(totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{minimumFractionDigits:0,maximumFractionDigits:0}):"—"):_SIN_DATOS_PARTIDAS}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Gasto Total</div></div>
     <div style="width:1px;background:var(--ln)"></div>
     <div style="text-align:center;min-width:80px"><div style="font-size:12px;font-weight:700;color:var(--w1)">${fmtDate(allEntries[allEntries.length-1].fentrada)}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Primer Ingreso</div></div>
     <div style="text-align:center;min-width:80px"><div style="font-size:12px;font-weight:700;color:var(--w1)">${fmtDate(allEntries[0].fentrada)}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Ultimo Ingreso</div></div>
@@ -10039,7 +10163,7 @@ function renderHistorialModal(){
       </div>
       <div class="hist-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px">
         <div class="hist-grid-cell"><span>Kilometraje</span><b>${e.km>0?Number(e.km).toLocaleString("es-MX")+" km":"—"}</b></div>
-        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${gastoDeFila>0?"$"+Number(gastoDeFila).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"}</b></div>
+        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${_partidasConfiables()?(gastoDeFila>0?"$"+Number(gastoDeFila).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"):_SIN_DATOS_PARTIDAS}</b></div>
         <div class="hist-grid-cell"><span>Tecnico</span><b>${escHtml(e.tecnico)||"—"}</b></div>
         <div class="hist-grid-cell"><span>Pedido ERP</span><b>${escHtml(e.pedidoErp||"")||"—"}</b></div>
       </div>

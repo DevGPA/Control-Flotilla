@@ -42,7 +42,8 @@ import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./
 import { uploadTallerToCloud, type LegacyTallerEntry } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import {
-  fetchPartidas,
+  listTallerPartidas,
+  mapPartidas,
   agruparPorVisita,
   juntaVisitaKey,
   visitaKeyDe,
@@ -160,6 +161,23 @@ declare global {
      * derivado deja de aplicar en cualquier lado, nunca a medias.
      */
     __tallerHibrido?: boolean;
+    /**
+     * B-C2 (tri-estado) — `true` cuando la lectura de `AppConfig` FALLÓ y por
+     * tanto no se sabe si el esquema está prendido. Sin esta bandera, una
+     * lectura fallida era indistinguible de "el admin apagó el switch": la app
+     * desbloqueaba `#tf-gasto` y persistía un `$0` duro encima del dinero
+     * firmado. Con ella, `__tallerHibrido` solo se publica cuando la lectura
+     * tuvo ÉXITO — `undefined` significa "todavía no se sabe", nunca "apagado".
+     */
+    __tallerHibridoDesconocido?: boolean;
+    /**
+     * B-C2 (tri-estado) — estado de la lectura de partidas de la hidratación
+     * más reciente: `undefined` = nunca corrió, `false` = corrió y FALLÓ (el
+     * mapa `__tallerPartidas` conserva lo último bueno, o nada), `true` =
+     * cargadas (el mapa es autoritativo, aunque esté vacío). El monolito lo
+     * consume para decidir si un `$0` derivado es un dato o una ausencia.
+     */
+    __tallerPartidasCargadas?: boolean;
     /** Bridge (fix ronda 2, Finding 1): la MISMA `pendientesDeFirma` de
      *  src/taller/partidas.ts, publicada para que el badge del monolito la
      *  consuma en vez de reimplementar el filtro "estado === propuesta" —
@@ -672,6 +690,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     accesorioRows,
     anulaciones,
     appConfigRows,
+    partidaRows,
   ] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
@@ -719,12 +738,28 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       console.warn("[cloudHydrate] listAnulaciones falló (no-fatal):", e);
       return [] as Schema["Anulacion"]["type"][];
     }),
-    // No-fatal (Task 10): el apagador debe resolver OFF si el modelo aún no está
-    // desplegado o la lectura falla — nunca tumbar el resto de la hidratación por
-    // un switch.
+    // No-fatal (Task 10): el apagador nunca debe tumbar el resto de la
+    // hidratación. Fix B-C2 (tri-estado): una lectura FALLIDA degrada a `null`
+    // — "no se sabe" —, NUNCA a `[]`. Un `[]` se parecía demasiado a "el admin
+    // apagó el switch", y con esa confusión la app desbloqueaba `#tf-gasto` y
+    // persistía un `$0` duro encima del dinero firmado.
     listAppConfig(tenantId).catch((e) => {
-      console.warn("[cloudHydrate] listAppConfig falló (no-fatal, apagador → OFF):", e);
-      return [] as Schema["AppConfig"]["type"][];
+      console.warn("[cloudHydrate] listAppConfig falló (no-fatal, apagador → DESCONOCIDO):", e);
+      return null;
+    }),
+    // BC-C1: las partidas viajan en el MISMO Promise.all que el resto del
+    // snapshot — antes se leían DESPUÉS del corto-circuito de "snapshot sin
+    // cambios", así que firmar/rechazar/crear/enviar una partida (que no toca
+    // ninguna fila de `Taller`) producía una firma IDÉNTICA y la sesión abierta
+    // no veía ni un cambio: la partida seguía "pendiente", el badge no bajaba y
+    // el botón quedaba deshabilitado para siempre. Se leen CRUDAS para que
+    // `updatedAt` pueda viajar dentro de `hydrateSignature()` más abajo.
+    // B-I4 + B-C2: `.catch` degrada a `null` ("NO CARGADAS"), jamás a `[]` —
+    // un `[]` mentiría diciendo "esta visita no tiene partidas" justo cuando lo
+    // único cierto es que no se pudieron leer.
+    listTallerPartidas(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listTallerPartidas falló (no-fatal, NO CARGADAS):", e);
+      return null;
     }),
   ]);
 
@@ -738,12 +773,36 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // `false` (esquemaHibridoActivo). El Lambda del portal (taller-portal) NO
   // se apaga con esta bandera — para cerrar la puerta del proveedor se
   // revoca la liga (`ligaVersion`, columna de `Taller`), un mecanismo aparte.
-  window.__tallerHibrido = esquemaHibridoActivo(appConfigRows[0]);
+  //
+  // Fix B-C2 (TRI-ESTADO): el booleano solo se PUBLICA cuando la lectura tuvo
+  // éxito. Si falló, `__tallerHibrido` conserva lo último que se supo (o queda
+  // `undefined` en la primera hidratación) y se levanta
+  // `__tallerHibridoDesconocido` — "no se sabe" nunca vuelve a disfrazarse de
+  // "apagado", que es lo que dejaba escribir un `$0` duro sobre dinero firmado.
+  if (appConfigRows) {
+    window.__tallerHibrido = esquemaHibridoActivo(appConfigRows[0]);
+    window.__tallerHibridoDesconocido = false;
+  } else {
+    window.__tallerHibridoDesconocido = true;
+  }
 
   // Índice refId → info de anulaciones ACTIVAS (las restauradas no excluyen). Se expone
   // en window para los módulos legacy (Inspecciones/Semanales) y se aplica aquí abajo.
   const anuladasActivas = buildAnuladasActivas(anulaciones);
   window.__anuladasActivas = anuladasActivas;
+
+  // BC-C1 + B-C2: el mapa de partidas se publica AQUÍ, antes del early-return de
+  // "cloud vacío" y del corto-circuito de "snapshot sin cambios" — no dentro del
+  // bloque de taller, que ambos se saltan. Si la lectura falló, NO se pisa el
+  // mapa (se conserva lo último bueno) y la bandera dice "no cargadas": los
+  // consumidores (candado de `#tf-gasto`, `saveTallerEntry`, bandeja, lecturas
+  // de dinero) pintan "sin datos" en vez de un `$0` que no es un dato.
+  window.__tallerPartidasCargadas = partidaRows !== null;
+  const visitasAnuladas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
+  const partidas = partidaRows ? mapPartidas(partidaRows) : [];
+  if (partidaRows) {
+    window.__tallerPartidas = partidasVigentesPorVisita(partidas, visitasAnuladas);
+  }
   // Checklists VIGENTES: los anulados por admin salen de TODA construcción de vistas
   // (inspecciones por rango, última inspección por unidad, flota, fallback). Combustible
   // etiqueta en vez de filtrar (tiene vista "Anuladas" propia); semanales filtra en su loop.
@@ -774,6 +833,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // applyTallerHibridoGate() tampoco — el badge y la sub-pestaña "Por
   // autorizar" se quedan pegados al estado de antes del flip hasta que algo
   // MÁS cambie o el usuario recargue.
+  // BC-C1 (+ R89): `partidaRows` y `accesorioRows` viajan aquí también. Sin
+  // `partidaRows`, NINGÚN cambio de partidas se veía en una sesión abierta —
+  // firmar/rechazar/crear/enviar solo toca `TallerPartida`, y esta firma no la
+  // miraba: la fila seguía "pendiente", los chips no se movían, el badge no
+  // bajaba y el botón quedaba deshabilitado hasta recargar. `accesorioRows` es
+  // literalmente el mismo defecto para otro modelo (L1567, preexistente de
+  // `main`), y se cierra en la misma edición.
   const snapshotSig = hydrateSignature([
     units,
     checklists,
@@ -783,8 +849,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     combustible,
     validaciones,
     complianceDocs,
+    accesorioRows,
     anulaciones,
-    appConfigRows,
+    appConfigRows ?? [],
+    partidaRows ?? [],
   ]);
   if (window.__lastHydrateSig === snapshotSig) {
     console.info("[cloudHydrate] snapshot sin cambios — omito rebuild+render");
@@ -820,12 +888,13 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         // cloud — un mismo día, misma placa, reingreso local tras un upload fallido. Sin
         // resolver las partidas aquí, este upload no pasaba por el seam de cloudWire.ts y
         // volvía a escribir un gasto/gastoRef/gastoMO que las partidas ya poseen. No se
-        // reusa `window.__tallerPartidas` — todavía no está poblado en este punto de la
-        // hidratación (se arma más abajo) — así que se resuelve aparte, con la MISMA
-        // fórmula (fetchPartidas + partidasVigentes + agruparPorVisita).
-        const partidasOrfanas = await fetchPartidas(tenantId);
-        const visitasAnuladasOrfanas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
-        const porVisitaOrfanas = partidasVigentesPorVisita(partidasOrfanas, visitasAnuladasOrfanas);
+        // BC-C1: se REUSA el mapa que ya se armó arriba (una sola lectura de
+        // partidas por hidratación — antes esta rama disparaba un segundo
+        // `fetchPartidas`, L1295). Si la lectura falló, `porVisitaOrfanas` queda
+        // vacío y el resolver devuelve `undefined`: sin partidas resueltas no se
+        // recorta nada, que es el lado seguro (nunca se sube un gasto derivado
+        // que no se pudo verificar).
+        const porVisitaOrfanas = window.__tallerPartidas ?? new Map<string, Partida[]>();
         // Task 10 (R62): con el esquema apagado, este resolver también ve `undefined` —
         // el mismo predicado (window.__tallerHibrido, ya resuelto arriba) que
         // partidasDeEntry en cloudWire.ts. Sin este candado, un huérfano migraría
@@ -954,9 +1023,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     // de vuelta solas, sin caché que limpiar. Fix ronda 2: el set de visitas
     // anuladas se construye hacia ADELANTE (visitasAnuladasKeys), nunca
     // separando de vuelta una visitaKey existente.
-    const visitasAnuladas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
-    const partidas = await fetchPartidas(tenantId);
-    window.__tallerPartidas = partidasVigentesPorVisita(partidas, visitasAnuladas);
+    //
+    // BC-C1: se re-agrupa (no se re-LEE) con el `tallerCloud` ya refrescado por
+    // la auto-migración de huérfanos de arriba — la única lectura de partidas de
+    // toda la hidratación es la del `Promise.all`. Con la lectura fallida el
+    // mapa NO se pisa: `__tallerPartidasCargadas` ya dice "no cargadas" y lo
+    // último bueno sigue en pie.
+    if (partidaRows) {
+      window.__tallerPartidas = partidasVigentesPorVisita(
+        partidas,
+        visitasAnuladasKeys(tallerCloud, anuladasActivas),
+      );
+    }
     // Bridge (fix ronda 2, Finding 1): publica la MISMA pendientesDeFirma que
     // usará la bandeja de firma (Task 8) — el badge del monolito la consume
     // en vez de reimplementar el filtro "estado === propuesta".

@@ -109,6 +109,66 @@ function partidasDeEntryComoCloudWire(win: {
     win.tallerHibrido ? win.tallerPartidas.get(visitaKeyDe(e)) : undefined;
 }
 
+// ── B-C2 — "el admin apagó el switch" ≠ "la lectura de AppConfig falló" ─────
+// El resolver de arriba solo distingue prendido/apagado, y por eso el test de
+// más abajo ("switch APAGADO: el tecleado sobrevive") fijaba como CORRECTO el
+// upload del gasto tecleado en los DOS casos: el legítimo (R62) y el de una
+// lectura fallida de 30 segundos, donde ese "tecleado" puede ser el `$0` que
+// el formulario escribe al crear el ingreso — encima del dinero firmado.
+// El candado real del segundo caso NO vive en este resolver: vive en el
+// tri-estado del monolito (`_partidasConfiables`), que bloquea `#tf-gasto` y,
+// por el mismo centinela, impide que `saveTallerEntry` persista las tres
+// llaves. Se extrae y EJECUTA el literal real del HTML, igual que
+// `_partidasDeVisita` más abajo.
+function partidasConfiablesReal(win: {
+  __tallerHibrido?: boolean;
+  __tallerHibridoDesconocido?: boolean;
+  __tallerPartidasCargadas?: boolean;
+}): () => boolean {
+  const src = readFileSync(join(__dirname, "..", "Control de flotilla.html"), "utf8");
+  const m = /function _partidasConfiables\(\)\{[\s\S]*?\n\}/.exec(src);
+  if (!m) throw new Error("No se encontró _partidasConfiables() en el HTML");
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval -- extracción/ejecución del literal real, patrón ya usado en tallerBadgePendientesDeFirma.test.ts
+  const outer = new Function("window", `${m[0]}\nreturn _partidasConfiables;`);
+  return outer(win) as () => boolean;
+}
+
+describe("tri-estado (B-C2) — 'el switch está apagado' no puede disfrazarse de 'no se pudo leer'", () => {
+  it("APAGADO y confirmado: las partidas son confiables — el [] es un dato y el tecleado manda (R62)", () => {
+    expect(
+      partidasConfiablesReal({ __tallerHibrido: false, __tallerHibridoDesconocido: false })(),
+    ).toBe(true);
+  });
+
+  it("la lectura de AppConfig FALLÓ: NO es confiable — nada de desbloquear el gasto ni de escribir $0", () => {
+    expect(partidasConfiablesReal({ __tallerHibridoDesconocido: true })()).toBe(false);
+  });
+
+  it("ninguna hidratación exitosa todavía: NO es confiable (no es lo mismo que 'apagado')", () => {
+    expect(partidasConfiablesReal({})()).toBe(false);
+  });
+
+  it("PRENDIDO con las partidas cargadas: confiable", () => {
+    expect(
+      partidasConfiablesReal({
+        __tallerHibrido: true,
+        __tallerHibridoDesconocido: false,
+        __tallerPartidasCargadas: true,
+      })(),
+    ).toBe(true);
+  });
+
+  it("PRENDIDO pero con la lectura de partidas FALLIDA: NO confiable — el $0 derivado sería una mentira", () => {
+    expect(
+      partidasConfiablesReal({
+        __tallerHibrido: true,
+        __tallerHibridoDesconocido: false,
+        __tallerPartidasCargadas: false,
+      })(),
+    ).toBe(false);
+  });
+});
+
 describe("R62 — con el switch apagado, la derivación de partidas no aplica en ningún lado", () => {
   const entryConPartidas: LegacyTallerEntry = {
     id: "tl_x",
@@ -137,7 +197,10 @@ describe("R62 — con el switch apagado, la derivación de partidas no aplica en
   ];
   const porVisita = new Map<string, Partida[]>([[claveVisita, ps]]);
 
-  it("switch APAGADO: el tecleado sobrevive intacto — la visita CON partidas sube su gasto tal cual (Ruling R62)", async () => {
+  // El switch APAGADO **y confirmado** (la lectura de AppConfig tuvo éxito): el
+  // caso de una lectura FALLIDA no llega hasta aquí — lo detiene antes el
+  // tri-estado del monolito, ver el describe de arriba.
+  it("switch APAGADO y confirmado: el tecleado sobrevive intacto — la visita CON partidas sube su gasto tal cual (Ruling R62)", async () => {
     upserts.length = 0;
     const partidasDe = partidasDeEntryComoCloudWire({
       tallerHibrido: false,
@@ -273,5 +336,62 @@ describe("hydrateFromCloud — el snapshot sig reacciona a un flip del switch (f
     const antesDelFlip = [...restoDelTenant, [] as Row[]]; // AppConfig: sin fila (switch nunca configurado)
     const despuesDelFlip = [...restoDelTenant, [r("2026-09-10T08:00:00Z")]]; // admin crea/actualiza la fila
     expect(hydrateSignature(antesDelFlip)).not.toBe(hydrateSignature(despuesDelFlip));
+  });
+});
+
+// ── BC-C1 (+ R89) — la firma del snapshot INCLUYE partidas y accesorios ─────
+// El hallazgo #1 de todo el cierre: `TallerPartida` no participaba de
+// `hydrateSignature`, así que firmar/rechazar/crear/enviar una partida — que no
+// toca ni una fila de `Taller` — producía una firma IDÉNTICA y
+// `hydrateFromCloud` retornaba por el corto-circuito sin re-armar
+// `window.__tallerPartidas`: en una sesión abierta la partida seguía
+// "pendiente", los chips no se movían, el badge no bajaba y el botón quedaba
+// deshabilitado para siempre. `accesorioRows` es el mismo defecto para otro
+// modelo (L1567, preexistente de `main`), cerrado en la misma edición.
+//
+// Golden test de la lista completa (pedido por el área D): si alguien agrega un
+// modelo al `Promise.all` y olvida meterlo en la firma, este test lo delata —
+// y si lo agrega a la firma, tiene que decirlo aquí a propósito.
+describe("hydrateFromCloud — la lista de hydrateSignature() es completa (BC-C1, R89)", () => {
+  const src = readFileSync(join(__dirname, "..", "src", "api", "cloudHydrate.ts"), "utf8");
+  const m = /const snapshotSig = hydrateSignature\(\[([\s\S]*?)\]\);/.exec(src);
+  if (!m) throw new Error("No se encontró la llamada a hydrateSignature() en hydrateFromCloud()");
+  const listado = m[1]!
+    .split(",")
+    .map((s) => s.replace(/\/\/.*$/gm, "").trim())
+    .filter(Boolean);
+
+  it("incluye partidaRows — sin él, ningún cambio de partidas se ve en una sesión abierta", () => {
+    expect(listado.some((x) => x.startsWith("partidaRows"))).toBe(true);
+  });
+
+  it("incluye accesorioRows — R89, el mismo defecto para otro modelo", () => {
+    expect(listado).toContain("accesorioRows");
+  });
+
+  it("golden: la lista completa, en orden — agregar un modelo obliga a declararlo aquí", () => {
+    expect(listado).toEqual([
+      "units",
+      "checklists",
+      "semanales",
+      "tallerCloud",
+      "checkDones",
+      "combustible",
+      "validaciones",
+      "complianceDocs",
+      "accesorioRows",
+      "anulaciones",
+      "appConfigRows ?? []",
+      "partidaRows ?? []",
+    ]);
+  });
+
+  it("las partidas se leen UNA sola vez, dentro del Promise.all — nunca después del corto-circuito", () => {
+    // `listTallerPartidas(` debe aparecer exactamente una vez (la del Promise.all)
+    // y `fetchPartidas(` ninguna: la segunda lectura (L1295) desapareció con el fix.
+    expect(src.match(/listTallerPartidas\(/g)?.length ?? 0).toBe(1);
+    expect(src).not.toContain("fetchPartidas(");
+    const idxFirma = src.indexOf("const snapshotSig = hydrateSignature([");
+    expect(src.indexOf("listTallerPartidas(tenantId)")).toBeLessThan(idxFirma);
   });
 });
