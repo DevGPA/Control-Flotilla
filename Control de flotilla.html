@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-vSeE87hlgz6BvMElQQLw/2ynU49eUvThssVsyZuUhJ4=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Fm+9lXx0a/aLmLD04+MTiyEWyAOIPLRLfRxAQnkPDAA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -9961,9 +9961,18 @@ function openTallerModal(id){
     // desaparecían de la bandeja. Mover partidas no es opción (la visitaKey es
     // parte del identifier y el repo prohíbe el borrado físico): se bloquea la
     // edición y se dice por qué.
+    // Remate §2.1 — el candado tampoco puede confiar en un `[]` que es AUSENCIA.
+    // Con las partidas NO cargadas, `psGasto` vale [] por no haberlas podido
+    // leer, no porque la visita no tenga dinero firmado: dejar la identidad
+    // editable ahí es exactamente el daño que B-C4 existe para impedir (la fila
+    // nueva nace sin gasto, la vieja se borra y las partidas quedan colgando de
+    // una llave que ya nadie resuelve). Mismo tri-estado que ya bloquea #tf-gasto.
     {
-      const idLock = psGasto.length > 0;
-      const leyendaId = "La visita tiene partidas: su identidad no se edita.";
+      const idDudoso = !_partidasConfiables();
+      const idLock = psGasto.length > 0 || idDudoso;
+      const leyendaId = psGasto.length > 0
+        ? "La visita tiene partidas: su identidad no se edita."
+        : "No se pudieron cargar las partidas: la identidad no se edita hasta que carguen.";
       for(const campo of ["tf-fentrada","tf-plate","tf-eco"]){
         const el = document.getElementById(campo);
         if(!el) continue;
@@ -9996,7 +10005,12 @@ function openTallerModal(id){
     // es final; una liga emitida después lo cambiaría a espaldas del cierre.
     // El backend rechaza igual (emitirLiga + el portón, A-8) — esto solo evita
     // ofrecerlo. Mismo predicado `isClosed` que usa el resto de este modal.
-    const ligaOfrecible = !!e && !isClosed(e?.estado);
+    // Remate §2.3.1: el servidor cierra con DOS reglas, no una — `visitaCerrada`
+    // (validacion.ts) también cierra con `estatus === "cerrado"`, que
+    // `batchUpload.ts` deriva de `fsalidaReal`. Con la salida real tecleada y el
+    // estado todavía sin marcar, el botón se ofrecía y `emitirLiga` respondía
+    // "La visita está finalizada": la UI prometía algo que el portón ya negaba.
+    const ligaOfrecible = !!e && !isClosed(e?.estado) && !e?.fsalidaReal;
     if(btnCopiarLiga) btnCopiarLiga.style.display = ligaOfrecible ? "" : "none";
     if(btnRevocarLiga){
       btnRevocarLiga.style.display = "none";
@@ -10710,9 +10724,21 @@ async function saveTallerEntry(){
     // Fix ronda 2: mismo candado que `gasto` — gastoRef/gastoMO tampoco tienen
     // de dónde salir tecleados a mano (el formulario no los desglosa), así
     // que si la visita tiene partidas no se persiste un 0 que las suplante.
-    gastoRef:    gastoInputEl.readOnly ? undefined : 0,
-    gastoMO:     gastoInputEl.readOnly ? undefined : 0,
-    gasto:       gastoInputEl.readOnly ? undefined : (parseFloat(gastoInputEl.value)||0),
+    // Remate §2.2 (Ruling R95, "anulación, nunca borrado" también al guardar a
+    // mano): con el campo bloqueado NO se lee el DOM (ahí está el DERIVADO que
+    // pintó openTallerModal), se arrastra lo que había EN MEMORIA. Así el único
+    // chokepoint — `sinGastoSiTienePartidas` (src/api/batchUpload.ts) — es quien
+    // decide: con partidas quita las tres llaves y preserva el subtotal en
+    // `gastoCapturadoOriginal`; sin partidas (o en estado desconocido) conserva
+    // lo que había en vez de borrarlo. Antes el entry llegaba ya en `undefined`
+    // y no había nada que preservar: la variante peor del reporte.
+    gastoRef:    gastoInputEl.readOnly ? srcEntry?.gastoRef : 0,
+    gastoMO:     gastoInputEl.readOnly ? srcEntry?.gastoMO : 0,
+    gasto:       gastoInputEl.readOnly ? srcEntry?.gasto : (parseFloat(gastoInputEl.value)||0),
+    // R95: el rastro del subtotal tecleado sobrevive al guardado manual. La
+    // lista blanca de este `entry` lo omitía y `upsertTaller` reemplaza `datos`
+    // COMPLETO ⇒ el siguiente guardado lo borraba de DynamoDB para siempre.
+    gastoCapturadoOriginal: srcEntry?.gastoCapturadoOriginal,
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),

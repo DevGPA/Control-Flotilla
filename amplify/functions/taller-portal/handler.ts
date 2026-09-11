@@ -242,14 +242,23 @@ export const handler = async (event: any) => {
       // user pool real, pero si ocurriera, no debe acuñar ni revocar nada —
       // fallar cerrado, nunca mentir con un autor inventado.
       if (quien === "desconocido") return { error: "no autorizado" };
-      // R90 (A-9) — el apagador también cierra la EMISIÓN. Apagar `AppConfig`
-      // solo silenciaba la app: el resolver seguía acuñando ligas nuevas.
-      // Revocar una por una no es un freno de mano el día malo.
-      if (!(await esquemaHibridoEncendido(tenantId))) return { error: "esquema apagado" };
       const { unitUid, fechaEntrada } = (event.arguments ?? {}) as Record<string, unknown>;
-      return campoResolver === "generarLigaTaller"
-        ? await emitirLiga(tenantId, String(unitUid), String(fechaEntrada), quien)
-        : await revocarLiga(tenantId, String(unitUid), String(fechaEntrada), quien);
+      if (campoResolver === "generarLigaTaller") {
+        // R90 (A-9) — el apagador también cierra la EMISIÓN. Apagar `AppConfig`
+        // solo silenciaba la app: el resolver seguía acuñando ligas nuevas.
+        // Revocar una por una no es un freno de mano el día malo.
+        //
+        // R96 — y SOLO la emisión. El guard estaba antes del dispatch y tapaba
+        // también `revocarLigaTaller`: con el freno de mano puesto, un admin no
+        // podía dejar constancia de revocar la liga filtrada hasta volver a
+        // encender el esquema. El apagador es el freno global y la revocación el
+        // freno por visita; los dos tienen que poder accionarse el mismo día
+        // malo, y revocar es estrictamente restrictivo (sube `ligaVersion`,
+        // nunca abre nada).
+        if (!(await esquemaHibridoEncendido(tenantId))) return { error: "esquema apagado" };
+        return await emitirLiga(tenantId, String(unitUid), String(fechaEntrada), quien);
+      }
+      return await revocarLiga(tenantId, String(unitUid), String(fechaEntrada), quien);
     } catch (e) {
       if (e instanceof ErrorEntrada) return { error: e.message };
       const msg = e instanceof Error ? e.message : String(e);
@@ -681,10 +690,11 @@ async function crearPartida(
   }
 
   const ahora = new Date().toISOString();
-  const { data, errors } = await client.models.TallerPartida.create({
+  const partidaId = randomUUID();
+  const { errors } = await client.models.TallerPartida.create({
     tenantId: tk.t,
     visitaKey,
-    partidaId: randomUUID(),
+    partidaId,
     ...datos,
     // El estado y la autoría los pone el SERVIDOR, siempre.
     estado: "borrador",
@@ -694,7 +704,16 @@ async function crearPartida(
     version: 1,
   });
   if (errors) throw new Error(`TallerPartida.create: ${JSON.stringify(errors)}`);
-  return data;
+  // Remate §2.3.3 — acuse PROYECTADO, no la fila cruda de `TallerPartida.create`.
+  // Es el mismo patrón que A-1 cerró en la ruta vecina: hoy la fila recién creada
+  // solo lleva datos del propio taller, pero devolverla entera es la puerta que
+  // un campo nuevo (una nota interna de Riesgos, un costo negociado) abre sin que
+  // nadie la vuelva a mirar. La página SERVIDA consume exactamente dos cosas de
+  // este acuse: `partidaId` (clave de `previewsLocal` y del render, pagina.ts:792
+  // y :803) y `fotos` (conteo y la primera llave, que pide a /api/foto —
+  // pagina.ts:801 → :427-432). Las fotos ya se subieron ANTES de esta llamada
+  // (subirFotos → POST /api/subida), así que `llaves` ES lo que se escribió.
+  return { partidaId, fotos: llaves };
 }
 
 async function actualizarVisita(
@@ -752,9 +771,13 @@ async function actualizarVisita(
 
   if (columnasLiga) Object.assign(input, columnasLiga);
 
-  const { data, errors } = await client.models.Taller.update(input as never);
+  const { errors } = await client.models.Taller.update(input as never);
   if (errors) throw new Error(`Taller.update: ${JSON.stringify(errors)}`);
-  return data;
+  // Remate §2.3.3 — esta función NO devuelve la fila. `Taller.update` responde el
+  // registro entero (el blob `datos` con gasto/gastoRef/gastoMO, más
+  // `ligaCreadaPor`/`ligaRevocadaPor`, que son CORREOS de empleados de GPA). Hoy
+  // sus tres llamadores lo descartan, pero mientras el valor exista está a una
+  // línea de volver a filtrarse por donde A-1 ya lo cerró. Se corta en la fuente.
 }
 
 /**

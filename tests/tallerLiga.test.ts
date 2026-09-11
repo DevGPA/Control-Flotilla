@@ -110,11 +110,32 @@ describe("la emisión de ligas NO cuelga de la URL pública", () => {
   // R90 (A-9) — apagar `AppConfig` solo silenciaba la APP: toda liga repartida
   // seguía viva y el resolver seguía acuñando nuevas. Revocar una por una no es
   // un freno de mano.
-  it("el apagador se consulta del lado SERVIDOR: el resolver no acuña con el esquema apagado (R90)", () => {
+  // R96 (remate §2.3.2) — el guard estaba ANTES del dispatch y tapaba también
+  // `revocarLigaTaller`: con el freno de mano puesto, un admin no podía dejar
+  // constancia de revocar la liga filtrada. El apagador es el freno global y la
+  // revocación el freno por visita: los dos tienen que accionarse el mismo día
+  // malo. Esta prueba fija AMBAS mitades — se niega acuñar, no se gatea revocar.
+  it("el apagador cierra la ACUÑACIÓN y solo la acuñación (R90 + R96)", () => {
     const inicioResolver = handlerSrc.indexOf("event?.info?.fieldName");
-    const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioResolver);
-    const bloque = handlerSrc.slice(inicioResolver, inicioLlamadaEmitir);
-    expect(bloque).toContain("esquemaHibridoEncendido(");
+    const inicioRama = handlerSrc.indexOf('campoResolver === "generarLigaTaller"', inicioResolver);
+    const inicioLlamadaEmitir = handlerSrc.indexOf("emitirLiga(", inicioRama);
+    const inicioLlamadaRevocar = handlerSrc.indexOf("revocarLiga(", inicioLlamadaEmitir);
+    expect(inicioRama).toBeGreaterThan(inicioResolver);
+    expect(inicioLlamadaRevocar).toBeGreaterThan(inicioLlamadaEmitir);
+
+    // (1) Acuñar con el esquema apagado se rechaza: el guard vive DENTRO de la
+    //     rama de emisión, entre la bifurcación y la llamada a emitirLiga.
+    const ramaEmision = handlerSrc.slice(inicioRama, inicioLlamadaEmitir);
+    expect(ramaEmision).toContain("esquemaHibridoEncendido(");
+    expect(ramaEmision).toContain('"esquema apagado"');
+
+    // (2) Revocar NO se gatea: el apagador no aparece ni antes de la
+    //     bifurcación (donde aplicaría a las dos mutaciones) ni en el camino
+    //     que lleva a revocarLiga.
+    expect(handlerSrc.slice(inicioResolver, inicioRama)).not.toContain("esquemaHibridoEncendido(");
+    expect(handlerSrc.slice(inicioLlamadaEmitir, inicioLlamadaRevocar)).not.toContain(
+      "esquemaHibridoEncendido(",
+    );
   });
 
   it("el PORTÓN público también lo consulta — una liga ya repartida deja de servir (R90)", () => {

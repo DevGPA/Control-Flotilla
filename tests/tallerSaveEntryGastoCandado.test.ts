@@ -22,6 +22,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { sinGastoSiTienePartidas, type LegacyTallerEntry } from "../src/api/batchUpload";
 
 const html = readFileSync(join(__dirname, "..", "Control de flotilla.html"), "utf8");
 
@@ -56,8 +57,8 @@ function construyeEntry(opts: {
   gastoReadOnly: boolean;
   tallerEditId?: string | null;
   reingresoKey?: string | null;
-  tallerEntries?: Array<{ id: string; unitKey?: string }>;
-}): { gasto?: number; gastoRef?: number; gastoMO?: number; fentrada?: string } {
+  tallerEntries?: Array<Record<string, unknown> & { id: string; unitKey?: string }>;
+}): LegacyTallerEntry {
   const bloque = bloqueConstruccionEntry();
   // eslint-disable-next-line @typescript-eslint/no-implied-eval -- extracción/ejecución del literal real, patrón ya usado en tallerBadgePendientesDeFirma.test.ts
   const fn = new Function(
@@ -127,5 +128,77 @@ describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gast
     expect(entry.gasto).toBe(1234.5);
     expect(entry.gastoRef).toBe(0);
     expect(entry.gastoMO).toBe(0);
+  });
+});
+
+// ── Remate §2.2 / Ruling R95 — "anulación, nunca borrado" también al guardar a mano ──
+//
+// El residual que la re-revisión dejó abierto: `saveTallerEntry` reconstruía el
+// entry con una lista blanca que NO incluía `gastoCapturadoOriginal`, y con el
+// campo bloqueado mandaba las tres llaves de dinero en `undefined`. Como
+// `upsertTaller` REEMPLAZA `datos` completo, el primer guardado manual posterior
+// borraba de DynamoDB el subtotal que R87 había preservado — y en la "variante
+// peor" (el primer escrito tras aparecer las partidas ES un guardado manual) no
+// se preservaba nunca nada, porque el entry ya llegaba vacío al chokepoint.
+//
+// Estos tests componen las DOS piezas reales: el bloque de construcción del
+// entry extraído del HTML y `sinGastoSiTienePartidas` importado de su módulo —
+// que es exactamente la cadena que corre en producción (`saveTallerEntry` →
+// `__cloudReplaceTaller` → `uploadTallerToCloud` → `sinGastoSiTienePartidas`).
+describe("saveTallerEntry() — el subtotal tecleado sobrevive al guardado manual (R95)", () => {
+  const ORIGINAL = { gasto: 7400, gastoRef: 5000, gastoMO: 2400, en: "2026-09-01T10:00:00Z" };
+
+  it("(a) lo YA preservado sobrevive a un guardado manual de otro campo", () => {
+    const entry = construyeEntry({
+      valores: valoresBase(), // #tf-gasto pinta el DERIVADO (9999)
+      gastoReadOnly: true, // la visita tiene partidas
+      tallerEditId: "tl_a",
+      tallerEntries: [{ id: "tl_a", unitKey: "tl_a", gastoCapturadoOriginal: ORIGINAL }],
+    });
+    // El entry reconstruido ya no pierde el rastro…
+    expect(entry.gastoCapturadoOriginal).toEqual(ORIGINAL);
+    expect(entry.gasto).toBeUndefined(); // …y sigue sin persistir el derivado
+    // …y el chokepoint no lo sobrescribe con un recorte posterior.
+    const subido = sinGastoSiTienePartidas(entry, true, "2026-09-11T12:00:00Z");
+    expect(subido.gastoCapturadoOriginal).toEqual(ORIGINAL);
+  });
+
+  it("(b) variante peor: el PRIMER escrito tras aparecer las partidas es un guardado manual", () => {
+    const entry = construyeEntry({
+      valores: valoresBase({ "tf-gasto": "9999" }), // el DERIVADO pintado por openTallerModal
+      gastoReadOnly: true,
+      tallerEditId: "tl_b",
+      tallerEntries: [
+        { id: "tl_b", unitKey: "tl_b", gasto: 1234.5, gastoRef: 1000, gastoMO: 234.5 },
+      ],
+    });
+    // Del DOM no sale nada: el 9999 derivado NO entra; sale lo que había EN MEMORIA.
+    expect(entry.gasto).toBe(1234.5);
+    expect(entry.gastoRef).toBe(1000);
+    expect(entry.gastoMO).toBe(234.5);
+    expect(entry.gastoCapturadoOriginal).toBeUndefined(); // todavía no hay nada preservado
+    // Por eso el chokepoint SÍ tiene qué preservar antes de recortar.
+    const subido = sinGastoSiTienePartidas(entry, true, "2026-09-11T12:00:00Z");
+    expect(subido.gasto).toBeUndefined();
+    expect(subido.gastoRef).toBeUndefined();
+    expect(subido.gastoMO).toBeUndefined();
+    expect(subido.gastoCapturadoOriginal).toEqual({
+      gasto: 1234.5,
+      gastoRef: 1000,
+      gastoMO: 234.5,
+      en: "2026-09-11T12:00:00Z",
+    });
+  });
+
+  it("sin partidas (o en estado desconocido) se conserva lo que había — no un $0 fabricado", () => {
+    const entry = construyeEntry({
+      valores: valoresBase(),
+      gastoReadOnly: true, // bloqueado por el TRI-ESTADO: partidas no cargadas
+      tallerEditId: "tl_c",
+      tallerEntries: [{ id: "tl_c", unitKey: "tl_c", gasto: 555 }],
+    });
+    expect(entry.gasto).toBe(555);
+    const subido = sinGastoSiTienePartidas(entry, false);
+    expect(subido.gasto).toBe(555); // la verdad previa vuelve a la nube intacta
   });
 });

@@ -360,6 +360,53 @@ describe("POST /api/visita responde un acuse, no la fila completa (A-1)", () => 
   });
 });
 
+// ── Remate §2.3.3 — ninguna ruta devuelve una fila cruda ────────────────────
+// A-1 cerró `/api/visita`; quedaban dos sobras a una línea de volver a filtrar:
+// `crearPartida` devolvía la fila de `TallerPartida.create` y `actualizarVisita`
+// seguía devolviendo la de `Taller` (hoy descartada por el caller). El acuse de
+// la partida se proyecta a lo que la página SERVIDA consume: `partidaId` y
+// `fotos` (pagina.ts:792/:803 y :801 → :427-432), nada más.
+describe("las escrituras responden un acuse proyectado, nunca la fila (remate §2.3.3)", () => {
+  const cuerpoDe = (firma: string, siguiente: string) => {
+    const i = handlerSrc.indexOf(firma);
+    const fin = handlerSrc.indexOf(siguiente, i);
+    expect(i).toBeGreaterThan(-1);
+    expect(fin).toBeGreaterThan(i);
+    return handlerSrc.slice(i, fin);
+  };
+
+  it("crearPartida proyecta { partidaId, fotos } — no `return data`", () => {
+    const cuerpo = cuerpoDe("async function crearPartida(", "async function actualizarVisita(");
+    expect(cuerpo).toContain("return { partidaId, fotos: llaves };");
+    expect(cuerpo).not.toMatch(/\n\s*return data;/);
+    // El id se acuña ANTES del create, para que el acuse no dependa de la fila.
+    expect(cuerpo).toContain("const partidaId = randomUUID();");
+    // Y la fila ni siquiera se recoge del create.
+    expect(cuerpo).toContain("const { errors } = await client.models.TallerPartida.create(");
+  });
+
+  it("actualizarVisita no devuelve nada: la fila de Taller no sale del Lambda", () => {
+    const cuerpo = cuerpoDe(
+      "async function actualizarVisita(",
+      "async function enviarAAutorizacion(",
+    );
+    expect(cuerpo).toContain("const { errors } = await client.models.Taller.update(");
+    expect(cuerpo).not.toMatch(/\n\s*return data;/);
+  });
+
+  it("la página solo consume partidaId y fotos del acuse de POST /api/partida", () => {
+    const pagina = readFileSync("amplify/functions/taller-portal/pagina.ts", "utf8");
+    const i = pagina.indexOf("RUTA_PARTIDA, {");
+    const cuerpo = pagina.slice(i, pagina.indexOf("btn-enviar", i));
+    // Las dos lecturas reales del acuse…
+    expect(cuerpo).toContain("nueva.partidaId");
+    expect(cuerpo).toContain("nueva && nueva.fotos");
+    // …y ninguna otra: `nueva.` no aparece con un tercer campo.
+    const campos = [...cuerpo.matchAll(/nueva\.([A-Za-z]+)/g)].map((m) => m[1]);
+    expect([...new Set(campos)].sort()).toEqual(["fotos", "partidaId"]);
+  });
+});
+
 // ── A-4 — la bitácora ocurre DESPUÉS de la escritura, con IP y huella ───────
 describe("bitácora (§7.6) — IP, huella del token, y después de escribir (A-4)", () => {
   it("loggea la IP de quien llama y una huella HMAC del token, nunca el token", () => {

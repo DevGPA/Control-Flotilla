@@ -79,7 +79,9 @@ const schema = a
         // PROVEEDOR desde la liga mientras Riesgos puede tener el registro
         // abierto. Como columnas, DynamoDB las actualiza independientes; dentro
         // del blob `datos` un escritor pisaría al otro sin aviso.
-        // Migración: leer la columna y, si viene vacía, caer a `datos.<campo>`.
+        // Estado real (A-13/R88): hoy SOLO se ESCRIBEN. El lado de LECTURA de la
+        // app de escritorio (leer la columna y, si viene vacía, caer a
+        // `datos.<campo>`) NO existe todavía — está en Plan 2.
         km: a.integer(),
         estadoOperativo: a.enum(["revisando", "reparando", "esperandoRefaccion", "lista"]),
         fsalidaEst: a.string(),

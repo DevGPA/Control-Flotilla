@@ -276,6 +276,93 @@ describe("expediente y modal — honestidad de la UI (C-I2, C-I5, C-I6, B-C4)", 
     expect(cuerpo).toContain("el.readOnly = idLock");
   });
 
+  // Remate §2.1 — el residual de B-C4: el candado no miraba el tri-estado, así
+  // que con las partidas NO cargadas (`_partidasConfiables() === false`) los tres
+  // campos de identidad quedaban EDITABLES justo en el estado donde no se sabe si
+  // la visita tiene dinero firmado. Se EJECUTA el bloque real extraído del HTML,
+  // no una copia: si alguien revierte el `|| idDudoso`, el primer `it` cae.
+  describe("remate B-C4: el candado de identidad también cierra en estado DESCONOCIDO", () => {
+    /** El bloque real de openTallerModal que fija el candado de identidad. */
+    function bloqueCandadoIdentidad(): string {
+      const i = html.indexOf("const idDudoso = !_partidasConfiables();");
+      expect(i).toBeGreaterThan(-1);
+      const fin = html.indexOf("idHint.style.display = idLock", i);
+      expect(fin).toBeGreaterThan(i);
+      return html.slice(i, html.indexOf("}", fin) + 1);
+    }
+
+    type Campo = { readOnly: boolean; title?: string; removeAttribute(n: string): void };
+
+    function nuevoCampo(): Campo {
+      const c: Campo = {
+        readOnly: false,
+        removeAttribute(n: string) {
+          if (n === "title") delete c.title;
+        },
+      };
+      return c;
+    }
+
+    /** Ejecuta el bloque REAL con un `document` falso y un tri-estado dado. */
+    function corre(opts: { partidas: number; confiables: boolean }) {
+      const campos: Record<string, Campo> = {};
+      const hint = { textContent: "", style: { display: "" } };
+      const doc = {
+        getElementById(id: string): unknown {
+          if (id === "tf-identidad-hint") return hint;
+          if (!campos[id]) campos[id] = nuevoCampo();
+          return campos[id]!;
+        },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real del HTML, patrón del harness de tallerSaveEntryGastoCandado
+      const fn = new Function(
+        "document",
+        "psGasto",
+        "_partidasConfiables",
+        bloqueCandadoIdentidad(),
+      );
+      fn(doc, new Array(opts.partidas).fill(null), () => opts.confiables);
+      return { campos, hint };
+    }
+
+    it("partidas NO cargadas y CERO partidas visibles ⇒ los tres campos quedan bloqueados", () => {
+      const { campos, hint } = corre({ partidas: 0, confiables: false });
+      for (const id of ["tf-fentrada", "tf-plate", "tf-eco"]) {
+        expect(campos[id]!.readOnly, `${id} debe quedar en readOnly`).toBe(true);
+      }
+      expect(hint.style.display).toBe("");
+      expect(hint.textContent).toBe(
+        "No se pudieron cargar las partidas: la identidad no se edita hasta que carguen.",
+      );
+    });
+
+    it("con partidas cargadas y presentes ⇒ bloqueado, con la leyenda de siempre", () => {
+      const { campos, hint } = corre({ partidas: 2, confiables: true });
+      expect(campos["tf-fentrada"]!.readOnly).toBe(true);
+      expect(hint.textContent).toBe("La visita tiene partidas: su identidad no se edita.");
+    });
+
+    it("estado CONFIABLE y sin partidas ⇒ la identidad sigue editable (R62 intacto)", () => {
+      const { campos, hint } = corre({ partidas: 0, confiables: true });
+      for (const id of ["tf-fentrada", "tf-plate", "tf-eco"]) {
+        expect(campos[id]!.readOnly, `${id} debe seguir editable`).toBe(false);
+      }
+      expect(hint.style.display).toBe("none");
+    });
+  });
+
+  // Remate §2.3.1 — el servidor cierra la visita con DOS reglas (`visitaCerrada`
+  // también mira `estatus === "cerrado"`, derivado de `fsalidaReal`); la UI solo
+  // miraba `isClosed(estado)` y ofrecía "Copiar liga" para visitas que el portón
+  // ya rechazaba.
+  it("remate: 'Copiar liga' tampoco se ofrece con la salida REAL ya capturada", () => {
+    const i = html.indexOf("const ligaOfrecible =");
+    expect(i).toBeGreaterThan(-1);
+    expect(html.slice(i, html.indexOf("\n", i))).toContain(
+      "!!e && !isClosed(e?.estado) && !e?.fsalidaReal",
+    );
+  });
+
   it("B-C4: un reingreso (visita NUEVA) libera el candado de identidad", () => {
     const i = html.indexOf("function clearTallerEntryFields(");
     const cuerpo = html.slice(i, html.indexOf("\n}", i));
