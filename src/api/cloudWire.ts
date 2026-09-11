@@ -13,7 +13,7 @@
 // assignments a window.* porque no son leídas desde el bundle TS (solo
 // el HTML legado las invoca, invisible al tree-shaker).
 
-import { configureAmplify, type Schema } from "./amplifyClient";
+import { configureAmplify, getClient, tallerPortalUrl, type Schema } from "./amplifyClient";
 import { isLoggedIn, getSession, logout, type AuthSession } from "./auth";
 import { gatingPlan, MODULE_NAV, ASSIGNABLE_MODULES, MODULE_LABEL } from "./moduleAccess";
 import { buildFleetMapModel, renderFleetMap } from "../ui/fleetMap";
@@ -30,6 +30,8 @@ import {
   type LegacySemanalEntry,
   type LegacyTallerEntry,
 } from "./batchUpload";
+import { visitaKeyDe } from "./tallerPartidas";
+import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
   upsertUnit,
@@ -158,6 +160,34 @@ declare global {
     };
     /** refId de un registro de Taller (identidad = tallerCloudKey). Para anular/restaurar. */
     __tallerRefId?: (e: LegacyTallerEntry) => string;
+    /** Identidad cloud (unitUid, fechaEntrada) de un entry legacy — MISMA
+     *  función que ya usa __tallerRefId (R44): el ciclo de firma de la liga
+     *  (Task 11) nunca deriva unitUid/fechaEntrada de campos de formulario
+     *  crudos, para no apuntar a una visita que el backend no encuentra. */
+    __tallerCloudKey?: (e: LegacyTallerEntry) => { unitUid: string; fechaEntrada: string };
+    /** Ciclo de firma del taller (Task 11): emitir/revocar la liga del
+     *  proveedor + componer el mensaje de WhatsApp. El gate de ROL real es
+     *  AppSync (grupo admin/operativo, ver data/resource.ts); needs-write +
+     *  needs-hibrido en el HTML son cortesía de UI. */
+    __tallerLiga?: {
+      /** Firma un token para la visita y devuelve la URL COMPLETA ya armada
+       *  con `custom.tallerPortalUrl` (o `{error}` si el portal no está
+       *  configurado en este ambiente, o si la mutación falla). */
+      emitir: (
+        unitUid: string,
+        fechaEntrada: string,
+      ) => Promise<{ url: string; expira: number } | { error: string }>;
+      /** Sube `ligaVersion` — invalida todos los tokens emitidos antes. */
+      revocar: (
+        unitUid: string,
+        fechaEntrada: string,
+      ) => Promise<{ ligaVersion: number } | { error: string }>;
+      /** ¿Ya se generó alguna liga para esta visita? Lee `ligaCreadaEn`
+       *  (columna real) vía el CRUD estándar de Taller — visitas previas a
+       *  esta feature no la tienen: `generada` sale false. */
+      estado: (unitUid: string, fechaEntrada: string) => Promise<{ generada: boolean }>;
+      mensajeWhatsApp: typeof mensajeWhatsApp;
+    };
     /** Hook del HTML: re-pinta email + botón logout cuando cambia __cloudSession. */
     __onCloudSession?: () => void;
     /** Gating de módulos (lógica pura testeable) para el applyModuleGating inline. */
@@ -200,6 +230,25 @@ async function ensureSession(): Promise<AuthSession> {
   }
   window.__cloudSession = session;
   return session;
+}
+
+/**
+ * `generarLigaTaller`/`revocarLigaTaller` devuelven `a.json()` — el mismo
+ * dato crudo que el handler de taller-portal retorna (`{token,expira}` /
+ * `{ligaVersion}` / `{error}`), no la forma `{ok,...}` de AdminResult. Puede
+ * llegar como string JSON o ya como objeto según el transporte; se normaliza
+ * en UN solo lugar para los dos call sites de abajo.
+ */
+function parseLigaJson<T extends object>(raw: unknown): T {
+  let v: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      v = JSON.parse(raw);
+    } catch {
+      v = null;
+    }
+  }
+  return (v && typeof v === "object" ? v : {}) as T;
 }
 
 let installed = false;
@@ -289,13 +338,24 @@ export function setupCloud(): void {
     return res;
   };
 
+  // Fix ronda 2 (Task 9, Critical 1): resuelve las partidas de la visita de un entry por
+  // su clave ACTUAL (visitaKeyDe/juntaVisitaKey — nunca una llave hecha a mano), para que
+  // uploadTallerToCloud sepa cuándo quitar gasto/gastoRef/gastoMO del payload — esos
+  // campos ya no son la fuente de verdad de una visita con partidas.
+  // Task 10 (R62, el apagador): con el esquema apagado (window.__tallerHibrido, resuelto
+  // en cloudHydrate.ts), este resolver devuelve `undefined` SIEMPRE — sin partidas que
+  // resolver, sinGastoSiTienePartidas() no recorta nada y el gasto tecleado por Riesgos
+  // sube intacto. Es el único lugar donde se consulta la bandera para este seam.
+  const partidasDeEntry = (e: LegacyTallerEntry): Partida[] | undefined =>
+    window.__tallerHibrido ? window.__tallerPartidas?.get(visitaKeyDe(e)) : undefined;
+
   window.__cloudSyncTaller = async (entries: LegacyTallerEntry[]): Promise<BatchResult> => {
     const session = await ensureSession();
     if (entries.length === 0) {
       return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
     }
     window.notify?.(`Subiendo ${entries.length} taller a DynamoDB…`, "info", 2500);
-    const res = await uploadTallerToCloud(entries, session.tenantId);
+    const res = await uploadTallerToCloud(entries, session.tenantId, partidasDeEntry);
     const summary = `Cloud taller: ${res.semanal} OK · ${res.errors.length} errors`;
     if (res.errors.length > 0) {
       console.warn("[cloudSyncTaller] errors:", res.errors);
@@ -335,7 +395,7 @@ export function setupCloud(): void {
   // simplemente no encuentra filas que borrar.
   window.__cloudReplaceTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const res = await uploadTallerToCloud([entry], session.tenantId);
+    const res = await uploadTallerToCloud([entry], session.tenantId, partidasDeEntry);
     if (res.errors.length) {
       throw new Error(`replaceTaller upsert falló: ${res.errors[0]?.error ?? "?"}`);
     }
@@ -458,6 +518,61 @@ export function setupCloud(): void {
   window.__tallerRefId = (e) => {
     const { unitUid, fechaEntrada } = tallerCloudKey(e as Parameters<typeof tallerCloudKey>[0]);
     return refIdTaller(unitUid, fechaEntrada);
+  };
+  window.__tallerCloudKey = tallerCloudKey;
+
+  // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
+  // No vive en src/api/client.ts (otra sesión lo está editando en este mismo
+  // worktree ahora mismo) — el cliente tipado ya expone client.mutations.* una
+  // vez declaradas en el schema, así que envolverlas aquí no crea un segundo
+  // cliente de datos: es el MISMO singleton de getClient().
+  window.__tallerLiga = {
+    emitir: async (unitUid, fechaEntrada) => {
+      await ensureSession();
+      // R66: la mutación devuelve { token, expira } — nunca una URL (el Lambda
+      // no puede leer su propia Function URL sin crear un ciclo de CDK). La URL
+      // la compone el FRONTEND con custom.tallerPortalUrl. Se resuelve ANTES de
+      // llamar la mutación: si el portal no está configurado en este ambiente,
+      // ni siquiera se acuña un token que nadie podría usar.
+      const portal = tallerPortalUrl();
+      if (!portal) return { error: "Portal del proveedor no configurado en este ambiente." };
+      const c = getClient();
+      const r = await c.mutations.generarLigaTaller({ unitUid, fechaEntrada });
+      if (r.errors?.length) {
+        return { error: r.errors[0]?.message || "No se pudo generar la liga." };
+      }
+      const v = parseLigaJson<{ token?: string; expira?: number; error?: string }>(r.data);
+      if (v.error || !v.token) return { error: v.error || "No se pudo generar la liga." };
+      return { url: `${portal}?t=${encodeURIComponent(v.token)}`, expira: v.expira ?? 0 };
+    },
+    revocar: async (unitUid, fechaEntrada) => {
+      await ensureSession();
+      const c = getClient();
+      const r = await c.mutations.revocarLigaTaller({ unitUid, fechaEntrada });
+      if (r.errors?.length) {
+        return { error: r.errors[0]?.message || "No se pudo revocar la liga." };
+      }
+      const v = parseLigaJson<{ ligaVersion?: number; error?: string }>(r.data);
+      if (v.error || typeof v.ligaVersion !== "number") {
+        return { error: v.error || "No se pudo revocar la liga." };
+      }
+      return { ligaVersion: v.ligaVersion };
+    },
+    // B-I5 — LECTURA PASIVA: `getSession`, nunca `ensureSession`. Esta la llama
+    // `openTallerModal` en CADA apertura, así que con `ensureSession` una sesión
+    // caducada abría el modal de login BLOQUEANTE encima del formulario, por una
+    // consulta que solo decide si se pinta un botón. Sin sesión: "no generada".
+    estado: async (unitUid, fechaEntrada) => {
+      const s = await getSession();
+      if (!s) return { generada: false };
+      const { data } = await getClient().models.Taller.get({
+        tenantId: s.tenantId,
+        unitUid,
+        fechaEntrada,
+      });
+      return { generada: Boolean(data?.ligaCreadaEn) };
+    },
+    mensajeWhatsApp,
   };
 
   window.__cloudFetchAll = async (): Promise<CloudSnapshot | null> => {
@@ -658,9 +773,7 @@ function hydrateSerialized(tenantId: string): Promise<HydrateResult> {
   document.body.setAttribute("data-hydrating", "1");
   const next = hydrateChain.catch(() => {}).then(() => hydrateFromCloud(tenantId));
   hydrateChain = next.catch(() => {}); // la cadena nunca queda en estado rechazado
-  void next
-    .catch(() => {})
-    .finally(() => document.body.removeAttribute("data-hydrating"));
+  void next.catch(() => {}).finally(() => document.body.removeAttribute("data-hydrating"));
   return next;
 }
 

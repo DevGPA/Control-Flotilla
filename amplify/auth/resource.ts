@@ -33,7 +33,14 @@ export const auth = defineAuth({
   // 'admin' = super-usuario (gestiona usuarios, acceso cross-tenant). 'operativo'
   // y 'viewer' = roles operativos. El grupo de TENANT ('gpa') es aparte: un
   // usuario pertenece a su tenant + su rol.
-  groups: ["admin", "operativo", "viewer"],
+  //
+  // 'riesgos' (Task 14) NO es un rol: es una CREDENCIAL ADICIONAL que se suma al
+  // rol de la persona (típicamente 'operativo') y habilita exactamente una
+  // capacidad — emitir y revocar la liga del proveedor de Taller (spec §7.7,
+  // decisión 20). No abre ningún panel de admin ni cambia la escritura. Se
+  // asigna en la consola de Cognito, NO desde el panel de usuarios (que es de un
+  // solo rol). El orden NO se reordena: la precedencia de grupos importa.
+  groups: ["admin", "operativo", "viewer", "riesgos"],
   userAttributes: {
     "custom:tenantId": {
       dataType: "String",

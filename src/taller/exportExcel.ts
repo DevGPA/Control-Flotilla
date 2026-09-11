@@ -14,7 +14,14 @@
  * formato de Excel (`formato` → `cell.z`). Antes las fechas iban como texto "14/08/2026", así
  * que Excel las ordenaba alfabéticamente y filtrar por rango no servía.
  */
+import { gastoDerivado, gastoTotalDe, totalesVisita, type Partida } from "./partidas";
 import type { TallerEntry } from "./types";
+
+// Re-exportada: `gastoTotalDe` vive en ./partidas (fix ronda 2, Important 3 — junto a
+// `gastoDerivado`, con quien comparte la regla "sin partidas", para evitar el ciclo
+// partidas.ts → exportExcel.ts → partidas.ts). Se re-exporta aquí para no romper los
+// imports existentes (`tallerExcel.ts`, `renderHistorial.ts`, `opsTablero.ts`, tests).
+export { gastoTotalDe };
 
 export type TipoColumna = "texto" | "numero" | "moneda" | "fecha";
 
@@ -33,6 +40,17 @@ export interface ColumnaTaller {
 export interface ContextoExport {
   /** Reloj inyectado: los días en taller dependen de "hoy" y así el test es determinista. */
   hoy: Date;
+  /**
+   * Partidas de la visita de un entry (Task 9: el gasto se calcula, no se
+   * captura). Quien arma el contexto la resuelve con `visitaKeyDe`/
+   * `juntaVisitaKey` (src/api/tallerPartidas.ts) — nunca un `${a}|${b}`
+   * hecho a mano aquí, que es capa pura y no puede depender de ese módulo.
+   * Ausente, o devolviendo `undefined`/`[]` para un entry, hace que las
+   * columnas de gasto caigan al comportamiento histórico (exactamente el
+   * de antes de este campo) — un llamador que todavía no conoce las
+   * partidas de la visita no pierde nada.
+   */
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined;
 }
 
 const FMT_FECHA = "dd/mm/yyyy";
@@ -50,13 +68,41 @@ function fecha(v: unknown): Date | "" {
 const texto = (v: unknown): string => String(v ?? "").trim();
 
 /**
- * Gasto total del ingreso. El desglose (refacciones + mano de obra) MANDA; el campo `gasto`
- * es el respaldo de los registros anteriores al desglose — sin él el total salía en $0
- * (auditoría 2026-06-04).
+ * Gasto y visitas de un año, por eco — el número de contexto que convierte
+ * firmar una partida en una decisión (Task 8, bandeja de firmas): "esta
+ * unidad ya lleva $X este año" antes de sumarle una firma más.
+ *
+ * Reusa `gastoTotalDe` (nunca una suma propia) para que este número y el del
+ * Excel jamás diverjan. Mismo criterio que `resumenPorUnidad` (tallerExcel.ts):
+ * solo cuentan visitas CERRADAS — el costo tecleado de una visita abierta
+ * todavía no es gasto real. Por eso `visitas` aquí son visitas CERRADAS del
+ * año, no ingresos totales; quien pinte la etiqueta debe decirlo así (nunca
+ * "N visitas" a secas, que sugeriría el total).
+ *
+ * Task 9: `partidasDe` (opcional) resuelve las partidas de la visita de cada
+ * entry para que este número también vea lo FIRMADO — una unidad cuyo gasto
+ * llegó entero por partidas no puede aparecer en $0 aquí, que es justo el
+ * número que evita firmar a ciegas sobre una unidad que ya gastó su año.
  */
-export function gastoTotalDe(e: TallerEntry): number {
-  const desglose = (e.gastoRef ?? 0) + (e.gastoMO ?? 0);
-  return desglose > 0 ? desglose : (e.gasto ?? 0);
+export function gastoAnualPorEco(
+  entries: readonly TallerEntry[],
+  anio: number,
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined,
+): Map<string, { gasto: number; visitas: number }> {
+  const out = new Map<string, { gasto: number; visitas: number }>();
+  const anioStr = String(anio);
+  for (const e of entries) {
+    if (e.estado !== "Finalizado") continue;
+    const anioEntrada = String(e.fentrada || e.freporte || "").slice(0, 4);
+    if (anioEntrada !== anioStr) continue;
+    const eco = String(e.eco ?? "").trim();
+    if (!eco) continue;
+    const cur = out.get(eco) ?? { gasto: 0, visitas: 0 };
+    cur.gasto += gastoTotalDe(e, partidasDe?.(e));
+    cur.visitas += 1;
+    out.set(eco, cur);
+  }
+  return out;
 }
 
 /**
@@ -81,7 +127,13 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
   { campo: "eco", titulo: "No. Unidad", ancho: 12, tipo: "texto", valor: (e) => texto(e.eco) },
   { campo: "plate", titulo: "Placas", ancho: 12, tipo: "texto", valor: (e) => texto(e.plate) },
   { campo: "brand", titulo: "Modelo", ancho: 22, tipo: "texto", valor: (e) => texto(e.brand) },
-  { campo: "sucursal", titulo: "Sucursal", ancho: 14, tipo: "texto", valor: (e) => texto(e.sucursal) },
+  {
+    campo: "sucursal",
+    titulo: "Sucursal",
+    ancho: 14,
+    tipo: "texto",
+    valor: (e) => texto(e.sucursal),
+  },
   { campo: "area", titulo: "Área", ancho: 16, tipo: "texto", valor: (e) => texto(e.area) },
   { campo: "tipo", titulo: "Tipo", ancho: 13, tipo: "texto", valor: (e) => texto(e.tipo) },
   { campo: "estado", titulo: "Estado", ancho: 15, tipo: "texto", valor: (e) => texto(e.estado) },
@@ -99,30 +151,171 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
       return Number.isFinite(n) && n > 0 ? n : "";
     },
   },
-  { campo: "freporte", titulo: "F. Reporte", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.freporte) },
-  { campo: "fentrada", titulo: "F. Entrada", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fentrada) },
-  { campo: "fsalidaEst", titulo: "F. Salida Est.", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fsalidaEst) },
+  {
+    campo: "freporte",
+    titulo: "F. Reporte",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.freporte),
+  },
+  {
+    campo: "fentrada",
+    titulo: "F. Entrada",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fentrada),
+  },
+  {
+    campo: "fsalidaEst",
+    titulo: "F. Salida Est.",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fsalidaEst),
+  },
   // Faltaba en Activas: una unidad "Por recuperar" ya tiene salida real y no se veía.
-  { campo: "fsalidaReal", titulo: "F. Salida Real", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fsalidaReal) },
-  { campo: "fcierre", titulo: "F. Cierre", ancho: 12, tipo: "fecha", formato: FMT_FECHA, valor: (e) => fecha(e.fcierre) },
-  { campo: "_dias", titulo: "Días en Taller", ancho: 13, tipo: "numero", formato: "0", valor: (e, c) => diasEnTaller(e, c.hoy) },
+  {
+    campo: "fsalidaReal",
+    titulo: "F. Salida Real",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fsalidaReal),
+  },
+  {
+    campo: "fcierre",
+    titulo: "F. Cierre",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fcierre),
+  },
+  {
+    campo: "_dias",
+    titulo: "Días en Taller",
+    ancho: 13,
+    tipo: "numero",
+    formato: "0",
+    valor: (e, c) => diasEnTaller(e, c.hoy),
+  },
   { campo: "tecnico", titulo: "Técnico", ancho: 20, tipo: "texto", valor: (e) => texto(e.tecnico) },
   // Referencia cruzada con el ERP (NetSuite): el pedido con el que se gestiona la
   // compra/servicio. Va junto a técnico y refacciones — es la cadena de gestión.
-  { campo: "pedidoErp", titulo: "Pedido ERP", ancho: 15, tipo: "texto", valor: (e) => texto(e.pedidoErp) },
+  {
+    campo: "pedidoErp",
+    titulo: "Pedido ERP",
+    ancho: 15,
+    tipo: "texto",
+    valor: (e) => texto(e.pedidoErp),
+  },
   // Faltaba en el Detalle del historial: sin esto el historial no dice qué se le puso.
-  { campo: "refacciones", titulo: "Refacciones", ancho: 34, tipo: "texto", valor: (e) => texto(e.refacciones) },
-  { campo: "gastoRef", titulo: "Gasto Refacciones", ancho: 16, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gastoRef ?? 0 },
-  { campo: "gastoMO", titulo: "Gasto Mano de Obra", ancho: 17, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gastoMO ?? 0 },
-  { campo: "_gastoTotal", titulo: "Gasto Total", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => gastoTotalDe(e) },
+  {
+    campo: "refacciones",
+    titulo: "Refacciones",
+    ancho: 34,
+    tipo: "texto",
+    valor: (e) => texto(e.refacciones),
+  },
+  {
+    // Task 9: con partidas, el desglose ya NO sale de los campos crudos del entry
+    // (siempre 0 desde que el formulario dejó de escribirlos a mano) — sale de
+    // gastoDerivado, que suma lo FIRMADO por tipo. Sin partidas, gastoDerivado
+    // devuelve exactamente e.gastoRef, igual que antes.
+    campo: "gastoRef",
+    titulo: "Gasto Refacciones",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => gastoDerivado(e, ctx.partidasDe?.(e) ?? []).gastoRef,
+  },
+  {
+    campo: "gastoMO",
+    titulo: "Gasto Mano de Obra",
+    ancho: 17,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => gastoDerivado(e, ctx.partidasDe?.(e) ?? []).gastoMO,
+  },
+  {
+    campo: "_gastoTotal",
+    titulo: "Gasto Total",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => gastoTotalDe(e, ctx.partidasDe?.(e)),
+  },
   // Se exporta aparte para poder auditar QUÉ registros no tienen desglose: en ésos el Gasto
   // Total viene de aquí, no de la suma.
-  { campo: "gasto", titulo: "Gasto sin desglose", ancho: 16, tipo: "moneda", formato: FMT_MONEDA, valor: (e) => e.gasto ?? 0 },
-  { campo: "comentario", titulo: "Comentario", ancho: 44, tipo: "texto", valor: (e) => texto(e.comentario) },
+  {
+    campo: "gasto",
+    titulo: "Gasto sin desglose",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e) => e.gasto ?? 0,
+  },
+  // Task 9 — ciclo de firma: cuánto llegó cotizado/autorizado/rechazado vía partidas
+  // para ESTA visita. A diferencia de Gasto Total (que cae al legado si la visita no
+  // tiene partidas), estas tres son estrictamente del ciclo de firma — 0 si la visita
+  // no tiene partidas, nunca heredan el Subtotal tecleado a mano. Mismo alcance que
+  // los chips de la bandeja de firmas (Task 8): "Cotizado" / "Ya autorizado" / "Rechazado".
+  {
+    campo: "_cotizado",
+    titulo: "Cotizado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).cotizado,
+  },
+  {
+    campo: "_autorizado",
+    titulo: "Autorizado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).autorizado,
+  },
+  {
+    campo: "_rechazado",
+    titulo: "Rechazado (Partidas)",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (e, ctx) => totalesVisita(ctx.partidasDe?.(e) ?? []).rechazado,
+  },
+  {
+    campo: "comentario",
+    titulo: "Comentario",
+    ancho: 44,
+    tipo: "texto",
+    valor: (e) => texto(e.comentario),
+  },
   { campo: "id", titulo: "ID registro", ancho: 16, tipo: "texto", valor: (e) => texto(e.id) },
-  { campo: "unitKey", titulo: "Llave de unidad", ancho: 14, tipo: "texto", valor: (e) => texto(e.unitKey) },
-  { campo: "createdAt", titulo: "Creado", ancho: 17, tipo: "fecha", formato: "dd/mm/yyyy hh:mm", valor: (e) => fecha(e.createdAt) },
-  { campo: "updatedAt", titulo: "Actualizado", ancho: 17, tipo: "fecha", formato: "dd/mm/yyyy hh:mm", valor: (e) => fecha(e.updatedAt) },
+  {
+    campo: "unitKey",
+    titulo: "Llave de unidad",
+    ancho: 14,
+    tipo: "texto",
+    valor: (e) => texto(e.unitKey),
+  },
+  {
+    campo: "createdAt",
+    titulo: "Creado",
+    ancho: 17,
+    tipo: "fecha",
+    formato: "dd/mm/yyyy hh:mm",
+    valor: (e) => fecha(e.createdAt),
+  },
+  {
+    campo: "updatedAt",
+    titulo: "Actualizado",
+    ancho: 17,
+    tipo: "fecha",
+    formato: "dd/mm/yyyy hh:mm",
+    valor: (e) => fecha(e.updatedAt),
+  },
 ];
 
 /**
@@ -132,6 +325,8 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
 export const CAMPOS_OMITIDOS: Record<string, string> = {
   _cloud:
     "Bandera interna de hidratación (marca que el registro ya estuvo en la nube, guarda anti-resurrección). No es un dato de negocio.",
+  gastoCapturadoOriginal:
+    "R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera partidas, conservado al recortarlo del payload (anulación, nunca borrado). No es el gasto de la visita (ese es la suma de lo firmado); es rastro. Si Navares decide exportarlo, entra como columna propia 'Capturado originalmente'.",
 };
 
 /** Fila por entry, en el orden de las columnas. */
@@ -183,14 +378,62 @@ export const COLUMNAS_RESUMEN: ColumnaResumen[] = [
   { titulo: "Sucursal", ancho: 14, tipo: "texto", valor: (u) => texto(u.sucursal) },
   { titulo: "Área", ancho: 16, tipo: "texto", valor: (u) => texto(u.area) },
   { titulo: "Visitas", ancho: 9, tipo: "numero", formato: "0", valor: (u) => u.visitas },
-  { titulo: "Gasto Total", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoTotal },
-  { titulo: "Refacciones", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoRef },
-  { titulo: "Mano de Obra", ancho: 14, tipo: "moneda", formato: FMT_MONEDA, valor: (u) => u.gastoMO },
-  { titulo: "Días Promedio", ancho: 13, tipo: "numero", formato: "0.0", valor: (u) => u.diasPromedio ?? "" },
-  { titulo: "KM Último", ancho: 11, tipo: "numero", formato: "#,##0", valor: (u) => u.kmUltimo ?? "" },
-  { titulo: "$ / 1,000 km", ancho: 13, tipo: "moneda", formato: '"$"#,##0.00', valor: (u) => u.costoPorMilKm ?? "" },
-  { titulo: "Primer Ingreso", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.primerIngreso) },
-  { titulo: "Última Salida", ancho: 13, tipo: "fecha", formato: FMT_FECHA, valor: (u) => fecha(u.ultimaSalida) },
+  {
+    titulo: "Gasto Total",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoTotal,
+  },
+  {
+    titulo: "Refacciones",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoRef,
+  },
+  {
+    titulo: "Mano de Obra",
+    ancho: 14,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (u) => u.gastoMO,
+  },
+  {
+    titulo: "Días Promedio",
+    ancho: 13,
+    tipo: "numero",
+    formato: "0.0",
+    valor: (u) => u.diasPromedio ?? "",
+  },
+  {
+    titulo: "KM Último",
+    ancho: 11,
+    tipo: "numero",
+    formato: "#,##0",
+    valor: (u) => u.kmUltimo ?? "",
+  },
+  {
+    titulo: "$ / 1,000 km",
+    ancho: 13,
+    tipo: "moneda",
+    formato: '"$"#,##0.00',
+    valor: (u) => u.costoPorMilKm ?? "",
+  },
+  {
+    titulo: "Primer Ingreso",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (u) => fecha(u.primerIngreso),
+  },
+  {
+    titulo: "Última Salida",
+    ancho: 13,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (u) => fecha(u.ultimaSalida),
+  },
 ];
 
 /** Filas de la hoja de resumen. */

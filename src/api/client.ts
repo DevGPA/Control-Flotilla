@@ -619,6 +619,23 @@ export async function listAnulaciones(tenantId: string): Promise<Schema["Anulaci
   );
 }
 
+// ── Configuración del tenant (Task 10 — el apagador del esquema híbrido) ────
+// UNA fila por tenant (identifier = tenantId): list() + filter, igual patrón
+// que el resto de los modelos, para que encaje sin cambios en el Promise.all
+// y en hydrateSignature() de cloudHydrate.ts (esperan un array).
+export async function listAppConfig(tenantId: string): Promise<Schema["AppConfig"]["type"][]> {
+  const c = getClient();
+  return listAll<Schema["AppConfig"]["type"]>(
+    (token) =>
+      c.models.AppConfig.list({
+        filter: { tenantId: { eq: tenantId } },
+        limit: 1000,
+        nextToken: token ?? undefined,
+      }),
+    "listAppConfig",
+  );
+}
+
 // ───────────────────────── Cumplimiento (ComplianceDoc) ─────────────────────────
 // Expediente de cumplimiento por unidad (captura manual operativo/admin). Identidad
 // (tenantId, economicoId, docId). El estado vencido/por-vencer se DERIVA en el front

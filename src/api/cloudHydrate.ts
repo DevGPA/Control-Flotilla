@@ -24,6 +24,7 @@ import {
   listComplianceDocs,
   listAccesorios,
   listAnulaciones,
+  listAppConfig,
 } from "./client";
 import {
   buildAnuladasActivas,
@@ -38,8 +39,34 @@ import { monthOf } from "../dates";
 import { buildAccesorioEntries } from "../accesorios/mapEntry";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
-import { uploadTallerToCloud } from "./batchUpload";
+import { uploadTallerToCloud, type LegacyTallerEntry } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
+import {
+  listTallerPartidas,
+  mapPartidas,
+  agruparPorVisita,
+  juntaVisitaKey,
+  visitaKeyDe,
+  filasBandeja,
+  guardarDecisionPartida,
+  urlFotoPartida,
+  resumenBandeja,
+  resumenLoteFirma,
+  type DecisionPartida,
+  type FilaBandeja,
+  type ResumenBandeja,
+} from "./tallerPartidas";
+import {
+  pendientesDeFirma,
+  MOTIVOS_RECHAZO,
+  gastoDerivado,
+  montoPendienteDeFirma,
+  esquemaHibridoActivo,
+  type Partida,
+  type TotalesVisita,
+  type GastoDerivado,
+} from "../taller/partidas";
+import { gastoAnualPorEco } from "../taller/exportExcel";
 import { mergeCheckDones } from "./mergeCheckDones";
 import { stripAuto, type DoneMap } from "../analyzer/findingKey";
 import { injectAutoResolve, purgeAutoEntries, type AutoRow } from "../analyzer/autoResolve";
@@ -49,7 +76,7 @@ import { indexaCatalogo, resuelveUnidad, placasSinUnidad } from "../fleet/unitIn
 import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../types";
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
-import { migrateEstado } from "../taller/types";
+import { migrateEstado, normalizeArea } from "../taller/types";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -79,6 +106,51 @@ function asRisk(v: unknown): RiskLevel | undefined {
   return VALID_RISKS.has(s as RiskLevel) ? (s as RiskLevel) : undefined;
 }
 
+/**
+ * Fix ronda 2 (Task 9, Critical 1): `gasto`/`gastoRef`/`gastoMO` NUNCA se hidratan a `0` cuando
+ * `datos` no trae el campo — antes `Number(datos.gasto) || 0` fabricaba un cero indistinguible
+ * de un cero real. Con partidas, ese `0` fabricado se re-sube tal cual en el próximo
+ * `finalizarUnidad`/guardado (uploadTallerToCloud sube el entry entero) y el registro cloud
+ * queda con un $0 "duro" que ya no dice "no capturado" — dice "cero", y si las partidas se
+ * volvieran inalcanzables (visita anulada y restaurada, o la placa cambia — tallerCloudKey usa
+ * `plate || eco`, y el reemplacamiento de la flota está en curso) el dinero firmado desaparece
+ * sin rastro. `Number(v)` no-finito (basura, `"abc"`) también se trata como ausente, nunca 0.
+ *
+ * Fix ronda 3: `Number("") === 0` (finito) — sin el guard de string vacía/solo-espacios, ESTA
+ * MISMA función fabricaba el cero duro que existe para cerrar, con un `datos.gasto` vacío en
+ * vez de ausente. `datos` nunca ha traído ese shape, pero el guard es una línea y el punto de
+ * esta función es no dejar ni un solo camino hacia un cero fabricado.
+ */
+export function numOrUndef(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  if (typeof v === "string" && !v.trim()) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * R87 — reconstruye `datos.gastoCapturadoOriginal` desde el blob JSON. Misma
+ * disciplina que `numOrUndef`: nada se fabrica. Sin `en` (el sello de cuándo se
+ * preservó) el registro no dice nada útil, así que se descarta entero en vez de
+ * inventar una fecha.
+ */
+export function gastoCapturadoOriginal(v: unknown): TallerEntry["gastoCapturadoOriginal"] {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const en = typeof o.en === "string" ? o.en : "";
+  if (!en) return undefined;
+  const gasto = numOrUndef(o.gasto);
+  const gastoRef = numOrUndef(o.gastoRef);
+  const gastoMO = numOrUndef(o.gastoMO);
+  if (gasto === undefined && gastoRef === undefined && gastoMO === undefined) return undefined;
+  return {
+    ...(gasto === undefined ? {} : { gasto }),
+    ...(gastoRef === undefined ? {} : { gastoRef }),
+    ...(gastoMO === undefined ? {} : { gastoMO }),
+    en,
+  };
+}
+
 declare global {
   interface Window {
     buildAnalytics?: () => void;
@@ -97,6 +169,121 @@ declare global {
     tallerEntries?: TallerEntry[];
     updateTallerBadge?: () => void;
     renderTaller?: () => void;
+    /** Partidas de taller (ciclo de firma), agrupadas por visitaKey. Alimenta
+     *  el badge de la pestaña Taller — cuenta lo que espera la firma de Riesgos. */
+    __tallerPartidas?: Map<string, Partida[]>;
+    /**
+     * Task 10 (el apagador) — `esquemaHibridoActivo(AppConfig)` ya resuelto, se
+     * publica en CADA hidratación (incluso si el resto del snapshot no cambió:
+     * un admin puede voltear el switch sin que el resto de los datos del tenant
+     * se muevan un bit). Default OFF: fila ausente, campo ausente, tipo
+     * incorrecto o lectura fallida resuelven `false` (ver `esquemaHibridoActivo`).
+     * El Lambda del portal (taller-portal) NO se apaga con esta bandera — para
+     * cerrar la puerta del proveedor se revoca la liga (`ligaVersion`, columna
+     * de `Taller`), un mecanismo aparte. Cada resolver de partidas del monolito
+     * y de src/api/{cloudWire,cloudHydrate}.ts consulta este MISMO booleano
+     * (R62): con el esquema apagado, TODOS ven `[]`/`undefined` — el dinero
+     * derivado deja de aplicar en cualquier lado, nunca a medias.
+     */
+    __tallerHibrido?: boolean;
+    /**
+     * B-C2 (tri-estado) — `true` cuando la lectura de `AppConfig` FALLÓ y por
+     * tanto no se sabe si el esquema está prendido. Sin esta bandera, una
+     * lectura fallida era indistinguible de "el admin apagó el switch": la app
+     * desbloqueaba `#tf-gasto` y persistía un `$0` duro encima del dinero
+     * firmado. Con ella, `__tallerHibrido` solo se publica cuando la lectura
+     * tuvo ÉXITO — `undefined` significa "todavía no se sabe", nunca "apagado".
+     */
+    __tallerHibridoDesconocido?: boolean;
+    /**
+     * B-C2 (tri-estado) — estado de la lectura de partidas de la hidratación
+     * más reciente: `undefined` = nunca corrió, `false` = corrió y FALLÓ (el
+     * mapa `__tallerPartidas` conserva lo último bueno, o nada), `true` =
+     * cargadas (el mapa es autoritativo, aunque esté vacío). El monolito lo
+     * consume para decidir si un `$0` derivado es un dato o una ausencia.
+     */
+    __tallerPartidasCargadas?: boolean;
+    /** Bridge (fix ronda 2, Finding 1): la MISMA `pendientesDeFirma` de
+     *  src/taller/partidas.ts, publicada para que el badge del monolito la
+     *  consuma en vez de reimplementar el filtro "estado === propuesta" —
+     *  Task 8 (bandeja de firma) contará con esta misma función. */
+    __pendientesDeFirma?: (ps: Partida[]) => number;
+    /** Bridges de Task 8 (bandeja de firmas) — mismo motivo que los de arriba:
+     *  el `<script>` inline del monolito no puede `import`, así que las
+     *  funciones puras de src/ se publican para que las invoque directo. */
+    __filasBandeja?: (
+      entries: LegacyTallerEntry[],
+      porVisita: Map<string, Partida[]>,
+      anualPorEco: Map<string, { gasto: number; visitas: number }>,
+    ) => FilaBandeja[];
+    /** Gasto+visitas CERRADAS del año, por eco (Ruling A) — el contexto que
+     *  convierte firmar una partida en una decisión informada. Task 9: el 3er
+     *  parámetro (opcional) resuelve las partidas de la visita de cada entry
+     *  para que este total también vea lo FIRMADO — sin él, se comporta
+     *  exactamente igual que antes de Task 9. */
+    __gastoAnualPorEco?: (
+      entries: readonly TallerEntry[],
+      anio: number,
+      partidasDe?: (e: TallerEntry) => Partida[] | undefined,
+    ) => Map<string, { gasto: number; visitas: number }>;
+    /**
+     * Task 9 (el gasto se calcula, no se captura): el gasto de una visita con
+     * partidas es la suma de lo FIRMADO, nunca un número tecleado. El monolito
+     * la usa para pintar `#tf-gasto` en solo lectura con el valor derivado —
+     * la aritmética vive en src/taller/partidas.ts, nunca reimplementada acá.
+     */
+    __gastoDerivado?: (
+      entry: { gasto?: number; gastoRef?: number; gastoMO?: number },
+      ps: Partida[],
+    ) => GastoDerivado;
+    /**
+     * Fix ronda 2 (Task 9, Important 2): cuánto de las partidas de la visita sigue
+     * esperando firma. El monolito la usa para que `#tf-gasto` en solo lectura
+     * pueda decir "$X esperando firma" — un número de dinero declara su alcance
+     * en vez de dejar el campo mudo sobre lo pendiente. Reemplaza al bridge
+     * `__totalesVisita` de la ronda 1: ese residuo (`cotizado - autorizado -
+     * rechazado`) solo cuadraba porque `autorizar()` congela `precioAutorizado
+     * = precio` — el día que se autorice a un precio negociado distinto, el
+     * residuo se desalinea. `montoPendienteDeFirma` no es un residuo.
+     */
+    __montoPendienteDeFirma?: (ps: Partida[]) => number;
+    /** Menú CERRADO de motivos de rechazo — nunca un texto libre a mano. */
+    __MOTIVOS_RECHAZO?: readonly string[];
+    /** Misma derivación de visitaKey que agrupa `__tallerPartidas` — para que
+     *  la bandeja pueda ubicar el `TallerEntry` original de una fila sin
+     *  hand-rollear el match. */
+    __visitaKeyDe?: (e: LegacyTallerEntry) => string;
+    /** URL firmada de una foto de partida (llave completa, sin normalizar). */
+    __urlFotoPartida?: (key: string) => Promise<string | null>;
+    /**
+     * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
+     * partidas se pueden firmar en lote (tienen precio — Ruling B), a
+     * cuánto queda el autorizado si se firman, y cuántas quedan fuera.
+     * El monolito solo pinta lo que esto devuelve, nunca lo calcula.
+     */
+    __resumenLoteFirma?: (
+      ps: Partida[],
+      totales: TotalesVisita,
+    ) => { autorizables: Partida[]; monto: number; sinPrecio: number };
+    /**
+     * R85 (C-I1) — la franja de resumen de la bandeja que pide el spec §9.2:
+     * "N partidas en M unidades · Suman $X". Aritmética en src/ (testeada), el
+     * monolito solo pinta.
+     */
+    __resumenBandeja?: (filas: FilaBandeja[]) => ResumenBandeja;
+    /**
+     * Persiste la firma de una partida (autorizar/rechazar) y re-hidrata.
+     * Único punto de escritura que la bandeja de firmas expone al monolito —
+     * la lógica real (autorizar/rechazar + el registro con quién/cuándo) vive
+     * en `guardarDecisionPartida` (src/api/tallerPartidas.ts).
+     */
+    __guardarDecisionPartida?: (
+      partidaId: string,
+      visitaKey: string,
+      decision: DecisionPartida,
+      motivo?: string,
+      nota?: string,
+    ) => Promise<void>;
     /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
      *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
     __cloudPhotoUrlMap?: Map<string, PhotoUrlEntry>;
@@ -190,6 +377,64 @@ export function esMontacargasProducto(productoToka: string | null | undefined): 
   return String(productoToka ?? "")
     .toLowerCase()
     .includes("gas lp");
+}
+
+/**
+ * El set de `visitaKey` de las visitas de Taller ANULADAS — construidas
+ * hacia ADELANTE con `juntaVisitaKey` sobre las filas cloud de Taller (que ya
+ * traen `unitUid`/`fechaEntrada` resueltos como columnas del identifier), no
+ * separando de vuelta una `visitaKey` existente (fix ronda 2, Finding 2: la
+ * versión anterior de este filtro invertía `visitaKey` a mano y un `unitUid`
+ * con un "|" propio la hacía fallar en silencio — construir siempre hacia
+ * adelante retira esa clase de bug en vez de documentarla).
+ *
+ * Reusa `esTallerAnulado` — el MISMO predicado que ya decide la anulación de
+ * `tallerEntries` (ver `tallerVigente` más abajo) — en vez de reimplementar
+ * el criterio. Pura y exportada para test (nada de Amplify aquí).
+ */
+export function visitasAnuladasKeys(
+  tallerRows: readonly { unitUid?: unknown; fechaEntrada?: unknown }[],
+  anuladas: ReadonlyMap<string, AnulacionInfo>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const t of tallerRows) {
+    if (esTallerAnulado(t, anuladas)) {
+      out.add(
+        juntaVisitaKey({
+          unitUid: String(t.unitUid ?? ""),
+          fechaEntrada: String(t.fechaEntrada ?? ""),
+        }),
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Excluye del ciclo de firma las partidas cuya `visitaKey` está en el set de
+ * visitas anuladas — misma regla de "anulación, nunca borrado" que ya aplica
+ * a `tallerEntries`. Sin este filtro, una visita anulada con partidas en
+ * "propuesta" seguiría prendiendo el badge de Taller y mandaría a Riesgos a
+ * perseguir una firma para un registro que ya no existe en la vista.
+ * Pura y exportada para test.
+ */
+export function partidasVigentes(ps: Partida[], visitasAnuladas: ReadonlySet<string>): Partida[] {
+  return ps.filter((p) => !visitasAnuladas.has(p.visitaKey));
+}
+
+/**
+ * Partidas vigentes agrupadas por visita — la MISMA composición que arma
+ * `window.__tallerPartidas` (más abajo) y que el fix de huérfanos (Task 9, fix
+ * ronda 3, Critical 1 — hueco #3) necesita para resolver `partidasDe` ANTES de
+ * que `window.__tallerPartidas` exista en este punto de la hidratación. Un
+ * solo lugar para "vigentes + agrupadas", no dos copias que puedan divergir.
+ * Pura y exportada para test.
+ */
+export function partidasVigentesPorVisita(
+  partidas: Partida[],
+  visitasAnuladas: ReadonlySet<string>,
+): Map<string, Partida[]> {
+  return agruparPorVisita(partidasVigentes(partidas, visitasAnuladas));
 }
 
 /** Exportada para tests (el cableado de la refacción vivía aquí como bug). */
@@ -475,6 +720,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     complianceDocs,
     accesorioRows,
     anulaciones,
+    appConfigRows,
+    partidaRows,
   ] = await Promise.all([
     listUnits(tenantId),
     listChecklists(tenantId),
@@ -522,12 +769,71 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       console.warn("[cloudHydrate] listAnulaciones falló (no-fatal):", e);
       return [] as Schema["Anulacion"]["type"][];
     }),
+    // No-fatal (Task 10): el apagador nunca debe tumbar el resto de la
+    // hidratación. Fix B-C2 (tri-estado): una lectura FALLIDA degrada a `null`
+    // — "no se sabe" —, NUNCA a `[]`. Un `[]` se parecía demasiado a "el admin
+    // apagó el switch", y con esa confusión la app desbloqueaba `#tf-gasto` y
+    // persistía un `$0` duro encima del dinero firmado.
+    listAppConfig(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listAppConfig falló (no-fatal, apagador → DESCONOCIDO):", e);
+      return null;
+    }),
+    // BC-C1: las partidas viajan en el MISMO Promise.all que el resto del
+    // snapshot — antes se leían DESPUÉS del corto-circuito de "snapshot sin
+    // cambios", así que firmar/rechazar/crear/enviar una partida (que no toca
+    // ninguna fila de `Taller`) producía una firma IDÉNTICA y la sesión abierta
+    // no veía ni un cambio: la partida seguía "pendiente", el badge no bajaba y
+    // el botón quedaba deshabilitado para siempre. Se leen CRUDAS para que
+    // `updatedAt` pueda viajar dentro de `hydrateSignature()` más abajo.
+    // B-I4 + B-C2: `.catch` degrada a `null` ("NO CARGADAS"), jamás a `[]` —
+    // un `[]` mentiría diciendo "esta visita no tiene partidas" justo cuando lo
+    // único cierto es que no se pudieron leer.
+    listTallerPartidas(tenantId).catch((e) => {
+      console.warn("[cloudHydrate] listTallerPartidas falló (no-fatal, NO CARGADAS):", e);
+      return null;
+    }),
   ]);
+
+  // Task 10 (el apagador): se lee y publica SIEMPRE, en cada llamada — incluso
+  // cuando el resto del snapshot no cambió (el short-circuit de "sin cambios"
+  // más abajo se salta el rebuild completo, pero un admin puede voltear el
+  // switch sin que ni una fila de units/taller/combustible se mueva — por eso
+  // appConfigRows también viaja dentro de hydrateSignature() más abajo: sin
+  // eso, ese short-circuit se pegaría al valor viejo del switch hasta que
+  // algo MÁS cambiara). Fila ausente, campo ausente o de otro tipo resuelven
+  // `false` (esquemaHibridoActivo). El Lambda del portal (taller-portal) NO
+  // se apaga con esta bandera — para cerrar la puerta del proveedor se
+  // revoca la liga (`ligaVersion`, columna de `Taller`), un mecanismo aparte.
+  //
+  // Fix B-C2 (TRI-ESTADO): el booleano solo se PUBLICA cuando la lectura tuvo
+  // éxito. Si falló, `__tallerHibrido` conserva lo último que se supo (o queda
+  // `undefined` en la primera hidratación) y se levanta
+  // `__tallerHibridoDesconocido` — "no se sabe" nunca vuelve a disfrazarse de
+  // "apagado", que es lo que dejaba escribir un `$0` duro sobre dinero firmado.
+  if (appConfigRows) {
+    window.__tallerHibrido = esquemaHibridoActivo(appConfigRows[0]);
+    window.__tallerHibridoDesconocido = false;
+  } else {
+    window.__tallerHibridoDesconocido = true;
+  }
 
   // Índice refId → info de anulaciones ACTIVAS (las restauradas no excluyen). Se expone
   // en window para los módulos legacy (Inspecciones/Semanales) y se aplica aquí abajo.
   const anuladasActivas = buildAnuladasActivas(anulaciones);
   window.__anuladasActivas = anuladasActivas;
+
+  // BC-C1 + B-C2: el mapa de partidas se publica AQUÍ, antes del early-return de
+  // "cloud vacío" y del corto-circuito de "snapshot sin cambios" — no dentro del
+  // bloque de taller, que ambos se saltan. Si la lectura falló, NO se pisa el
+  // mapa (se conserva lo último bueno) y la bandera dice "no cargadas": los
+  // consumidores (candado de `#tf-gasto`, `saveTallerEntry`, bandeja, lecturas
+  // de dinero) pintan "sin datos" en vez de un `$0` que no es un dato.
+  window.__tallerPartidasCargadas = partidaRows !== null;
+  const visitasAnuladas = visitasAnuladasKeys(tallerCloud, anuladasActivas);
+  const partidas = partidaRows ? mapPartidas(partidaRows) : [];
+  if (partidaRows) {
+    window.__tallerPartidas = partidasVigentesPorVisita(partidas, visitasAnuladas);
+  }
   // Checklists VIGENTES: los anulados por admin salen de TODA construcción de vistas
   // (inspecciones por rango, última inspección por unidad, flota, fallback). Combustible
   // etiqueta en vez de filtrar (tiene vista "Anuladas" propia); semanales filtra en su loop.
@@ -550,6 +856,21 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // re-firman por-demanda al verse (imgUrl → lazyObserver → __cloudGetPhotoUrl), así que
   // omitir el pre-firmado proactivo no rompe evidencias. El primer hydrate (sig undefined)
   // y cualquier cambio real (alta/baja/edición → cambia cuenta o max updatedAt) sí procede.
+  // Fix ronda 1 (Task 10, Important 1): appConfigRows viaja aquí también — sin
+  // ella, un admin que voltea SOLO el switch (ninguna otra fila del tenant se
+  // movió) nunca dispara este rebuild: window.__tallerHibrido ya quedó
+  // correcto arriba, pero updateTallerBadge()/renderTaller() (llamados más
+  // abajo, dentro del bloque de taller) no vuelven a correr, así que
+  // applyTallerHibridoGate() tampoco — el badge y la sub-pestaña "Por
+  // autorizar" se quedan pegados al estado de antes del flip hasta que algo
+  // MÁS cambie o el usuario recargue.
+  // BC-C1 (+ R89): `partidaRows` y `accesorioRows` viajan aquí también. Sin
+  // `partidaRows`, NINGÚN cambio de partidas se veía en una sesión abierta —
+  // firmar/rechazar/crear/enviar solo toca `TallerPartida`, y esta firma no la
+  // miraba: la fila seguía "pendiente", los chips no se movían, el badge no
+  // bajaba y el botón quedaba deshabilitado hasta recargar. `accesorioRows` es
+  // literalmente el mismo defecto para otro modelo (L1567, preexistente de
+  // `main`), y se cierra en la misma edición.
   const snapshotSig = hydrateSignature([
     units,
     checklists,
@@ -559,7 +880,10 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     combustible,
     validaciones,
     complianceDocs,
+    accesorioRows,
     anulaciones,
+    appConfigRows ?? [],
+    partidaRows ?? [],
   ]);
   if (window.__lastHydrateSig === snapshotSig) {
     console.info("[cloudHydrate] snapshot sin cambios — omito rebuild+render");
@@ -590,6 +914,24 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     if (orphans.length > 0) {
       console.info(`[cloudHydrate] migrando ${orphans.length} taller entries locales al cloud`);
       try {
+        // Fix ronda 3 (Task 9, Critical 1 — hueco #3): un huérfano LOCAL puede coincidir en
+        // visitaKey (plate|fentrada, tallerCloudKey) con una visita que YA tiene partidas en
+        // cloud — un mismo día, misma placa, reingreso local tras un upload fallido. Sin
+        // resolver las partidas aquí, este upload no pasaba por el seam de cloudWire.ts y
+        // volvía a escribir un gasto/gastoRef/gastoMO que las partidas ya poseen. No se
+        // BC-C1: se REUSA el mapa que ya se armó arriba (una sola lectura de
+        // partidas por hidratación — antes esta rama disparaba un segundo
+        // `fetchPartidas`, L1295). Si la lectura falló, `porVisitaOrfanas` queda
+        // vacío y el resolver devuelve `undefined`: sin partidas resueltas no se
+        // recorta nada, que es el lado seguro (nunca se sube un gasto derivado
+        // que no se pudo verificar).
+        const porVisitaOrfanas = window.__tallerPartidas ?? new Map<string, Partida[]>();
+        // Task 10 (R62): con el esquema apagado, este resolver también ve `undefined` —
+        // el mismo predicado (window.__tallerHibrido, ya resuelto arriba) que
+        // partidasDeEntry en cloudWire.ts. Sin este candado, un huérfano migraría
+        // aquí con su gasto tecleado RECORTADO aun con el apagador en OFF.
+        const partidasDeOrfano = (e: LegacyTallerEntry): Partida[] | undefined =>
+          window.__tallerHibrido ? porVisitaOrfanas.get(visitaKeyDe(e)) : undefined;
         await uploadTallerToCloud(
           orphans.map((e) => {
             // Cast: legacy entries pueden tener campos extra (km, etc) no en TallerEntry type.
@@ -620,6 +962,7 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
             };
           }),
           tenantId,
+          partidasDeOrfano,
         );
         // Re-fetch tallerCloud para incluir los migrados.
         const refreshed = await listTaller(tenantId);
@@ -630,6 +973,19 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         console.error("[cloudHydrate] migración taller falló:", err);
       }
     }
+  }
+
+  // Join VIVO con el catálogo de Unidades: submarca (eco.SUBMARCA → Unit.marca) y área
+  // (asignada por el admin) por economicoId. buildFuelEntries normaliza las claves
+  // (ecoKey "06"↔"6"). Reasignar el área re-clasifica el gasto histórico. También
+  // alimenta el sellado del área de Taller (misma fuente de verdad, ver más abajo).
+  const unidadPorEco = new Map<string, { submarca?: string; area?: string }>();
+  for (const u of units) {
+    const eco = String(u.economicoId ?? "");
+    const marca = String(u.marca ?? "").trim();
+    const area = String(u.area ?? "").trim();
+    if (eco && (marca || area) && !unidadPorEco.has(eco))
+      unidadPorEco.set(eco, { submarca: marca || undefined, area: area || undefined });
   }
 
   // ── Hydrate taller → window.tallerEntries ──────────────────
@@ -664,7 +1020,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         plate: String(datos.plate ?? t.unitUid),
         brand: String(datos.brand ?? ""),
         sucursal: String(datos.sucursal ?? ""),
-        area: String(datos.area ?? ""),
+        // El área SIEMPRE sale del catálogo de la unidad (misma fuente que
+        // Combustible); lo capturado a mano queda como respaldo normalizado.
+        area:
+          normalizeArea(unidadPorEco.get(String(datos.eco ?? "").trim())?.area) ||
+          normalizeArea(datos.area),
         tipo: String(datos.tipo ?? t.motivo ?? ""),
         estado,
         freporte: String(datos.freporte ?? ""),
@@ -672,9 +1032,14 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         fsalidaEst: String(datos.fsalidaEst ?? ""),
         fsalidaReal: String(datos.fsalidaReal ?? t.fechaSalida ?? ""),
         km: Number(datos.km) || 0,
-        gasto: Number(datos.gasto) || 0,
-        gastoRef: Number(datos.gastoRef) || 0,
-        gastoMO: Number(datos.gastoMO) || 0,
+        gasto: numOrUndef(datos.gasto),
+        gastoRef: numOrUndef(datos.gastoRef),
+        gastoMO: numOrUndef(datos.gastoMO),
+        // R87: el subtotal tecleado ANTES de que existieran partidas viaja de
+        // vuelta con el entry. Sin esto, el siguiente guardado (que reemplaza
+        // `datos` completo) lo borraría de todas formas — se preservaría una
+        // sola vez y se perdería a la siguiente.
+        gastoCapturadoOriginal: gastoCapturadoOriginal(datos.gastoCapturadoOriginal),
         tecnico: String(datos.tecnico ?? ""),
         pedidoErp: String(datos.pedidoErp ?? ""),
         refacciones: String(datos.refacciones ?? ""),
@@ -687,6 +1052,67 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
       };
     });
     window.tallerEntries = tallerEntries;
+    // Ciclo de firma (Task 7): partidas agrupadas por visita — de aquí sale el
+    // conteo de "esperando tu autorización" que prende el badge de la pestaña.
+    // Fix ronda 1: las de una visita ANULADA se excluyen ANTES de agrupar — se
+    // recalcula en cada hidratación, así que restaurar la anulación las trae
+    // de vuelta solas, sin caché que limpiar. Fix ronda 2: el set de visitas
+    // anuladas se construye hacia ADELANTE (visitasAnuladasKeys), nunca
+    // separando de vuelta una visitaKey existente.
+    //
+    // BC-C1: se re-agrupa (no se re-LEE) con el `tallerCloud` ya refrescado por
+    // la auto-migración de huérfanos de arriba — la única lectura de partidas de
+    // toda la hidratación es la del `Promise.all`. Con la lectura fallida el
+    // mapa NO se pisa: `__tallerPartidasCargadas` ya dice "no cargadas" y lo
+    // último bueno sigue en pie.
+    if (partidaRows) {
+      window.__tallerPartidas = partidasVigentesPorVisita(
+        partidas,
+        visitasAnuladasKeys(tallerCloud, anuladasActivas),
+      );
+    }
+    // Bridge (fix ronda 2, Finding 1): publica la MISMA pendientesDeFirma que
+    // usará la bandeja de firma (Task 8) — el badge del monolito la consume
+    // en vez de reimplementar el filtro "estado === propuesta".
+    window.__pendientesDeFirma = pendientesDeFirma;
+    // Task 8 (bandeja de firmas): mismo seam de bridge que arriba — funciones
+    // puras de src/ publicadas para que el <script> inline las invoque (no
+    // puede `import`). `filasBandeja`/`gastoAnualPorEco` se llaman con datos
+    // frescos en cada render (no solo al hidratar), así que se publica la
+    // FUNCIÓN, no un resultado ya calculado.
+    window.__filasBandeja = filasBandeja;
+    window.__gastoAnualPorEco = gastoAnualPorEco;
+    // Task 9: mismo seam — la aritmética de "el gasto se calcula" vive en src/,
+    // el monolito solo la invoca para pintar #tf-gasto en solo lectura.
+    window.__gastoDerivado = gastoDerivado;
+    // Fix ronda 2 (Task 9, Important 2): reemplaza al bridge __totalesVisita de la
+    // ronda 1 — la leyenda de #tf-gasto ya no calcula un residuo en el inline script.
+    window.__montoPendienteDeFirma = montoPendienteDeFirma;
+    window.__MOTIVOS_RECHAZO = MOTIVOS_RECHAZO;
+    window.__visitaKeyDe = visitaKeyDe;
+    window.__urlFotoPartida = urlFotoPartida;
+    window.__resumenLoteFirma = resumenLoteFirma;
+    // R85: la franja de resumen de la bandeja (spec §9.2) — mismo seam.
+    window.__resumenBandeja = resumenBandeja;
+    window.__guardarDecisionPartida = async (partidaId, visitaKey, decision, motivo, nota) => {
+      const ps = window.__tallerPartidas?.get(visitaKey) ?? [];
+      const partida = ps.find((p) => p.partidaId === partidaId);
+      if (!partida) {
+        throw new Error(
+          `[guardarDecisionPartida] partida no encontrada: ${partidaId} (${visitaKey})`,
+        );
+      }
+      const quien = window.__cloudSession?.email || "desconocido";
+      await guardarDecisionPartida({
+        tenantId,
+        partida,
+        decision,
+        quien,
+        cuando: new Date().toISOString(),
+        motivo,
+        nota,
+      });
+    };
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();
     if (typeof window.renderTaller === "function") window.renderTaller();
     console.info(`[cloudHydrate] ${tallerEntries.length} taller entries hidratados`);
@@ -754,17 +1180,6 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
   // CargaCombustible (solicitudes + cargas) + ValidacionCarga (revisión) → FuelEntry[].
   // Las fotos de evidencia se pre-firman junto con las demás (más abajo).
   {
-    // Join VIVO con el catálogo de Unidades: submarca (eco.SUBMARCA → Unit.marca) y área
-    // (asignada por el admin) por economicoId. buildFuelEntries normaliza las claves
-    // (ecoKey "06"↔"6"). Reasignar el área re-clasifica el gasto histórico.
-    const unidadPorEco = new Map<string, { submarca?: string; area?: string }>();
-    for (const u of units) {
-      const eco = String(u.economicoId ?? "");
-      const marca = String(u.marca ?? "").trim();
-      const area = String(u.area ?? "").trim();
-      if (eco && (marca || area) && !unidadPorEco.has(eco))
-        unidadPorEco.set(eco, { submarca: marca || undefined, area: area || undefined });
-    }
     const fuelEntries = buildFuelEntries(combustible, validaciones, unidadPorEco, anuladasActivas);
     window.fuelEntries = fuelEntries;
     // Perf F3-1: fijar el estado de la ventana (frontera + crudo + insumos) para que

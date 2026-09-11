@@ -9,6 +9,7 @@ import {
   gastoTotalDe,
   diasEnTaller,
 } from "../src/taller/exportExcel";
+import { gastoDerivado } from "../src/taller/partidas";
 import type { TallerEntry } from "../src/taller/types";
 
 /**
@@ -88,7 +89,11 @@ describe("formato — Excel tiene que poder ordenar y sumar", () => {
   });
 
   it("una fecha inválida o ausente no rompe ni escribe 'Invalid Date'", () => {
-    const [fila] = filasDe([entry({ fentrada: "no-es-fecha", fsalidaReal: undefined })], COLUMNAS_TALLER, { hoy: HOY });
+    const [fila] = filasDe(
+      [entry({ fentrada: "no-es-fecha", fsalidaReal: undefined })],
+      COLUMNAS_TALLER,
+      { hoy: HOY },
+    );
     const iE = COLUMNAS_TALLER.findIndex((c) => c.campo === "fentrada");
     const iS = COLUMNAS_TALLER.findIndex((c) => c.campo === "fsalidaReal");
     expect(fila![iE]).toBe("");
@@ -147,6 +152,117 @@ describe("gastoTotalDe — el desglose manda, el legacy es respaldo", () => {
   });
 });
 
+describe("gastoDerivado — el gasto no se captura, se calcula", () => {
+  const base = { id: "tl_1", gasto: 9999, gastoRef: 0, gastoMO: 0 } as any;
+
+  it("con partidas, el gasto es la suma de lo AUTORIZADO", () => {
+    const r = gastoDerivado(base, [
+      {
+        partidaId: "a",
+        visitaKey: "v",
+        descripcion: "x",
+        estado: "autorizada",
+        precio: 1850,
+        precioAutorizado: 1850,
+        tipo: "refaccion",
+        fotos: [],
+      },
+      {
+        partidaId: "b",
+        visitaKey: "v",
+        descripcion: "y",
+        estado: "autorizada",
+        precio: 2400,
+        precioAutorizado: 2400,
+        tipo: "manoObra",
+        fotos: [],
+      },
+      {
+        partidaId: "c",
+        visitaKey: "v",
+        descripcion: "z",
+        estado: "rechazada",
+        precio: 980,
+        tipo: "refaccion",
+        fotos: [],
+      },
+    ]);
+    expect(r.gasto).toBe(4250);
+    expect(r.gastoRef).toBe(1850);
+    expect(r.gastoMO).toBe(2400);
+    expect(r.cotizado).toBe(5230);
+    expect(r.rechazado).toBe(980);
+  });
+
+  it("SIN partidas conserva lo capturado — las visitas historicas no se tocan", () => {
+    const r = gastoDerivado({ ...base, gasto: 7000, gastoRef: 0, gastoMO: 0 }, []);
+    expect(r.gasto).toBe(7000);
+    expect(r.gastoRef).toBe(0);
+    expect(r.gastoMO).toBe(0);
+    expect(r.cotizado).toBe(0);
+  });
+
+  // Fix ronda 2 (Task 9, Important 3): esta rama reimplementaba su PROPIA fórmula
+  // (`entry.gasto ?? ref+mo`, el legado ganando siempre) en vez de llamar a
+  // gastoTotalDe — para este mismo entry, gastoTotalDe ya daba 150 (el desglose
+  // manda) mientras gastoDerivado(e, []) daba 9999. Dos derivaciones del mismo dato.
+  it("SIN partidas, el desglose manda sobre el legado si ambos existen — la MISMA regla que gastoTotalDe", () => {
+    const r = gastoDerivado({ gasto: 9999, gastoRef: 100, gastoMO: 50 }, []);
+    expect(r.gasto).toBe(150); // NO 9999
+    expect(r.gastoRef).toBe(100);
+    expect(r.gastoMO).toBe(50);
+  });
+
+  it("el desglose siempre cuadra con el total", () => {
+    const r = gastoDerivado(base, [
+      {
+        partidaId: "a",
+        visitaKey: "v",
+        descripcion: "x",
+        estado: "autorizada",
+        precio: 500,
+        precioAutorizado: 500,
+        tipo: "refaccion",
+        fotos: [],
+      },
+    ]);
+    expect(r.gastoRef + r.gastoMO).toBe(r.gasto);
+  });
+
+  // Fix ronda 2: `gasto: 0` explícito NO debe leerse como "presente" (`??` no trata 0
+  // como ausente) — antes esta rama devolvía `gasto: 0` con un desglose de 150,
+  // rompiendo el invariante de arriba exactamente en este caso.
+  it("el desglose siempre cuadra con el total, incluso con `gasto: 0` explícito", () => {
+    const r = gastoDerivado({ gasto: 0, gastoRef: 100, gastoMO: 50 }, []);
+    expect(r.gastoRef + r.gastoMO).toBe(r.gasto); // 150 === 150, no 0
+  });
+});
+
+describe("gastoTotalDe(e, ps) — el derivado alcanza a TODO consumidor, sin perder lo historico", () => {
+  it("con partidas, ignora el legacy y usa lo AUTORIZADO", () => {
+    const e = entry({ gasto: 9999, gastoRef: 0, gastoMO: 0 });
+    const ps = [
+      {
+        partidaId: "a",
+        visitaKey: "v",
+        descripcion: "x",
+        estado: "autorizada",
+        precio: 1850,
+        precioAutorizado: 1850,
+        tipo: "refaccion",
+        fotos: [],
+      },
+    ] as any;
+    expect(gastoTotalDe(e, ps)).toBe(1850);
+  });
+
+  it("sin partidas (undefined o []), se comporta EXACTAMENTE como antes", () => {
+    expect(gastoTotalDe(entry({ gastoRef: 100, gastoMO: 50 }), [])).toBe(150);
+    expect(gastoTotalDe(entry({ gastoRef: 100, gastoMO: 50 }))).toBe(150);
+    expect(gastoTotalDe(entry({ gasto: 700 }), [])).toBe(700);
+  });
+});
+
 describe("diasEnTaller", () => {
   it("cuenta desde la entrada hasta hoy si sigue abierta", () => {
     expect(diasEnTaller(entry({ fentrada: "2026-08-01" }), HOY)).toBe(13);
@@ -165,9 +281,71 @@ describe("diasEnTaller", () => {
   });
 });
 
+describe("columnas Cotizado/Autorizado/Rechazado y desglose — Task 9, gasto derivado de partidas", () => {
+  const psDeVisita = [
+    {
+      partidaId: "a",
+      visitaKey: "v1",
+      descripcion: "Balatas",
+      estado: "autorizada",
+      precio: 1850,
+      precioAutorizado: 1850,
+      tipo: "refaccion",
+      fotos: [],
+    },
+    {
+      partidaId: "b",
+      visitaKey: "v1",
+      descripcion: "Mano de obra",
+      estado: "autorizada",
+      precio: 2400,
+      precioAutorizado: 2400,
+      tipo: "manoObra",
+      fotos: [],
+    },
+    {
+      partidaId: "c",
+      visitaKey: "v1",
+      descripcion: "Diagnóstico extra",
+      estado: "rechazada",
+      precio: 980,
+      tipo: "refaccion",
+      fotos: [],
+    },
+  ] as any;
+
+  it("con partidasDe en el contexto, Refacciones/Mano de Obra/Gasto Total y los tres nuevos vienen de gastoDerivado/totalesVisita", () => {
+    const e = entry({ id: "v1", gasto: 9999, gastoRef: 0, gastoMO: 0 });
+    const [fila] = filasDe([e], COLUMNAS_TALLER, { hoy: HOY, partidasDe: () => psDeVisita });
+    const at = (campo: string) => fila![COLUMNAS_TALLER.findIndex((c) => c.campo === campo)];
+    expect(at("gastoRef")).toBe(1850);
+    expect(at("gastoMO")).toBe(2400);
+    expect(at("_gastoTotal")).toBe(4250);
+    expect(at("_cotizado")).toBe(5230);
+    expect(at("_autorizado")).toBe(4250);
+    expect(at("_rechazado")).toBe(980);
+    // El campo crudo "gasto sin desglose" no se toca — sigue siendo lo que trae el entry.
+    expect(at("gasto")).toBe(9999);
+  });
+
+  it("sin partidasDe (llamador que aún no las conoce), las tres nuevas columnas salen en 0 y el resto se comporta como antes", () => {
+    const e = entry({ gastoRef: 100, gastoMO: 50 });
+    const [fila] = filasDe([e], COLUMNAS_TALLER, { hoy: HOY });
+    const at = (campo: string) => fila![COLUMNAS_TALLER.findIndex((c) => c.campo === campo)];
+    expect(at("gastoRef")).toBe(100);
+    expect(at("gastoMO")).toBe(50);
+    expect(at("_gastoTotal")).toBe(150);
+    expect(at("_cotizado")).toBe(0);
+    expect(at("_autorizado")).toBe(0);
+    expect(at("_rechazado")).toBe(0);
+  });
+});
+
 describe("filasDe", () => {
   it("respeta el orden de las columnas y produce una fila por entry", () => {
-    const filas = filasDe([entry({ eco: "54" }), entry({ eco: "12" })], COLUMNAS_TALLER, { hoy: HOY });
+    const filas = filasDe([entry({ eco: "54" }), entry({ eco: "12" })], COLUMNAS_TALLER, {
+      hoy: HOY,
+    });
     expect(filas).toHaveLength(2);
     const i = COLUMNAS_TALLER.findIndex((c) => c.campo === "eco");
     expect(filas.map((f) => f[i])).toEqual(["54", "12"]);

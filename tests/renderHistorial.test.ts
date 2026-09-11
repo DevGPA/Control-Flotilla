@@ -89,6 +89,65 @@ describe("buildHistorialRows", () => {
     expect(rows[0]!.totalGasto).toBe(777);
   });
 
+  // Fix ronda 1 (Task 9): buildHistorialRows reimplementaba su propia copia de
+  // "Ref+MO, con `gasto` de respaldo" en vez de llamar a gastoTotalDe/gastoDerivado —
+  // una unidad cuyo gasto llegó ENTERO por partidas firmadas aparecía en $0 en la
+  // pestaña Historial, que es justo donde Riesgos revisa las visitas cerradas.
+  it("con partidasDe, una unidad sin gasto tecleado pero con partidas FIRMADAS resume su total derivado, no 0", () => {
+    const ps = [
+      {
+        partidaId: "p1",
+        visitaKey: "clave-v1",
+        descripcion: "Balatas",
+        estado: "autorizada" as const,
+        precio: 4000,
+        precioAutorizado: 4000,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+      {
+        partidaId: "p2",
+        visitaKey: "clave-v1",
+        descripcion: "Mano de obra",
+        estado: "autorizada" as const,
+        precio: 1500,
+        precioAutorizado: 1500,
+        tipo: "manoObra" as const,
+        fotos: [],
+      },
+      {
+        partidaId: "p3",
+        visitaKey: "clave-v1",
+        descripcion: "Descartado",
+        estado: "rechazada" as const,
+        precio: 999,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+    ];
+    const entry = mk({
+      id: "v1",
+      unitKey: "U1",
+      estado: "Finalizado",
+      gasto: 0,
+      gastoRef: 0,
+      gastoMO: 0,
+    });
+    const rows = buildHistorialRows([entry], {}, (e) => (e.id === "v1" ? ps : undefined));
+    expect(rows[0]!.totalGasto).toBe(5500); // autorizado; el rechazado NO cuenta
+    expect(rows[0]!.totalGastoRef).toBe(4000);
+    expect(rows[0]!.totalGastoMO).toBe(1500);
+  });
+
+  it("sin partidasDe (el llamador no las conoce todavía), se comporta EXACTAMENTE como antes", () => {
+    const rows = buildHistorialRows([
+      mk({ id: "a1", unitKey: "U1", estado: "Finalizado", gastoRef: 100, gastoMO: 50 }),
+    ]);
+    expect(rows[0]!.totalGasto).toBe(150);
+    expect(rows[0]!.totalGastoRef).toBe(100);
+    expect(rows[0]!.totalGastoMO).toBe(50);
+  });
+
   it("filtro desde descarta cerradas anteriores", () => {
     const rows = buildHistorialRows(
       [

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-N+xXsIGQ4zVugV6A7nJCfKpY7nh9tVnIndjH46/dC28=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bn3iSZrV4iR3rjirR6sm7/WI7zUK72SV86T1VqPb+ZA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -625,6 +625,11 @@
       Operaciones Activas
       <span class="tl-subbadge" id="tl-act-cnt" style="display:none">0</span>
     </button>
+    <button class="tl-subtab needs-hibrido" id="tltab-bandeja" role="tab" aria-selected="false" onclick="tlSwitch('bandeja')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+      Por autorizar
+      <span class="tl-subbadge" id="tl-bandeja-cnt" style="display:none">0</span>
+    </button>
     <button class="tl-subtab" id="tltab-historial" role="tab" aria-selected="false" onclick="tlSwitch('historial')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       Historial / Expedientes
@@ -642,11 +647,11 @@
     </select>
     <select id="tl-filt-area" onchange="renderTaller()" aria-label="Filtrar taller por área" class="field-input">
       <option value="all">Todas las áreas</option>
-      <option value="LOGISTICA">Logística</option>
-      <option value="SERVICIO TECNICO">Servicio Técnico</option>
-      <option value="MANTENIMIENTO">Mantenimiento</option>
-      <option value="ALMACEN">Almacén</option>
-      <option value="ADMINISTRACION">Administración</option>
+      <option value="Logística">Logística</option>
+      <option value="Almacén">Almacén</option>
+      <option value="Servicio Técnico">Servicio Técnico</option>
+      <option value="Mantenimiento">Mantenimiento</option>
+      <option value="Administración">Administración</option>
     </select>
     <select id="tl-filt-tipo" onchange="renderTaller()" aria-label="Filtrar taller por tipo de mantenimiento" class="field-input">
       <option value="all">Todos los tipos</option>
@@ -754,6 +759,10 @@
       <tbody id="acc-tbody"></tbody>
     </table>
   </div>
+  <!-- Bandeja de firmas (Task 8): contenedor PROPIO, pintado por renderBandeja()
+       con createElement/textContent — la descripción y la nota de rechazo las
+       escribe un proveedor NO autenticado, nunca innerHTML con esos datos. -->
+  <div id="tl-bandeja" style="display:none"></div>
 </div>
 
 <!-- ═══ MÓDULO SEMANALES ══════════════════════════════════ -->
@@ -1281,6 +1290,11 @@
       <!-- UX Fase 3 (2026-06-11): 13 campos seccionados — antes era un scroll
            plano sin jerarquía. -->
       <div class="tl-sec">Identificación de la unidad</div>
+      <!-- B-C4: con partidas presentes, la identidad de la visita (eco, placa y
+           fecha de ingreso) se congela — de esos tres campos cuelga la visitaKey
+           de la que cuelga el dinero firmado. openTallerModal() muestra esta
+           leyenda y pone los tres en readOnly. -->
+      <div id="tf-identidad-hint" class="tl-field full" style="display:none;font-size:10px;color:var(--A)">La visita tiene partidas: su identidad no se edita.</div>
       <div class="tl-field full tl-ac-wrap">
         <label for="tf-eco">No. Unidad / Eco — <span style="color:var(--ac);font-weight:700">escribe para buscar</span></label>
         <input id="tf-eco" type="text" placeholder="Ej: 42 — busca en flota e historial"
@@ -1306,11 +1320,11 @@
         <label for="tf-area">Area</label>
         <select id="tf-area">
           <option value="">— Sin area —</option>
-          <option value="LOGISTICA">LOGISTICA</option>
-          <option value="SERVICIO TECNICO">SERVICIO TECNICO</option>
-          <option value="MANTENIMIENTO">MANTENIMIENTO</option>
-          <option value="ALMACEN">ALMACEN</option>
-          <option value="ADMINISTRACION">ADMINISTRACION</option>
+          <option value="Logística">Logística</option>
+          <option value="Almacén">Almacén</option>
+          <option value="Servicio Técnico">Servicio Técnico</option>
+          <option value="Mantenimiento">Mantenimiento</option>
+          <option value="Administración">Administración</option>
         </select>
       </div>
       <div class="tl-sec">Mantenimiento</div>
@@ -1357,6 +1371,9 @@
       <div class="tl-field">
         <label for="tf-gasto">Subtotal ($)</label>
         <input id="tf-gasto" type="number" min="0" step="0.01" placeholder="0.00"/>
+        <!-- Task 9: con partidas, este campo pasa a solo lectura (el gasto se
+             calcula, no se captura) y openTallerModal() muestra esta leyenda. -->
+        <div id="tf-gasto-hint" style="display:none;font-size:10px;color:var(--s2)">Suma de las partidas autorizadas</div>
       </div>
       <div class="tl-field">
         <label for="tf-pedido">No. de Pedido (ERP)</label>
@@ -1381,6 +1398,18 @@
       <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
       <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
+      <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
+           ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+           R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
+           §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
+           operativo tampoco por sí solo… la restricción se aplica en la UI Y
+           en el Lambda". needs-liga = grupo admin O grupo riesgos (la
+           credencial adicional de Administración de Riesgos, que NO es admin).
+           El permiso real lo aplican las dos mutaciones de
+           amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
+           esto es la capa de UI de esa misma regla. -->
+      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
+      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
       <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
@@ -2631,7 +2660,14 @@ function isViewer(){ const g=sessionGroups(); return g.includes("viewer") && !g.
 // Controles EXCLUSIVOS de admin (p.ej. anular registros). El enforcement real es
 // server-side (AppSync exige grupo admin); esto solo muestra/oculta la UI.
 function esAdmin(){ return sessionGroups().includes("admin"); }
+// Task 14 — CREDENCIAL, no rol: 'riesgos' se suma al rol de la persona
+// (normalmente 'operativo') y habilita EXACTAMENTE emitir y revocar la liga del
+// proveedor de Taller (spec §7.7, decisión 20). No abre ningún panel de admin.
+// Igual que esAdmin(), esto es solo UI: el permiso real lo aplican las dos
+// mutaciones de AppSync y el chequeo de cognito:groups del Lambda del portal.
+function puedeEmitirLiga(){ const g=sessionGroups(); return g.includes("admin")||g.includes("riesgos"); }
 window.canWrite=canWrite; window.isViewer=isViewer; window.esAdmin=esAdmin;
+window.puedeEmitirLiga=puedeEmitirLiga;
 // Sucursal a la que queda FIJADO el usuario (null = ve todas): admin, sin sucursal,
 // o sucursal "Todas"/"all" → sin bloqueo.
 function lockedSucursal(){
@@ -2730,13 +2766,27 @@ function applyRolePermissions(){
   if(!document.getElementById("ro-style")){
     const st=document.createElement("style"); st.id="ro-style";
     st.textContent="body.ro-viewer .needs-write{display:none !important}\n"
-      +"body:not(.is-admin) .needs-admin{display:none !important}";
+      +"body:not(.is-admin) .needs-admin{display:none !important}\n"
+      +"body:not(.puede-liga) .needs-liga{display:none !important}";
     document.head.appendChild(st);
+  }
+  // La regla de .needs-hibrido se inyecta AQUÍ, no solo desde renderTaller():
+  // hay markup .needs-hibrido en el modal de expediente, que también se abre
+  // desde Analytics — sin pasar nunca por renderTaller. Sin la regla, ese markup
+  // se veía con el esquema apagado hasta que el usuario entrara a Taller.
+  // applyTallerHibridoGate() sigue existiendo para togglear la CLASE del body
+  // (eso sí depende del valor del switch, que cambia entre hidrataciones).
+  if(!document.getElementById("hibrido-style")){
+    const sh=document.createElement("style"); sh.id="hibrido-style";
+    sh.textContent="body:not(.hibrido-on) .needs-hibrido{display:none !important}";
+    document.head.appendChild(sh);
   }
   const ro=isViewer();
   document.body.classList.toggle("ro-viewer", ro);
   // Controles exclusivos de admin (.needs-admin): visibles solo con grupo admin.
   document.body.classList.toggle("is-admin", esAdmin());
+  // Liga del proveedor (.needs-liga, Task 14): admin O la credencial 'riesgos'.
+  document.body.classList.toggle("puede-liga", puedeEmitirLiga());
   const host=document.getElementById("user-email");
   let badge=document.getElementById("ro-badge");
   if(ro && host && host.parentElement && !badge){
@@ -2747,6 +2797,26 @@ function applyRolePermissions(){
   if(typeof buildBranches==="function") buildBranches(); // re-aplica lock de sucursal
 }
 window.applyRolePermissions=applyRolePermissions;
+
+// Apagador del esquema híbrido de Taller (Task 10, decisión 21 — se prende para
+// toda la flota y todos los talleres a la vez, sin piloto). UN gate reusable,
+// mismo patrón que body.ro-viewer/.needs-write arriba: una clase en <body> +
+// una regla CSS inyectada una sola vez. Hoy lo usa la sub-pestaña "Por
+// autorizar" (#tltab-bandeja); Task 11 cuelga su botón "Generar liga" de la
+// MISMA clase .needs-hibrido — no un candado nuevo por feature.
+// El badge, el candado de #tf-gasto y los guards de export NO son visibilidad
+// estática: leen window.__tallerHibrido (o, para el candado/export/analytics,
+// consultan _partidasDeVisita, que ya lo consulta por su cuenta) directo en su
+// propio código — este gate CSS es solo para "elementos que no tienen sentido
+// con el esquema apagado".
+function applyTallerHibridoGate(){
+  if(!document.getElementById("hibrido-style")){
+    const st=document.createElement("style"); st.id="hibrido-style";
+    st.textContent="body:not(.hibrido-on) .needs-hibrido{display:none !important}";
+    document.head.appendChild(st);
+  }
+  document.body.classList.toggle("hibrido-on", window.__tallerHibrido===true);
+}
 
 // Acceso por módulo (gating de UI): oculta del nav los módulos no asignados al
 // usuario y, si la vista activa no está permitida, lo manda a su primer módulo.
@@ -3768,19 +3838,26 @@ function buildAnalytics(){
     }
   }
 
+  // Fix B-C2: los tableros de DINERO de Ops derivan todos de _partidasDeVisita.
+  // Con las partidas NO cargadas salen en $0 — un cero que se lee como "no hubo
+  // gasto". Se apagan diciendo POR QUÉ, en vez de reportar un cero falso.
+  const _partidasOk = _partidasConfiables();
+
   // ─── Gasto de taller por mes (stacked por sucursal, 12 meses) ─────────────
   const gastoEl = document.getElementById("chart-gasto");
   const gastoEmpty = document.getElementById("chart-gasto-empty");
   if(gastoEl){
-    const serie = ops.buildGastoMensual(tallerScoped);
-    if(serie.length && typeof window.renderGastoMensualChart === "function"){
+    // Fix ronda 1 (Task 9): sin partidasDe, un mes cuyo único gasto llegó por
+    // partidas firmadas desaparecía de la serie (gastoDe/gastoTotalDe daba 0).
+    const serie = ops.buildGastoMensual(tallerScoped, undefined, _partidasDeVisita);
+    if(serie.length && _partidasOk && typeof window.renderGastoMensualChart === "function"){
       gastoEl.style.display = "";
       if(gastoEmpty) gastoEmpty.hidden = true;
       try { window.renderGastoMensualChart(gastoEl, serie); }
       catch(e){ console.warn("[analytics] gasto chart falló:", e); }
     } else {
       gastoEl.style.display = "none";
-      if(gastoEmpty) gastoEmpty.hidden = false;
+      _opsVacio(gastoEmpty, _partidasOk);
     }
   }
 
@@ -3789,15 +3866,16 @@ function buildAnalytics(){
   const pcEl = document.getElementById("chart-prevcorr");
   const pcEmpty = document.getElementById("chart-prevcorr-empty");
   if(pcEl){
-    const seriePc = ops.buildPrevCorr(tallerScoped);
-    if(seriePc.length && typeof window.renderPrevCorrChart === "function"){
+    // Fix ronda 1 (Task 9): mismo partidasDe que Gasto Mensual.
+    const seriePc = ops.buildPrevCorr(tallerScoped, undefined, _partidasDeVisita);
+    if(seriePc.length && _partidasOk && typeof window.renderPrevCorrChart === "function"){
       pcEl.style.display = "";
       if(pcEmpty) pcEmpty.hidden = true;
       try { window.renderPrevCorrChart(pcEl, seriePc); }
       catch(e){ console.warn("[analytics] prev/corr chart falló:", e); }
     } else {
       pcEl.style.display = "none";
-      if(pcEmpty) pcEmpty.hidden = false;
+      _opsVacio(pcEmpty, _partidasOk);
     }
   }
 
@@ -3805,9 +3883,15 @@ function buildAnalytics(){
   const costoEl = document.getElementById("costo-unidad");
   if(costoEl){
     try {
-      ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits)), (r)=>{
-        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
-      });
+      // Fix ronda 1 (Task 9): mismo partidasDe — el Top de costo por unidad no
+      // puede excluir visitas cuyo gasto llegó entero por partidas firmadas.
+      if(!_partidasOk){
+        costoEl.textContent = "No se pudieron cargar las partidas: el costo por unidad no se puede calcular.";
+      } else {
+        ops.renderCostoUnidad(costoEl, ops.buildCostoUnidad(tallerScoped, scopeUnits(window.__fleetUnits), undefined, _partidasDeVisita), (r)=>{
+          if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+        });
+      }
     } catch(e){ console.warn("[analytics] costo por unidad falló:", e); }
   }
   // ─── Sucursales: cobertura y riesgo (clic → filtrar Inspecciones) ─────────
@@ -3837,9 +3921,15 @@ function buildAnalytics(){
   if(reincEl){
     try {
       const inspAll = scopeUnits(Array.isArray(window.__inspections) ? window.__inspections : []);
-      ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped), (r)=>{
-        if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
-      });
+      // Fix ronda 1 (Task 9): mismo partidasDe — reincidencia por gasto no
+      // puede subestimar una unidad cuyo gasto llegó entero por partidas.
+      if(!_partidasOk){
+        reincEl.textContent = "No se pudieron cargar las partidas: la reincidencia por gasto no se puede calcular.";
+      } else {
+        ops.renderReincidentes(reincEl, ops.buildReincidentes(inspAll, tallerScoped, undefined, _partidasDeVisita), (r)=>{
+          if(r.tallerKey && typeof openHistorialModal === "function") openHistorialModal(r.tallerKey);
+        });
+      }
     } catch(e){ console.warn("[analytics] reincidentes falló:", e); }
   }
 }
@@ -5884,7 +5974,9 @@ function showResumenEjecutivo(){
     // Patrón canónico de gasto (audit 2026-06-10 #8): Ref+MO con fallback a
     // e.gasto — el form solo captura e.gasto, así que sin el fallback este KPI
     // reportaba $0 a Tesorería aunque hubiera gasto capturado.
-    const gastoTotal=enTaller.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
+    // Fix ronda 2 (Task 9, Critical 2): _gastoDe ahora ve lo FIRMADO por
+    // partidas también — este resumen es texto que Tesorería copia y pega.
+    const gastoTotal=enTaller.reduce((s,e)=>s+_gastoDe(e),0);
     if(gastoTotal) text+=`• Gasto acumulado activas: $${gastoTotal.toLocaleString("es-MX",{minimumFractionDigits:2})}\n`;
     text+=`\n`;
   }
@@ -6836,9 +6928,33 @@ function updateTallerBadge(){
 // Responde en pantalla la pregunta más frecuente de Tesorería (antes: exportar
 // Excel y sumar a mano). Gasto con el patrón canónico Ref+MO→fallback gasto;
 // ancla temporal = fentrada || freporte.
-function _gastoDe(e){ return ((e.gastoRef||0)+(e.gastoMO||0)>0)?((e.gastoRef||0)+(e.gastoMO||0)):(e.gasto||0); }
+// Fix ronda 2 (Task 9, Critical 2): _gastoDe leía SOLO los campos del entry —
+// una visita cuyo gasto llegó por partidas firmadas se veía en $0 en esta
+// tarjeta (la primera que Tesorería lee al abrir la app). window.__gastoDerivado
+// y _partidasDeVisita ya existen en este mismo archivo — esto es un call swap,
+// no un rediseño. Sin el bridge (hidratación aún no corrió) cae al mismo
+// cálculo de siempre.
+function _gastoDe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function"
+    ? window.__gastoDerivado(e, ps).gasto
+    : ((e.gastoRef||0)+(e.gastoMO||0)>0?((e.gastoRef||0)+(e.gastoMO||0)):(e.gasto||0));
+}
+function _gastoRefDe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function" ? window.__gastoDerivado(e, ps).gastoRef : (e.gastoRef||0);
+}
+function _gastoMODe(e){
+  const ps = _partidasDeVisita(e);
+  return typeof window.__gastoDerivado === "function" ? window.__gastoDerivado(e, ps).gastoMO : (e.gastoMO||0);
+}
 function _mesDe(e){ return String(e.fentrada||e.freporte||"").slice(0,7); }
 function _fmtMon(v){ return "$"+Number(v||0).toLocaleString("es-MX",{maximumFractionDigits:0}); }
+// _fmtMon redondea a pesos enteros — bien para KPIs y tendencias, MAL en la
+// pantalla donde se FIRMA: una partida de $1,849.60 se leía "$1,850" y lo que
+// queda autorizado es el centavo, no el redondeo. _fmtMon2 se usa SOLO en la
+// bandeja de firma y en la leyenda de #tf-gasto; los KPIs siguen con _fmtMon.
+function _fmtMon2(v){ return "$"+Number(v||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function buildGastoKPI(){
   const card=document.getElementById("hero-gasto");
   if(!card) return;
@@ -6852,11 +6968,20 @@ function buildGastoKPI(){
   const gAct=delMes.reduce((s,e)=>s+_gastoDe(e),0);
   const gPrev=tE.filter(e=>_mesDe(e)===mesPrev).reduce((s,e)=>s+_gastoDe(e),0);
   card.style.display="flex";
-  const kv=document.getElementById("kv_gasto"); if(kv) kv.textContent=_fmtMon(gAct);
+  // Fix B-C2: con las partidas NO cargadas, este total sale en $0 para toda
+  // visita híbrida (sus tres llaves de dinero viven en las partidas, no en la
+  // fila) — un $0 que Tesorería lee como dato. Con el tri-estado se dice
+  // "sin datos", que es lo único cierto.
+  const confiable=_partidasConfiables();
+  const kv=document.getElementById("kv_gasto"); if(kv) kv.textContent=_monDerivado(gAct);
   const ks=document.getElementById("ks_gasto");
   if(ks){
-    const delta=gPrev>0?` · ${gAct>=gPrev?"▲":"▼"} ${Math.abs(Math.round((gAct-gPrev)/gPrev*100))}% vs mes ant.`:"";
-    ks.textContent=`${delMes.length} ingreso${delMes.length!==1?"s":""}${delta}`;
+    if(!confiable){
+      ks.textContent="No se pudieron cargar las partidas";
+    } else {
+      const delta=gPrev>0?` · ${gAct>=gPrev?"▲":"▼"} ${Math.abs(Math.round((gAct-gPrev)/gPrev*100))}% vs mes ant.`:"";
+      ks.textContent=`${delMes.length} ingreso${delMes.length!==1?"s":""}${delta}`;
+    }
   }
 }
 function openGastoModal(){
@@ -6885,11 +7010,16 @@ function openGastoModal(){
   const sucs=[...porSuc.entries()].sort((a,b)=>b[1].total-a[1].total);
   const maxSuc=Math.max(...sucs.map(([,v])=>v.total),1);
   const gTot=delMes.reduce((s,e)=>s+_gastoDe(e),0);
-  const gRef=delMes.reduce((s,e)=>s+(e.gastoRef||0),0);
-  const gMO=delMes.reduce((s,e)=>s+(e.gastoMO||0),0);
-  let html=`<div style="font-size:11px;color:var(--s1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Mes actual</div>
+  const gRef=delMes.reduce((s,e)=>s+_gastoRefDe(e),0);
+  const gMO=delMes.reduce((s,e)=>s+_gastoMODe(e),0);
+  // Fix B-C2: mismo criterio que el KPI — si las partidas no se pudieron
+  // cargar, el drill-down completo está mirando ceros que no son datos. Se
+  // avisa arriba y el total del mes dice "sin datos" en vez de $0.
+  let html = _partidasConfiables() ? "" :
+    `<div style="font-size:11.5px;color:var(--A);background:var(--bg2);border:1px solid var(--ln);border-radius:6px;padding:8px 10px;margin-bottom:10px">No se pudieron cargar las partidas: los montos de esta pantalla pueden estar incompletos.</div>`;
+  html+=`<div style="font-size:11px;color:var(--s1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Mes actual</div>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:2px">
-      <span style="font-size:26px;font-weight:800;color:var(--G)">${_fmtMon(gTot)}</span>
+      <span style="font-size:26px;font-weight:800;color:var(--G)">${_monDerivado(gTot)}</span>
       <span style="font-size:11px;color:var(--s2)">${delMes.length} ingreso${delMes.length!==1?"s":""}${(gRef+gMO)>0?` · Ref ${_fmtMon(gRef)} · M.O. ${_fmtMon(gMO)}`:""}</span>
     </div>`;
   if(sucs.length){
@@ -6927,8 +7057,8 @@ window.openGastoModal=openGastoModal;
 // ── Cambiar sub-vista del Taller ──────────────────────────
 function tlSwitch(v){
   tlSubView = v;
-  // 3 sub-pestañas: activas · historial · accesorios (limpiabrisas y batería por unidad).
-  const tabs = { activas:"tltab-activas", historial:"tltab-historial", accesorios:"tltab-accesorios" };
+  // 4 sub-pestañas: activas · bandeja (por autorizar) · historial · accesorios (limpiabrisas y batería por unidad).
+  const tabs = { activas:"tltab-activas", bandeja:"tltab-bandeja", historial:"tltab-historial", accesorios:"tltab-accesorios" };
   for(const [key,id] of Object.entries(tabs)){
     const el = document.getElementById(id);
     if(!el) continue;
@@ -6950,7 +7080,10 @@ function tlSwitch(v){
   const wrapAcc = document.getElementById("acc-table-wrap");
   if(wrapAcc) wrapAcc.style.display = v==="accesorios" ? "" : "none";
   const wrapTl = document.getElementById("tl-table-wrap");
-  if(wrapTl) wrapTl.style.display = v==="accesorios" ? "none" : "";
+  if(wrapTl) wrapTl.style.display = (v==="accesorios"||v==="bandeja") ? "none" : "";
+  // La bandeja de firmas tiene su propio contenedor (pintado por renderBandeja()).
+  const bandeja = document.getElementById("tl-bandeja");
+  if(bandeja) bandeja.style.display = v==="bandeja" ? "" : "none";
   tlSortCol = null; tlSortDir = 1;
   renderTaller();
 }
@@ -7582,15 +7715,653 @@ function tlSort(key){
   renderTaller();
 }
 
+// Localiza las partidas de la visita de UN entry — mismo match en todo el
+// módulo (window.__visitaKeyDe + window.__tallerPartidas), nunca un
+// `${a}|${b}` hecho a mano. Task 9 la reusa en el modal, en "Guardar" y en
+// los exports de Excel. NO se usa dentro de renderTaller(): el cálculo del
+// badge de abajo es un literal que tests/tallerBadgePendientesDeFirma.test.ts
+// extrae y ejecuta tal cual desde el HTML (new Function) — moverlo a esta
+// función rompería esa extracción sin ganar nada (ese bloque ya no crece).
+// Task 10 (R62, el apagador): con el esquema apagado, ESTE es el único punto
+// donde se consulta window.__tallerHibrido para todo lo que cuelga de
+// _partidasDeVisita en el monolito — _gastoDe/_gastoRefDe/_gastoMODe, el
+// candado de #tf-gasto en openTallerModal, buildAnalytics() (gastoMensual/
+// prevCorr/costoUnidad/reincidentes), gastoAnualPorEco de la bandeja y el
+// partidasDe que reciben ambos exports de Excel. Uno solo, nunca sprinkleado
+// por consumidor.
+function _partidasDeVisita(e){
+  if(!window.__tallerHibrido) return [];
+  const vk = e && window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+  return vk ? (window.__tallerPartidas?.get(vk) || []) : [];
+}
+
+// Fix B-C2 (TRI-ESTADO) — ¿se puede CREER lo que devuelve _partidasDeVisita?
+// Devolver [] tiene dos significados incompatibles y hasta ahora se confundían:
+//   (a) "el esquema está apagado / esta visita no tiene partidas" → el [] es un
+//       DATO: el gasto tecleado manda (R62) y el campo se edita.
+//   (b) "no se pudo leer AppConfig o no se pudieron leer las partidas" → el []
+//       es una AUSENCIA: creerle desbloqueaba #tf-gasto y persistía un $0 duro
+//       encima del dinero firmado, y dejaba el KPI/Historial/drill-down en $0
+//       toda la sesión.
+// Solo (a) es confiable. Los tres valores del tri-estado los publica
+// src/api/cloudHydrate.ts: __tallerHibrido (solo tras una lectura EXITOSA de
+// AppConfig), __tallerHibridoDesconocido y __tallerPartidasCargadas.
+function _partidasConfiables(){
+  // Ninguna hidratación exitosa todavía: no se sabe ni si el esquema está prendido.
+  if(window.__tallerHibrido === undefined) return false;
+  if(window.__tallerHibridoDesconocido) return false;
+  // Apagado y CONFIRMADO: no hay partidas que consultar, el tecleado manda (R62).
+  if(!window.__tallerHibrido) return true;
+  // Prendido: solo si la lectura de partidas de la última hidratación tuvo éxito.
+  return window.__tallerPartidasCargadas === true;
+}
+
+// Dinero DERIVADO de partidas cuando el tri-estado dice que no se puede creer:
+// un "$0" ahí sería una mentira con formato de dato. Se usa en las lecturas de
+// dinero de taller (KPI del mes, drill-down, Historial, expediente).
+const _SIN_DATOS_PARTIDAS = "sin datos";
+function _monDerivado(v, fmt){
+  return _partidasConfiables() ? (fmt||_fmtMon)(v) : _SIN_DATOS_PARTIDAS;
+}
+
+// Estado vacío de una gráfica de DINERO del tablero Ops. Con `ok` en false el
+// motivo real no es "no hubo gasto" sino "no se pudieron cargar las partidas" —
+// decirlo evita leer un cero como un dato. La copia original se guarda en
+// data-* la primera vez para poder restaurarla cuando las partidas carguen.
+// XSS: solo textContent, nunca innerHTML.
+function _opsVacio(emptyEl, ok){
+  if(!emptyEl) return;
+  const t = emptyEl.querySelector(".chart-empty-title");
+  const m = emptyEl.querySelector(".chart-empty-msg");
+  if(t && emptyEl.dataset.tituloBase === undefined) emptyEl.dataset.tituloBase = t.textContent;
+  if(m && emptyEl.dataset.msgBase === undefined) emptyEl.dataset.msgBase = m.textContent;
+  if(t) t.textContent = ok ? (emptyEl.dataset.tituloBase || "") : "Sin datos de partidas";
+  if(m) m.textContent = ok
+    ? (emptyEl.dataset.msgBase || "")
+    : "No se pudieron cargar las partidas: el gasto de este periodo no se puede calcular.";
+  emptyEl.hidden = false;
+}
+
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
+  // Apagador (Task 10): togglea la clase del body ANTES de calcular nada —
+  // la sub-pestaña "Por autorizar" (.needs-hibrido) y el resto de esta
+  // función leen window.__tallerHibrido, nunca al revés.
+  applyTallerHibridoGate();
+  // El badge de la pestaña Taller pasa a contar lo que espera TU firma, via
+  // __pendientesDeFirma (bridge de src/taller/partidas.ts — la MISMA función
+  // que usa la bandeja de firma, no una copia del filtro acá). Fix ronda 1
+  // (Important 3): escopado por sucursal via scopeBySucursal(tallerEntries) —
+  // antes sumaba TODO __tallerPartidas sin candado, así que un usuario fijado
+  // a una sucursal veía en el badge/sub-pestaña un número que la bandeja
+  // jamás mostraba (la bandeja sí escopa). window.__visitaKeyDe ubica la
+  // llave de cada entry visible — nunca se hand-rollea el match.
+  // Corre ANTES del guard de vista de abajo a propósito: un badge de
+  // notificación tiene que prender aunque el usuario esté en otra pestaña.
+  const _pend = window.scopeBySucursal(window.tallerEntries || []).reduce((n, e) => {
+    const vk = window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+    const ps = vk ? window.__tallerPartidas?.get(vk) : undefined;
+    return n + (window.__pendientesDeFirma?.(ps ?? []) ?? 0);
+  }, 0);
+  // Apagador (Task 10): con el esquema apagado, el badge de la pestaña Taller
+  // vuelve a su comportamiento PRE-Task-7 — la cuenta de "activas" que
+  // updateTallerBadge() ya fijó en #taller-badge (SIEMPRE corre antes que
+  // renderTaller() en cada flujo que cambia tallerEntries: guardar, borrar,
+  // finalizar, decidir una firma, e hidratación). _pend se sigue calculando
+  // arriba sin condicionar nada — tests/tallerBadgePendientesDeFirma.test.ts
+  // extrae y ejecuta ese literal tal cual — pero con el esquema apagado no se
+  // PINTA, para no pisar el valor que updateTallerBadge() ya dejó correcto.
+  if(window.__tallerHibrido){
+    const _bdg = document.getElementById("taller-badge");
+    if (_bdg) {
+      _bdg.textContent = _pend ? String(_pend) : "";
+      _bdg.style.display = _pend ? "" : "none";
+      _bdg.title = _pend ? `${_pend} partida(s) esperando tu autorización` : "";
+    }
+    // Mismo conteo para la sub-pestaña "Por autorizar" — un solo _pend, nunca
+    // un segundo cálculo que pueda desalinearse del badge o de la bandeja.
+    const _bnCnt = document.getElementById("tl-bandeja-cnt");
+    if (_bnCnt) {
+      _bnCnt.textContent = String(_pend);
+      _bnCnt.style.display = _pend ? "inline-flex" : "none";
+    }
+  } else {
+    const _bnCnt = document.getElementById("tl-bandeja-cnt");
+    if (_bnCnt) _bnCnt.style.display = "none";
+  }
   // Perf F1-1: no reconstruir la vista Taller si no está activa (el badge se
   // actualiza aparte vía updateTallerBadge; showView re-invoca renderTaller al entrar).
   if(document.body.dataset.view!=="taller") return;
   // Accesorios lo pinta su módulo (src/accesorios/wire.ts), no los renders legacy.
   if(tlSubView==="accesorios") return window.renderAccesorios && window.renderAccesorios();
   if(tlSubView==="historial") return renderHistorial();
+  // Apagador (Task 10): si el switch se apaga mientras el usuario mira "Por
+  // autorizar" (otro admin lo revocó en pleno uso — la próxima hidratación lo
+  // trae), no lo deja viendo una bandeja fantasma sin su pestaña: lo regresa
+  // a Activas.
+  if(tlSubView==="bandeja" && !window.__tallerHibrido){ tlSwitch("activas"); return; }
+  if(tlSubView==="bandeja") return renderBandeja();
   renderActivas();
+}
+
+// ── Bandeja de firmas (Task 8) ─────────────────────────────
+// Agrupada por VISITA, no por partida suelta: autorizar partidas aisladas
+// ciega al conjunto — se pueden firmar cuatro de $1,800 sin notar que van
+// $7,200 en una unidad que ya lleva $38 mil en el año. Las filas y el gasto
+// anual los arma src/ (filasBandeja/gastoAnualPorEco, testeadas); aquí solo
+// se pinta, y SIEMPRE con createElement/textContent — la descripción y la
+// nota de rechazo las escribe un proveedor NO autenticado desde la liga.
+function renderBandeja(){
+  const cont = document.getElementById("tl-bandeja");
+  if(!cont) return;
+  cont.replaceChildren();
+
+  // "Cargando…" PARA SIEMPRE era el estado real cuando el puente no existía.
+  // Con el tri-estado de B-C2 los tres casos se distinguen: sin puente (la
+  // hidratación nunca corrió) sigue siendo "Cargando…"; con puente pero con la
+  // lectura de partidas FALLIDA se dice que falló; y 0 filas con todo cargado
+  // es "no hay nada que firmar" (más abajo).
+  if(typeof window.__filasBandeja !== "function" || window.__tallerPartidasCargadas === false){
+    const aviso = document.createElement("div");
+    aviso.style.cssText = "padding:24px 16px;color:var(--s2);font-size:12px;text-align:center";
+    aviso.textContent = window.__cloudSession && window.__tallerPartidasCargadas === false
+      ? "No se pudieron cargar las partidas. Reintenta en unos segundos."
+      : "Cargando…";
+    cont.appendChild(aviso);
+    return;
+  }
+
+  // Mismo universo de entries que Activas/Historial: tallerEntries ya excluye
+  // anuladas (cloudHydrate filtra con esTallerAnulado antes de publicarlas), y
+  // scopeBySucursal aplica el mismo candado de sucursal que el resto del módulo.
+  const entries = scopeBySucursal(tallerEntries || []);
+  const porVisita = window.__tallerPartidas || new Map();
+  const anio = new Date().getFullYear();
+  // Task 9: el gasto anual también tiene que ver lo FIRMADO por partidas — una
+  // visita cerrada de años/meses anteriores cuyo gasto llegó entero por
+  // partidas no puede desaparecer del "Esta unidad: $X en <año>".
+  const anual = typeof window.__gastoAnualPorEco === "function"
+    ? window.__gastoAnualPorEco(entries, anio, _partidasDeVisita)
+    : new Map();
+  const filas = window.__filasBandeja(entries, porVisita, anual);
+  const motivos = window.__MOTIVOS_RECHAZO || [];
+
+  const entryPorVisita = new Map();
+  if(typeof window.__visitaKeyDe === "function"){
+    entries.forEach(e => entryPorVisita.set(window.__visitaKeyDe(e), e));
+  }
+
+  if(!filas.length){
+    const vacio = document.createElement("div");
+    vacio.style.cssText = "padding:32px 16px;color:var(--s2);font-size:12px;text-align:center";
+    vacio.textContent = "No hay partidas esperando tu firma.";
+    cont.appendChild(vacio);
+    return;
+  }
+
+  // R85 (spec §9.2) — la franja de resumen: lo primero que Riesgos ve al abrir
+  // la bandeja, y lo que le dice si el trabajo de hoy son tres firmas o treinta.
+  // La aritmética la hace src/ (resumenBandeja, testeada); aquí solo se pinta,
+  // con createElement/textContent como el resto de esta vista.
+  if(typeof window.__resumenBandeja === "function"){
+    const r = window.__resumenBandeja(filas);
+    const franja = document.createElement("div");
+    franja.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:10px;background:var(--bg3);border:1px solid var(--ln);border-radius:8px;font-size:12.5px;color:var(--w1);font-weight:600;flex-wrap:wrap";
+    const rayo = document.createElement("span");
+    rayo.textContent = "⚡";
+    rayo.style.cssText = "font-size:14px";
+    franja.appendChild(rayo);
+    const texto = document.createElement("span");
+    texto.textContent = `Esperando tu firma · ${r.partidas} partida${r.partidas===1?"":"s"} en ${r.unidades} unidad${r.unidades===1?"":"es"} · Suman ${_fmtMon2(r.monto)}`;
+    franja.appendChild(texto);
+    cont.appendChild(franja);
+  }
+
+  filas.forEach(fila => {
+    // Fix ronda 1 (Important 1): la fila YA trae sus partidas pendientes
+    // (filasBandeja las arma con partidasPendientesDeFirma) — el monolito
+    // nunca vuelve a preguntar estado==="propuesta" por su cuenta.
+    cont.appendChild(_bnGrupo(fila, fila.partidasPendientes, entryPorVisita.get(fila.visitaKey), motivos, anio));
+  });
+
+  if(window.refreshIcons) window.refreshIcons();
+}
+
+// subtle=true (fix ronda 1, Important 4): la etiqueta de rechazado es
+// contexto de fondo, no un número que compita visualmente con cotizado/
+// autorizado — mismo tono apagado que el resto de metadatos secundarios.
+function _bnChip(texto, subtle){
+  const s = document.createElement("span");
+  s.style.cssText = subtle
+    ? "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg);border:1px dashed var(--ln);font-size:10.5px;color:var(--s2);font-weight:500;white-space:nowrap"
+    : "display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;background:var(--bg3);font-size:11px;color:var(--w1);font-weight:600;white-space:nowrap";
+  s.textContent = texto;
+  return s;
+}
+
+function _bnGrupo(fila, ps, entry, motivos, anio){
+  const card = document.createElement("div");
+  card.className = "bandeja-grupo";
+  card.style.cssText = "background:var(--bg2);border:1px solid var(--ln);border-radius:10px;margin:0 16px 14px;overflow:hidden";
+
+  const head = document.createElement("div");
+  head.style.cssText = "padding:12px 16px;border-bottom:1px solid var(--ln)";
+
+  const titulo = document.createElement("div");
+  titulo.style.cssText = "font-size:14px;font-weight:700;color:var(--w1)";
+  titulo.textContent = `ECO ${fila.eco || "—"} · ${fila.placa || "—"}${fila.submarca ? " · " + fila.submarca : ""}`;
+  head.appendChild(titulo);
+
+  const sub = document.createElement("div");
+  sub.style.cssText = "font-size:11px;color:var(--s2);margin-top:2px";
+  sub.textContent = [fila.sucursal, fila.area, fila.tipo].filter(Boolean).join(" · ") || "—";
+  head.appendChild(sub);
+
+  const meta = document.createElement("div");
+  meta.style.cssText = "font-size:11px;color:var(--s2);margin-top:4px";
+  let metaTxt = `Proveedor: ${fila.proveedor || "—"} · Entrada ${fmtDate(fila.fechaEntrada)}`;
+  if(fila.fsalidaEst) metaTxt += ` · Salida est. ${fmtDate(fila.fsalidaEst)}`;
+  if(fila.km) metaTxt += ` · ${Number(fila.km).toLocaleString("es-MX")} km`;
+  meta.textContent = metaTxt;
+  head.appendChild(meta);
+
+  const nVisitasAnual = fila.visitasAnual;
+  const chips = document.createElement("div");
+  chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px";
+  chips.appendChild(_bnChip(`Cotizado ${_fmtMon2(fila.totales.cotizado)}`));
+  chips.appendChild(_bnChip(`Ya autorizado ${_fmtMon2(fila.totales.autorizado)}`));
+  // Fix ronda 1 (Important 4): "Cotizado" incluye lo YA rechazado (totalesVisita
+  // suma todo lo no-borrador/no-cancelada) — sin esta etiqueta, "Cotizado -
+  // Autorizado" se lee como "lo que falta decidir" cuando en realidad una
+  // parte de esa diferencia ya se decidió que NO. Solo se pinta si hay algo
+  // que mostrar, y queda subordinada (fondo apagado) frente a las otras dos.
+  if(fila.totales.rechazado > 0){
+    chips.appendChild(_bnChip(`Rechazado ${_fmtMon2(fila.totales.rechazado)}`, true));
+  }
+  chips.appendChild(_bnChip(`Esta unidad: ${_fmtMon2(fila.gastoAnual)} en ${anio} · ${nVisitasAnual} visita${nVisitasAnual===1?"":"s"} cerrada${nVisitasAnual===1?"":"s"}`));
+  head.appendChild(chips);
+
+  card.appendChild(head);
+
+  const lista = document.createElement("div");
+  ps.forEach(p => lista.appendChild(_bnPartida(fila, p, motivos)));
+  card.appendChild(lista);
+
+  card.appendChild(_bnFooter(fila, ps, entry));
+
+  return card;
+}
+
+// Miniatura de la primera foto de la partida. Firma bajo demanda (nunca lista
+// el bucket) via __urlFotoPartida — distinto del imgUrl legacy porque ese
+// normaliza a minúsculas (pensado para basenames planos de MoreApp) y la
+// llave de una foto de partida trae la placa en mayúsculas dentro de la ruta.
+function _bnThumb(p){
+  const box = document.createElement("div");
+  box.style.cssText = "width:56px;height:56px;border-radius:8px;background:var(--bg3);flex:0 0 auto;overflow:hidden;display:flex;align-items:center;justify-content:center";
+  const key = p.fotos && p.fotos[0];
+  if(!key){
+    const sinFoto = document.createElement("span");
+    sinFoto.style.cssText = "font-size:9px;color:var(--s2);text-align:center;padding:2px";
+    sinFoto.textContent = "Sin foto";
+    box.appendChild(sinFoto);
+    return box;
+  }
+  const img = document.createElement("img");
+  img.alt = "Foto del hallazgo";
+  img.style.cssText = "width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .2s ease";
+  // Fallback "No disp." — un solo lugar, para las tres formas de fallar: la
+  // firma devolvió null, la firma tronó, o la URL firmada no cargó (expiró, 403,
+  // el objeto no existe). Antes solo la primera pintaba algo: las otras dos
+  // dejaban un cuadro gris mudo en la pantalla de la firma.
+  const sinFotoDisponible = () => {
+    box.replaceChildren();
+    const err = document.createElement("span");
+    err.style.cssText = "font-size:9px;color:var(--s2)";
+    err.textContent = "No disp.";
+    box.appendChild(err);
+  };
+  img.onerror = sinFotoDisponible;
+  box.appendChild(img);
+  if(typeof window.__urlFotoPartida === "function"){
+    window.__urlFotoPartida(key).then(url => {
+      if(url){ img.src = url; img.style.opacity = "1"; return; }
+      sinFotoDisponible();
+    }).catch(err => {
+      console.warn("[bandeja] no se pudo firmar la foto de la partida:", err);
+      sinFotoDisponible();
+    });
+  }
+  return box;
+}
+
+function _bnPartida(fila, p, motivos){
+  const contenedor = document.createElement("div");
+  contenedor.style.cssText = "width:100%";
+
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--ln);align-items:flex-start;flex-wrap:wrap";
+  wrap.appendChild(_bnThumb(p));
+
+  const info = document.createElement("div");
+  info.style.cssText = "flex:1;min-width:180px";
+
+  const desc = document.createElement("div");
+  desc.style.cssText = "font-size:12.5px;color:var(--w1);font-weight:600";
+  desc.textContent = p.descripcion || "(sin descripción)";
+  info.appendChild(desc);
+
+  // Number.isFinite, no `typeof === "number"`: con NaN el typeof da true, esCero
+  // da false, _fmtMon imprimía "$0" y el botón Autorizar quedaba HABILITADO —
+  // una firma de $0 en la pantalla donde el $0 tiene que saltar a la vista.
+  const tienePrecio = Number.isFinite(p.precio);
+  // R69(c): un precio tecleado en $0 (garantía, cortesía) es alcanzable —la
+  // validación de partidaManual/validarPartidaEntrante acepta >= 0— y NO es
+  // el mismo caso que "sin precio" (p.precio undefined, arriba): ese es un
+  // dato que falta; $0 es un dato completo que dice "no cuesta". Si se
+  // pintaran igual, Riesgos autorizaría un $0 sin darse cuenta de que lo es.
+  const esCero = tienePrecio && p.precio === 0;
+  const tipoLbl = p.tipo==="manoObra" ? "Mano de obra" : p.tipo==="refaccion" ? "Refacción" : "Sin tipo";
+  const precioLbl = document.createElement("div");
+  precioLbl.style.cssText = `font-size:12px;margin-top:3px;font-weight:700;color:${tienePrecio ? "var(--w1)" : "var(--R)"}`;
+  precioLbl.textContent = !tienePrecio
+    ? `${tipoLbl} · sin precio`
+    : esCero
+      ? `${tipoLbl} · $0 · sin costo`
+      : `${tipoLbl} · ${_fmtMon2(p.precio)}`;
+  info.appendChild(precioLbl);
+
+  const autoria = document.createElement("div");
+  autoria.style.cssText = "font-size:10.5px;color:var(--s2);margin-top:3px";
+  const proveedorPartida = p.proveedorNombre || fila.proveedor || "—";
+  // R74: el origen real (liga vs. captura manual de Riesgos, Task 12) —
+  // antes era un literal fijo que le mentía a la evidencia de una captura a
+  // mano diciendo "desde la liga". window.__origenPartida es el bridge de
+  // src/taller/partidas.ts (cableado en src/main.ts). Fix ronda 1
+  // (Important 2): sin el bridge, el fallback es "origen desconocido" —
+  // NUNCA "desde la liga" (eso era justo el default que R74 prohibía).
+  const origen = typeof window.__origenPartida === "function"
+    ? window.__origenPartida(p)
+    : "origen desconocido";
+  // R79 (fix ronda 1): "Subió <taller>" es falso para una captura manual —
+  // ningún taller subió nada. window.__autorPartidaEtiqueta (bridge de
+  // src/taller/partidas.ts) decide "Capturó GPA" vs "Subió <proveedor>" a
+  // partir del MISMO origen de arriba, nunca por su cuenta.
+  // Sin el puente NO se afirma quién subió: "Subió <proveedor de la visita>" es
+  // una adivinanza que le atribuye al taller lo que pudo capturar GPA a mano —
+  // el mismo default que R74 prohibió para `origen` justo arriba.
+  const quienSubio = typeof window.__autorPartidaEtiqueta === "function"
+    ? window.__autorPartidaEtiqueta(p, proveedorPartida)
+    : "origen desconocido";
+  autoria.textContent = `${quienSubio} · ${fmtDate(p.creadoEn || p.propuestoEn)} · ${origen}`;
+  info.appendChild(autoria);
+
+  wrap.appendChild(info);
+
+  const cola = document.createElement("div");
+  cola.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:150px";
+
+  const btnAutorizar = document.createElement("button");
+  btnAutorizar.type = "button";
+  btnAutorizar.className = "needs-write bandeja-firma-btn";
+  btnAutorizar.style.cssText = "padding:8px 14px;border-radius:8px;border:none;background:var(--G);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+  btnAutorizar.textContent = "✓ Autorizar";
+  if(!tienePrecio){
+    btnAutorizar.disabled = true;
+    btnAutorizar.title = "No se puede autorizar sin precio.";
+    btnAutorizar.style.opacity = "0.5";
+    btnAutorizar.style.cursor = "not-allowed";
+  }
+
+  const btnRechazar = document.createElement("button");
+  btnRechazar.type = "button";
+  btnRechazar.className = "needs-write bandeja-firma-btn";
+  btnRechazar.style.cssText = "padding:8px 14px;border-radius:8px;border:1px solid var(--R);background:none;color:var(--R);font-size:12px;font-weight:700;cursor:pointer";
+  btnRechazar.textContent = "✕ No autorizar";
+
+  cola.appendChild(btnAutorizar);
+  cola.appendChild(btnRechazar);
+  wrap.appendChild(cola);
+
+  contenedor.appendChild(wrap);
+  const panel = _bnPanelRechazo(fila, p, motivos);
+  contenedor.appendChild(panel);
+
+  btnAutorizar.addEventListener("click", () => _bnAutorizar(fila, p, btnAutorizar));
+  btnRechazar.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+
+  return contenedor;
+}
+
+// Panel de rechazo: menú CERRADO de MOTIVOS_RECHAZO (nunca texto libre a
+// mano); "Otro" habilita la nota y el botón de confirmar queda deshabilitado
+// mientras esa nota esté vacía — nunca deja confirmar un "Otro" en blanco.
+function _bnPanelRechazo(fila, p, motivos){
+  const panel = document.createElement("div");
+  panel.hidden = true;
+  panel.style.cssText = "width:100%;padding:10px 16px 14px;background:var(--bg3);border-top:1px dashed var(--ln);display:flex;flex-direction:column;gap:8px";
+
+  const lbl = document.createElement("label");
+  lbl.style.cssText = "font-size:10.5px;color:var(--s2);font-weight:600;text-transform:uppercase;letter-spacing:.4px";
+  lbl.textContent = "Motivo del rechazo";
+  panel.appendChild(lbl);
+
+  const sel = document.createElement("select");
+  sel.className = "field-input";
+  sel.style.cssText = "max-width:280px";
+  const optPlaceholder = document.createElement("option");
+  optPlaceholder.value = "";
+  optPlaceholder.textContent = "Selecciona un motivo…";
+  sel.appendChild(optPlaceholder);
+  motivos.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m;
+    o.textContent = m;
+    sel.appendChild(o);
+  });
+  panel.appendChild(sel);
+
+  const nota = document.createElement("textarea");
+  nota.className = "field-input";
+  nota.placeholder = "Describe el motivo…";
+  nota.rows = 2;
+  nota.hidden = true;
+  nota.style.cssText = "max-width:400px;resize:vertical";
+  panel.appendChild(nota);
+
+  const errorMsg = document.createElement("div");
+  errorMsg.style.cssText = "font-size:10.5px;color:var(--R);display:none";
+  errorMsg.textContent = 'El motivo "Otro" necesita una nota.';
+  panel.appendChild(errorMsg);
+
+  const acciones = document.createElement("div");
+  acciones.style.cssText = "display:flex;gap:8px";
+
+  const btnConfirmar = document.createElement("button");
+  btnConfirmar.type = "button";
+  btnConfirmar.className = "needs-write bandeja-firma-btn";
+  btnConfirmar.style.cssText = "padding:8px 14px;border-radius:8px;border:none;background:var(--R);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+  btnConfirmar.textContent = "Confirmar rechazo";
+  btnConfirmar.disabled = true;
+
+  const btnCancelar = document.createElement("button");
+  btnCancelar.type = "button";
+  btnCancelar.className = "bandeja-firma-btn";
+  btnCancelar.style.cssText = "padding:8px 14px;border-radius:8px;border:1px solid var(--ln);background:none;color:var(--s1);font-size:12px;cursor:pointer";
+  btnCancelar.textContent = "Cancelar";
+
+  acciones.appendChild(btnConfirmar);
+  acciones.appendChild(btnCancelar);
+  panel.appendChild(acciones);
+
+  function actualizarValidez(){
+    const motivo = sel.value;
+    const esOtro = motivo === "Otro";
+    nota.hidden = !esOtro;
+    const notaVacia = esOtro && !nota.value.trim();
+    errorMsg.style.display = (esOtro && notaVacia) ? "" : "none";
+    btnConfirmar.disabled = !motivo || notaVacia;
+  }
+  sel.addEventListener("change", actualizarValidez);
+  nota.addEventListener("input", actualizarValidez);
+
+  btnCancelar.addEventListener("click", () => {
+    sel.value = "";
+    nota.value = "";
+    nota.hidden = true;
+    errorMsg.style.display = "none";
+    btnConfirmar.disabled = true;
+    panel.hidden = true;
+  });
+
+  btnConfirmar.addEventListener("click", () => {
+    const motivo = sel.value;
+    const notaTxt = nota.value.trim();
+    // Cinturón de respaldo: el disabled de arriba ya bloquea este caso, pero
+    // un "Otro" sin nota jamás debe poder confirmarse aunque algo más habilite
+    // el botón a mano (p.ej. devtools).
+    if(!motivo || (motivo === "Otro" && !notaTxt)){
+      actualizarValidez();
+      return;
+    }
+    _bnRechazar(fila, p, motivo, notaTxt, btnConfirmar);
+  });
+
+  return panel;
+}
+
+function _bnFooter(fila, ps, entry){
+  const foot = document.createElement("div");
+  foot.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:var(--bg3)";
+
+  // Fix ronda 1 (Important 2): la aritmética del lote (quién entra, cuánto
+  // suma, cuántas quedan fuera) vive en src/ (resumenLoteFirma, testeada) —
+  // el monolito solo pinta lo que devuelve, nunca la vuelve a calcular.
+  const { autorizables, monto: montoBulk, sinPrecio } = window.__resumenLoteFirma
+    ? window.__resumenLoteFirma(ps, fila.totales)
+    : { autorizables: [], monto: fila.totales.autorizado, sinPrecio: ps.length };
+
+  const txt = document.createElement("div");
+  txt.style.cssText = "font-size:11.5px;color:var(--s1);flex:1;min-width:220px";
+  let msg = autorizables.length
+    ? `Si firmas las ${autorizables.length}, lo autorizado de esta visita pasa a ${_fmtMon2(montoBulk)}.`
+    : "Ninguna partida propuesta tiene precio: no hay nada que autorizar en lote.";
+  if(sinPrecio > 0 && autorizables.length){
+    msg += ` (${sinPrecio} sin precio, no incluida${sinPrecio===1?"":"s"}.)`;
+  }
+  txt.textContent = msg;
+  foot.appendChild(txt);
+
+  if(autorizables.length){
+    const btnBulk = document.createElement("button");
+    btnBulk.type = "button";
+    btnBulk.className = "needs-write bandeja-firma-btn";
+    btnBulk.style.cssText = "padding:8px 16px;border-radius:8px;border:none;background:var(--G);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
+    btnBulk.textContent = `✓ Autorizar las ${autorizables.length}`;
+    btnBulk.addEventListener("click", () => _bnAutorizarLote(fila, autorizables, btnBulk));
+    foot.appendChild(btnBulk);
+  }
+
+  const btnExp = document.createElement("button");
+  btnExp.type = "button";
+  btnExp.className = "bandeja-firma-btn";
+  btnExp.style.cssText = "padding:8px 16px;border-radius:8px;border:1px solid var(--ln);background:none;color:var(--s1);font-size:12px;cursor:pointer";
+  btnExp.textContent = "Abrir expediente";
+  if(!entry){
+    // El expediente se abre por `unitKey`. Sin entry no hay unitKey: el fallback
+    // a placa/económico abría el modal VACÍO — un botón que promete y no cumple.
+    btnExp.disabled = true;
+    btnExp.title = "No se encontró el registro de esta visita en la vista actual.";
+    btnExp.style.opacity = "0.5";
+    btnExp.style.cursor = "not-allowed";
+  } else {
+    btnExp.addEventListener("click", () => {
+      if(typeof openHistorialModal !== "function") return;
+      openHistorialModal(entry.unitKey || entry.id);
+    });
+  }
+  foot.appendChild(btnExp);
+
+  return foot;
+}
+
+// Refuerzo de BC-C1: la hidratación ya trae las partidas frescas (viajan en
+// hydrateSignature), pero el repintado de la bandeja NO cuelga de ella — el
+// badge y la sub-pestaña los pinta renderTaller()/updateTallerBadge(). Sin
+// estas dos llamadas, la fila firmada seguía en pantalla "pendiente" y el badge
+// no bajaba hasta recargar.
+function _bnRepintar(){
+  if(typeof updateTallerBadge === "function") updateTallerBadge();
+  if(typeof renderTaller === "function") renderTaller();
+}
+
+async function _bnAutorizar(fila, p, btn){
+  // L884(i): un clic de DINERO que no hace nada ni avisa es peor que un error —
+  // el usuario cree que firmó. Mismo aviso que ya dan las rutas de T12.
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
+  btn.disabled = true;
+  try{
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+    if(window.notify) window.notify("Partida autorizada.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
+  }catch(e){
+    console.error("[bandeja] autorizar:", e);
+    if(window.notify) window.notify("No se pudo autorizar. Intenta de nuevo.", "error", 5000);
+    btn.disabled = false;
+  }
+}
+
+async function _bnRechazar(fila, p, motivo, nota, btn){
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
+  btn.disabled = true;
+  try{
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined);
+    if(window.notify) window.notify("Partida rechazada.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
+  }catch(e){
+    console.error("[bandeja] rechazar:", e);
+    if(window.notify) window.notify("No se pudo rechazar. Intenta de nuevo.", "error", 5000);
+    btn.disabled = false;
+  }
+}
+
+async function _bnAutorizarLote(fila, partidas, btn){
+  if(typeof window.__guardarDecisionPartida !== "function"){
+    if(window.notify) window.notify("Recarga la página para autorizar", "error", 5000);
+    return;
+  }
+  btn.disabled = true;
+  let ok = 0, fail = 0;
+  try{
+    for(const p of partidas){
+      try{
+        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+        ok++;
+      }catch(e){
+        console.error("[bandeja] autorizar lote:", p.partidaId, e);
+        fail++;
+      }
+    }
+    if(window.notify){
+      if(fail) window.notify(`${ok} autorizada(s), ${fail} fallaron. Revisa e intenta de nuevo.`, "warn", 6000);
+      else window.notify(`${ok} partida(s) autorizada(s).`, "ok", 3500);
+    }
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    _bnRepintar();
+  }finally{
+    // L884(i): si el repintado no llega a borrar el botón (falló el hydrate,
+    // la visita sigue con pendientes), no puede quedarse deshabilitado para
+    // siempre — el lote es reintentable por diseño.
+    btn.disabled = false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -8781,11 +9552,15 @@ function renderHistorial(){
       // Aplicar filtro por tipo de mantenimiento
       if(!tipoMatch(e)) return;
       u.closedCount++;
-      const gRef = e.gastoRef||0, gMO = e.gastoMO||0;
-      const gTot = (gRef+gMO>0) ? gRef+gMO : (e.gasto||0);
-      u.totalGasto    += gTot;
-      u.totalGastoRef += gRef||(e.gastoRef||0);
-      u.totalGastoMO  += gMO||(e.gastoMO||0);
+      // Fix ronda 2 (Task 9, Critical 2): esta es la implementación LEGACY de
+      // Historial — sigue siendo la que corre en producción (renderHistorialNew,
+      // src/taller/renderHistorial.ts, solo pinta detrás del flag opt-in
+      // USE_NEW_TALLER). Antes leía gastoRef/gastoMO/gasto crudos: una unidad
+      // cuyo gasto llegó por partidas firmadas resumía en $0 justo en la
+      // pantalla donde Riesgos revisa el historial cerrado.
+      u.totalGasto    += _gastoDe(e);
+      u.totalGastoRef += _gastoRefDe(e);
+      u.totalGastoMO  += _gastoMODe(e);
       if(!u.latestClosed||(e.updatedAt||"")>(u.latestClosed.updatedAt||"")) u.latestClosed=e;
     }
   });
@@ -8840,7 +9615,7 @@ function renderHistorial(){
     kpiBar.style.display = units2show.length ? "" : "none";
     kpiBar.innerHTML=`
       <div class="hist-kstat">
-        <div class="hist-kstat-val" style="color:var(--G)">${fmtMXN(totalGasto)}</div>
+        <div class="hist-kstat-val" style="color:var(--G)">${_monDerivado(totalGasto, fmtMXN)}</div>
         <div class="hist-kstat-lbl">Gasto Total</div>
       </div>
       <div class="hist-kstat">
@@ -8935,7 +9710,7 @@ function renderHistorial(){
       <td style="vertical-align:top">${fmtDate(lc.fentrada)}</td>
       <td style="vertical-align:top">${fmtDate(lc.fsalidaReal)}${lcTipoPill}</td>
       <td style="text-align:center;color:var(--s2);vertical-align:top">${dias!=null?dias+"d":"—"}</td>
-      <td style="font-weight:600;color:var(--G);vertical-align:top">${totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{maximumFractionDigits:0}):"—"}${gastoBreakdown}</td>
+      <td style="font-weight:600;color:var(--G);vertical-align:top">${_partidasConfiables()?(totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{maximumFractionDigits:0}):"—"):_SIN_DATOS_PARTIDAS}${gastoBreakdown}</td>
     </tr>`;
   }).join("");
 }
@@ -8950,9 +9725,25 @@ function renderHistorial(){
 async function exportTallerActivasExcel(){
   const activas=tallerEntries.filter(e=>e.estado!=="Finalizado");
   if(!activas.length){window.notify("No hay unidades activas en taller.","warn",4000);return;}
+  // Fix ronda 2 (Task 9, "también en esta ronda"): sin window.__tallerPartidas
+  // cargado (hidratación todavía no corrió, o falló), _partidasDeVisita siempre
+  // resuelve [] y el Excel saldría con ceros de confianza para toda visita con
+  // partidas. Un archivo que sale del edificio nunca debe mentir así — se
+  // rechaza el export en vez de generarlo con datos incompletos.
+  // Task 10 (el apagador): con el esquema apagado, _partidasDeVisita YA
+  // resuelve [] siempre (nunca lee window.__tallerPartidas) — este guard de
+  // "partidas todavía no cargan" deja de aplicar, exactamente el
+  // comportamiento de antes de Task 9.
+  if(window.__tallerHibrido && !window.__tallerPartidas){
+    window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
+    return;
+  }
   try{
     const api=await window.__tallerExport();
-    await api.downloadTallerActivasXlsx(activas,{hoy:new Date()});
+    // Task 9: partidasDe deriva Ref/MO/Total y Cotizado/Autorizado/Rechazado
+    // de lo FIRMADO — sin esto, el Excel volvería a mentir para las visitas
+    // que ya no capturan un Subtotal a mano.
+    await api.downloadTallerActivasXlsx(activas,{hoy:new Date(), partidasDe:_partidasDeVisita});
   }catch(e){
     console.error("[exportTallerActivasExcel]",e);
     window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
@@ -8963,10 +9754,20 @@ async function exportTallerHistorialExcel(){
   if(!tallerEntries.some(e=>e.estado==="Finalizado")){
     window.notify("No hay visitas finalizadas en el historial.","warn",4000);return;
   }
+  // Fix ronda 2 (Task 9): mismo candado que Activas — sin partidas cargadas el
+  // Resumen y el $/1,000 km saldrían con ceros de confianza.
+  // Task 10 (el apagador): mismo relajo que Activas — con el esquema apagado
+  // el candado no aplica.
+  if(window.__tallerHibrido && !window.__tallerPartidas){
+    window.notify("Los datos de partidas todavía no cargan — espera un momento y reintenta el export.","warn",6000);
+    return;
+  }
   try{
     const api=await window.__tallerExport();
     // El módulo filtra cerradas y arma el Resumen por unidad (resumenPorUnidad, testeado).
-    await api.downloadTallerHistorialXlsx(tallerEntries,{hoy:new Date()});
+    // Task 9: mismo partidasDe que Activas — el Resumen y el $/1,000 km también
+    // dependen de gastoTotalDe.
+    await api.downloadTallerHistorialXlsx(tallerEntries,{hoy:new Date(), partidasDe:_partidasDeVisita});
   }catch(e){
     console.error("[exportTallerHistorialExcel]",e);
     window.notify("No se pudo generar el Excel. Reintenta.","error",6000);
@@ -9116,11 +9917,132 @@ function openTallerModal(id){
   document.getElementById("tf-fsalida-est").value  = e?.fsalidaEst||"";
   document.getElementById("tf-fsalida-real").value = e?.fsalidaReal||"";
   document.getElementById("tf-km").value           = e?.km||"";
-  document.getElementById("tf-gasto").value        = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+  // Task 9 (el gasto se calcula, no se captura): con partidas para esta visita,
+  // el campo pasa a solo lectura mostrando lo derivado (gastoDerivado,
+  // src/taller/partidas.ts) — sin partidas, sigue editable como siempre
+  // (visitas históricas y captura manual).
+  // Fix ronda 1: el valor SIEMPRE se pinta como número (nunca "" vacío) — un
+  // campo en blanco con partidas cotizadas pero nada autorizado leía como
+  // "esta visita no cuesta nada".
+  // Fix ronda 2 (Important 2): la leyenda declara lo pendiente con
+  // montoPendienteDeFirma (src/taller/partidas.ts) — NUNCA un residuo
+  // calculado aquí (cotizado - autorizado - rechazado solo cuadraba porque
+  // autorizar() congela precioAutorizado = precio; con una autorización a
+  // precio negociado el residuo mentiría).
+  {
+    const gastoInput = document.getElementById("tf-gasto");
+    const gastoHint  = document.getElementById("tf-gasto-hint");
+    const psGasto = e ? _partidasDeVisita(e) : [];
+    // `readOnly`, no `disabled`: el campo sigue enfocable y copiable (Riesgos
+    // pega ese monto en su conciliación) y es el semántico correcto de "esto se
+    // calcula". El CENTINELA de saveTallerEntry lee la MISMA propiedad — los dos
+    // se mueven juntos o ninguno.
+    if(psGasto.length && typeof window.__gastoDerivado === "function"){
+      const derivado = window.__gastoDerivado(e, psGasto);
+      gastoInput.value = String(derivado.gasto);
+      gastoInput.readOnly = true;
+      let leyenda = "Suma de las partidas autorizadas";
+      if(typeof window.__montoPendienteDeFirma === "function"){
+        const pendiente = window.__montoPendienteDeFirma(psGasto);
+        if(pendiente > 0) leyenda += ` · ${_fmtMon2(pendiente)} esperando firma`;
+      }
+      if(gastoHint) { gastoHint.textContent = leyenda; gastoHint.style.display = ""; }
+    } else if(e && !_partidasConfiables()){
+      // Fix B-C2: con el esquema PRENDIDO (o sin saberlo) y las partidas NO
+      // cargadas, NO se sabe si esta visita tiene dinero firmado. Dejar el campo
+      // editable escribía `gasto:0, gastoRef:0, gastoMO:0` encima de lo firmado
+      // en cuanto se guardara cualquier otro campo — el cero indistinguible que
+      // numOrUndef existe para no fabricar. Se queda bloqueado (y por el MISMO
+      // centinela, saveTallerEntry no persiste las tres llaves).
+      gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+      gastoInput.readOnly = true;
+      const leyendaSin = "No se pudieron cargar las partidas: el gasto no se edita hasta que carguen.";
+      if(gastoHint) { gastoHint.textContent = leyendaSin; gastoHint.style.display = ""; }
+    } else {
+      gastoInput.value = e?.gasto||(((e?.gastoRef||0)+(e?.gastoMO||0))||"");
+      gastoInput.readOnly = false;
+      gastoInput.removeAttribute("title");
+      if(gastoHint) gastoHint.style.display = "none";
+    }
+    // B-C4 — con partidas presentes, la IDENTIDAD de la visita se congela.
+    // `#tf-fentrada`/`#tf-plate`/`#tf-eco` componen la visitaKey de la que
+    // cuelgan las partidas: corregir una fecha de ingreso mal capturada (acción
+    // ordinaria de Riesgos) movía la llave, la fila nueva nacía sin dinero, la
+    // vieja se borraba y las partidas se quedaban colgando de una llave que ya
+    // nadie resuelve — la visita reportaba $0 PARA SIEMPRE y sus partidas
+    // desaparecían de la bandeja. Mover partidas no es opción (la visitaKey es
+    // parte del identifier y el repo prohíbe el borrado físico): se bloquea la
+    // edición y se dice por qué.
+    // Remate §2.1 — el candado tampoco puede confiar en un `[]` que es AUSENCIA.
+    // Con las partidas NO cargadas, `psGasto` vale [] por no haberlas podido
+    // leer, no porque la visita no tenga dinero firmado: dejar la identidad
+    // editable ahí es exactamente el daño que B-C4 existe para impedir (la fila
+    // nueva nace sin gasto, la vieja se borra y las partidas quedan colgando de
+    // una llave que ya nadie resuelve). Mismo tri-estado que ya bloquea #tf-gasto.
+    {
+      const idDudoso = !_partidasConfiables();
+      // Solo para una visita YA persistida (`e`): una captura NUEVA no tiene
+      // partidas por construcción (su visitaKey no existe todavía), así que el
+      // estado "desconocido" no puede bloquearla — lo detectó el e2e
+      // kpi-taller (autocompletado): en local el tri-estado siempre es
+      // desconocido y el candado dejaba #tf-eco en readonly antes de teclear.
+      const idLock = !!e && (psGasto.length > 0 || idDudoso);
+      const leyendaId = psGasto.length > 0
+        ? "La visita tiene partidas: su identidad no se edita."
+        : "No se pudieron cargar las partidas: la identidad no se edita hasta que carguen.";
+      for(const campo of ["tf-fentrada","tf-plate","tf-eco"]){
+        const el = document.getElementById(campo);
+        if(!el) continue;
+        el.readOnly = idLock;
+        if(idLock) el.title = leyendaId; else el.removeAttribute("title");
+      }
+      const idHint = document.getElementById("tf-identidad-hint");
+      if(idHint){
+        idHint.textContent = leyendaId;
+        idHint.style.display = idLock ? "" : "none";
+      }
+    }
+  }
   document.getElementById("tf-pedido").value       = e?.pedidoErp||"";
   document.getElementById("tf-tecnico").value      = e?.tecnico||"";
   document.getElementById("tf-refacciones").value  = e?.refacciones||"";
   document.getElementById("tf-comentario").value   = e?.comentario||"";
+
+  // Task 11 (ciclo de firma): liga del proveedor. "Copiar liga" tiene sentido
+  // para cualquier registro YA persistido (unitUid/fechaEntrada reales); un
+  // ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+  // "Revocar liga" solo si YA se generó una — se confirma con __tallerLiga.estado
+  // (lee ligaCreadaEn, la columna de auditoría real, no un dato en cache que
+  // pueda estar viejo). Fix: se guarda `id` en closure para no pisar el botón
+  // si el modal cambió de registro mientras la consulta seguía en vuelo.
+  {
+    const btnCopiarLiga  = document.getElementById("btn-liga-copiar");
+    const btnRevocarLiga = document.getElementById("btn-liga-revocar");
+    // C-I4: una visita FINALIZADA no abre puertas públicas nuevas. Su costo ya
+    // es final; una liga emitida después lo cambiaría a espaldas del cierre.
+    // El backend rechaza igual (emitirLiga + el portón, A-8) — esto solo evita
+    // ofrecerlo. Mismo predicado `isClosed` que usa el resto de este modal.
+    // Remate §2.3.1: el servidor cierra con DOS reglas, no una — `visitaCerrada`
+    // (validacion.ts) también cierra con `estatus === "cerrado"`, que
+    // `batchUpload.ts` deriva de `fsalidaReal`. Con la salida real tecleada y el
+    // estado todavía sin marcar, el botón se ofrecía y `emitirLiga` respondía
+    // "La visita está finalizada": la UI prometía algo que el portón ya negaba.
+    const ligaOfrecible = !!e && !isClosed(e?.estado) && !e?.fsalidaReal;
+    if(btnCopiarLiga) btnCopiarLiga.style.display = ligaOfrecible ? "" : "none";
+    if(btnRevocarLiga){
+      btnRevocarLiga.style.display = "none";
+      // B-I5: solo se consulta si el esquema está PRENDIDO y quien mira puede
+      // emitir o revocar — tras R84 y Task 14, admin o la credencial 'riesgos'.
+      // Antes esta lectura pasiva corría en CADA apertura del modal para todo
+      // el mundo.
+      if(ligaOfrecible && window.__tallerHibrido && puedeEmitirLiga() && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
+        const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+        window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
+          if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";
+        }).catch(()=>{});
+      }
+    }
+  }
 
   buildTallerSucOptions();
   openModal("taller-modal");
@@ -9133,11 +10055,125 @@ function closeTallerModal(){
   _tallerReingresoKey=null;
 }
 
+// ── Task 11: emitir/copiar y revocar la liga del proveedor ──────────────────
+// El gate de ROL real es AppSync (grupo admin/operativo, data/resource.ts);
+// needs-write + needs-hibrido en el botón son cortesía de UI. unitUid/
+// fechaEntrada SIEMPRE via window.__tallerCloudKey(e) (R44) — nunca leídos de
+// un campo de formulario crudo, para no apuntar a una visita que el backend
+// no encuentra.
+async function copiarLigaProveedor(){
+  const e = tallerEntries.find(x=>x.id===_tallerEditId);
+  if(!e || !window.__tallerLiga || typeof window.__tallerCloudKey !== "function"){
+    window.notify?.("No se pudo identificar la visita.","error");
+    return;
+  }
+  const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+  const btn = document.getElementById("btn-liga-copiar");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await window.__tallerLiga.emitir(unitUid, fechaEntrada);
+    if(!r || "error" in r){
+      window.notify?.((r && r.error) || "No se pudo generar la liga.","error");
+      return;
+    }
+    const msg = window.__tallerLiga.mensajeWhatsApp({ eco: e.eco||"", placa: e.plate||"", url: r.url });
+    let copiado = false;
+    try{
+      await navigator.clipboard.writeText(msg);
+      copiado = true;
+    }catch{ copiado = false; }
+    // La liga vence a los 90 días y `emitir` ya devuelve la fecha; sin decirlo,
+    // Riesgos no se entera hasta que el taller reporta que "ya no abre".
+    const vence = r.expira ? ` · vence el ${new Date(r.expira).toLocaleDateString("es-MX")}` : "";
+    if(copiado){
+      window.notify?.(`Liga copiada. Pégala en WhatsApp${vence}.`,"ok");
+    } else {
+      // El portapapeles puede fallar (permiso denegado, contexto inseguro):
+      // nunca dejar al usuario sin forma de obtener la liga.
+      mostrarTextoParaCopiar(msg);
+    }
+    // El botón "Revocar liga" aparece en cuanto existe al menos una liga.
+    const btnRevocar = document.getElementById("btn-liga-revocar");
+    if(btnRevocar) btnRevocar.style.display = "";
+  }catch(err){
+    window.notify?.(err?.message || "No se pudo generar la liga.","error");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function revocarLigaProveedor(){
+  const e = tallerEntries.find(x=>x.id===_tallerEditId);
+  if(!e || !window.__tallerLiga || typeof window.__tallerCloudKey !== "function") return;
+  if(!confirm("¿Revocar la liga del proveedor? Las ligas ya enviadas dejarán de servir.")) return;
+  const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+  const btn = document.getElementById("btn-liga-revocar");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await window.__tallerLiga.revocar(unitUid, fechaEntrada);
+    if(!r || "error" in r){
+      window.notify?.((r && r.error) || "No se pudo revocar la liga.","error");
+      return;
+    }
+    window.notify?.("Liga revocada.","ok");
+  }catch(err){
+    window.notify?.(err?.message || "No se pudo revocar la liga.","error");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+/** Fallback del portapapeles (permiso denegado / contexto inseguro): muestra el
+ *  texto en un <textarea> seleccionable — nunca deja al usuario sin salida.
+ *  XSS: todo por createElement + .value/.textContent, nada de innerHTML con
+ *  el mensaje (que trae la liga real). */
+function mostrarTextoParaCopiar(texto){
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px";
+  const box = document.createElement("div");
+  box.style.cssText = "background:var(--bg);border:1px solid var(--ln);border-radius:10px;padding:16px;max-width:480px;width:100%";
+  const p = document.createElement("p");
+  p.style.cssText = "font-size:12px;color:var(--s1);margin:0 0 8px";
+  p.textContent = "No se pudo copiar automáticamente. Selecciona y copia el texto:";
+  const ta = document.createElement("textarea");
+  ta.readOnly = true;
+  ta.value = texto;
+  ta.style.cssText = "width:100%;min-height:140px;font-size:12px;padding:8px;box-sizing:border-box;font-family:inherit";
+  const btnCerrar = document.createElement("button");
+  btnCerrar.type = "button";
+  btnCerrar.className = "tl-cancel";
+  btnCerrar.style.cssText = "margin-top:10px";
+  btnCerrar.textContent = "Cerrar";
+  btnCerrar.onclick = () => overlay.remove();
+  box.appendChild(p);
+  box.appendChild(ta);
+  box.appendChild(btnCerrar);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  ta.focus();
+  ta.select();
+}
+
 // ── Reingresar unidad al taller (nuevo registro, misma unidad) ──
 function clearTallerEntryFields(){
   // tf-pedido incluido: cada visita (reingreso) gestiona su PROPIO pedido en el ERP.
   ["tf-km","tf-gasto","tf-pedido","tf-freporte","tf-fentrada","tf-fsalida-est","tf-fsalida-real","tf-tecnico","tf-refacciones","tf-comentario"]
     .forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  // Task 9: un reingreso es una visita NUEVA sin partidas todavía — este flujo
+  // no pasa por openTallerModal(), así que el candado de solo-lectura de
+  // #tf-gasto (si venía de editar una visita con partidas) se resetea aquí.
+  const gastoInput = document.getElementById("tf-gasto");
+  if(gastoInput){ gastoInput.readOnly = false; gastoInput.removeAttribute("title"); }
+  const gastoHint = document.getElementById("tf-gasto-hint");
+  if(gastoHint) gastoHint.style.display = "none";
+  // B-C4: un reingreso es una visita NUEVA sin partidas — el candado de
+  // identidad tampoco puede quedarse puesto de la visita anterior.
+  for(const campo of ["tf-fentrada","tf-plate","tf-eco"]){
+    const el = document.getElementById(campo);
+    if(el){ el.readOnly = false; el.removeAttribute("title"); }
+  }
+  const idHint = document.getElementById("tf-identidad-hint");
+  if(idHint) idHint.style.display = "none";
 }
 
 function reingresoTaller(){
@@ -9187,7 +10223,8 @@ function renderHistorialModal(){
   // Patrón canónico de gasto (audit 2026-06-10 #9): e.gasto con fallback a
   // Ref+MO — las entradas hidratadas del cloud traen el desglose con gasto=0,
   // y esta tarjeta reportaba $0 mientras su propia fila Subtotal sí sumaba bien.
-  const totalGasto = allEntries.reduce((s,e)=>s+((e.gastoRef||0)+(e.gastoMO||0)>0?(e.gastoRef||0)+(e.gastoMO||0):(e.gasto||0)),0);
+  // Fix ronda 2 (Task 9, Critical 2): _gastoDe ahora ve lo FIRMADO por partidas.
+  const totalGasto = allEntries.reduce((s,e)=>s+_gastoDe(e),0);
   const nCor  = allEntries.filter(e=>e.tipo==="Correctivo").length;
   const nPrev = allEntries.filter(e=>e.tipo==="Preventivo").length;
   const nSinTipo = allEntries.filter(e=>!e.tipo).length;
@@ -9208,7 +10245,7 @@ function renderHistorialModal(){
   const summaryHtml = `<div style="display:flex;gap:12px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--ln);flex-wrap:wrap">
     <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--ac)">${allEntries.length}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Ingresos</div></div>
     <div style="width:1px;background:var(--ln)"></div>
-    <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--G)">${totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{minimumFractionDigits:0,maximumFractionDigits:0}):"—"}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Gasto Total</div></div>
+    <div style="text-align:center;min-width:60px"><div style="font-size:18px;font-weight:800;color:var(--G)">${_partidasConfiables()?(totalGasto>0?"$"+Number(totalGasto).toLocaleString("es-MX",{minimumFractionDigits:0,maximumFractionDigits:0}):"—"):_SIN_DATOS_PARTIDAS}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Gasto Total</div></div>
     <div style="width:1px;background:var(--ln)"></div>
     <div style="text-align:center;min-width:80px"><div style="font-size:12px;font-weight:700;color:var(--w1)">${fmtDate(allEntries[allEntries.length-1].fentrada)}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Primer Ingreso</div></div>
     <div style="text-align:center;min-width:80px"><div style="font-size:12px;font-weight:700;color:var(--w1)">${fmtDate(allEntries[0].fentrada)}</div><div style="font-size:9px;color:var(--s2);text-transform:uppercase">Ultimo Ingreso</div></div>
@@ -9251,6 +10288,9 @@ function renderHistorialModal(){
     const diasReales = e.fentrada&&e.fsalidaReal ? Math.max(0,Math.round((new Date(e.fsalidaReal)-new Date(e.fentrada))/(86400*1000))) : null;
     const idxInAll = allEntries.indexOf(e);
     const numLabel = allEntries.length - idxInAll;
+    // Fix ronda 2 (Task 9, Critical 2): antes leía e.gasto/e.gastoRef+e.gastoMO
+    // directo — una visita firmada por partidas mostraba "—" aquí.
+    const gastoDeFila = _gastoDe(e);
     return `<div class="hist-item" style="${rowBg}">
       <div class="hist-num${isLatest?"":" old"}">${numLabel}</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -9270,22 +10310,217 @@ function renderHistorialModal(){
       </div>
       <div class="hist-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px">
         <div class="hist-grid-cell"><span>Kilometraje</span><b>${e.km>0?Number(e.km).toLocaleString("es-MX")+" km":"—"}</b></div>
-        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${e.gasto>0?"$"+Number(e.gasto).toLocaleString("es-MX",{minimumFractionDigits:2}):(e.gastoRef+e.gastoMO)>0?"$"+Number(e.gastoRef+e.gastoMO).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"}</b></div>
+        <div class="hist-grid-cell"><span>Subtotal</span><b style="color:var(--G)">${_partidasConfiables()?(gastoDeFila>0?"$"+Number(gastoDeFila).toLocaleString("es-MX",{minimumFractionDigits:2}):"—"):_SIN_DATOS_PARTIDAS}</b></div>
         <div class="hist-grid-cell"><span>Tecnico</span><b>${escHtml(e.tecnico)||"—"}</b></div>
         <div class="hist-grid-cell"><span>Pedido ERP</span><b>${escHtml(e.pedidoErp||"")||"—"}</b></div>
       </div>
       ${e.refacciones?`<div style="margin-top:8px;font-size:10px;color:var(--w1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ac)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">REFACCIONES / TRABAJOS</span>${escHtml(e.refacciones)}</div>`:""}
       ${e.comentario?`<div style="margin-top:6px;font-size:10px;color:var(--s1);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--ln)"><span style="color:var(--s2);font-weight:600;font-size:9px;display:block;margin-bottom:3px">COMENTARIO</span>${escHtml(e.comentario)}</div>`:""}
+      ${_hallazgoManualHtml(e, isCl, _partidasDeVisita(e))}
     </div>`;
   }).join("")
   : `<div style="padding:32px 20px;text-align:center;color:var(--s2);font-size:11px">
       Sin visitas de tipo <b>${_histFilterTipo}</b> para esta unidad.
     </div>`;
 
-  document.getElementById("hist-body").innerHTML = summaryHtml + filterBar + itemsHtml;
+  const histBody = document.getElementById("hist-body");
+  histBody.innerHTML = summaryHtml + filterBar + itemsHtml;
+  // C-I2: las descripciones de partidas (texto de un tercero no autenticado)
+  // se pintan por textContent, NUNCA dentro del HTML de arriba. El índice se
+  // arma con las partidas de las visitas que se acaban de pintar.
+  {
+    const porId = new Map();
+    for(const e of entries){
+      for(const p of _partidasDeVisita(e)) porId.set(p.partidaId, p);
+    }
+    _pintarDescripcionesBorrador(histBody, porId);
+  }
 }
 function closeHistorialModal(){
   closeModal("hist-modal");
+}
+
+// ── Captura manual de partidas (Task 12 — la salida de emergencia) ───────
+// El taller que manda su cotización por WhatsApp en vez de usar la liga
+// (Task 11). Vive DENTRO de la tarjeta de UNA visita concreta del expediente
+// (R73) — nunca un bloque a nivel unidad con selector de visita: elegir mal
+// la visita pondría el gasto en el ingreso equivocado. `e.id` (ya usado por
+// los botones Editar/Borrar de esta misma tarjeta) correlaciona los inputs
+// con `agregarHallazgoManual` sin tener que re-derivar nada.
+//
+// R73 (predicado de "abierta"): la MISMA regla que ya pinta esta tarjeta
+// arriba (`isCl = e.estado==="Finalizado"`), que es la de `esCerrada()` en
+// src/taller/tallerExcel.ts — nunca una tercera definición de "cerrada". Una
+// visita finalizada ya tiene su costo final: no se le agrega nada, y esta
+// función ni siquiera pinta el bloque (no solo lo oculta con CSS).
+//
+// needs-hibrido en el contenedor completo (Task 10, R62: el esquema
+// apagado no debe ni mostrar el formulario) + needs-write en el botón
+// (R61: defensa en profundidad sobre el permiso real de AppSync, mismo
+// patrón que #btn-liga-copiar/#btn-liga-revocar).
+//
+// Fix ronda 1 (Important 1 / R78): la partida capturada aquí nace en
+// `borrador` y se QUEDA ahí hasta que alguien la mande a autorización a
+// propósito — así Riesgos puede revisar lo que tecleó antes de que aparezca
+// en su propia bandeja de firma. Por eso este bloque también LISTA las
+// partidas en `borrador` de ESTA visita (de cualquier origen — liga o
+// manual, la spec no distingue) con su botón "Enviar a autorización": sin
+// esa lista, una captura recién hecha desaparecería sin dejar rastro visible
+// hasta que alguien la mandara a firmar. `ps` = `_partidasDeVisita(e)`, la
+// MISMA fuente que ya usa el resto del expediente (_gastoDe, etc.) — nunca
+// una segunda lectura de window.__tallerPartidas.
+function _hallazgoManualHtml(e, isCl, ps){
+  if(isCl) return _borradoresCerradaHtml(ps);
+  const id = escAttr(e.id);
+  // C-I6: SOLO los borradores que capturó GPA (`creadoPor: "user:<sub>"`). Un
+  // borrador de origen `liga:` es del TALLER: es él quien decide cuándo su
+  // cotización está completa, y no hay camino de vuelta `propuesta → borrador`.
+  // La API rechaza igual (enviarPartidaAAutorizacion); esto evita ofrecerlo.
+  const borradores = (ps||[]).filter(p=>p.estado==="borrador" && _esBorradorDeGPA(p));
+  const listaHtml = borradores.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">${borradores.map(p=>_borradorManualItemHtml(p)).join("")}</div>`
+    : "";
+  // needs-write en el CONTENEDOR, no solo en el botón: un viewer veía el
+  // encabezado, los tres campos y la leyenda de un bloque que jamás podría usar.
+  return `<div class="needs-hibrido needs-write" style="margin-top:10px;padding:10px 12px;background:var(--bg2);border:1px dashed var(--ln);border-radius:6px">
+    ${listaHtml}
+    <div style="font-size:10px;color:var(--s2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">+ Agregar hallazgo a mano</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <input type="text" class="field-input" id="hm-desc-${id}" placeholder="Descripción del hallazgo" maxlength="500" style="flex:2;min-width:160px">
+      <select class="field-input" id="hm-tipo-${id}" style="flex:1;min-width:120px">
+        <option value="refaccion">Refacción</option>
+        <option value="manoObra">Mano de obra</option>
+      </select>
+      <input type="number" class="field-input" id="hm-precio-${id}" placeholder="Precio sin IVA" min="0" step="0.01" style="flex:1;min-width:120px">
+    </div>
+    <button type="button" class="needs-write needs-hibrido" data-action="agregarHallazgoManual" data-arg1="${id}" style="padding:6px 14px;border-radius:6px;border:none;background:var(--ac);color:#fff;font-size:11px;font-weight:700;cursor:pointer">+ Agregar hallazgo</button>
+    <div style="font-size:9.5px;color:var(--s2);margin-top:6px;font-style:italic">Úsalo cuando el taller mandó la cotización por fuera. Queda registrado que la capturaste tú.</div>
+  </div>`;
+}
+
+// Una fila "en borrador, esperando que lo mandes tú" — descripción · tipo ·
+// precio · el botón que la envía. `descripcion` la puede haber escrito un
+// tercero no autenticado (si el borrador viene de la liga) o Riesgos (si es
+// manual) — en cualquier caso, nunca innerHTML crudo: se pasa por escHtml()
+// como el resto de este render (mismo patrón que e.comentario/e.refacciones
+// arriba, ya cubierto por audit:xss).
+function _esBorradorDeGPA(p){
+  return typeof p.creadoPor === "string" && p.creadoPor.indexOf("user:") === 0;
+}
+
+// C-I5: en una visita CERRADA el bloque de captura no se pinta, pero los
+// borradores que quedaron sin enviar siguen ahí, invisibles. Una línea de solo
+// lectura los declara — sin ofrecer acción, que la visita ya está liquidada.
+function _borradoresCerradaHtml(ps){
+  const n = (ps||[]).filter(p=>p.estado==="borrador").length;
+  if(!n) return "";
+  return `<div class="needs-hibrido" style="margin-top:8px;font-size:10px;color:var(--A);background:var(--bg2);padding:6px 8px;border-radius:4px;border-left:2px solid var(--A)">${Number(n)} borrador${n===1?"":"es"} sin enviar — esta visita ya está finalizada.</div>`;
+}
+
+function _borradorManualItemHtml(p){
+  const tipoLbl = p.tipo==="manoObra" ? "Mano de obra" : p.tipo==="refaccion" ? "Refacción" : "Sin tipo";
+  // Number.isFinite, no `typeof === "number"`: con NaN el typeof es true y se
+  // pintaba "$0" como si fuera un precio real.
+  const precioTxt = Number.isFinite(p.precio) ? _fmtMon2(p.precio) : "sin precio";
+  // C-I2 — `p.descripcion` la escribe un TERCERO NO AUTENTICADO y `escHtml` no
+  // escapa la comilla simple: el spec §7.5 y el propio modelo prohíben pasarla
+  // por innerHTML. El span nace VACÍO y se llena con textContent en
+  // _pintarDescripcionesBorrador(), justo después de asignar #hist-body.innerHTML.
+  const origenLbl = _esBorradorDeGPA(p) ? "Capturada por GPA" : "origen desconocido";
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 8px;background:var(--bg);border-radius:6px;border:1px solid var(--ln)">
+    <div style="flex:1;min-width:140px;font-size:11px;color:var(--w1)"><span data-desc-partida="${escAttr(p.partidaId)}"></span><span style="color:var(--s2)"> · ${tipoLbl} · ${precioTxt} · ${origenLbl}</span></div>
+    <button type="button" class="needs-write needs-hibrido" data-action="enviarHallazgoManual" data-arg1="${escAttr(p.partidaId)}" data-arg2="${escAttr(p.visitaKey)}" style="padding:5px 10px;border-radius:6px;border:none;background:var(--G);color:#fff;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Enviar a autorización</button>
+  </div>`;
+}
+
+// Llena con .textContent los <span data-desc-partida> que dejó vacíos
+// _borradorManualItemHtml. Se llama inmediatamente después de asignar el HTML
+// del expediente — nunca antes (los nodos no existirían).
+function _pintarDescripcionesBorrador(raiz, porId){
+  if(!raiz) return;
+  raiz.querySelectorAll("[data-desc-partida]").forEach(span => {
+    const p = porId.get(span.getAttribute("data-desc-partida"));
+    span.textContent = (p && p.descripcion) || "(sin descripción)";
+  });
+}
+
+// Set de ids en vuelo — evita doble submit mientras la escritura a AppSync
+// está pendiente (mismo espíritu que btn.disabled en _bnAutorizar, sin
+// necesitar el nodo del botón: el delegador solo pasa data-argN).
+const _hmEnVuelo = new Set();
+
+async function agregarHallazgoManual(id){
+  if(_hmEnVuelo.has(id)) return;
+  const e = tallerEntries.find(x=>x.id===id);
+  if(!e) return;
+  const descInp = document.getElementById(`hm-desc-${id}`);
+  const tipoInp = document.getElementById(`hm-tipo-${id}`);
+  const precioInp = document.getElementById(`hm-precio-${id}`);
+  if(!descInp || !tipoInp || !precioInp) return;
+  if(typeof window.__crearPartidaManual !== "function"){
+    if(window.notify) window.notify("No se pudo capturar el hallazgo — intenta de nuevo.", "error", 5000);
+    return;
+  }
+  // Guard de UI (no de negocio): un precio en blanco se lee como "0" con
+  // Number("") — sin este guard, olvidar teclear el precio crearía en
+  // silencio una partida de $0. El $0 tecleado A PROPÓSITO (R69c) sigue
+  // siendo válido; esto solo exige que alguien lo haya escrito.
+  if(precioInp.value.trim()===""){
+    if(window.notify) window.notify("Escribe un precio (puede ser 0 si no tiene costo).", "warn", 4000);
+    return;
+  }
+  const visitaKey = window.__visitaKeyDe ? window.__visitaKeyDe(e) : null;
+  if(!visitaKey){
+    if(window.notify) window.notify("No se pudo ubicar la visita de esta unidad.", "error", 5000);
+    return;
+  }
+  const datos = {
+    descripcion: descInp.value,
+    tipo: tipoInp.value,
+    precio: Number(precioInp.value),
+  };
+  _hmEnVuelo.add(id);
+  try{
+    await window.__crearPartidaManual(datos, visitaKey);
+    // Fix ronda 1 (R78): ya NO se manda a autorización sola — nace en
+    // borrador y queda listada arriba, en esta misma tarjeta, con su propio
+    // botón "Enviar a autorización" (_borradorManualItemHtml).
+    if(window.notify) window.notify("Hallazgo capturado. Revísalo y mándalo a autorización cuando esté listo.", "ok", 4000);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    renderHistorialModal();
+  }catch(err){
+    console.error("[expediente] agregarHallazgoManual:", err);
+    const msg = err && err.message ? err.message : "No se pudo capturar el hallazgo. Verifica los datos.";
+    if(window.notify) window.notify(msg, "error", 5000);
+  }finally{
+    _hmEnVuelo.delete(id);
+  }
+}
+
+// Set de "partidaId|visitaKey" en vuelo — mismo espíritu que _hmEnVuelo,
+// para el botón "Enviar a autorización" de cada borrador listado arriba.
+const _hmSendEnVuelo = new Set();
+
+async function enviarHallazgoManual(partidaId, visitaKey){
+  const key = partidaId + "|" + visitaKey;
+  if(_hmSendEnVuelo.has(key)) return;
+  if(typeof window.__enviarPartidaAAutorizacion !== "function"){
+    if(window.notify) window.notify("No se pudo enviar a autorización — intenta de nuevo.", "error", 5000);
+    return;
+  }
+  _hmSendEnVuelo.add(key);
+  try{
+    await window.__enviarPartidaAAutorizacion(partidaId, visitaKey);
+    if(window.notify) window.notify("Hallazgo enviado a autorización.", "ok", 3500);
+    if(window.__cloudHydrate) await window.__cloudHydrate();
+    renderHistorialModal();
+  }catch(err){
+    console.error("[expediente] enviarHallazgoManual:", err);
+    const msg = err && err.message ? err.message : "No se pudo enviar a autorización. Intenta de nuevo.";
+    if(window.notify) window.notify(msg, "error", 5000);
+  }finally{
+    _hmSendEnVuelo.delete(key);
+  }
 }
 
 // ── Acciones del modal ─────────────────────────────────────
@@ -9307,7 +10542,18 @@ function finalizarUnidad(id){
   const e = tallerEntries.find(x=>x.id===id);
   if(!e) return;
   const nombre = e.eco ? `Unidad ${e.eco}` : e.plate ? `Placa ${e.plate}` : "esta unidad";
-  if(!confirm(`¿Finalizar el ingreso de ${nombre}?\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresorla en cualquier momento desde el Historial.`)) return;
+  // C-I5: finalizar con dinero pendiente NO se prohíbe — se DICE. Una visita se
+  // puede cerrar con partidas esperando firma (siguen en la bandeja y el costo
+  // del registro ya cerrado cambiará después) y con borradores sin enviar, que
+  // en una visita cerrada quedan invisibles. La decisión es de quien firma; lo
+  // que no puede es tomarla a ciegas.
+  const psFin = _partidasDeVisita(e);
+  const nPend = typeof window.__pendientesDeFirma === "function" ? window.__pendientesDeFirma(psFin) : 0;
+  const nBorr = psFin.filter(p=>p.estado==="borrador").length;
+  const avisoPartidas = (nPend || nBorr)
+    ? `\n\n⚠ Esta visita tiene ${nPend} partida${nPend===1?"":"s"} esperando firma y ${nBorr} borrador${nBorr===1?"":"es"} sin enviar.\nSi la finalizas ahora, su costo puede cambiar después de cerrada.`
+    : "";
+  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresorla en cualquier momento desde el Historial.`)) return;
   e.estado = "Finalizado";
   e.fsalidaReal = e.fsalidaReal || new Date().toISOString().slice(0,10);
   e.updatedAt   = new Date().toISOString();
@@ -9459,6 +10705,25 @@ async function saveTallerEntry(){
   const newEntryId = _tallerEditId || "tl_"+Date.now();
   const srcEntry = _tallerEditId ? tallerEntries.find(x=>x.id===_tallerEditId) : null;
   const unitKey = _tallerReingresoKey || (srcEntry && (srcEntry.unitKey||srcEntry.id)) || newEntryId;
+  const freporte = document.getElementById("tf-freporte").value;
+  const fentrada = document.getElementById("tf-fentrada").value;
+  // Task 9 (el gasto se calcula, no se captura): si esta visita YA tiene
+  // partidas, no se escribe un `gasto` tecleado — se deriva al pintar y al
+  // exportar (gastoDerivado/gastoTotalDe). Escribirlo aquí dejaría dos
+  // fuentes de verdad del mismo dinero que pueden discrepar.
+  // Fix ronda 2 (Task 9, Important 1): el candado es "¿openTallerModal pintó
+  // el campo solo-lectura?" (#tf-gasto.disabled), NUNCA recomputar la
+  // visitaKey con los valores ACTUALES del formulario. La visitaKey es
+  // plate||eco + fentrada||freporte — si el usuario corrige la fecha de
+  // entrada (o la placa/económico) de una visita CON partidas, la clave
+  // recomputada ya no es la de las partidas, psVisita.length daría 0 aunque
+  // la visita siga teniendo partidas bajo la clave vieja, y se terminaría
+  // escribiendo el DERIVADO que el propio campo pintó como si fuera un
+  // número tecleado a mano. #tf-gasto.readOnly no depende de la key: lo fijó
+  // openTallerModal con las partidas de la visita ORIGINAL al abrir el modal.
+  // (El centinela pasó de .disabled a .readOnly junto con el candado del campo:
+  // los dos se mueven juntos o ninguno.)
+  const gastoInputEl = document.getElementById("tf-gasto");
   const entry={
     id:          newEntryId,
     unitKey,
@@ -9469,14 +10734,29 @@ async function saveTallerEntry(){
     area:        document.getElementById("tf-area").value,
     estado:      document.getElementById("tf-estado").value,
     tipo:        document.getElementById("tf-tipo").value,
-    freporte:    document.getElementById("tf-freporte").value,
-    fentrada:    document.getElementById("tf-fentrada").value,
+    freporte,
+    fentrada,
     fsalidaEst:  document.getElementById("tf-fsalida-est").value,
     fsalidaReal: document.getElementById("tf-fsalida-real").value,
     km:          parseInt(document.getElementById("tf-km").value)||0,
-    gastoRef:    0,
-    gastoMO:     0,
-    gasto:       parseFloat(document.getElementById("tf-gasto").value)||0,
+    // Fix ronda 2: mismo candado que `gasto` — gastoRef/gastoMO tampoco tienen
+    // de dónde salir tecleados a mano (el formulario no los desglosa), así
+    // que si la visita tiene partidas no se persiste un 0 que las suplante.
+    // Remate §2.2 (Ruling R95, "anulación, nunca borrado" también al guardar a
+    // mano): con el campo bloqueado NO se lee el DOM (ahí está el DERIVADO que
+    // pintó openTallerModal), se arrastra lo que había EN MEMORIA. Así el único
+    // chokepoint — `sinGastoSiTienePartidas` (src/api/batchUpload.ts) — es quien
+    // decide: con partidas quita las tres llaves y preserva el subtotal en
+    // `gastoCapturadoOriginal`; sin partidas (o en estado desconocido) conserva
+    // lo que había en vez de borrarlo. Antes el entry llegaba ya en `undefined`
+    // y no había nada que preservar: la variante peor del reporte.
+    gastoRef:    gastoInputEl.readOnly ? srcEntry?.gastoRef : 0,
+    gastoMO:     gastoInputEl.readOnly ? srcEntry?.gastoMO : 0,
+    gasto:       gastoInputEl.readOnly ? srcEntry?.gasto : (parseFloat(gastoInputEl.value)||0),
+    // R95: el rastro del subtotal tecleado sobrevive al guardado manual. La
+    // lista blanca de este `entry` lo omitía y `upsertTaller` reemplaza `datos`
+    // COMPLETO ⇒ el siguiente guardado lo borraba de DynamoDB para siempre.
+    gastoCapturadoOriginal: srcEntry?.gastoCapturadoOriginal,
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),

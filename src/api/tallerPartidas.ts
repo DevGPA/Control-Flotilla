@@ -1,0 +1,471 @@
+// Lectura y escritura de partidas de taller desde la app. Archivo aparte:
+// batchUpload.ts ya es grande y tiene otra responsabilidad.
+
+import { getUrl } from "aws-amplify/storage";
+import { getClient, type Schema } from "./amplifyClient";
+import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
+import {
+  autorizar,
+  montoPendienteDeFirma,
+  partidaManual,
+  partidasPendientesDeFirma,
+  proponer,
+  rechazar,
+  totalesVisita,
+  type Partida,
+  type PartidaTipo,
+  type TotalesVisita,
+} from "../taller/partidas";
+
+/** Junta `{unitUid, fechaEntrada}` en la MISMA llave que usa `Partida.visitaKey`.
+ *  Fix ronda 2 (Finding 2): esta plantilla vive en UN solo lugar y solo se usa
+ *  hacia ADELANTE (para componer una llave), nunca hacia atrás (para separar
+ *  una existente) — un `unitUid` que trajera un "|" propio (poco común, pero
+ *  posible: viene de plate/eco/unitKey/id) haría que separar de vuelta
+ *  fallara en silencio. Construir siempre hacia adelante retira esa clase de
+ *  bug en vez de documentarla. */
+export function juntaVisitaKey(k: { unitUid: string; fechaEntrada: string }): string {
+  return `${k.unitUid}|${k.fechaEntrada}`;
+}
+
+/** La llave de la visita se DERIVA de tallerCloudKey para que las dos nunca
+ *  divergan: si cambia la regla de la clave cloud, esta la sigue sola. */
+export function visitaKeyDe(e: LegacyTallerEntry): string {
+  return juntaVisitaKey(tallerCloudKey(e));
+}
+
+export function agruparPorVisita(ps: Partida[]): Map<string, Partida[]> {
+  const g = new Map<string, Partida[]>();
+  for (const p of ps) {
+    if (p.estado === "cancelada") continue;
+    const arr = g.get(p.visitaKey) ?? [];
+    arr.push(p);
+    g.set(p.visitaKey, arr);
+  }
+  return g;
+}
+
+/**
+ * Una fila de la bandeja de firmas (Task 8): una VISITA, no una partida
+ * suelta. Agrupar por visita es deliberado — autorizar partidas aisladas
+ * ciega al conjunto: se pueden firmar cuatro de $1,800 sin notar que van
+ * $7,200 en una unidad que ya lleva $38 mil en el año.
+ */
+export type FilaBandeja = {
+  visitaKey: string;
+  eco: string;
+  placa: string;
+  submarca: string;
+  sucursal: string;
+  area: string;
+  tipo: string;
+  proveedor: string;
+  fechaEntrada: string;
+  fsalidaEst: string;
+  km: number | null;
+  totales: TotalesVisita;
+  pendientes: number;
+  /** Las partidas que esperan firma, YA filtradas (`partidasPendientesDeFirma`,
+   *  src/taller/partidas.ts) — el monolito pinta esta lista directo y nunca
+   *  vuelve a preguntar `estado === "propuesta"` por su cuenta. Fix ronda 1
+   *  de Task 8 (Important 1): una sola definición de "esperando firma", no
+   *  el mismo filtro copiado en dos/tres lugares. */
+  partidasPendientes: Partida[];
+  /** Contexto que convierte la firma en decisión: lo que esa unidad ya gastó
+   *  este año (Ruling A: solo visitas CERRADAS — ver gastoAnualPorEco). */
+  gastoAnual: number;
+  visitasAnual: number;
+  esperandoDesde: string;
+};
+
+/**
+ * Filas de la bandeja: una por visita con al menos una partida "propuesta",
+ * ordenadas por lo que lleva MÁS tiempo esperando la firma primero. Una
+ * visita sin pendientes no aparece — la bandeja es "lo que falta firmar",
+ * no un inventario de todo.
+ */
+export function filasBandeja(
+  entries: LegacyTallerEntry[],
+  porVisita: Map<string, Partida[]>,
+  anualPorEco: Map<string, { gasto: number; visitas: number }>,
+): FilaBandeja[] {
+  const filas: FilaBandeja[] = [];
+  for (const e of entries) {
+    const visitaKey = visitaKeyDe(e);
+    const ps = porVisita.get(visitaKey) ?? [];
+    const partidasPendientes = partidasPendientesDeFirma(ps);
+    if (!partidasPendientes.length) continue;
+
+    // B-I7: `.trim()` — `gastoAnualPorEco` (src/taller/exportExcel.ts) indexa con
+    // `String(e.eco ?? "").trim()`. Sin el trim aquí, un económico con un espacio
+    // de más daba `gastoAnual: 0` justo en el chip que existe para que nadie
+    // firme a ciegas ("esta unidad lleva $38,400 en el año").
+    const anual = anualPorEco.get(String(e.eco ?? "").trim()) ?? { gasto: 0, visitas: 0 };
+    const esperas = partidasPendientes
+      .map((p) => p.propuestoEn ?? p.creadoEn ?? "")
+      .filter(Boolean)
+      .sort();
+
+    filas.push({
+      visitaKey,
+      eco: String(e.eco ?? ""),
+      placa: String(e.plate ?? ""),
+      submarca: String(e.brand ?? ""),
+      sucursal: String(e.sucursal ?? ""),
+      area: String(e.area ?? ""),
+      tipo: String(e.tipo ?? ""),
+      proveedor: String(e.tecnico ?? ""),
+      fechaEntrada: String(e.fentrada ?? ""),
+      fsalidaEst: String(e.fsalidaEst ?? ""),
+      km: typeof e.km === "number" ? e.km : null,
+      totales: totalesVisita(ps),
+      pendientes: partidasPendientes.length,
+      partidasPendientes,
+      gastoAnual: anual.gasto,
+      visitasAnual: anual.visitas,
+      esperandoDesde: esperas[0] ?? "",
+    });
+  }
+  // Lo que lleva más tiempo esperando tu firma, primero.
+  filas.sort((a, b) => (a.esperandoDesde || "9").localeCompare(b.esperandoDesde || "9"));
+  return filas;
+}
+
+export type ResumenBandeja = {
+  /** Partidas esperando firma, sumadas sobre todas las visitas. */
+  partidas: number;
+  /** Unidades (visitas) involucradas — una visita es una unidad en un ingreso. */
+  unidades: number;
+  /** Lo que suman esas partidas pendientes, a precio COTIZADO. */
+  monto: number;
+};
+
+/**
+ * R85 (C-I1) — la franja de resumen de la bandeja que el spec §9.2 pide literal:
+ * "⚡ Esperando tu firma · N partidas en M unidades · Suman $X". Es lo primero
+ * que Riesgos ve al abrir la sub-pestaña, y decide si el trabajo de hoy son tres
+ * firmas o treinta.
+ *
+ * La aritmética vive aquí (con test) y no en el `<script>` inline: el monolito
+ * solo pinta. Reusa `montoPendienteDeFirma` — nunca vuelve a sumar `precio` por
+ * su cuenta — y `fila.partidasPendientes`, que `filasBandeja` ya filtró con
+ * `partidasPendientesDeFirma`: una sola definición de "esperando firma".
+ */
+export function resumenBandeja(filas: FilaBandeja[]): ResumenBandeja {
+  let partidas = 0;
+  let monto = 0;
+  for (const f of filas) {
+    partidas += f.partidasPendientes.length;
+    monto += montoPendienteDeFirma(f.partidasPendientes);
+  }
+  // Cada fila ES una visita con al menos una pendiente (filasBandeja omite las
+  // que no tienen), así que el conteo de unidades es el de filas.
+  return { partidas, unidades: filas.length, monto };
+}
+
+/**
+ * El resumen de "firmar todas las pendientes de esta visita en un solo
+ * click": cuáles se pueden (tienen precio — Ruling B: nunca se autoriza en
+ * silencio una partida sin precio), cuánto queda autorizado si se firman, y
+ * cuántas se quedan fuera. Vive en `src/` (fix ronda 1, Important 2) porque
+ * es exactamente la aritmética que Ruling B existe para proteger — antes
+ * vivía en el `<script>` inline, donde ningún test la alcanzaba.
+ */
+export function resumenLoteFirma(
+  ps: Partida[],
+  totales: TotalesVisita,
+): { autorizables: Partida[]; monto: number; sinPrecio: number } {
+  // `Number.isFinite`, no `typeof === "number"`: `NaN` pasa el typeof y entraría
+  // al lote como si tuviera precio — sumando `NaN` al monto y firmando $0.
+  const autorizables = ps.filter((p) => Number.isFinite(p.precio));
+  const monto = totales.autorizado + autorizables.reduce((s, p) => s + (p.precio ?? 0), 0);
+  return { autorizables, monto, sinPrecio: ps.length - autorizables.length };
+}
+
+/**
+ * Pagina el `.list()` de TallerPartida siguiendo `nextToken` hasta agotar —
+ * mismo patrón que `listAll` en `src/api/client.ts` (sin esto, DynamoDB
+ * trunca en ~100 ítems por página y el resto se pierde en silencio).
+ */
+export async function listTallerPartidas(
+  tenantId: string,
+): Promise<Schema["TallerPartida"]["type"][]> {
+  const c = getClient();
+  const out: Schema["TallerPartida"]["type"][] = [];
+  let token: string | null = null;
+  let pages = 0;
+  do {
+    const page: {
+      data: Schema["TallerPartida"]["type"][];
+      nextToken?: string | null;
+      errors?: readonly { errorType?: string; message?: string }[];
+    } = await c.models.TallerPartida.list({
+      filter: { tenantId: { eq: tenantId } },
+      limit: 1000,
+      nextToken: token ?? undefined,
+    });
+    if (page.errors && page.errors.length > 0) {
+      throw new Error(`listTallerPartidas failed: ${JSON.stringify(page.errors)}`);
+    }
+    if (page.data) out.push(...page.data);
+    token = page.nextToken ?? null;
+    pages++;
+  } while (token && pages < 100);
+  if (token && pages >= 100) {
+    console.warn(
+      `[listTallerPartidas] paginación cortada en 100 páginas (${out.length} ítems) con nextToken pendiente — datos incompletos`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Mapea UNA fila cruda de DynamoDB (`TallerPartida`) al tipo puro `Partida`.
+ * Extraída de `fetchPartidas` (fix ronda 1, Task 12) para que
+ * `enviarPartidaAAutorizacion` — que lee UNA fila con `.get()`, no una lista
+ * con `.list()` — no reimplemente el mismo mapeo con otro riesgo de divergir
+ * (p.ej. olvidar el fallback `estado ?? "borrador"` en un solo lugar).
+ */
+function rowToPartida(r: Schema["TallerPartida"]["type"]): Partida {
+  return {
+    partidaId: r.partidaId,
+    visitaKey: r.visitaKey,
+    descripcion: r.descripcion,
+    tipo: r.tipo ?? undefined,
+    precio: r.precio ?? undefined,
+    // El schema no marca `estado` required (deuda de Task 2); una fila sin
+    // estado se trata como "borrador" — nunca cuenta como pendiente de firma.
+    estado: (r.estado ?? "borrador") as Partida["estado"],
+    motivoRechazo: r.motivoRechazo ?? undefined,
+    motivoRechazoNota: r.motivoRechazoNota ?? undefined,
+    fotos: (r.fotos ?? []).filter((f): f is string => typeof f === "string"),
+    precioAutorizado: r.precioAutorizado ?? undefined,
+    recotizaDe: r.recotizaDe ?? undefined,
+    proveedorNombre: r.proveedorNombre ?? undefined,
+    creadoPor: r.creadoPor ?? undefined,
+    creadoEn: r.creadoEn ?? undefined,
+    propuestoEn: r.propuestoEn ?? undefined,
+    decididoEn: r.decididoEn ?? undefined,
+    decididoPor: r.decididoPor ?? undefined,
+    terminadoEn: r.terminadoEn ?? undefined,
+  };
+}
+
+/** Mapea las filas CRUDAS de `TallerPartida` al tipo puro `Partida`.
+ *  Separada de la lectura (BC-C1) porque `hydrateFromCloud` necesita las filas
+ *  crudas para la FIRMA del snapshot (`updatedAt`, que el tipo puro no lleva) y
+ *  el tipo puro para todo lo demás — una sola lectura, dos usos. */
+export function mapPartidas(rows: Schema["TallerPartida"]["type"][]): Partida[] {
+  return rows.map(rowToPartida);
+}
+
+/** Lee las partidas del tenant desde cloud y las mapea al tipo puro `Partida`. */
+export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
+  return mapPartidas(await listTallerPartidas(tenantId));
+}
+
+export type DecisionPartida = "autorizar" | "rechazar";
+
+/**
+ * Persiste la firma de UNA partida: aplica `autorizar`/`rechazar` (la lógica
+ * pura de `src/taller/partidas.ts` — nunca reimplementada aquí) y escribe el
+ * resultado en DynamoDB. La autorización es un REGISTRO, no una bandera: se
+ * guardan `decididoPor` + `decididoEn` + `precioAutorizado` (y el motivo/nota
+ * en un rechazo), nunca solo un booleano — así una segunda instancia de firma
+ * el día de mañana es agregar un campo, no rehacer el módulo.
+ *
+ * No valida rol: igual que el resto de la escritura de esta app, el gate real
+ * es AppSync (`operativo`/`admin`); esto solo persiste lo que la UI, ya
+ * gateada para viewer, permitió intentar.
+ */
+export async function guardarDecisionPartida(args: {
+  tenantId: string;
+  partida: Partida;
+  decision: DecisionPartida;
+  quien: string;
+  cuando: string;
+  motivo?: string;
+  nota?: string;
+}): Promise<Partida> {
+  const { tenantId, partida, decision, quien, cuando, motivo, nota } = args;
+  const c = getClient();
+
+  // B-C3 — la máquina de estados se aplica sobre la fila REAL, nunca sobre la
+  // copia en caché. `window.__tallerPartidas` puede tener minutos (antes de
+  // BC-C1, horas) de antigüedad: si otra pestaña u otro admin ya rechazó esta
+  // partida, la copia local seguía diciendo `propuesta`, `autorizar` pasaba, y
+  // el update escribía `estado:"autorizada"` + `precioAutorizado` mientras el
+  // motivo del rechazo anterior SOBREVIVÍA — la fila quedaba autorizada Y
+  // rechazada, con dinero sumado, sin un solo error. `enviarPartidaAAutorizacion`
+  // recibió este mismo blindaje por R78; la ruta de la FIRMA no lo tenía.
+  const { data, errors: getErrors } = await c.models.TallerPartida.get({
+    tenantId,
+    visitaKey: partida.visitaKey,
+    partidaId: partida.partidaId,
+  });
+  if (getErrors) {
+    throw new Error(`TallerPartida.get (decisión): ${JSON.stringify(getErrors)}`);
+  }
+  if (!data) {
+    throw new Error(`Partida no encontrada: ${partida.partidaId} (${partida.visitaKey})`);
+  }
+  const actual = rowToPartida(data);
+
+  const nueva =
+    decision === "autorizar"
+      ? autorizar(actual, quien, cuando)
+      : rechazar(actual, motivo ?? "", nota, quien, cuando);
+
+  const { errors } = await c.models.TallerPartida.update({
+    tenantId,
+    visitaKey: nueva.visitaKey,
+    partidaId: nueva.partidaId,
+    estado: nueva.estado,
+    precioAutorizado: nueva.precioAutorizado,
+    // Se escriben SIEMPRE, incluso como `null`: al autorizar hay que BORRAR el
+    // motivo de un rechazo anterior, y mandarlos `undefined` no los serializa —
+    // el rastro viejo se quedaba pegado a una fila ya autorizada. (La transición
+    // `rechazada → autorizada` ya no es alcanzable tras la re-lectura de arriba;
+    // esto cierra el mismo hueco por el lado del dato.)
+    motivoRechazo: nueva.motivoRechazo ?? null,
+    motivoRechazoNota: nueva.motivoRechazoNota ?? null,
+    decididoPor: nueva.decididoPor,
+    decididoEn: nueva.decididoEn,
+  });
+  if (errors) throw new Error(`TallerPartida.update (decisión): ${JSON.stringify(errors)}`);
+  return nueva;
+}
+
+/**
+ * Task 12 (la salida de emergencia) — captura manual de Riesgos: el taller
+ * mandó su cotización por WhatsApp en vez de usar la liga.
+ *
+ * Fix ronda 1 (Important 1 / R78): esta función SOLO crea — nace en
+ * `borrador` y se queda ahí. Antes componía `partidaManual` + `proponer` y
+ * la escribía directo como `propuesta`; el ruling de la revisión es que el
+ * brief (Step 5 bullet 1) y R69(b) piden el envío EXPLÍCITO por una razón
+ * de negocio, no solo de robustez: Riesgos necesita poder ver lo que
+ * tecleó ANTES de que caiga en su propia bandeja de firma — hoy un precio
+ * mal tecleado solo se corrige rechazándolo, lo que ensucia el registro con
+ * un rechazo que nunca ocurrió. `enviarPartidaAAutorizacion` (abajo) es el
+ * paso explícito que faltaba.
+ *
+ * Sigue sin persistir nada a medias: si `partidaManual` lanza (descripción
+ * vacía, precio fuera de rango, tipo inválido, autor vacío), no se llama ni
+ * una vez a AppSync. Mismo shape de manejo de error que
+ * `guardarDecisionPartida`: `if (errors) throw`. Mismo no-valida-rol: el
+ * gate real es AppSync (operativo/admin, ver amplify/data/resource.ts) —
+ * esto solo persiste lo que la UI, ya gateada para viewer y para el
+ * apagador del esquema (needs-hibrido), dejó intentar.
+ */
+export async function crearPartidaManual(args: {
+  tenantId: string;
+  datos: { descripcion: string; tipo: PartidaTipo; precio: number };
+  visitaKey: string;
+  autorSub: string;
+  ahora: string;
+}): Promise<Partida> {
+  const { tenantId, datos, visitaKey, autorSub, ahora } = args;
+  const borrador = partidaManual(datos, visitaKey, autorSub, ahora);
+  // R92: `precio` es REQUERIDO en el modelo. `partidaManual` ya lo validó
+  // finito y en rango — este guard solo se lo demuestra al compilador (el tipo
+  // puro `Partida` lo declara opcional porque una fila vieja puede no traerlo).
+  if (typeof borrador.precio !== "number") {
+    throw new Error("La partida manual salió sin precio — no se escribe nada");
+  }
+
+  const c = getClient();
+  const { errors } = await c.models.TallerPartida.create({
+    tenantId,
+    visitaKey: borrador.visitaKey,
+    partidaId: borrador.partidaId,
+    descripcion: borrador.descripcion,
+    tipo: borrador.tipo,
+    precio: borrador.precio,
+    estado: borrador.estado,
+    fotos: borrador.fotos,
+    creadoPor: borrador.creadoPor,
+    creadoEn: borrador.creadoEn,
+    version: 1,
+  });
+  if (errors) throw new Error(`TallerPartida.create (captura manual): ${JSON.stringify(errors)}`);
+  return borrador;
+}
+
+/**
+ * R78 — el envío explícito que faltaba: lee la partida TAL COMO ESTÁ en
+ * DynamoDB ahora mismo (nunca la copia que el cliente tenga cacheada — dos
+ * pestañas de Riesgos, o la liga del proveedor, pudieron haberla movido
+ * mientras tanto), aplica la transición pura `proponer` (src/taller/
+ * partidas.ts) y persiste. Si la partida ya no está en `borrador` (alguien
+ * más ya la envió, o ya se decidió), `proponer` lanza y ese error sube tal
+ * cual al llamador — nunca un reintento silencioso que la reenvíe.
+ *
+ * Mismo shape de error que el resto de este archivo: `if (errors) throw`.
+ */
+export async function enviarPartidaAAutorizacion(args: {
+  tenantId: string;
+  visitaKey: string;
+  partidaId: string;
+  ahora: string;
+}): Promise<Partida> {
+  const { tenantId, visitaKey, partidaId, ahora } = args;
+  const c = getClient();
+
+  const { data, errors: getErrors } = await c.models.TallerPartida.get({
+    tenantId,
+    visitaKey,
+    partidaId,
+  });
+  if (getErrors) {
+    throw new Error(`TallerPartida.get (enviar a autorización): ${JSON.stringify(getErrors)}`);
+  }
+  if (!data) {
+    throw new Error(`Partida no encontrada: ${partidaId} (${visitaKey})`);
+  }
+
+  const actual = rowToPartida(data);
+  // C-I6 — Riesgos solo manda a firma lo que Riesgos capturó. Un borrador de
+  // origen `liga:` es del TALLER: es él quien decide cuándo su cotización está
+  // completa (POST /api/enviar), y no hay camino de vuelta `propuesta →
+  // borrador`. Empujarlo desde aquí le arrebata esa decisión y mete a la bandeja
+  // algo que el proveedor todavía estaba armando.
+  if (!actual.creadoPor?.startsWith("user:")) {
+    throw new Error(
+      "Este hallazgo lo está capturando el taller desde su liga: solo él puede enviarlo a autorización.",
+    );
+  }
+  const propuesta = proponer(actual, ahora);
+
+  const { errors } = await c.models.TallerPartida.update({
+    tenantId,
+    visitaKey: propuesta.visitaKey,
+    partidaId: propuesta.partidaId,
+    estado: propuesta.estado,
+    propuestoEn: propuesta.propuestoEn,
+  });
+  if (errors) {
+    throw new Error(`TallerPartida.update (enviar a autorización): ${JSON.stringify(errors)}`);
+  }
+  return propuesta;
+}
+
+/**
+ * URL firmada para UNA foto de partida, tal cual está en `Partida.fotos`.
+ *
+ * A propósito NO reusa `getCloudPhotoUrl` (src/api/photoFetch.ts): ese helper
+ * está pensado para basenames planos de MoreApp y por eso normaliza a
+ * minúsculas antes de firmar. La llave de una foto de partida
+ * (`llaveFoto` en `amplify/functions/taller-portal/validacion.ts`) es una
+ * ruta COMPLETA que incluye la visitaKey con mayúsculas (la placa) —
+ * bajarla a minúsculas produce una llave que no existe en S3 y la foto
+ * jamás carga. Aquí se firma la llave tal cual, sin tocarla.
+ */
+export async function urlFotoPartida(key: string): Promise<string | null> {
+  try {
+    const result = await getUrl({ path: key });
+    return result.url.toString();
+  } catch {
+    return null;
+  }
+}

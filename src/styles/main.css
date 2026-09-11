@@ -5798,6 +5798,11 @@ body:not([data-view="inspecciones"]) #alerts-panel {
     padding: 10px 12px;
     font-size: 12px;
   }
+  /* Bandeja de firmas (Task 8): autorizar/rechazar es la acción de más riesgo
+     del módulo — mismo mínimo táctil que el resto de los botones de acción. */
+  .bandeja-firma-btn {
+    min-height: 44px;
+  }
 
   /* Hero / KPI: stack vertical */
   #kpi {

@@ -13,6 +13,8 @@
 //   - KPI bar: gasto total, promedio por visita, visitas, unidades, Top5
 //   - Callbacks: onOpen(unitKey), onReingreso(unitKey), onSort(col)
 
+import { gastoTotalDe } from "./exportExcel";
+import { gastoDerivado, type Partida } from "./partidas";
 import { ESTADOS_CERRADOS } from "./types";
 import type { TallerEntry } from "./types";
 
@@ -37,6 +39,11 @@ export type RenderHistorialDeps = {
   onOpen?: (unitKey: string) => void;
   onReingreso?: (unitKey: string) => void;
   onSort?: (col: HistorialSortKey) => void;
+  /** Fix ronda 1 (Task 9): resuelve las partidas de la visita de un entry (vía
+   *  `visitaKeyDe`/`juntaVisitaKey` — nunca un `${a}|${b}` hecho a mano) para que
+   *  `buildHistorialRows` use el mismo `gastoTotalDe`/`gastoDerivado` que el Excel,
+   *  en vez de su propia copia de "Ref+MO, con `gasto` de respaldo". */
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined;
 };
 
 export type HistorialRow = {
@@ -113,6 +120,7 @@ function tipoMatch(e: TallerEntry, filt: string | undefined): boolean {
 export function buildHistorialRows(
   entries: TallerEntry[],
   filter: HistorialFilter = {},
+  partidasDe?: (e: TallerEntry) => Partida[] | undefined,
 ): HistorialRow[] {
   const map = new Map<string, HistorialRow>();
   for (const e of entries) {
@@ -151,12 +159,15 @@ export function buildHistorialRows(
     if (!tipoMatch(e, filter.tipo)) continue;
 
     row.closedCount++;
-    const gRef = e.gastoRef ?? 0;
-    const gMO = e.gastoMO ?? 0;
-    const gTot = gRef + gMO > 0 ? gRef + gMO : (e.gasto ?? 0);
-    row.totalGasto += gTot;
-    row.totalGastoRef += gRef;
-    row.totalGastoMO += gMO;
+    // Fix ronda 1 (Task 9): ANTES esto reimplementaba "Ref+MO, con `gasto` de
+    // respaldo" a mano — la MISMA fórmula que ya vive en gastoTotalDe/gastoDerivado
+    // (src/taller/exportExcel.ts, src/taller/partidas.ts), así que una unidad cuyo
+    // gasto llegó por partidas firmadas quedaba en $0 en esta pestaña. `ps` vacío
+    // (ausente o `[]`) deja el resultado IDÉNTICO al de antes.
+    const ps = partidasDe?.(e) ?? [];
+    row.totalGasto += gastoTotalDe(e, ps);
+    row.totalGastoRef += gastoDerivado(e, ps).gastoRef;
+    row.totalGastoMO += gastoDerivado(e, ps).gastoMO;
     // latestClosed = el cerrado (ya filtrado) de mayor updatedAt. El primer
     // cerrado se asigna incondicionalmente para descartar el placeholder del
     // init (que puede ser una entrada ACTIVA con updatedAt alto); el sesgo del
@@ -507,9 +518,10 @@ export function renderHistorial(
     onOpen,
     onReingreso,
     onSort,
+    partidasDe,
   } = deps;
 
-  const allRows = buildHistorialRows(entries, filter);
+  const allRows = buildHistorialRows(entries, filter, partidasDe);
   const rows = filterAndSortHistorial(allRows, filter, sortCol, sortDir);
 
   if (thead) buildThead(thead, sortCol, sortDir, onSort);

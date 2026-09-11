@@ -35,8 +35,21 @@ describe("resumenPorUnidad", () => {
   it("agrupa por unitKey y solo las visitas cerradas cuentan", () => {
     const r = resumenPorUnidad(
       [
-        cerrada({ unitKey: "54", eco: "54", gastoRef: 100, gastoMO: 50, fentrada: "2026-07-01", fsalidaReal: "2026-07-03" }),
-        cerrada({ unitKey: "54", eco: "54", gasto: 700, fentrada: "2026-08-01", fsalidaReal: "2026-08-02" }),
+        cerrada({
+          unitKey: "54",
+          eco: "54",
+          gastoRef: 100,
+          gastoMO: 50,
+          fentrada: "2026-07-01",
+          fsalidaReal: "2026-07-03",
+        }),
+        cerrada({
+          unitKey: "54",
+          eco: "54",
+          gasto: 700,
+          fentrada: "2026-08-01",
+          fsalidaReal: "2026-08-02",
+        }),
         entry({ unitKey: "54", eco: "54" }), // abierta: no cuenta
       ],
       HOY,
@@ -83,6 +96,39 @@ describe("resumenPorUnidad", () => {
     );
     expect(r.map((u) => u.eco)).toEqual(["b", "a"]);
   });
+
+  // Task 9 (ruling del controlador): resumenPorUnidad es uno de los consumidores de
+  // gastoTotalDe que la ruling nombra explícitamente — una unidad cuyo gasto vino
+  // ENTERO de partidas firmadas no puede resumir en $0 (rompería $/1,000 km).
+  it("con partidasDe, una unidad sin gasto tecleado pero con partidas firmadas resume su total derivado", () => {
+    const visita = cerrada({ unitKey: "77", eco: "77", gasto: 0, gastoRef: 0, gastoMO: 0 });
+    const ps = [
+      {
+        partidaId: "p1",
+        visitaKey: "clave-77",
+        descripcion: "Refacción",
+        estado: "autorizada" as const,
+        precio: 4000,
+        precioAutorizado: 4000,
+        tipo: "refaccion" as const,
+        fotos: [],
+      },
+      {
+        partidaId: "p2",
+        visitaKey: "clave-77",
+        descripcion: "Mano de obra",
+        estado: "autorizada" as const,
+        precio: 1500,
+        precioAutorizado: 1500,
+        tipo: "manoObra" as const,
+        fotos: [],
+      },
+    ];
+    const [u] = resumenPorUnidad([visita], HOY, (e) => (e.eco === "77" ? ps : undefined));
+    expect(u!.gastoTotal).toBe(5500);
+    expect(u!.gastoRef).toBe(4000);
+    expect(u!.gastoMO).toBe(1500);
+  });
 });
 
 // ── El workbook con formato ─────────────────────────────────────────────────────
@@ -91,7 +137,14 @@ const FILA_HEADER = 4; // título, subtítulo, separador, encabezado — igual q
 async function activas(): Promise<ExcelJS.Worksheet> {
   const wb = await buildActivasWorkbook(
     [
-      entry({ eco: "54", plate: "PW9237A", fentrada: "2026-08-02", gastoRef: 12500.5, gastoMO: 3800, refacciones: "Balatas" }),
+      entry({
+        eco: "54",
+        plate: "PW9237A",
+        fentrada: "2026-08-02",
+        gastoRef: 12500.5,
+        gastoMO: 3800,
+        refacciones: "Balatas",
+      }),
       entry({ eco: "12", fentrada: "2026-08-10", gasto: 700 }),
     ],
     { hoy: HOY },
@@ -155,7 +208,15 @@ describe("hoja de Activas — formato", () => {
 describe("workbook del Historial", () => {
   it("trae las hojas Resumen y Detalle, ambas con encabezado congelado", async () => {
     const wb = await buildHistorialWorkbook(
-      [cerrada({ unitKey: "54", eco: "54", fentrada: "2026-07-01", fsalidaReal: "2026-07-03", gasto: 500 })],
+      [
+        cerrada({
+          unitKey: "54",
+          eco: "54",
+          fentrada: "2026-07-01",
+          fsalidaReal: "2026-07-03",
+          gasto: 500,
+        }),
+      ],
       { hoy: HOY },
     );
     for (const nombre of ["Resumen", "Detalle"]) {
@@ -166,10 +227,9 @@ describe("workbook del Historial", () => {
   });
 
   it("el Resumen usa las columnas canónicas del resumen", async () => {
-    const wb = await buildHistorialWorkbook(
-      [cerrada({ unitKey: "54", eco: "54", gasto: 500 })],
-      { hoy: HOY },
-    );
+    const wb = await buildHistorialWorkbook([cerrada({ unitKey: "54", eco: "54", gasto: 500 })], {
+      hoy: HOY,
+    });
     const fila = wb.getWorksheet("Resumen")!.getRow(FILA_HEADER);
     COLUMNAS_RESUMEN.forEach((c, i) => expect(fila.getCell(i + 1).value).toBe(c.titulo));
   });

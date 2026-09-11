@@ -98,6 +98,18 @@ import {
 } from "./taller/renderHistorial";
 import type { SortKey as TallerSortKey } from "./taller/tallerStore";
 import type { TallerEntry } from "./taller/types";
+import { crearPartidaManual, enviarPartidaAAutorizacion, visitaKeyDe } from "./api/tallerPartidas";
+import {
+  autorPartidaEtiqueta,
+  origenPartida,
+  type Partida,
+  type PartidaTipo,
+} from "./taller/partidas";
+// Task 12: el `sub` de Cognito para la autoría `user:<sub>` de una partida
+// capturada a mano. Import directo del SDK (no de src/api/auth.ts, que hoy
+// no expone `sub`) — mismo paquete que ya usa src/api/auth.ts para todo lo
+// demás de sesión.
+import { getCurrentUser } from "aws-amplify/auth";
 import {
   renderTableSemanales as renderTableSemanalesNew,
   type WeeklyRiskFilter,
@@ -213,6 +225,27 @@ declare global {
     renderHistorial?: () => void;
     reingresoDesdeHistorial?: (unitKey: string) => void;
     refreshIcons?: () => void;
+    /** Task 12 (R74) — autoría real de una partida (liga vs. captura manual
+     *  de Riesgos), para que la bandeja no le atribuya a la liga algo que no
+     *  subió. Bridge de src/taller/partidas.ts, cableado en este archivo. */
+    __origenPartida?: (p: Partida) => string;
+    /** Task 12 (R79) — la etiqueta de "quién subió" (nunca "Subió <taller>"
+     *  para una captura manual). Bridge de src/taller/partidas.ts. */
+    __autorPartidaEtiqueta?: (p: Partida, proveedorFallback: string) => string;
+    /** Task 12 (R69a) — crea la partida manual (autor `user:<sub>`); nace en
+     *  `borrador` y se queda ahí (fix ronda 1, R78: el envío es un paso
+     *  aparte, ver __enviarPartidaAAutorizacion). Cableado aquí porque el
+     *  resto de los bridges de partidas vive en src/api/cloudHydrate.ts
+     *  (fuera de alcance de esta tarea). */
+    __crearPartidaManual?: (
+      datos: { descripcion: string; tipo: PartidaTipo; precio: number },
+      visitaKey: string,
+    ) => Promise<Partida>;
+    /** Task 12 (fix ronda 1, R78) — el envío EXPLÍCITO de una partida en
+     *  `borrador` a autorización: lee el estado actual en DynamoDB, aplica
+     *  `proponer` (src/taller/partidas.ts) y persiste. Lanza si la partida
+     *  ya no está en `borrador` — nunca reenvía en silencio. */
+    __enviarPartidaAAutorizacion?: (partidaId: string, visitaKey: string) => Promise<Partida>;
     /** Weekly (Semanales) legacy state + callbacks — leídos por el shim. */
     weeklyPeriodos?: WeeklyPeriodo[];
     activeWeeklyPeriodoId?: string | null;
@@ -630,6 +663,88 @@ if (readFlag("USE_NEW_DETAIL")) {
   );
 }
 
+// Fix ronda 1 (Task 9): resuelve las partidas de la visita de UN entry — mismo
+// match que el resto del módulo (visitaKeyDe + window.__tallerPartidas, ambos
+// bridge de cloudHydrate.ts), nunca un `${a}|${b}` hecho a mano. `visitaKeyDe`
+// pide un shape angosto (no `km`, que difiere de tipo entre TallerEntry y
+// LegacyTallerEntry) — se construye aparte para no forzar un cast.
+// Task 10 (R62, el apagador): con el esquema apagado (window.__tallerHibrido),
+// este shim de Historial tampoco ve partidas — mismo predicado que los otros
+// tres resolvers (cloudWire.ts ×2, cloudHydrate.ts, monolito).
+function partidasDeVisita(e: TallerEntry): Partida[] | undefined {
+  if (!window.__tallerHibrido) return undefined;
+  return window.__tallerPartidas?.get(
+    visitaKeyDe({
+      id: e.id,
+      unitKey: e.unitKey,
+      eco: e.eco,
+      plate: e.plate,
+      fentrada: e.fentrada,
+      freporte: e.freporte,
+    }),
+  );
+}
+
+// Task 12 (la salida de emergencia) — bridges de captura manual de partidas.
+// El resto de los bridges de partidas (window.__tallerPartidas,
+// __guardarDecisionPartida, etc.) vive en src/api/cloudHydrate.ts; ese
+// archivo queda fuera de alcance de esta tarea (varias sesiones lo tocan a
+// la vez), así que estos dos se cablean aquí, siguiendo el MISMO patrón ya
+// usado en este archivo para bridges de módulos dinámicos (__pdfPhotos,
+// __tallerExport más abajo): función pura de src/ publicada en window.*
+// para que el <script> inline del monolito la invoque sin poder `import`.
+//
+// R74: la autoría real (liga vs. captura manual) que pinta la bandeja.
+window.__origenPartida = origenPartida;
+// R79 (fix ronda 1): la etiqueta de "quién subió" — nunca "Subió <taller>"
+// para algo que capturó GPA a mano.
+window.__autorPartidaEtiqueta = autorPartidaEtiqueta;
+
+// R69(a): crea la partida — nace `borrador` y se queda ahí (fix ronda 1,
+// R78: el envío es un paso EXPLÍCITO aparte, ver __enviarPartidaAAutorizacion
+// más abajo). El `sub` de Cognito se lee de `getCurrentUser().userId`, el
+// campo que expone el SDK de Amplify para el claim `sub` del idToken
+// (Amplify NO expone `sub` bajo ningún otro nombre) — nunca se inventa un
+// campo nuevo ni se decodifica el JWT a mano. `username` (en
+// `window.__cloudSession`) NO sirve para esto: en este User Pool los
+// usuarios se crean con `Username: email`
+// (amplify/functions/admin-users/handler.ts), así que `username` es el
+// correo, no el `sub`.
+window.__crearPartidaManual = async (datos, visitaKey) => {
+  const tenantId = window.__cloudSession?.tenantId;
+  if (!tenantId) throw new Error("[crearPartidaManual] sin sesión activa");
+  const { userId } = await getCurrentUser();
+  // Fix ronda 1 (Important 3): un `sub` vacío escribiría `creadoPor:
+  // "user:"` — sin autor. `partidaManual` (src/taller/partidas.ts) YA lo
+  // rechaza, pero se guarda aquí TAMBIÉN para fallar antes de siquiera
+  // construir la partida, con un mensaje que nombra la causa real
+  // (sesión sin `sub`) en vez de un genérico "autor obligatorio".
+  if (!userId) throw new Error("[crearPartidaManual] sesión sin sub de Cognito");
+  return crearPartidaManual({
+    tenantId,
+    datos,
+    visitaKey,
+    autorSub: userId,
+    ahora: new Date().toISOString(),
+  });
+};
+
+// R78 (fix ronda 1) — el envío explícito: Riesgos revisa lo que tecleó
+// (queda listado en el expediente mientras es `borrador`) y decide cuándo
+// mandarlo a su propia bandeja de firma. Lee el estado actual en DynamoDB
+// (nunca la copia local) — ver enviarPartidaAAutorizacion en
+// src/api/tallerPartidas.ts.
+window.__enviarPartidaAAutorizacion = async (partidaId, visitaKey) => {
+  const tenantId = window.__cloudSession?.tenantId;
+  if (!tenantId) throw new Error("[enviarPartidaAAutorizacion] sin sesión activa");
+  return enviarPartidaAAutorizacion({
+    tenantId,
+    visitaKey,
+    partidaId,
+    ahora: new Date().toISOString(),
+  });
+};
+
 // ─── Feature flag: Taller Activas + Historial (P4 fase 3) ────────────
 if (readFlag("USE_NEW_TALLER")) {
   const legacyRenderActivas = window.renderActivas;
@@ -783,6 +898,9 @@ if (readFlag("USE_NEW_TALLER")) {
         onOpen: (key) => window.openHistorialModal?.(key),
         onReingreso: (key) => window.reingresoDesdeHistorial?.(key),
         onSort: (col) => window.tlSort?.(col),
+        // Fix ronda 1 (Task 9): sin esto, una unidad cuyo gasto llegó entero por
+        // partidas firmadas resumía en $0 en la pestaña Historial.
+        partidasDe: partidasDeVisita,
       });
     } catch (err) {
       console.error("[renderHistorial/new] falló, fallback a legado:", err);

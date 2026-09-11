@@ -2,6 +2,7 @@ import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { adminUsers } from "../functions/admin-users/resource";
 import { opsgpaReceptor } from "../functions/opsgpa-receptor/resource";
 import { visionCombustible } from "../functions/vision-combustible/resource";
+import { tallerPortal } from "../functions/taller-portal/resource";
 
 /**
  * Schema replica 1:1 las 6 entidades de shared/types/entities.ts.
@@ -74,6 +75,43 @@ const schema = a
         estatus: a.enum(["abierto", "cerrado"]),
         // Datos legacy completos (id, unitKey, eco, plate, brand, area, tipo,
         // freporte, fsalidaEst, fsalidaReal, km, gasto*, tecnico, refacciones,
+        // Promovidos de `datos` a columnas (2026-09-08): los escribe el
+        // PROVEEDOR desde la liga mientras Riesgos puede tener el registro
+        // abierto. Como columnas, DynamoDB las actualiza independientes; dentro
+        // del blob `datos` un escritor pisaría al otro sin aviso.
+        // Estado real (A-13/R88): hoy SOLO se ESCRIBEN. El lado de LECTURA de la
+        // app de escritorio (leer la columna y, si viene vacía, caer a
+        // `datos.<campo>`) NO existe todavía — está en Plan 2.
+        km: a.integer(),
+        estadoOperativo: a.enum(["revisando", "reparando", "esperandoRefaccion", "lista"]),
+        fsalidaEst: a.string(),
+        /** Primera fecha prometida. Se escribe UNA sola vez: es contra esta que
+         *  se mide el incumplimiento, así que el taller no la puede reescribir. */
+        fsalidaEstCompromiso: a.string(),
+        /** Interruptor de revocación de la liga del proveedor (Plan 1, Task 5):
+         *  Task 11 la escribe al emitir cada liga y la sube para invalidar las
+         *  ya emitidas. Columna real (no `datos`) A PROPÓSITO: `datos` se
+         *  reemplaza completo en cada guardado de escritorio (upsertTaller,
+         *  src/api/client.ts), así que vivir ahí la borraría en silencio y un
+         *  token viejo volvería a valer sin que nadie lo note. Ausente hoy en
+         *  toda fila existente — nada la escribe todavía (Task 11); el lado
+         *  que la LEE (ligaRevocada, en taller-portal/validacion.ts) trata la
+         *  ausencia como versión 1. */
+        ligaVersion: a.integer(),
+        /** Rastro de auditoría de la liga (Task 11, decisión 20 del spec):
+         *  quién la generó/revocó y cuándo, para que una liga filtrada tenga
+         *  un responsable identificable. Columnas reales, NO `datos`, por el
+         *  MISMO motivo que `ligaVersion` de arriba: `datos` se reemplaza
+         *  completo en cada guardado de escritorio (upsertTaller,
+         *  src/api/client.ts), así que un rastro guardado ahí desaparecería
+         *  en silencio con la siguiente edición del registro. Ausentes en
+         *  toda fila existente — nada las escribe todavía (Task 11); el
+         *  botón "Revocar liga" usa `ligaCreadaEn` para decidir si ya se
+         *  generó una (visitas previas a esta feature: ausente ⇒ oculto). */
+        ligaCreadaEn: a.string(),
+        ligaCreadaPor: a.string(),
+        ligaRevocadaEn: a.string(),
+        ligaRevocadaPor: a.string(),
         // comentario, updatedAt). JSON arbitrary para no migrar schema en cada cambio.
         datos: a.json(),
         version: a.integer().default(1),
@@ -88,6 +126,79 @@ const schema = a
         allow.groupDefinedIn("tenantId").to(["read"]),
         allow.group("operativo").to(["create", "update", "delete"]),
         allow.group("admin"),
+      ]),
+
+    /**
+     * Una partida = un hallazgo cotizado por el proveedor: su evidencia, su
+     * precio y su propia decisión de autorización.
+     *
+     * `visitaKey` = `${unitUid}|${fechaEntrada}` — empata con la llave natural
+     * de `Taller` y con la que compone `tallerCloudKey()` en
+     * src/api/batchUpload.ts.
+     *
+     * `descripcion` la escribe un TERCERO NO AUTENTICADO (el taller, desde la
+     * liga). Nunca pintarla con innerHTML.
+     */
+    TallerPartida: a
+      .model({
+        tenantId: a.string().required(),
+        visitaKey: a.string().required(),
+        partidaId: a.string().required(),
+
+        descripcion: a.string().required(),
+        tipo: a.enum(["refaccion", "manoObra"]),
+        /** Sin IVA. REQUERIDO (R92): con el campo nullable, cualquier escritor
+         *  directo a AppSync creaba una partida sin precio y `autorizar`
+         *  (src/taller/partidas.ts) firmaba $0 en silencio — exactamente la
+         *  falla que este módulo existe para matar. Seguro de aplicar: cero
+         *  partidas en PROD al momento del cambio. `autorizar` además lanza si
+         *  el precio no es finito (fail-closed en la capa pura). */
+        precio: a.float().required(),
+        estado: a.enum([
+          "borrador",
+          "propuesta",
+          "autorizada",
+          "rechazada",
+          "terminada",
+          "cancelada",
+        ]),
+        motivoRechazo: a.string(),
+        /** Solo cuando el motivo es "Otro". Es lo que dice qué opción falta
+         *  en el menú (decisión 19 del spec). */
+        motivoRechazoNota: a.string(),
+        fotos: a.string().array(),
+        evidenciaFinal: a.string().array(),
+        /** Congelado en el momento de la firma: se autoriza un precio, no una idea. */
+        precioAutorizado: a.float(),
+        /** partidaId de la partida que se está recotizando (Plan 2). */
+        recotizaDe: a.string(),
+        /** Quién cotizó ESTA partida; puede diferir del proveedor de la visita. */
+        proveedorNombre: a.string(),
+        /** "liga:<hash8>" | "user:<sub>" */
+        creadoPor: a.string(),
+        creadoEn: a.string(),
+        propuestoEn: a.string(),
+        decididoEn: a.string(),
+        decididoPor: a.string(),
+        terminadoEn: a.string(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId", "visitaKey", "partidaId"])
+      .authorization((allow) => [
+        // Lectura aislada por tenant (incluye viewer). Escritura operativo/admin;
+        // el Lambda del portal escribe por IAM vía el grant de schema, abajo.
+        // R92: `operativo` NO tiene `delete`. El ciclo de esta partida ya tiene
+        // `cancelada` (anulación reversible) y el estándar del repo es
+        // "anulación, nunca borrado" — el `delete` venía de copiar el
+        // boilerplate de otros modelos y concedía borrado FÍSICO sobre la única
+        // copia del dinero firmado.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("operativo").to(["create", "update"]),
+        allow.group("admin"),
+      ])
+      .secondaryIndexes((index) => [
+        // Para contar lo pendiente de firma sin recorrer toda la tabla.
+        index("tenantId").sortKeys(["estado"]).name("byTenantAndEstado"),
       ]),
 
     Nota: a
@@ -411,6 +522,31 @@ const schema = a
         index("tenantId").sortKeys(["economicoId"]).name("byTenantAndUnit"),
       ]),
 
+    // ── Configuración del tenant (2026-09-10) — el apagador del esquema híbrido ──
+    // El esquema de partidas de Taller (ciclo de firma, Tasks 7-9) se prende para
+    // TODA la flota y TODOS los talleres a la vez, sin piloto (decisión 21) — así
+    // que el freno de mano no es opcional: si el primer día sale mal, esta fila es
+    // la única forma de apagarlo sin volver a desplegar. UNA fila por tenant
+    // (identifier = solo tenantId — no hay una segunda dimensión que componer).
+    // Cualquier bandera futura del tenant vive aquí, no un modelo nuevo por bandera.
+    // `esquemaHibridoActivo` (src/taller/partidas.ts) exige el booleano EXACTO:
+    // fila ausente, campo ausente, o cualquier otro tipo, es apagado.
+    AppConfig: a
+      .model({
+        tenantId: a.string().required(),
+        /** El apagador (Task 10). Ver esquemaHibridoActivo en src/taller/partidas.ts. */
+        tallerHibrido: a.boolean(),
+        version: a.integer().default(1),
+      })
+      .identifier(["tenantId"])
+      .authorization((allow) => [
+        // Todo el tenant LEE el switch — cada cliente lo necesita para decidir qué
+        // pintar. Escribe SOLO admin: un switch que cualquiera puede voltear no es
+        // un freno de mano.
+        allow.groupDefinedIn("tenantId").to(["read"]),
+        allow.group("admin"),
+      ]),
+
     // ── Modulo de Administracion de Usuarios (2026-06-12) ──────────────────
     // Espejo local del usuario Cognito para listados eficientes y soft-delete.
     // Identidad = (tenantId, cognitoSub) — sub inmutable de Cognito.
@@ -521,6 +657,46 @@ const schema = a
       .returns(a.json())
       .handler(a.handler.function(adminUsers))
       .authorization((allow) => [allow.group("admin")]),
+
+    // ── Ciclo de firma del taller — liga del proveedor (Task 11, decisión 20) ──
+    // La emisión NO vive en la Function URL pública del portal (taller-portal):
+    // esa URL solo la protege la firma del token, así que una ruta de emisión
+    // ahí dejaría a cualquiera en internet acuñar una liga para cualquier
+    // unidad. Va por mutación de AppSync con permiso de grupo, mismo patrón
+    // que adminCreateUser de arriba: AppSync valida el grupo ANTES de invocar
+    // la Lambda.
+    //
+    // R84 — SOLO `admin` y `riesgos`. El spec §7.7 (decisión 20) es literal:
+    // "El grupo `viewer` no puede, y `operativo` tampoco por sí solo… la
+    // restricción se aplica en la UI Y en el Lambda". El plan de T11 lo
+    // contradijo con una nota de deuda técnica; se cierra fail-closed.
+    //
+    // Task 14 — `riesgos` es la salida que esa misma nota anticipaba ("crear el
+    // grupo `riesgos`"), y NO promover a Administración de Riesgos a `admin`
+    // (eso le abriría todos los paneles de administración). Es una CREDENCIAL
+    // ADICIONAL: la persona conserva su rol `operativo` y suma `riesgos`. La
+    // credencial habilita exactamente estas dos mutaciones y nada más. El
+    // Lambda repite el chequeo sobre `cognito:groups` (R91,
+    // taller-portal/handler.ts) y la UI usa `needs-liga`.
+    generarLigaTaller: a
+      .mutation()
+      .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(tallerPortal))
+      .authorization((allow) => [allow.groups(["admin", "riesgos"])]),
+
+    /** Sube `ligaVersion` (columna real de Taller) — el único interruptor de
+     *  revocación (ver ligaRevocada en taller-portal/validacion.ts): un token
+     *  firmado con la versión anterior deja de servir de inmediato, sin
+     *  necesidad de guardar el token mismo en la base. SOLO `admin` y `riesgos`
+     *  (R84 + Task 14), mismo criterio que la emisión: quien puede abrir la
+     *  puerta tiene que poder cerrarla. */
+    revocarLigaTaller: a
+      .mutation()
+      .arguments({ unitUid: a.string().required(), fechaEntrada: a.string().required() })
+      .returns(a.json())
+      .handler(a.handler.function(tallerPortal))
+      .authorization((allow) => [allow.groups(["admin", "riesgos"])]),
   })
   // Acceso IAM para Lambdas del backend. El grant resource es a nivel schema
   // (la API no lo soporta por-modelo). El webhook MoreApp fue retirado 2026-08-20
@@ -534,6 +710,9 @@ const schema = a
     // vision-combustible: lee/escribe SOLO campos de visión de ValidacionCarga
     // (el grant es a nivel schema; la restricción por-campo la garantiza su handler).
     allow.resource(visionCombustible).to(["query", "mutate"]),
+    // taller-portal: la liga del proveedor escribe TallerPartida y actualiza las
+    // columnas de Taller que captura el taller. Mismo rol IAM que las otras ingestas.
+    allow.resource(tallerPortal).to(["query", "mutate"]),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

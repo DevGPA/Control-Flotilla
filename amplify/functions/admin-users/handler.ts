@@ -27,6 +27,7 @@ import {
 import type { Schema } from "../../data/resource";
 import {
   ROLES,
+  derivarTenantDeGrupos,
   validateCreateInput,
   normalizeEmail,
   isValidRol,
@@ -69,11 +70,12 @@ function getIdentity(event: AppSyncResolverEvent<Record<string, unknown>>): Iden
   const groupsRaw = claims["cognito:groups"];
   const groups = Array.isArray(groupsRaw) ? (groupsRaw as string[]) : [];
   // tenant = custom:tenantId del token; si no viaja en el idToken (depende de la
-  // config del app client), se deriva del grupo que NO es un rol — el tenant del
-  // proyecto ES el nombre del grupo Cognito (allow.groupDefinedIn("tenantId")).
-  const roleSet = new Set<string>(ROLES as readonly string[]);
+  // config del app client), se deriva del grupo que NO es un rol NI una
+  // credencial — el tenant del proyecto ES el nombre del grupo Cognito
+  // (allow.groupDefinedIn("tenantId")). La derivación vive en logic.ts para ser
+  // testeable: es justo donde `riesgos` (Task 14) podría colarse como tenant.
   const tenantFromClaim = String(claims["custom:tenantId"] ?? "");
-  const tenantFromGroup = groups.find((g) => !roleSet.has(g)) ?? "";
+  const tenantFromGroup = derivarTenantDeGrupos(groups);
   return {
     sub: String(claims.sub ?? ""),
     email: String(claims.email ?? ""),
@@ -108,10 +110,15 @@ async function writeAudit(
   await client.models.AuditEvent.create(ev);
 }
 
+// SOLO los grupos de ROL. Task 14: deliberadamente NO incluye las CREDENCIALES
+// (`riesgos`) — de eso depende que un cambio de rol desde el panel no se lleve
+// por delante la credencial de la persona (ver setUserRole).
 const ROLE_GROUPS = ROLES as readonly string[];
 
 async function setUserRole(username: string, rol: string): Promise<void> {
-  // Quita de todos los grupos de rol y añade al nuevo (un solo rol activo).
+  // Quita de todos los grupos de ROL y añade al nuevo (un solo rol activo).
+  // Los grupos que no son de rol —el tenant y las credenciales como `riesgos`—
+  // NO se tocan: el panel cambia el rol, no revoca credenciales.
   for (const g of ROLE_GROUPS) {
     if (g === rol) continue;
     try {

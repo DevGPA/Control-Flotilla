@@ -9,6 +9,7 @@
 import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
 import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
+import type { Partida } from "../taller/partidas";
 import { placaVigente } from "../fleet/placaVigente";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
@@ -369,7 +370,7 @@ export async function uploadSemanalesToCloud(
 }
 
 /** Shape mínima de entry de taller legacy. */
-interface LegacyTallerEntry {
+export interface LegacyTallerEntry {
   id: string;
   unitKey?: string;
   eco?: string;
@@ -393,6 +394,15 @@ interface LegacyTallerEntry {
   refacciones?: string;
   comentario?: string;
   updatedAt?: string;
+  /** R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera
+   *  partidas, conservado tal cual la primera vez que el recorte lo quita.
+   *  "Anulación, nunca borrado": el dato no desaparece, cambia de lugar. */
+  gastoCapturadoOriginal?: {
+    gasto?: number;
+    gastoRef?: number;
+    gastoMO?: number;
+    en: string;
+  };
 }
 
 /**
@@ -413,14 +423,69 @@ interface LegacyTallerEntry {
  * un segundo ingreso same-day upserta sobre la misma fila.
  */
 export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEntrada: string } {
-  const unitUid = String(e.plate || e.eco || e.unitKey || e.id || "");
+  // La identidad es la placa VIGENTE (src/fleet/placaVigente.ts): las partidas son la única copia
+  // del dinero firmado y cuelgan de esta llave; con la placa cruda, un reemplacamiento las deja
+  // huérfanas. `visitaKeyDe`, el token de la liga (`u`) y el strip del gasto derivan todos de aquí,
+  // así que este único cambio alinea a los tres consumidores.
+  //
+  // R81: el ÚLTIMO fallback (`e.id`) NO se normaliza. `e.id` es un folio interno
+  // (`tl_<ts>`), no una placa: pasarlo por `placaVigente` es pedirle al mapa de
+  // reemplacamientos que opine sobre algo que no es de su dominio, y bastaría una
+  // colisión improbable para mover una llave que existe justamente por ser inmutable.
+  // Consecuencia enunciada a propósito: un `plate`/`eco`/`unitKey` "basura" (que
+  // `placaVigente` normaliza a cadena vacía) cae al `id` TAL CUAL.
+  const unitUid = placaVigente(e.plate || e.eco || e.unitKey) || String(e.id ?? "");
   const fechaEntrada = e.fentrada || e.freporte || `sin-fecha:${e.id}`;
   return { unitUid, fechaEntrada };
+}
+
+/**
+ * Fix ronda 2 (Task 9, Critical 1): si la visita YA tiene partidas, `gasto`/`gastoRef`/
+ * `gastoMO` del entry dejan de ser la fuente de verdad (`gastoDerivado` lo es) — subirlos
+ * tal cual deja un dinero "duro" en DynamoDB. El formulario los escribe en 0 al CREAR el
+ * ingreso (antes de que existan partidas — `saveTallerEntry`, ~L9999) y nada más los toca
+ * después: `finalizarUnidad` sube el entry COMPLETO sin pasar por esa lógica. Ese cero
+ * sobrevive indistinguible de un cero real si las partidas se vuelven inalcanzables más
+ * tarde (visita anulada y restaurada, o la placa cambia — `tallerCloudKey` usa `plate ||
+ * eco`, y el reemplacamiento de la flota está en curso). Quita las 3 llaves por completo
+ * (no las pone en `undefined`) — un payload sin la llave, no una llave vacía.
+ */
+export function sinGastoSiTienePartidas(
+  e: LegacyTallerEntry,
+  tienePartidas: boolean,
+  ahora: string = new Date().toISOString(),
+): LegacyTallerEntry {
+  if (!tienePartidas) return e;
+  const limpio: LegacyTallerEntry = { ...e };
+  // R87 ("anulación, nunca borrado") — el minor L1006(a) afirmaba que el gasto
+  // tecleado "sigue en la base, nunca se borra". Era FALSO: `upsertTaller`
+  // reemplaza `datos` COMPLETO, así que el primer guardado tras existir partidas
+  // borraba el subtotal tecleado de forma irreversible. Se preserva ANTES de
+  // recortar, y solo la PRIMERA vez — el original nunca se sobrescribe con un
+  // recorte posterior.
+  const habiaTecleado =
+    typeof e.gasto === "number" || typeof e.gastoRef === "number" || typeof e.gastoMO === "number";
+  if (habiaTecleado && !limpio.gastoCapturadoOriginal) {
+    limpio.gastoCapturadoOriginal = {
+      ...(typeof e.gasto === "number" ? { gasto: e.gasto } : {}),
+      ...(typeof e.gastoRef === "number" ? { gastoRef: e.gastoRef } : {}),
+      ...(typeof e.gastoMO === "number" ? { gastoMO: e.gastoMO } : {}),
+      en: ahora,
+    };
+  }
+  delete limpio.gasto;
+  delete limpio.gastoRef;
+  delete limpio.gastoMO;
+  return limpio;
 }
 
 export async function uploadTallerToCloud(
   entries: LegacyTallerEntry[],
   tenantId: string,
+  /** Fix ronda 2 (Task 9, Critical 1): resuelve las partidas de la visita de un entry —
+   *  vía `visitaKeyDe`/`juntaVisitaKey` en el llamador, nunca una llave hecha a mano aquí
+   *  (esta capa no puede depender de `src/api/tallerPartidas.ts` sin crear un ciclo). */
+  partidasDe?: (e: LegacyTallerEntry) => Partida[] | undefined,
 ): Promise<BatchResult> {
   const start = Date.now();
   const result: BatchResult = {
@@ -441,6 +506,7 @@ export async function uploadTallerToCloud(
     try {
       const estatus = e.fsalidaReal ? ("cerrado" as const) : ("abierto" as const);
       const motivo = e.tipo || e.estado || "Sin motivo";
+      const tienePartidas = (partidasDe?.(e)?.length ?? 0) > 0;
       await upsertTaller({
         tenantId,
         unitUid: String(unitUid),
@@ -449,7 +515,7 @@ export async function uploadTallerToCloud(
         folio: e.id,
         motivo,
         estatus,
-        datos: e,
+        datos: sinGastoSiTienePartidas(e, tienePartidas),
       });
       // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
       // pero el caller solo necesita totales agregados. Sumamos a semanal
@@ -465,5 +531,7 @@ export async function uploadTallerToCloud(
   return result;
 }
 
-/** Type re-export para que cloudWire pueda tipar legacy units. */
-export type { LegacyUnit, LegacySemanalEntry, LegacyTallerEntry };
+/** Type re-export para que cloudWire pueda tipar legacy units.
+ *  LegacyTallerEntry ya no va aquí — Task 7 le agregó `export` directo en su
+ *  declaración (arriba), y reexportarla también aquí es un conflicto (TS2484). */
+export type { LegacyUnit, LegacySemanalEntry };

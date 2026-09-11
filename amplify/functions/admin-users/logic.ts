@@ -7,6 +7,43 @@ export const ALLOWED_DOMAIN = "gpa.com.mx";
 export const ROLES = ["admin", "operativo", "viewer"] as const;
 export type Rol = (typeof ROLES)[number];
 
+/**
+ * CREDENCIALES (Task 14): grupos Cognito que NO son roles. Una credencial es
+ * ADITIVA — se suma al rol de la persona (p. ej. `operativo` + `riesgos`) y
+ * habilita una capacidad puntual, sin abrir nada más. `riesgos` habilita
+ * exactamente emitir y revocar la liga del proveedor de Taller (spec §7.7,
+ * decisión 20).
+ *
+ * NO va en ROLES a propósito, y de ahí salen tres propiedades que importan:
+ *  1. El panel de usuarios es de UN solo rol (`isValidRol`), así que `riesgos`
+ *     no es asignable desde ahí — se asigna en la consola de Cognito.
+ *  2. `setUserRole` (handler.ts) solo quita grupos de ROLES al cambiar de rol,
+ *     así que la credencial SOBREVIVE un cambio de rol hecho desde el panel.
+ *  3. Pero la derivación del tenant ("el grupo que no es un rol") SÍ tiene que
+ *     conocerla — ver `esGrupoDeTenant`.
+ */
+export const CREDENCIALES = ["riesgos"] as const;
+
+/**
+ * ¿Este grupo Cognito es el TENANT del usuario? El tenant del proyecto ES el
+ * nombre de un grupo (allow.groupDefinedIn("tenantId")), y cuando el idToken no
+ * trae `custom:tenantId` se deriva por descarte. El descarte tiene que excluir
+ * TODO grupo que no sea tenant: los roles Y las credenciales. Si `riesgos` no
+ * se excluyera, a la persona de Riesgos se le derivaría `tenantId = "riesgos"`
+ * y todas sus operaciones caerían en un tenant fantasma.
+ */
+export function esGrupoDeTenant(grupo: string): boolean {
+  return (
+    !(ROLES as readonly string[]).includes(grupo) &&
+    !(CREDENCIALES as readonly string[]).includes(grupo)
+  );
+}
+
+/** Tenant derivado de `cognito:groups` por descarte; "" si no hay ninguno. */
+export function derivarTenantDeGrupos(grupos: readonly string[]): string {
+  return grupos.find((g) => esGrupoDeTenant(g)) ?? "";
+}
+
 export function normalizeEmail(email: unknown): string {
   return String(email ?? "")
     .trim()
