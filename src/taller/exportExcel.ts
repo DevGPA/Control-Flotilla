@@ -325,6 +325,8 @@ export const COLUMNAS_TALLER: ColumnaTaller[] = [
 export const CAMPOS_OMITIDOS: Record<string, string> = {
   _cloud:
     "Bandera interna de hidratación (marca que el registro ya estuvo en la nube, guarda anti-resurrección). No es un dato de negocio.",
+  gastoCapturadoOriginal:
+    "R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera partidas, conservado al recortarlo del payload (anulación, nunca borrado). No es el gasto de la visita (ese es la suma de lo firmado); es rastro. Si Navares decide exportarlo, entra como columna propia 'Capturado originalmente'.",
 };
 
 /** Fila por entry, en el orden de las columnas. */

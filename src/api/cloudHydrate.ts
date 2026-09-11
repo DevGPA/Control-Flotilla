@@ -50,9 +50,11 @@ import {
   filasBandeja,
   guardarDecisionPartida,
   urlFotoPartida,
+  resumenBandeja,
   resumenLoteFirma,
   type DecisionPartida,
   type FilaBandeja,
+  type ResumenBandeja,
 } from "./tallerPartidas";
 import {
   pendientesDeFirma,
@@ -124,6 +126,29 @@ export function numOrUndef(v: unknown): number | undefined {
   if (typeof v === "string" && !v.trim()) return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * R87 — reconstruye `datos.gastoCapturadoOriginal` desde el blob JSON. Misma
+ * disciplina que `numOrUndef`: nada se fabrica. Sin `en` (el sello de cuándo se
+ * preservó) el registro no dice nada útil, así que se descarta entero en vez de
+ * inventar una fecha.
+ */
+export function gastoCapturadoOriginal(v: unknown): TallerEntry["gastoCapturadoOriginal"] {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const en = typeof o.en === "string" ? o.en : "";
+  if (!en) return undefined;
+  const gasto = numOrUndef(o.gasto);
+  const gastoRef = numOrUndef(o.gastoRef);
+  const gastoMO = numOrUndef(o.gastoMO);
+  if (gasto === undefined && gastoRef === undefined && gastoMO === undefined) return undefined;
+  return {
+    ...(gasto === undefined ? {} : { gasto }),
+    ...(gastoRef === undefined ? {} : { gastoRef }),
+    ...(gastoMO === undefined ? {} : { gastoMO }),
+    en,
+  };
 }
 
 declare global {
@@ -240,6 +265,12 @@ declare global {
       ps: Partida[],
       totales: TotalesVisita,
     ) => { autorizables: Partida[]; monto: number; sinPrecio: number };
+    /**
+     * R85 (C-I1) — la franja de resumen de la bandeja que pide el spec §9.2:
+     * "N partidas en M unidades · Suman $X". Aritmética en src/ (testeada), el
+     * monolito solo pinta.
+     */
+    __resumenBandeja?: (filas: FilaBandeja[]) => ResumenBandeja;
     /**
      * Persiste la firma de una partida (autorizar/rechazar) y re-hidrata.
      * Único punto de escritura que la bandeja de firmas expone al monolito —
@@ -1004,6 +1035,11 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         gasto: numOrUndef(datos.gasto),
         gastoRef: numOrUndef(datos.gastoRef),
         gastoMO: numOrUndef(datos.gastoMO),
+        // R87: el subtotal tecleado ANTES de que existieran partidas viaja de
+        // vuelta con el entry. Sin esto, el siguiente guardado (que reemplaza
+        // `datos` completo) lo borraría de todas formas — se preservaría una
+        // sola vez y se perdería a la siguiente.
+        gastoCapturadoOriginal: gastoCapturadoOriginal(datos.gastoCapturadoOriginal),
         tecnico: String(datos.tecnico ?? ""),
         pedidoErp: String(datos.pedidoErp ?? ""),
         refacciones: String(datos.refacciones ?? ""),
@@ -1056,6 +1092,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     window.__visitaKeyDe = visitaKeyDe;
     window.__urlFotoPartida = urlFotoPartida;
     window.__resumenLoteFirma = resumenLoteFirma;
+    // R85: la franja de resumen de la bandeja (spec §9.2) — mismo seam.
+    window.__resumenBandeja = resumenBandeja;
     window.__guardarDecisionPartida = async (partidaId, visitaKey, decision, motivo, nota) => {
       const ps = window.__tallerPartidas?.get(visitaKey) ?? [];
       const partida = ps.find((p) => p.partidaId === partidaId);

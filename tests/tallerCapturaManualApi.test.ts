@@ -25,7 +25,7 @@ vi.mock("../src/api/amplifyClient", () => ({
   }),
 }));
 
-const { crearPartidaManual, enviarPartidaAAutorizacion } =
+const { crearPartidaManual, enviarPartidaAAutorizacion, guardarDecisionPartida } =
   await import("../src/api/tallerPartidas");
 
 beforeEach(() => {
@@ -170,5 +170,141 @@ describe("enviarPartidaAAutorizacion — R78: el envío EXPLÍCITO, separado de 
         ahora: "x",
       }),
     ).rejects.toThrow();
+  });
+});
+
+// ── C-I6 — Riesgos no empuja el borrador que el taller aún no envió ─────────
+describe("enviarPartidaAAutorizacion — solo lo que capturó GPA (C-I6)", () => {
+  const filaDeLaLiga = {
+    tenantId: "gpa",
+    visitaKey: "JV98698|2026-09-01",
+    partidaId: "p9",
+    descripcion: "Bomba de agua",
+    tipo: "refaccion" as const,
+    precio: 4200,
+    estado: "borrador",
+    fotos: [],
+    creadoPor: "liga:JV98698|2026-09-01",
+    creadoEn: "2026-09-10T10:00:00Z",
+  };
+
+  it("un borrador de origen `liga:` NO se puede enviar desde la app — es del taller", async () => {
+    mockGet.mockResolvedValue({ data: filaDeLaLiga, errors: undefined });
+    await expect(
+      enviarPartidaAAutorizacion({
+        tenantId: "gpa",
+        visitaKey: "JV98698|2026-09-01",
+        partidaId: "p9",
+        ahora: "2026-09-10T10:05:00Z",
+      }),
+    ).rejects.toThrow(/taller/i);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("un borrador SIN autoría tampoco — nunca se asume que es de GPA", async () => {
+    mockGet.mockResolvedValue({
+      data: { ...filaDeLaLiga, creadoPor: undefined },
+      errors: undefined,
+    });
+    await expect(
+      enviarPartidaAAutorizacion({
+        tenantId: "gpa",
+        visitaKey: "JV98698|2026-09-01",
+        partidaId: "p9",
+        ahora: "2026-09-10T10:05:00Z",
+      }),
+    ).rejects.toThrow();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ── B-C3 — la firma se aplica sobre la fila REAL, nunca sobre la caché ──────
+describe("guardarDecisionPartida — re-lee antes de aplicar la máquina de estados (B-C3)", () => {
+  const propuesta = {
+    tenantId: "gpa",
+    visitaKey: "JV98698|2026-09-01",
+    partidaId: "p1",
+    descripcion: "Balatas",
+    tipo: "refaccion" as const,
+    precio: 1850,
+    estado: "propuesta",
+    fotos: [],
+    creadoPor: "user:abc",
+  };
+  /** La copia CACHEADA que tendría el monolito: dice "propuesta" aunque la fila
+   *  real ya no lo esté. */
+  const enCache = { ...propuesta, estado: "propuesta" as const, fotos: [] as string[] };
+
+  it("autoriza sobre lo que dice DynamoDB, no sobre la copia del cliente", async () => {
+    mockGet.mockResolvedValue({ data: propuesta, errors: undefined });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+
+    const r = await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: enCache,
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-09-11T10:00:00Z",
+    });
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(r.estado).toBe("autorizada");
+    expect(r.precioAutorizado).toBe(1850);
+  });
+
+  it("si otra pestaña YA la rechazó, autorizar LANZA y no se escribe nada", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        ...propuesta,
+        estado: "rechazada",
+        motivoRechazo: "Precio alto — recotizar",
+        decididoPor: "otro@gpa",
+      },
+      errors: undefined,
+    });
+
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: enCache,
+        decision: "autorizar",
+        quien: "riesgos@gpa",
+        cuando: "2026-09-11T10:00:00Z",
+      }),
+    ).rejects.toThrow();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("al autorizar, motivoRechazo/nota se escriben como null — nunca sobreviven al cambio", async () => {
+    mockGet.mockResolvedValue({ data: propuesta, errors: undefined });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+
+    await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: enCache,
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-09-11T10:00:00Z",
+    });
+
+    const payload = mockUpdate.mock.calls[0]![0];
+    expect(payload.estado).toBe("autorizada");
+    // `undefined` NO se serializa: el rastro viejo se quedaría pegado.
+    expect(payload.motivoRechazo).toBeNull();
+    expect(payload.motivoRechazoNota).toBeNull();
+  });
+
+  it("lanza si la partida ya no existe — nunca escribe a ciegas", async () => {
+    mockGet.mockResolvedValue({ data: null, errors: undefined });
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: enCache,
+        decision: "autorizar",
+        quien: "riesgos@gpa",
+        cuando: "2026-09-11T10:00:00Z",
+      }),
+    ).rejects.toThrow();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

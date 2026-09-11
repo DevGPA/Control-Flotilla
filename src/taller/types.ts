@@ -64,6 +64,20 @@ export type TallerEntry = {
   gastoMO?: number;
   /** Campo legacy para entries previas al desglose Ref+MO. */
   gasto?: number;
+  /**
+   * R87 — el subtotal que Riesgos había tecleado ANTES de que la visita tuviera
+   * partidas. Cuando aparecen partidas, el gasto deja de ser un número tecleado
+   * y las tres llaves salen del payload (`sinGastoSiTienePartidas`); esto guarda
+   * lo que había, una sola vez, para que el dato no se pierda. No es la fuente
+   * de verdad de nada: el gasto de una visita con partidas es la suma de lo
+   * firmado, siempre.
+   */
+  gastoCapturadoOriginal?: {
+    gasto?: number;
+    gastoRef?: number;
+    gastoMO?: number;
+    en: string;
+  };
 
   // Texto libre
   tecnico?: string;

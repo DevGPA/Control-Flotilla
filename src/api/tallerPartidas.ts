@@ -6,6 +6,7 @@ import { getClient, type Schema } from "./amplifyClient";
 import { tallerCloudKey, type LegacyTallerEntry } from "./batchUpload";
 import {
   autorizar,
+  montoPendienteDeFirma,
   partidaManual,
   partidasPendientesDeFirma,
   proponer,
@@ -95,7 +96,11 @@ export function filasBandeja(
     const partidasPendientes = partidasPendientesDeFirma(ps);
     if (!partidasPendientes.length) continue;
 
-    const anual = anualPorEco.get(String(e.eco ?? "")) ?? { gasto: 0, visitas: 0 };
+    // B-I7: `.trim()` — `gastoAnualPorEco` (src/taller/exportExcel.ts) indexa con
+    // `String(e.eco ?? "").trim()`. Sin el trim aquí, un económico con un espacio
+    // de más daba `gastoAnual: 0` justo en el chip que existe para que nadie
+    // firme a ciegas ("esta unidad lleva $38,400 en el año").
+    const anual = anualPorEco.get(String(e.eco ?? "").trim()) ?? { gasto: 0, visitas: 0 };
     const esperas = partidasPendientes
       .map((p) => p.propuestoEn ?? p.creadoEn ?? "")
       .filter(Boolean)
@@ -126,6 +131,38 @@ export function filasBandeja(
   return filas;
 }
 
+export type ResumenBandeja = {
+  /** Partidas esperando firma, sumadas sobre todas las visitas. */
+  partidas: number;
+  /** Unidades (visitas) involucradas — una visita es una unidad en un ingreso. */
+  unidades: number;
+  /** Lo que suman esas partidas pendientes, a precio COTIZADO. */
+  monto: number;
+};
+
+/**
+ * R85 (C-I1) — la franja de resumen de la bandeja que el spec §9.2 pide literal:
+ * "⚡ Esperando tu firma · N partidas en M unidades · Suman $X". Es lo primero
+ * que Riesgos ve al abrir la sub-pestaña, y decide si el trabajo de hoy son tres
+ * firmas o treinta.
+ *
+ * La aritmética vive aquí (con test) y no en el `<script>` inline: el monolito
+ * solo pinta. Reusa `montoPendienteDeFirma` — nunca vuelve a sumar `precio` por
+ * su cuenta — y `fila.partidasPendientes`, que `filasBandeja` ya filtró con
+ * `partidasPendientesDeFirma`: una sola definición de "esperando firma".
+ */
+export function resumenBandeja(filas: FilaBandeja[]): ResumenBandeja {
+  let partidas = 0;
+  let monto = 0;
+  for (const f of filas) {
+    partidas += f.partidasPendientes.length;
+    monto += montoPendienteDeFirma(f.partidasPendientes);
+  }
+  // Cada fila ES una visita con al menos una pendiente (filasBandeja omite las
+  // que no tienen), así que el conteo de unidades es el de filas.
+  return { partidas, unidades: filas.length, monto };
+}
+
 /**
  * El resumen de "firmar todas las pendientes de esta visita en un solo
  * click": cuáles se pueden (tienen precio — Ruling B: nunca se autoriza en
@@ -138,7 +175,9 @@ export function resumenLoteFirma(
   ps: Partida[],
   totales: TotalesVisita,
 ): { autorizables: Partida[]; monto: number; sinPrecio: number } {
-  const autorizables = ps.filter((p) => typeof p.precio === "number");
+  // `Number.isFinite`, no `typeof === "number"`: `NaN` pasa el typeof y entraría
+  // al lote como si tuviera precio — sumando `NaN` al monto y firmando $0.
+  const autorizables = ps.filter((p) => Number.isFinite(p.precio));
   const monto = totales.autorizado + autorizables.reduce((s, p) => s + (p.precio ?? 0), 0);
   return { autorizables, monto, sinPrecio: ps.length - autorizables.length };
 }
@@ -249,20 +288,47 @@ export async function guardarDecisionPartida(args: {
   nota?: string;
 }): Promise<Partida> {
   const { tenantId, partida, decision, quien, cuando, motivo, nota } = args;
-  const nueva =
-    decision === "autorizar"
-      ? autorizar(partida, quien, cuando)
-      : rechazar(partida, motivo ?? "", nota, quien, cuando);
-
   const c = getClient();
-  const { errors } = await c.models.TallerPartida.update({
+
+  // B-C3 — la máquina de estados se aplica sobre la fila REAL, nunca sobre la
+  // copia en caché. `window.__tallerPartidas` puede tener minutos (antes de
+  // BC-C1, horas) de antigüedad: si otra pestaña u otro admin ya rechazó esta
+  // partida, la copia local seguía diciendo `propuesta`, `autorizar` pasaba, y
+  // el update escribía `estado:"autorizada"` + `precioAutorizado` mientras el
+  // motivo del rechazo anterior SOBREVIVÍA — la fila quedaba autorizada Y
+  // rechazada, con dinero sumado, sin un solo error. `enviarPartidaAAutorizacion`
+  // recibió este mismo blindaje por R78; la ruta de la FIRMA no lo tenía.
+  const { data, errors: getErrors } = await c.models.TallerPartida.get({
     tenantId,
     visitaKey: partida.visitaKey,
     partidaId: partida.partidaId,
+  });
+  if (getErrors) {
+    throw new Error(`TallerPartida.get (decisión): ${JSON.stringify(getErrors)}`);
+  }
+  if (!data) {
+    throw new Error(`Partida no encontrada: ${partida.partidaId} (${partida.visitaKey})`);
+  }
+  const actual = rowToPartida(data);
+
+  const nueva =
+    decision === "autorizar"
+      ? autorizar(actual, quien, cuando)
+      : rechazar(actual, motivo ?? "", nota, quien, cuando);
+
+  const { errors } = await c.models.TallerPartida.update({
+    tenantId,
+    visitaKey: nueva.visitaKey,
+    partidaId: nueva.partidaId,
     estado: nueva.estado,
     precioAutorizado: nueva.precioAutorizado,
-    motivoRechazo: nueva.motivoRechazo,
-    motivoRechazoNota: nueva.motivoRechazoNota,
+    // Se escriben SIEMPRE, incluso como `null`: al autorizar hay que BORRAR el
+    // motivo de un rechazo anterior, y mandarlos `undefined` no los serializa —
+    // el rastro viejo se quedaba pegado a una fila ya autorizada. (La transición
+    // `rechazada → autorizada` ya no es alcanzable tras la re-lectura de arriba;
+    // esto cierra el mismo hueco por el lado del dato.)
+    motivoRechazo: nueva.motivoRechazo ?? null,
+    motivoRechazoNota: nueva.motivoRechazoNota ?? null,
     decididoPor: nueva.decididoPor,
     decididoEn: nueva.decididoEn,
   });
@@ -359,6 +425,16 @@ export async function enviarPartidaAAutorizacion(args: {
   }
 
   const actual = rowToPartida(data);
+  // C-I6 — Riesgos solo manda a firma lo que Riesgos capturó. Un borrador de
+  // origen `liga:` es del TALLER: es él quien decide cuándo su cotización está
+  // completa (POST /api/enviar), y no hay camino de vuelta `propuesta →
+  // borrador`. Empujarlo desde aquí le arrebata esa decisión y mete a la bandeja
+  // algo que el proveedor todavía estaba armando.
+  if (!actual.creadoPor?.startsWith("user:")) {
+    throw new Error(
+      "Este hallazgo lo está capturando el taller desde su liga: solo él puede enviarlo a autorización.",
+    );
+  }
   const propuesta = proponer(actual, ahora);
 
   const { errors } = await c.models.TallerPartida.update({

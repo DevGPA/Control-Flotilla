@@ -41,10 +41,11 @@ describe("tallerCloudKey — clave estable (P1 #11)", () => {
     expect(tallerCloudKey({ ...base, plate: "P", eco: "E" }).unitUid).toBe("P");
     expect(tallerCloudKey({ ...base, eco: "E", unitKey: "U" }).unitUid).toBe("E");
     expect(tallerCloudKey({ ...base, unitKey: "U" }).unitUid).toBe("U");
-    // R59: el último eslabón (el id) también pasa por `placaVigente`, que lo canoniza —
-    // "tl_1718000000000" queda "TL1718000000000". Sigue siendo ESTABLE y recomputable (es lo
-    // que este test protege): el mismo id da siempre la misma llave.
-    expect(tallerCloudKey({ ...base }).unitUid).toBe("TL1718000000000");
+    // R81: el último eslabón (el id) NO pasa por `placaVigente` — es un folio interno
+    // (`tl_<ts>`), no una placa, y canonizarlo era pedirle al mapa de reemplacamientos que
+    // opinara sobre algo fuera de su dominio. Cae TAL CUAL, que es lo que este test protege:
+    // estable y recomputable, el mismo id da siempre la misma llave.
+    expect(tallerCloudKey({ ...base }).unitUid).toBe("tl_1718000000000");
   });
 });
 

@@ -394,6 +394,15 @@ export interface LegacyTallerEntry {
   refacciones?: string;
   comentario?: string;
   updatedAt?: string;
+  /** R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera
+   *  partidas, conservado tal cual la primera vez que el recorte lo quita.
+   *  "Anulación, nunca borrado": el dato no desaparece, cambia de lugar. */
+  gastoCapturadoOriginal?: {
+    gasto?: number;
+    gastoRef?: number;
+    gastoMO?: number;
+    en: string;
+  };
 }
 
 /**
@@ -418,7 +427,14 @@ export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEn
   // del dinero firmado y cuelgan de esta llave; con la placa cruda, un reemplacamiento las deja
   // huérfanas. `visitaKeyDe`, el token de la liga (`u`) y el strip del gasto derivan todos de aquí,
   // así que este único cambio alinea a los tres consumidores.
-  const unitUid = placaVigente(e.plate || e.eco || e.unitKey || e.id);
+  //
+  // R81: el ÚLTIMO fallback (`e.id`) NO se normaliza. `e.id` es un folio interno
+  // (`tl_<ts>`), no una placa: pasarlo por `placaVigente` es pedirle al mapa de
+  // reemplacamientos que opine sobre algo que no es de su dominio, y bastaría una
+  // colisión improbable para mover una llave que existe justamente por ser inmutable.
+  // Consecuencia enunciada a propósito: un `plate`/`eco`/`unitKey` "basura" (que
+  // `placaVigente` normaliza a cadena vacía) cae al `id` TAL CUAL.
+  const unitUid = placaVigente(e.plate || e.eco || e.unitKey) || String(e.id ?? "");
   const fechaEntrada = e.fentrada || e.freporte || `sin-fecha:${e.id}`;
   return { unitUid, fechaEntrada };
 }
@@ -437,9 +453,26 @@ export function tallerCloudKey(e: LegacyTallerEntry): { unitUid: string; fechaEn
 export function sinGastoSiTienePartidas(
   e: LegacyTallerEntry,
   tienePartidas: boolean,
+  ahora: string = new Date().toISOString(),
 ): LegacyTallerEntry {
   if (!tienePartidas) return e;
   const limpio: LegacyTallerEntry = { ...e };
+  // R87 ("anulación, nunca borrado") — el minor L1006(a) afirmaba que el gasto
+  // tecleado "sigue en la base, nunca se borra". Era FALSO: `upsertTaller`
+  // reemplaza `datos` COMPLETO, así que el primer guardado tras existir partidas
+  // borraba el subtotal tecleado de forma irreversible. Se preserva ANTES de
+  // recortar, y solo la PRIMERA vez — el original nunca se sobrescribe con un
+  // recorte posterior.
+  const habiaTecleado =
+    typeof e.gasto === "number" || typeof e.gastoRef === "number" || typeof e.gastoMO === "number";
+  if (habiaTecleado && !limpio.gastoCapturadoOriginal) {
+    limpio.gastoCapturadoOriginal = {
+      ...(typeof e.gasto === "number" ? { gasto: e.gasto } : {}),
+      ...(typeof e.gastoRef === "number" ? { gastoRef: e.gastoRef } : {}),
+      ...(typeof e.gastoMO === "number" ? { gastoMO: e.gastoMO } : {}),
+      en: ahora,
+    };
+  }
   delete limpio.gasto;
   delete limpio.gastoRef;
   delete limpio.gastoMO;

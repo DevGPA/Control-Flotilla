@@ -558,8 +558,13 @@ export function setupCloud(): void {
       }
       return { ligaVersion: v.ligaVersion };
     },
+    // B-I5 — LECTURA PASIVA: `getSession`, nunca `ensureSession`. Esta la llama
+    // `openTallerModal` en CADA apertura, así que con `ensureSession` una sesión
+    // caducada abría el modal de login BLOQUEANTE encima del formulario, por una
+    // consulta que solo decide si se pinta un botón. Sin sesión: "no generada".
     estado: async (unitUid, fechaEntrada) => {
-      const s = await ensureSession();
+      const s = await getSession();
+      if (!s) return { generada: false };
       const { data } = await getClient().models.Taller.get({
         tenantId: s.tenantId,
         unitUid,

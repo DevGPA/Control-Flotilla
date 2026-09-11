@@ -5,8 +5,13 @@
 // como esa clave ya no coincidía con la de las partidas, el candado viejo (`psVisita.length`)
 // daba `false` aunque la visita SIGUIERA teniendo partidas bajo la clave vieja, y el derivado
 // pintado en el campo se guardaba como si fuera tecleado a mano. El fix cambió el candado a
-// `#tf-gasto.disabled` — lo fija `openTallerModal()` con la visita ORIGINAL al abrir el modal,
+// `#tf-gasto.readOnly` — lo fija `openTallerModal()` con la visita ORIGINAL al abrir el modal,
 // y no se mueve pase lo que pase con los demás campos.
+//
+// Fix de la ola (minor C-L1101(d)): el candado pasó de `.disabled` a `.readOnly` — sigue
+// enfocable y copiable (Riesgos pega ese monto en su conciliación) y es el semántico de
+// "esto se calcula". El centinela de saveTallerEntry y este harness se movieron con él:
+// los tres juntos o ninguno.
 //
 // `saveTallerEntry()` vive en un <script> inline de 10k líneas sin módulo TS equivalente —
 // mismo patrón que `tests/tallerBadgePendientesDeFirma.test.ts`: se extrae y EJECUTA el
@@ -31,14 +36,14 @@ function bloqueConstruccionEntry(): string {
   return html.slice(inicio + marcadorInicio.length, fin);
 }
 
-type ElementoFalso = { value: string; disabled: boolean };
+type ElementoFalso = { value: string; readOnly: boolean };
 
-/** `document` mínimo: getElementById devuelve `{value, disabled}` por id, desde un mapa. */
-function documentoFalso(valores: Record<string, string>, gastoDisabled: boolean) {
+/** `document` mínimo: getElementById devuelve `{value, readOnly}` por id, desde un mapa. */
+function documentoFalso(valores: Record<string, string>, gastoReadOnly: boolean) {
   const elementos: Record<string, ElementoFalso> = {};
   const de = (id: string): ElementoFalso => {
     if (!elementos[id]) {
-      elementos[id] = { value: valores[id] ?? "", disabled: id === "tf-gasto" && gastoDisabled };
+      elementos[id] = { value: valores[id] ?? "", readOnly: id === "tf-gasto" && gastoReadOnly };
     }
     return elementos[id]!;
   };
@@ -48,7 +53,7 @@ function documentoFalso(valores: Record<string, string>, gastoDisabled: boolean)
 /** Ejecuta el bloque REAL de construcción de `entry` con un `document`/estado de prueba. */
 function construyeEntry(opts: {
   valores: Record<string, string>;
-  gastoDisabled: boolean;
+  gastoReadOnly: boolean;
   tallerEditId?: string | null;
   reingresoKey?: string | null;
   tallerEntries?: Array<{ id: string; unitKey?: string }>;
@@ -63,7 +68,7 @@ function construyeEntry(opts: {
     `${bloque}\nreturn entry;`,
   );
   return fn(
-    documentoFalso(opts.valores, opts.gastoDisabled),
+    documentoFalso(opts.valores, opts.gastoReadOnly),
     opts.tallerEditId ?? null,
     opts.reingresoKey ?? null,
     opts.tallerEntries ?? [],
@@ -77,13 +82,13 @@ const valoresBase = (over: Record<string, string> = {}): Record<string, string> 
   "tf-km": "85000",
   "tf-freporte": "2026-08-01",
   "tf-fentrada": "2026-08-01",
-  "tf-gasto": "9999", // el valor que #tf-gasto pintó (derivado, si está disabled)
+  "tf-gasto": "9999", // el valor que #tf-gasto pintó (derivado, si está en readOnly)
   ...over,
 });
 
-describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gasto.disabled, no la visitaKey", () => {
+describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gasto.readOnly, no la visitaKey", () => {
   it("con el campo pintado solo-lectura (visita CON partidas), NO persiste gasto/gastoRef/gastoMO", () => {
-    const entry = construyeEntry({ valores: valoresBase(), gastoDisabled: true });
+    const entry = construyeEntry({ valores: valoresBase(), gastoReadOnly: true });
     expect(entry.gasto).toBeUndefined();
     expect(entry.gastoRef).toBeUndefined();
     expect(entry.gastoMO).toBeUndefined();
@@ -91,12 +96,12 @@ describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gast
 
   // El caso que Important 1 reporta: el usuario CORRIGE la fecha de entrada de una visita
   // con partidas (p.ej. un typo). Antes esto recomputaba la visitaKey y el candado viejo
-  // (psVisita.length) se rompía; el candado actual (#tf-gasto.disabled) no depende de
+  // (psVisita.length) se rompía; el candado actual (#tf-gasto.readOnly) no depende de
   // fentrada/eco/plate en absoluto, así que editarlos no debe cambiar el resultado.
   it("editar la fecha de entrada de una visita CON partidas sigue sin persistir el dinero derivado", () => {
     const entry = construyeEntry({
       valores: valoresBase({ "tf-fentrada": "2026-08-15" }), // fecha CORREGIDA, distinta de la original
-      gastoDisabled: true, // el candado sigue en true — lo fijó openTallerModal con la visita ORIGINAL
+      gastoReadOnly: true, // el candado sigue en true — lo fijó openTallerModal con la visita ORIGINAL
     });
     expect(entry.fentrada).toBe("2026-08-15"); // la fecha sí se actualiza
     expect(entry.gasto).toBeUndefined(); // pero el dinero derivado NO se persiste
@@ -107,7 +112,7 @@ describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gast
   it("editar la placa/económico de una visita CON partidas tampoco persiste el dinero derivado", () => {
     const entry = construyeEntry({
       valores: valoresBase({ "tf-plate": "XYZ-999" }), // placa CORREGIDA
-      gastoDisabled: true,
+      gastoReadOnly: true,
     });
     expect(entry.gasto).toBeUndefined();
     expect(entry.gastoRef).toBeUndefined();
@@ -117,7 +122,7 @@ describe("saveTallerEntry() — el candado de gasto/gastoRef/gastoMO es #tf-gast
   it("SIN partidas (campo editable), el gasto tecleado a mano SÍ se persiste — las visitas históricas no se tocan", () => {
     const entry = construyeEntry({
       valores: valoresBase({ "tf-gasto": "1234.50" }),
-      gastoDisabled: false,
+      gastoReadOnly: false,
     });
     expect(entry.gasto).toBe(1234.5);
     expect(entry.gastoRef).toBe(0);

@@ -316,6 +316,35 @@ export function mensajeWhatsApp(f: { eco: string; placa: string; url: string }):
  * origen). El id lo genera esta función: nunca se acepta uno del formulario
  * (evita que dos capturas coincidan o que algo externo fuerce una llave).
  */
+/**
+ * R82 (D-I4) — un UUID v4 que también existe en contexto NO seguro.
+ *
+ * `crypto.randomUUID()` es el primer uso de esa API en el frontend, y en HTTP
+ * plano — el `nginx.conf` de intranet que despacha este repo lo tolera — es
+ * `undefined`: `partidaManual` lanzaría y la captura manual, que es la salida de
+ * emergencia del esquema completo, moriría con un toast para esos usuarios. En
+ * Node siempre existe, así que ningún test podía exponerlo sin este fallback.
+ *
+ * El respaldo usa `crypto.getRandomValues` (disponible en contexto inseguro) y
+ * estampa a mano los bits de versión y variante de un v4. NUNCA `Math.random`:
+ * un `partidaId` es la identidad de un renglón de dinero; un generador
+ * predecible invita a colisiones y a adivinar llaves ajenas.
+ */
+export function uuidSeguro(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  if (!c || typeof c.getRandomValues !== "function") {
+    throw new Error("Este navegador no puede generar identificadores seguros");
+  }
+  const b = c.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40; // versión 4
+  b[8] = (b[8]! & 0x3f) | 0x80; // variante RFC 4122
+  const hex: string[] = [];
+  for (const n of b) hex.push(n.toString(16).padStart(2, "0"));
+  const s = hex.join("");
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+}
+
 export function partidaManual(
   datos: { descripcion: string; tipo: PartidaTipo; precio: number },
   visitaKey: string,
@@ -342,7 +371,7 @@ export function partidaManual(
     throw new Error(`Precio no válido: ${String(datos.precio)}`);
   }
   return {
-    partidaId: crypto.randomUUID(),
+    partidaId: uuidSeguro(),
     visitaKey,
     descripcion,
     tipo: datos.tipo,
@@ -360,9 +389,15 @@ export function partidaManual(
  * handler del portal (`enviarAAutorizacion`, amplify/functions/taller-portal/
  * handler.ts), token-gated y no alcanzable desde `src/`. Esta función no
  * reemplaza esa ruta (queda fuera de esta tarea, ver R69(b) del brief) — es
- * la que usa `crearPartidaManual` (src/api/tallerPartidas.ts) para que una
- * captura a mano nazca en `borrador` y pase a "esperando firma" en el mismo
- * golpe de escritura, nunca antes de que `partidaManual` haya validado todo.
+ * la que usa `enviarPartidaAAutorizacion` (src/api/tallerPartidas.ts) cuando
+ * Riesgos manda a firma un borrador que capturó a mano.
+ *
+ * El envío es un paso EXPLÍCITO y SEPARADO de la creación (R78): `crearPartidaManual`
+ * deja la partida en `borrador` y ahí se queda hasta que alguien la mande a
+ * propósito — así Riesgos puede revisar lo que tecleó antes de que aparezca en su
+ * propia bandeja. (La versión anterior de este comentario decía "en el mismo golpe
+ * de escritura", que describe el código de ANTES de R78.)
+ *
  * Duplica la regla del portal a propósito (mismo estado de origen, mismo
  * campo estampado) — la unificación de ambas queda como pendiente conocido.
  */

@@ -57,9 +57,13 @@ describe("tallerCloudKey — la identidad es la placa VIGENTE (R59)", () => {
     expect(placaVigente(tallerCloudKey(e).unitUid)).toBe(tallerCloudKey(e).unitUid);
   });
 
-  // Caso 3 — la cadena de fallbacks sigue viva Y también normaliza: la placa retirada puede venir
-  // en `eco` o en `unitKey` (el formulario legacy dejaba la placa en el campo de económico).
-  describe("los fallbacks siguen vivos y también normalizan", () => {
+  // Caso 3 — la cadena de fallbacks sigue viva Y también normaliza... hasta `unitKey`.
+  //
+  // R81: el ÚLTIMO fallback (`e.id`) NO se normaliza. `e.id` es un folio interno (`tl_<ts>`),
+  // no una placa: pasarlo por `placaVigente` es pedirle al mapa de reemplacamientos que opine
+  // sobre algo que no es de su dominio, y bastaría una colisión improbable para mover una llave
+  // que existe justamente por ser inmutable.
+  describe("los fallbacks siguen vivos y también normalizan (salvo el `id`, R81)", () => {
     it("sin plate cae a eco", () => {
       const e = entry({ eco: PLACA_VIEJA, fentrada: "2026-09-01" });
       expect(tallerCloudKey(e).unitUid).toBe(PLACA_VIGENTE);
@@ -70,9 +74,22 @@ describe("tallerCloudKey — la identidad es la placa VIGENTE (R59)", () => {
       expect(tallerCloudKey(e).unitUid).toBe(PLACA_VIGENTE);
     });
 
-    it("sin ninguno cae a id", () => {
+    // R81: el `id` cae TAL CUAL. El fixture usa a propósito un valor que SÍ está en el mapa
+    // de reemplacamientos, para que el test falle si alguien vuelve a normalizarlo.
+    it("sin ninguno cae a id — y el id NO se normaliza (R81)", () => {
       const e = entry({ id: PLACA_VIEJA, fentrada: "2026-09-01" });
-      expect(tallerCloudKey(e).unitUid).toBe(PLACA_VIGENTE);
+      expect(tallerCloudKey(e).unitUid).toBe(PLACA_VIEJA);
+      expect(tallerCloudKey(e).unitUid).not.toBe(PLACA_VIGENTE);
+    });
+
+    // Consecuencia NUEVA que R81 introduce, enunciada a propósito: `placaVigente` normaliza
+    // una placa "basura" a cadena vacía, así que el `||` la salta y la llave cae al `id`.
+    // Antes ese caso daba "" (la basura normalizada ganaba y la fila se descartaba por
+    // `if (!unitUid)`); ahora rinde el folio, que es estable y recomputable.
+    it("una placa basura cae al `id` en vez de dar una llave vacía", () => {
+      const e = entry({ id: "tl_1757000000009", plate: "???", fentrada: "2026-09-01" });
+      expect(placaVigente("???")).toBe("");
+      expect(tallerCloudKey(e).unitUid).toBe("tl_1757000000009");
     });
 
     it("respeta la PRECEDENCIA plate > eco > unitKey > id", () => {
