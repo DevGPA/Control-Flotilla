@@ -60,6 +60,16 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: "happy-dom",
     globals: true,
+    // Alias SOLO de pruebas (no toca el `resolve.alias` del build de la app):
+    // `$amplify/env/taller-portal` es un módulo VIRTUAL que Amplify genera en
+    // el build del backend y que no existe en el árbol del repo. Sin este
+    // mapeo, el análisis de imports de Vite tumba el archivo ANTES de que
+    // `vi.mock` pueda intervenir, y el handler del portal del taller queda
+    // imposible de importar — por eso sus propiedades de seguridad solo se
+    // podían probar leyendo el texto fuente. Ver tests/tallerPortalHarness.test.ts.
+    alias: {
+      "$amplify/env/taller-portal": resolve(__dirname, "tests/stubs/amplify-env-taller-portal.ts"),
+    },
     // Excluye e2e (Playwright) — se corren con `npm run test:e2e`.
     exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
     coverage: {

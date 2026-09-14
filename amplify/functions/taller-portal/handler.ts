@@ -159,11 +159,20 @@ function bitacora(
 /** JSON.parse defensivo: un cuerpo malformado es un error de ENTRADA, no un 500. */
 function parseBody(event: unknown): Record<string, unknown> {
   const raw = (event as { body?: unknown } | null | undefined)?.body;
+  let cuerpo: unknown;
   try {
-    return JSON.parse(typeof raw === "string" ? raw : "{}");
+    cuerpo = JSON.parse(typeof raw === "string" ? raw : "{}");
   } catch {
     throw new ErrorEntrada("cuerpo JSON inválido");
   }
+  // El arnés (R83) lo encontró EJECUTANDO: `JSON.parse("null")` es `null` y el
+  // tipo de retorno lo afirmaba en falso — `actualizarVisita` hacía `body.km` y
+  // reventaba en 500. Un cuerpo que no es un objeto JSON (null, número, arreglo,
+  // texto, booleano) es un error de ENTRADA, igual que el JSON malformado.
+  if (cuerpo === null || typeof cuerpo !== "object" || Array.isArray(cuerpo)) {
+    throw new ErrorEntrada("cuerpo JSON inválido");
+  }
+  return cuerpo as Record<string, unknown>;
 }
 
 /** Grupos de Cognito que NO son el tenant (amplify/auth/resource.ts) — todo lo
@@ -226,7 +235,17 @@ export const handler = async (event: any) => {
   // en el schema espera el valor tal cual — mismo patrón que
   // admin-users/handler.ts, que retorna `{ok, ...}` directo, no una respuesta
   // HTTP.
-  const campoResolver = event?.info?.fieldName;
+  // 🔴 DEFECTO EN PROD (humo manual 2026-09-14): Amplify Gen 2 (`a.handler.function`)
+  // invoca la Lambda con el payload heredado de `@function`:
+  // `{ typeName, fieldName, arguments, identity, source, request, prev }` —
+  // `fieldName` va en la RAÍZ del evento, NO bajo `info` (verificado en la
+  // plantilla VTL desplegada del pipeline `InvokeFnGenerarLigaTallerLambdaDataSource`).
+  // Buscarlo solo en `event.info.fieldName` hacía que TODA emisión cayera al
+  // perímetro público de abajo y se rechazara como "liga malformada". Ningún
+  // test lo atrapó porque todos fabricaban el evento con `info.fieldName` y el
+  // handler nunca se había ejecutado contra un backend real. Se aceptan las dos
+  // formas: la real de Gen 2 (raíz) y la del evento directo de AppSync (`info`).
+  const campoResolver = event?.fieldName ?? event?.info?.fieldName;
   if (campoResolver === "generarLigaTaller" || campoResolver === "revocarLigaTaller") {
     try {
       if (!SECRETO) return { error: "portal no configurado" };
