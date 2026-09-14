@@ -73,8 +73,10 @@
  *     `sourceIp` y la huella de 8 caracteres del token, jamás el token completo.
  * 17. Ruteo: `rawPath` desconocido ⇒ 404; método equivocado ⇒ 404 (lo que el
  *     handler hace de verdad: cae al mismo catch-all, no hay 405); la rama del
- *     resolver se despacha por `info.fieldName` ANTES de cualquier lógica de
- *     `rawPath`.
+ *     resolver se despacha por `fieldName` — en la RAÍZ del evento, que es la
+ *     forma real con que Amplify Gen 2 invoca la Lambda, o bajo `info` — ANTES
+ *     de cualquier lógica de `rawPath`. REGRESIÓN 2026-09-14: buscarlo solo en
+ *     `info.fieldName` mandaba toda emisión al perímetro público ("malformado").
  *
  * ── LO QUE SE MOCKEA ─────────────────────────────────────────────────────────
  *  · `$amplify/env/taller-portal`  → tests/stubs/ vía `test.alias` (vite.config.ts)
@@ -386,9 +388,18 @@ function eventoResolver(
     tenantClaim?: string;
     sinIdentidad?: boolean;
     argumentos?: Record<string, unknown>;
+    /**
+     * Forma del evento. `"gen2"` (por defecto) es la REAL: Amplify Gen 2 invoca la
+     * Lambda con `{ typeName, fieldName, arguments, identity, source, request, prev }`
+     * — `fieldName` en la RAÍZ, sin `info` (plantilla VTL del pipeline desplegado,
+     * verificada en prod el 2026-09-14). `"info"` es la forma del evento directo de
+     * AppSync (`info.fieldName`), que el handler también acepta.
+     */
+    forma?: "gen2" | "info";
   } = {},
 ) {
   const {
+    forma = "gen2",
     grupos = ["admin", TENANT],
     correo = CORREO,
     sub = SUB,
@@ -399,7 +410,17 @@ function eventoResolver(
   const claims: Record<string, unknown> = { "cognito:groups": grupos };
   if (correo !== null) claims.email = correo;
   if (tenantClaim !== undefined) claims["custom:tenantId"] = tenantClaim;
-  const base: Record<string, unknown> = { info: { fieldName: campo }, arguments: argumentos };
+  const base: Record<string, unknown> =
+    forma === "gen2"
+      ? {
+          typeName: "Mutation",
+          fieldName: campo,
+          arguments: argumentos,
+          source: null,
+          request: { headers: {} },
+          prev: null,
+        }
+      : { info: { fieldName: campo }, arguments: argumentos };
   if (!sinIdentidad) base.identity = { ...(sub === null ? {} : { sub }), claims };
   return base;
 }
@@ -2118,6 +2139,43 @@ describe("P17 — ruteo: 404 para lo desconocido, y el resolver se despacha prim
     expect(r.statusCode).toBeUndefined();
     expect(r.headers).toBeUndefined();
     expect(r.body).toBeUndefined();
+  });
+
+  // ── REGRESIÓN EN PROD (2026-09-14, humo manual del paso 6) ──────────────────
+  // El handler buscaba el campo SOLO en `event.info.fieldName`. Amplify Gen 2 lo
+  // manda en la raíz (`event.fieldName`), así que cada "Copiar liga" real caía al
+  // perímetro público y quedaba en bitácora como "rechazado / malformado" con
+  // ip:"" — y el frontend mostraba el genérico "No se pudo generar la liga."
+  // Todos los tests anteriores fabricaban el evento con `info`, por eso pasaban.
+  it("REGRESIÓN 2026-09-14: el payload REAL de Gen 2 (fieldName en la raíz, sin `info`) entra a la rama y acuña", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    const evento = eventoResolver("generarLigaTaller", { forma: "gen2" });
+    expect(evento).not.toHaveProperty("info");
+    expect(evento).toHaveProperty("fieldName", "generarLigaTaller");
+    const r = resolver(await handler(evento));
+    // Ni el sobre HTTP del perímetro público ni el 401 opaco: la liga cruda.
+    expect(r.statusCode).toBeUndefined();
+    expect(r.body).toBeUndefined();
+    expect(r.error).toBeUndefined();
+    expect(Object.keys(r).sort()).toEqual(["expira", "token"]);
+    expect(typeof r.token).toBe("string");
+  });
+
+  it("REGRESIÓN 2026-09-14: revocar con el payload REAL de Gen 2 también entra a la rama", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    const r = resolver(await handler(eventoResolver("revocarLigaTaller", { forma: "gen2" })));
+    expect(r.statusCode).toBeUndefined();
+    expect(r.error).toBeUndefined();
+    expect(typeof r.ligaVersion).toBe("number");
+  });
+
+  it("la forma `info.fieldName` (evento directo de AppSync) sigue aceptándose", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    const r = resolver(await handler(eventoResolver("generarLigaTaller", { forma: "info" })));
+    expect(Object.keys(r).sort()).toEqual(["expira", "token"]);
   });
 
   it("un fieldName desconocido NO entra a la rama del resolver: cae al perímetro público", async () => {

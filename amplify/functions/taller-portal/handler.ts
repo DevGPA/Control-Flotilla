@@ -235,7 +235,17 @@ export const handler = async (event: any) => {
   // en el schema espera el valor tal cual — mismo patrón que
   // admin-users/handler.ts, que retorna `{ok, ...}` directo, no una respuesta
   // HTTP.
-  const campoResolver = event?.info?.fieldName;
+  // 🔴 DEFECTO EN PROD (humo manual 2026-09-14): Amplify Gen 2 (`a.handler.function`)
+  // invoca la Lambda con el payload heredado de `@function`:
+  // `{ typeName, fieldName, arguments, identity, source, request, prev }` —
+  // `fieldName` va en la RAÍZ del evento, NO bajo `info` (verificado en la
+  // plantilla VTL desplegada del pipeline `InvokeFnGenerarLigaTallerLambdaDataSource`).
+  // Buscarlo solo en `event.info.fieldName` hacía que TODA emisión cayera al
+  // perímetro público de abajo y se rechazara como "liga malformada". Ningún
+  // test lo atrapó porque todos fabricaban el evento con `info.fieldName` y el
+  // handler nunca se había ejecutado contra un backend real. Se aceptan las dos
+  // formas: la real de Gen 2 (raíz) y la del evento directo de AppSync (`info`).
+  const campoResolver = event?.fieldName ?? event?.info?.fieldName;
   if (campoResolver === "generarLigaTaller" || campoResolver === "revocarLigaTaller") {
     try {
       if (!SECRETO) return { error: "portal no configurado" };
