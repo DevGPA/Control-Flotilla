@@ -267,6 +267,59 @@ export async function fetchPartidas(tenantId: string): Promise<Partida[]> {
 export type DecisionPartida = "autorizar" | "rechazar";
 
 /**
+ * Campos de la decisión que DE VERDAD cambian respecto a la fila real, listos
+ * para el `update`. Un `null` explícito solo viaja cuando hay que BORRAR un
+ * valor que existía; lo que no cambia, no se manda.
+ *
+ * 🔴 Por qué existe (defecto en PROD, 2026-09-15): la ola de fixes mandaba
+ * SIEMPRE `motivoRechazo: null` y `motivoRechazoNota: null` al autorizar (para
+ * no dejar el rastro de un rechazo anterior pegado a una fila autorizada), y en
+ * la MISMA ola R92 le quitó la operación `delete` al grupo `operativo` sobre
+ * `TallerPartida`. En la autorización que genera Amplify, escribir `null` en un
+ * campo es una operación de BORRADO de ese campo: la regla de `operativo` quedó
+ * con `nullAllowedFields: []`, así que cada firma suya moría con
+ * `Unauthorized on [motivoRechazo, motivoRechazoNota]`. `admin` no lo notaba
+ * (su regla es `isAuthorizedOnAllFields`), así que el módulo se veía sano.
+ *
+ * Las dos decisiones eran correctas por separado; juntas rompieron la firma de
+ * Administración de Riesgos. Ninguna prueba lo atrapó porque la autorización
+ * real de AppSync no se ejecuta en las pruebas: son puras o estructurales.
+ *
+ * El `null` sigue viajando cuando de verdad hay que limpiar (dato corrupto: una
+ * `propuesta` que arrastra un motivo). Esa ruta es inalcanzable por la capa pura
+ * —`autorizar` exige `estado === "propuesta"` y una propuesta no tiene motivo—,
+ * así que en la práctica `operativo` nunca manda un `null`.
+ */
+export function camposDeDecision(
+  actual: Partida,
+  nueva: Partida,
+): Record<string, string | number | null> {
+  const out: Record<string, string | number | null> = {};
+  const poner = (campo: string, antes: unknown, ahora: unknown): void => {
+    if (antes === ahora) return;
+    if (ahora === undefined) {
+      // Solo se borra lo que existía; `undefined → undefined` no se manda.
+      if (antes !== undefined && antes !== null) out[campo] = null;
+      return;
+    }
+    out[campo] = ahora as string | number;
+  };
+  // Una partida AUTORIZADA no tiene motivo de rechazo: el valor que debe quedar
+  // es "ninguno". `autorizar()` hace `{...p}` y conservaría un motivo anterior,
+  // así que el borrado se decide aquí — y el diff hace que solo viaje cuando
+  // había algo que borrar.
+  const autorizada = nueva.estado === "autorizada";
+  poner("precioAutorizado", actual.precioAutorizado, nueva.precioAutorizado);
+  poner("motivoRechazo", actual.motivoRechazo, autorizada ? undefined : nueva.motivoRechazo);
+  poner(
+    "motivoRechazoNota",
+    actual.motivoRechazoNota,
+    autorizada ? undefined : nueva.motivoRechazoNota,
+  );
+  return out;
+}
+
+/**
  * Persiste la firma de UNA partida: aplica `autorizar`/`rechazar` (la lógica
  * pura de `src/taller/partidas.ts` — nunca reimplementada aquí) y escribe el
  * resultado en DynamoDB. La autorización es un REGISTRO, no una bandera: se
@@ -321,16 +374,13 @@ export async function guardarDecisionPartida(args: {
     visitaKey: nueva.visitaKey,
     partidaId: nueva.partidaId,
     estado: nueva.estado,
-    precioAutorizado: nueva.precioAutorizado,
-    // Se escriben SIEMPRE, incluso como `null`: al autorizar hay que BORRAR el
-    // motivo de un rechazo anterior, y mandarlos `undefined` no los serializa —
-    // el rastro viejo se quedaba pegado a una fila ya autorizada. (La transición
-    // `rechazada → autorizada` ya no es alcanzable tras la re-lectura de arriba;
-    // esto cierra el mismo hueco por el lado del dato.)
-    motivoRechazo: nueva.motivoRechazo ?? null,
-    motivoRechazoNota: nueva.motivoRechazoNota ?? null,
     decididoPor: nueva.decididoPor,
     decididoEn: nueva.decididoEn,
+    // El precio autorizado y el rastro del rechazo salen del DIFF contra la fila
+    // REAL: un `null` explícito solo viaja cuando hay algo que borrar. Mandarlos
+    // siempre dejaba fuera a `operativo`, que tras R92 ya no puede borrar campos
+    // en este modelo — ver camposDeDecision.
+    ...camposDeDecision(actual, nueva),
   });
   if (errors) throw new Error(`TallerPartida.update (decisión): ${JSON.stringify(errors)}`);
   return nueva;
