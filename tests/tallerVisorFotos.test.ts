@@ -53,4 +53,50 @@ describe("visor de fotos", () => {
     expect(visor.querySelector("img[src='x']")).toBeNull();
     expect(visor.textContent).toContain("<img src=x onerror=alert(1)>");
   });
+
+  it("abrir de nuevo cierra el anterior DE VERDAD: no deja la escucha de teclado viva", () => {
+    abrir();
+    abrirVisorFotos({ llaves: ["x.jpg", "y.jpg"], url });
+    // mientras esta abierto solo debe existir UN visor en el DOM
+    expect(document.querySelectorAll("#taller-visor-fotos").length).toBe(1);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(document.querySelector("#taller-visor-fotos")).toBeNull();
+
+    // si la escucha del PRIMER visor sobrevivio, esta flecha todavia dispararia
+    // su propio mover()/pintar() (una llamada a `url` que nadie ve).
+    const llamadasAntes = url.mock.calls.length;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(url.mock.calls.length).toBe(llamadasAntes);
+  });
+
+  it("una respuesta de foto vieja no pinta encima de la que el usuario ya esta viendo", async () => {
+    const resolvers: Array<(v: string) => void> = [];
+    const urlManual = vi.fn(
+      (k: string) =>
+        new Promise<string | null>((resolve) => {
+          void k;
+          resolvers.push(resolve);
+        }),
+    );
+
+    abrirVisorFotos({ llaves: ["a.jpg", "b.jpg"], url: urlManual });
+    // el usuario avanza a la segunda foto ANTES de que la primera petición responda
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(resolvers.length).toBe(2);
+
+    // ahora responde la PRIMERA peticion (a.jpg), tarde
+    resolvers[0]!("https://ejemplo.test/a.jpg");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const img = document.querySelector("#taller-visor-fotos img") as HTMLImageElement;
+    expect(img.src).not.toContain("a.jpg");
+
+    // la SEGUNDA peticion (b.jpg) si debe pintarse cuando responda
+    resolvers[1]!("https://ejemplo.test/b.jpg");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(img.src).toContain("b.jpg");
+  });
 });

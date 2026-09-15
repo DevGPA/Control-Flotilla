@@ -8,6 +8,10 @@
  */
 const ID = "taller-visor-fotos";
 
+/** Limpieza de la instancia viva. Abrir un visor cierra el anterior DE VERDAD:
+ *  quitar el nodo no basta, su escucha de teclado sobrevive en `document`. */
+let cerrarActual: (() => void) | null = null;
+
 export function abrirVisorFotos(opts: {
   llaves: readonly string[];
   inicial?: number;
@@ -17,10 +21,11 @@ export function abrirVisorFotos(opts: {
 }): void {
   const { llaves, titulo, subtitulo, url } = opts;
   if (!llaves.length) return;
-  document.getElementById(ID)?.remove();
+  cerrarActual?.();
 
   let i = Math.min(Math.max(opts.inicial ?? 0, 0), llaves.length - 1);
   const devolverFoco = document.activeElement as HTMLElement | null;
+  let generacion = 0;
 
   const overlay = document.createElement("div");
   overlay.id = ID;
@@ -75,13 +80,15 @@ export function abrirVisorFotos(opts: {
   overlay.append(cabecera, fila, aviso);
 
   function pintar(): void {
+    const gen = ++generacion;
     t2.textContent = `${subtitulo ? subtitulo + " · " : ""}foto ${i + 1} de ${llaves.length}`;
     img.removeAttribute("src");
     aviso.textContent = "Cargando…";
     const llave = llaves[i] as string;
     void url(llave)
       .then((u) => {
-        if (!document.getElementById(ID)) return;
+        // Respuesta vieja: el usuario ya avanzo/retrocedio (o cerro). Se descarta.
+        if (gen !== generacion) return;
         if (!u) {
           aviso.textContent = "Foto no disponible";
           return;
@@ -90,6 +97,7 @@ export function abrirVisorFotos(opts: {
         aviso.textContent = "";
       })
       .catch(() => {
+        if (gen !== generacion) return;
         aviso.textContent = "Foto no disponible";
       });
   }
@@ -100,10 +108,13 @@ export function abrirVisorFotos(opts: {
   }
 
   function cerrar(): void {
+    if (cerrarActual === cerrar) cerrarActual = null;
+    generacion++; // invalida cualquier respuesta de pintar() que siga en vuelo
     document.removeEventListener("keydown", onKey);
     overlay.remove();
     devolverFoco?.focus?.();
   }
+  cerrarActual = cerrar;
 
   function onKey(ev: KeyboardEvent): void {
     if (ev.key === "Escape") cerrar();
