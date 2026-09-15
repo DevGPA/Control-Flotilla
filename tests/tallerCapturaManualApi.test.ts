@@ -275,7 +275,15 @@ describe("guardarDecisionPartida — re-lee antes de aplicar la máquina de esta
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("al autorizar, motivoRechazo/nota se escriben como null — nunca sobreviven al cambio", async () => {
+  // CORREGIDO 2026-09-15 tras un defecto en PROD. Este test exigía que el
+  // payload llevara SIEMPRE `motivoRechazo: null` y `motivoRechazoNota: null`
+  // al autorizar. En la misma ola, R92 le quitó `delete` a `operativo` sobre
+  // TallerPartida, y en la autorización que genera Amplify escribir `null` ES
+  // borrar ese campo: cada firma de Administración de Riesgos moría con
+  // `Unauthorized`. `admin` no lo veía. La regla correcta no es "manda null
+  // siempre", es "no dejes un rastro que contradiga el estado": se limpia
+  // cuando hay algo que limpiar. Ver tests/tallerFirmaOperativo.test.ts.
+  it("al autorizar una propuesta limpia, el payload NO pide borrar nada (operativo puede firmar)", async () => {
     mockGet.mockResolvedValue({ data: propuesta, errors: undefined });
     mockUpdate.mockResolvedValue({ errors: undefined });
 
@@ -289,7 +297,30 @@ describe("guardarDecisionPartida — re-lee antes de aplicar la máquina de esta
 
     const payload = mockUpdate.mock.calls[0]![0];
     expect(payload.estado).toBe("autorizada");
-    // `undefined` NO se serializa: el rastro viejo se quedaría pegado.
+    expect(Object.prototype.hasOwnProperty.call(payload, "motivoRechazo")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(payload, "motivoRechazoNota")).toBe(false);
+    expect(Object.values(payload)).not.toContain(null);
+  });
+
+  it("si la fila arrastra un motivo viejo, autorizar SÍ lo borra — el rastro no sobrevive", async () => {
+    // Dato corrupto: inalcanzable por la capa pura (una `propuesta` no lleva
+    // motivo), pero si llegara así, la limpieza tiene que ocurrir.
+    mockGet.mockResolvedValue({
+      data: { ...propuesta, motivoRechazo: "Precio alto — recotizar", motivoRechazoNota: "nota" },
+      errors: undefined,
+    });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+
+    await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: enCache,
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-09-11T10:00:00Z",
+    });
+
+    const payload = mockUpdate.mock.calls[0]![0];
+    expect(payload.estado).toBe("autorizada");
     expect(payload.motivoRechazo).toBeNull();
     expect(payload.motivoRechazoNota).toBeNull();
   });
