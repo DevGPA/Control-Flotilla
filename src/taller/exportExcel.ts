@@ -327,6 +327,28 @@ export const CAMPOS_OMITIDOS: Record<string, string> = {
     "Bandera interna de hidratación (marca que el registro ya estuvo en la nube, guarda anti-resurrección). No es un dato de negocio.",
   gastoCapturadoOriginal:
     "R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera partidas, conservado al recortarlo del payload (anulación, nunca borrado). No es el gasto de la visita (ese es la suma de lo firmado); es rastro. Si Navares decide exportarlo, entra como columna propia 'Capturado originalmente'.",
+
+  // ── Lo que reporta el PROVEEDOR desde su liga (bloque Proveedor en el registro de unidad)
+  estadoOperativo:
+    "Estado actual del taller (revisando, reparando, esperandoRefaccion, lista) reportado desde la liga del proveedor. Se muestra en el registro de la unidad; su exportación se decide junto con la factura del proveedor.",
+  kmTaller:
+    "Kilometraje que reportó el taller al abrir la liga (columna real del proveedor). NO sustituye a 'km' (lo que teclea Riesgos, que sí se exporta). Se muestra en el registro de la unidad; exportación a decidir con factura.",
+  fsalidaEstTaller:
+    "Fecha de salida estimada que el taller promete HOY, actualizada cada visita. NO sustituye a 'fsalidaEst' (lo que teclea Riesgos, que sí se exporta). Se muestra en el registro de la unidad; exportación a decidir con factura.",
+  fsalidaEstCompromiso:
+    "La PRIMERA promesa de fecha de salida, congelada por el portal. Se muestra en el registro de la unidad; exportación a decidir con factura.",
+
+  // ── Liga del proveedor (control de acceso, no dato de negocio de la visita)
+  ligaVersion:
+    "Versión actual de la liga del proveedor (contador de cambios en el portal). Es control de acceso, no un dato de negocio de la visita; no se exporta.",
+  ligaCreadaEn:
+    "Timestamp de emisión de la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaCreadaPor:
+    "Identidad del usuario que emitió la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaRevocadaEn:
+    "Timestamp de revocación de la liga del proveedor (NULL si no revocada). Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaRevocadaPor:
+    "Identidad del usuario que revocó la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
 };
 
 /** Fila por entry, en el orden de las columnas. */
