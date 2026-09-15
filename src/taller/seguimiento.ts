@@ -109,10 +109,13 @@ export function resumenPartidas(ps: readonly Partida[]): ResumenPartidas {
     if (p.estado === "propuesta") {
       r.pendientes.n++;
       r.pendientes.monto += finito(p.precio);
-    } else if (p.estado === "autorizada") {
+    } else if (p.estado === "autorizada" || p.estado === "terminada") {
       r.autorizadas.n++;
       // El monto autorizado sale de precioAutorizado, que es lo que congela
       // `autorizar` — la MISMA base que usa gastoDerivado. Una prueba lo exige.
+      // `terminada` es una autorizada que ya se cerró: cuenta igual hacia el
+      // dinero. Espejo de totalesVisita (src/taller/partidas.ts:144) — si esas
+      // dos ramas se separan, nace una segunda fórmula del gasto.
       r.autorizadas.monto += finito(p.precioAutorizado);
     } else if (p.estado === "rechazada") {
       r.rechazadas.n++;

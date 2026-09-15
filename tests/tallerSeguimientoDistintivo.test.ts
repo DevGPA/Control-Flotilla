@@ -31,13 +31,14 @@ describe("resumenPartidas", () => {
     P({ partidaId: "c", estado: "autorizada", precio: 250, precioAutorizado: 250 }),
     P({ partidaId: "d", estado: "rechazada", precio: 2500 }),
     P({ partidaId: "e", estado: "borrador", precio: 80, creadoPor: "liga:" + VK }),
+    P({ partidaId: "g", estado: "terminada", precio: 1500, precioAutorizado: 1500 }),
     P({ partidaId: "f", estado: "cancelada", precio: 999 }),
   ];
 
   it("cuenta y suma por estado", () => {
     const r = resumenPartidas(ps);
     expect(r.pendientes).toEqual({ n: 1, monto: 550 });
-    expect(r.autorizadas).toEqual({ n: 2, monto: 35250 });
+    expect(r.autorizadas).toEqual({ n: 3, monto: 36750 });
     expect(r.rechazadas).toEqual({ n: 1, monto: 2500 });
     expect(r.borradoresTaller).toBe(1);
   });
