@@ -10,6 +10,7 @@ import {
 import { gastoDerivado, type Partida } from "../src/taller/partidas";
 import { visitaKeyDe } from "../src/api/tallerPartidas";
 import type { TallerEntry } from "../src/taller/types";
+import type { LegacyTallerEntry } from "../src/api/batchUpload";
 
 const VK = "JB4479A|2026-09-14";
 const P = (o: Partial<Partida> = {}): Partida => ({
@@ -125,8 +126,8 @@ describe("filasPendientes — la bandeja de ENTRADA", () => {
     fentrada: "2026-09-08",
     estado: "En Reparación",
   } as TallerEntry;
-  const k1 = visitaKeyDe(e1 as any);
-  const k2 = visitaKeyDe(e2 as any);
+  const k1 = visitaKeyDe(e1 as unknown as LegacyTallerEntry);
+  const k2 = visitaKeyDe(e2 as unknown as LegacyTallerEntry);
 
   const mapa = new Map<string, Partida[]>([
     [k1, [P({ partidaId: "a", visitaKey: k1, precio: 550, propuestoEn: "2026-09-14T17:21:00Z" })]],

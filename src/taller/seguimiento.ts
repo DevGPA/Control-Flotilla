@@ -9,6 +9,7 @@
 import type { TallerEntry } from "./types";
 import type { Partida } from "./partidas";
 import { visitaKeyDe } from "../api/tallerPartidas";
+import type { LegacyTallerEntry } from "../api/batchUpload";
 
 /** Debe coincidir con VIGENCIA_LIGA_MS del portal (taller-portal/token.ts).
  *  El frontend no puede importar del backend, así que se duplica y una prueba
@@ -178,7 +179,13 @@ export function filasPendientes(
   const hoy = ahoraISO.slice(0, 10);
   const filas: FilaPendiente[] = [];
   for (const entry of entries) {
-    const visitaKey = visitaKeyDe(entry as any);
+    // `visitaKeyDe` pide LegacyTallerEntry. La ÚNICA diferencia con TallerEntry es
+    // `km` (aquí `number | string`, allá `number`), y la llave nunca lo lee: usa
+    // plate/eco/unitKey/id/fentrada/freporte (tallerCloudKey, batchUpload.ts:425).
+    // Se pasa el entry COMPLETO a propósito — si mañana la llave leyera otro campo,
+    // aquí ya viaja — y con el tipo concreto, no `any`, para que un cambio de firma
+    // sí lo atrape el compilador.
+    const visitaKey = visitaKeyDe(entry as unknown as LegacyTallerEntry);
     const ps = porVisita.get(visitaKey) ?? [];
     const resumen = resumenPartidas(ps);
     if (resumen.pendientes.n === 0) continue;
