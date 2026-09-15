@@ -30,7 +30,8 @@ import {
   type LegacySemanalEntry,
   type LegacyTallerEntry,
 } from "./batchUpload";
-import { visitaKeyDe } from "./tallerPartidas";
+import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
+import { abrirVisorFotos } from "../taller/visorFotos";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
@@ -520,6 +521,14 @@ export function setupCloud(): void {
     return refIdTaller(unitUid, fechaEntrada);
   };
   window.__tallerCloudKey = tallerCloudKey;
+
+  // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
+  // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
+  window.__abrirVisorFotos = (opts) =>
+    abrirVisorFotos({
+      ...opts,
+      url: (llave) => urlFotoPartida(llave),
+    });
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo

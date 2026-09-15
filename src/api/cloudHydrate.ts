@@ -255,6 +255,13 @@ declare global {
     __visitaKeyDe?: (e: LegacyTallerEntry) => string;
     /** URL firmada de una foto de partida (llave completa, sin normalizar). */
     __urlFotoPartida?: (key: string) => Promise<string | null>;
+    /** Abre el visor de fotos del taller. Lo monta src/taller/visorFotos.ts. */
+    __abrirVisorFotos?: (opts: {
+      llaves: readonly string[];
+      inicial?: number;
+      titulo?: string;
+      subtitulo?: string;
+    }) => void;
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a
