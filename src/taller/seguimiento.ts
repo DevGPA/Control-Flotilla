@@ -7,6 +7,8 @@
  * docs/superpowers/specs/2026-09-15-taller-seguimiento-proveedor-design.md
  */
 import type { TallerEntry } from "./types";
+import type { Partida } from "./partidas";
+import { visitaKeyDe } from "../api/tallerPartidas";
 
 /** Debe coincidir con VIGENCIA_LIGA_MS del portal (taller-portal/token.ts).
  *  El frontend no puede importar del backend, así que se duplica y una prueba
@@ -83,4 +85,120 @@ export function promesaTaller(e: Partial<TallerEntry>, hoyISO: string): PromesaT
     return { kind: "vencida", fecha, diasVencida: -dias, compromisoOriginal };
   }
   return { kind: "vigente", fecha, diasRestantes: Math.max(dias, 0), compromisoOriginal };
+}
+
+export type ResumenPartidas = {
+  pendientes: { n: number; monto: number };
+  autorizadas: { n: number; monto: number };
+  rechazadas: { n: number; monto: number };
+  /** Capturadas por el taller y AÚN NO enviadas: informativo, no accionable. */
+  borradoresTaller: number;
+};
+
+const finito = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+export function resumenPartidas(ps: readonly Partida[]): ResumenPartidas {
+  const r: ResumenPartidas = {
+    pendientes: { n: 0, monto: 0 },
+    autorizadas: { n: 0, monto: 0 },
+    rechazadas: { n: 0, monto: 0 },
+    borradoresTaller: 0,
+  };
+  for (const p of ps) {
+    if (p.estado === "propuesta") {
+      r.pendientes.n++;
+      r.pendientes.monto += finito(p.precio);
+    } else if (p.estado === "autorizada") {
+      r.autorizadas.n++;
+      // El monto autorizado sale de precioAutorizado, que es lo que congela
+      // `autorizar` — la MISMA base que usa gastoDerivado. Una prueba lo exige.
+      r.autorizadas.monto += finito(p.precioAutorizado);
+    } else if (p.estado === "rechazada") {
+      r.rechazadas.n++;
+      r.rechazadas.monto += finito(p.precio);
+    } else if (p.estado === "borrador" && String(p.creadoPor ?? "").startsWith("liga:")) {
+      r.borradoresTaller++;
+    }
+  }
+  return r;
+}
+
+export type Distintivo =
+  | { kind: "promesa-vencida"; dias: number }
+  | { kind: "esperando-firma"; n: number }
+  | { kind: "liga-activa"; dias: number }
+  | { kind: "liga-revocada" }
+  | { kind: "sin-liga" };
+
+/** Una sola señal por visita, la más urgente. El orden es la decisión de
+ *  producto (spec §6.2) y no depende de quién llame. */
+export function distintivoProveedor(
+  liga: EstadoLiga,
+  promesa: PromesaTaller,
+  resumen: ResumenPartidas,
+): Distintivo {
+  if (promesa.kind === "vencida") return { kind: "promesa-vencida", dias: promesa.diasVencida };
+  if (resumen.pendientes.n > 0) return { kind: "esperando-firma", n: resumen.pendientes.n };
+  if (liga.kind === "activa") return { kind: "liga-activa", dias: liga.diasRestantes };
+  if (liga.kind === "revocada") return { kind: "liga-revocada" };
+  // Una liga vencida ya no sirve para nada: se lee igual que no tenerla.
+  return { kind: "sin-liga" };
+}
+
+export function etiquetaDistintivo(d: Distintivo): string {
+  switch (d.kind) {
+    case "promesa-vencida":
+      return `Promesa vencida · ${d.dias}d`;
+    case "esperando-firma":
+      return `Esperando firma · ${d.n}`;
+    case "liga-activa":
+      return `Liga activa · ${d.dias}d`;
+    case "liga-revocada":
+      return "Liga revocada";
+    default:
+      return "Sin liga";
+  }
+}
+
+export type FilaPendiente = {
+  entry: TallerEntry;
+  visitaKey: string;
+  n: number;
+  monto: number;
+  /** `propuestoEn` de la pendiente más antigua: lo que más ha esperado. */
+  masAntigua?: string;
+  distintivo: Distintivo;
+};
+
+export function filasPendientes(
+  entries: readonly TallerEntry[],
+  porVisita: ReadonlyMap<string, Partida[]>,
+  ahoraISO: string,
+): FilaPendiente[] {
+  const hoy = ahoraISO.slice(0, 10);
+  const filas: FilaPendiente[] = [];
+  for (const entry of entries) {
+    const visitaKey = visitaKeyDe(entry as any);
+    const ps = porVisita.get(visitaKey) ?? [];
+    const resumen = resumenPartidas(ps);
+    if (resumen.pendientes.n === 0) continue;
+    const esperas = ps
+      .filter((p) => p.estado === "propuesta" && p.propuestoEn)
+      .map((p) => String(p.propuestoEn))
+      .sort();
+    filas.push({
+      entry,
+      visitaKey,
+      n: resumen.pendientes.n,
+      monto: resumen.pendientes.monto,
+      masAntigua: esperas[0],
+      distintivo: distintivoProveedor(
+        estadoLiga(entry, ahoraISO),
+        promesaTaller(entry, hoy),
+        resumen,
+      ),
+    });
+  }
+  // La que más ha esperado, arriba. Sin `propuestoEn` va al final.
+  return filas.sort((a, b) => (a.masAntigua ?? "9999").localeCompare(b.masAntigua ?? "9999"));
 }
