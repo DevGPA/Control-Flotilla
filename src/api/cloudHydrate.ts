@@ -1048,6 +1048,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         // Marca "ya estuvo en cloud" — la auto-migración no lo re-sube si otro
         // usuario lo borra (guarda anti-resurrección, Fase C2). Persiste al
         // IndexedDB local junto con el entry.
+        // Lo que reporta el proveedor y el estado de su liga: COLUMNAS de la
+        // fila, no `datos` (el blob lo reemplaza cada upload y las perdería).
+        // Ver spec 2026-09-15-taller-seguimiento-proveedor-design.md §4.1.
+        estadoOperativo: t.estadoOperativo ?? undefined,
+        kmTaller: numOrUndef(t.km),
+        fsalidaEstTaller: t.fsalidaEst ?? undefined,
+        fsalidaEstCompromiso: t.fsalidaEstCompromiso ?? undefined,
+        ligaVersion: numOrUndef(t.ligaVersion),
+        ligaCreadaEn: t.ligaCreadaEn ?? undefined,
+        ligaCreadaPor: t.ligaCreadaPor ?? undefined,
+        ligaRevocadaEn: t.ligaRevocadaEn ?? undefined,
+        ligaRevocadaPor: t.ligaRevocadaPor ?? undefined,
         _cloud: true,
       };
     });
