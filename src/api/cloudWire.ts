@@ -32,6 +32,7 @@ import {
 } from "./batchUpload";
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
 import { abrirVisorFotos } from "../taller/visorFotos";
+import { estadoLiga, promesaTaller, etiquetaDistintivo } from "../taller/seguimiento";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
@@ -529,6 +530,11 @@ export function setupCloud(): void {
       ...opts,
       url: (llave) => urlFotoPartida(llave),
     });
+
+  // Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
+  window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
+  window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
+  window.__etiquetaDistintivo = etiquetaDistintivo;
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo

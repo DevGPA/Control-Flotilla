@@ -77,6 +77,7 @@ import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../type
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
 import { migrateEstado, normalizeArea } from "../taller/types";
+import type { EstadoLiga, PromesaTaller, Distintivo } from "../taller/seguimiento";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -262,6 +263,11 @@ declare global {
       titulo?: string;
       subtitulo?: string;
     }) => void;
+    /** Capa pura del seguimiento del proveedor (src/taller/seguimiento.ts):
+     *  el monolito PINTA `_provPintar(e)`, nunca recalcula fechas a mano. */
+    __estadoLiga?: (e: Partial<TallerEntry>) => EstadoLiga;
+    __promesaTaller?: (e: Partial<TallerEntry>) => PromesaTaller;
+    __etiquetaDistintivo?: (d: Distintivo) => string;
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a

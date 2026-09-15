@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bn3iSZrV4iR3rjirR6sm7/WI7zUK72SV86T1VqPb+ZA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-wkgLIKecsRBbxGTz6lKZbtpAkll3BZA2O+0kh77LZbg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1327,6 +1327,31 @@
           <option value="Administración">Administración</option>
         </select>
       </div>
+      <!-- Seguimiento del proveedor (Plan 2, bloque 1). Todo lo que muestra ya
+           se guarda hoy: liga (columnas ligaCreadaEn/Por, ligaRevocada*) y lo
+           que el taller reporta desde su liga (estadoOperativo, km, fsalidaEst
+           y su compromiso). Riesgos VE y DECIDE; el taller REPORTA. -->
+      <div class="tl-sec needs-hibrido">Proveedor</div>
+      <div id="tf-proveedor" class="tl-field full needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
+        <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
+             ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+             R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
+             §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
+             operativo tampoco por sí solo… la restricción se aplica en la UI Y
+             en el Lambda". needs-liga = grupo admin O grupo riesgos (la
+             credencial adicional de Administración de Riesgos, que NO es admin).
+             El permiso real lo aplican las dos mutaciones de
+             amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
+             esto es la capa de UI de esa misma regla. -->
+        <div id="tf-prov-liga" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
+          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
+        </div>
+        <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
+        <div id="tf-prov-taller" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
+        <div id="tf-prov-taller-nota" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
+        <div id="tf-prov-partidas"></div>
+      </div>
       <div class="tl-sec">Mantenimiento</div>
       <div class="tl-field">
         <label for="tf-estado">Estado</label>
@@ -1398,18 +1423,6 @@
       <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
       <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
-      <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
-           ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
-           R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
-           §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
-           operativo tampoco por sí solo… la restricción se aplica en la UI Y
-           en el Lambda". needs-liga = grupo admin O grupo riesgos (la
-           credencial adicional de Administración de Riesgos, que NO es admin).
-           El permiso real lo aplican las dos mutaciones de
-           amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
-           esto es la capa de UI de esa misma regla. -->
-      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
-      <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
       <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
@@ -7756,6 +7769,87 @@ function _partidasConfiables(){
   return window.__tallerPartidasCargadas === true;
 }
 
+// Pinta el bloque Proveedor de una visita YA persistida. Todo el cálculo vive
+// en la capa pura (src/taller/seguimiento.ts): aquí solo se traduce a DOM.
+// XSS: createElement + textContent, nunca innerHTML.
+function _provPintar(e){
+  const cont = document.getElementById("tf-proveedor");
+  if(!cont) return;
+  if(!e || typeof window.__estadoLiga !== "function"){ cont.style.display = "none"; return; }
+  cont.style.display = "flex";
+
+  const liga = window.__estadoLiga(e);
+  const prom = window.__promesaTaller(e);
+
+  // ── Fila 1: la liga
+  const filaLiga = document.getElementById("tf-prov-liga");
+  const meta = document.getElementById("tf-prov-liga-meta");
+  for(const n of Array.from(filaLiga.childNodes)){
+    if(n.id !== "btn-liga-copiar" && n.id !== "btn-liga-revocar") n.remove();
+  }
+  const pill = document.createElement("span");
+  pill.className = "tl-pill " + (liga.kind === "activa" ? "repar" : liga.kind === "revocada" ? "pendiente" : "");
+  pill.textContent = liga.kind === "activa" ? "Liga activa"
+    : liga.kind === "revocada" ? "Liga revocada"
+    : liga.kind === "vencida" ? "Liga vencida" : "Sin liga";
+  const detalle = document.createElement("span");
+  detalle.style.cssText = "font-size:12px;color:var(--w1);font-weight:600";
+  detalle.textContent = liga.kind === "activa" ? `Vence en ${liga.diasRestantes} días` : "";
+  filaLiga.prepend(detalle);
+  filaLiga.prepend(pill);
+
+  meta.textContent = liga.kind === "activa"
+    ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
+    : liga.kind === "revocada"
+      ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
+      : liga.kind === "vencida"
+        ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
+        : "Sin liga emitida para esta visita.";
+
+  // ── Fila 2: lo que reporta el taller
+  const filaT = document.getElementById("tf-prov-taller");
+  filaT.textContent = "";
+  const ETIQ = { revisando:"REVISANDO", reparando:"REPARANDO", esperandoRefaccion:"ESPERANDO REFACCIÓN", lista:"LISTA" };
+  const CLS  = { revisando:"diag", reparando:"repar", esperandoRefaccion:"porrec", lista:"listo" };
+  if(e.estadoOperativo){
+    const p = document.createElement("span");
+    p.className = "tl-pill " + (CLS[e.estadoOperativo] || "");
+    p.textContent = ETIQ[e.estadoOperativo] || e.estadoOperativo;
+    filaT.appendChild(p);
+  }
+  if(typeof e.kmTaller === "number"){
+    const km = document.createElement("span");
+    km.style.cssText = "font-size:12px;color:var(--w1)";
+    km.textContent = `km del taller ${e.kmTaller.toLocaleString("es-MX")}`;
+    filaT.appendChild(km);
+  }
+  if(prom.kind !== "sin-promesa"){
+    const f = document.createElement("span");
+    f.style.cssText = "font-size:12px;color:var(--w1)";
+    f.textContent = `· promete salida ${fmtDate(prom.fecha)}`;
+    filaT.appendChild(f);
+    if(prom.compromisoOriginal){
+      const o = document.createElement("span");
+      o.style.cssText = "font-size:10.5px;color:var(--s2)";
+      o.textContent = `(había prometido ${fmtDate(prom.compromisoOriginal)})`;
+      filaT.appendChild(o);
+    }
+    if(prom.kind === "vencida"){
+      const v = document.createElement("span");
+      v.className = "tl-pill pendiente";
+      v.style.marginLeft = "auto";
+      v.textContent = `PROMESA VENCIDA · ${prom.diasVencida} días`;
+      filaT.appendChild(v);
+    }
+  }
+  if(!filaT.childNodes.length){
+    const nada = document.createElement("span");
+    nada.style.cssText = "font-size:12px;color:var(--s2)";
+    nada.textContent = "El taller aún no ha reportado estado.";
+    filaT.appendChild(nada);
+  }
+}
+
 // Dinero DERIVADO de partidas cuando el tri-estado dice que no se puede creer:
 // un "$0" ahí sería una mentira con formato de dato. Se usa en las lecturas de
 // dinero de taller (KPI del mes, drill-down, Historial, expediente).
@@ -10043,6 +10137,10 @@ function openTallerModal(id){
       }
     }
   }
+
+  // Bloque Proveedor: lo que reporta el taller desde su liga. Solo pinta con
+  // una visita YA persistida; un ingreso nuevo aún no tiene nada que mostrar.
+  if(e) _provPintar(e); else document.getElementById("tf-proveedor").style.display = "none";
 
   buildTallerSucOptions();
   openModal("taller-modal");
