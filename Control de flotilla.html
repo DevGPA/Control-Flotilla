@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-EIVzT/v1SiPkLCAWZtgB6SINtZU2p6Q0VZYNslB6WNQ=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-EDSf0BVm9ovwy0t0retHz8Sg/0pErbUmYmecH0H/b4Y=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7972,7 +7972,13 @@ function _provFilaHistorial(p){
   const precio = document.createElement("div");
   precio.style.cssText = "font-size:12px;font-weight:700;color:" + (esAutorizadaOTerminada ? "var(--w1)" : "var(--s1)");
   const monto = esAutorizadaOTerminada ? p.precioAutorizado : p.precio;
-  precio.textContent = `${_fmtMon2(typeof monto === "number" && isFinite(monto) ? monto : 0)} · ${p.tipo === "manoObra" ? "mano de obra" : "refacción"}`;
+  const hayMonto = typeof monto === "number" && isFinite(monto);
+  const tipoTxt = p.tipo === "manoObra" ? "mano de obra" : "refacción";
+  // Minor 2 (ronda 1): un monto ausente (rechazada/borrador sin precio nunca
+  // capturado) es un DATO QUE FALTA, no un $0 — mismo criterio que
+  // _bnPartida (tienePrecio/esCero, R69(c)). Un 0 finito sigue siendo un
+  // "$0.00" real (p.ej. garantía/cortesía autorizada en $0).
+  precio.textContent = hayMonto ? `${_fmtMon2(monto)} · ${tipoTxt}` : `sin precio · ${tipoTxt}`;
 
   const rastro = document.createElement("div");
   rastro.style.cssText = "font-size:10.5px;color:var(--s2)";
@@ -8557,7 +8563,7 @@ function _bnRepintar(){
   if(typeof renderTaller === "function") renderTaller();
   if(_tallerEditId && document.getElementById("taller-modal")?.classList.contains("open")){
     const e = tallerEntries.find(x => x.id === _tallerEditId);
-    if(e){ _tfGastoPintar(e); _provPintar(e); _provPartidas(e); }
+    if(e){ _tfGastoPintar(e); _provPintar(e); }
   }
 }
 
@@ -10234,18 +10240,7 @@ function openTallerModal(id){
   document.getElementById("tf-fsalida-est").value  = e?.fsalidaEst||"";
   document.getElementById("tf-fsalida-real").value = e?.fsalidaReal||"";
   document.getElementById("tf-km").value           = e?.km||"";
-  // Task 9 (el gasto se calcula, no se captura): con partidas para esta visita,
-  // el campo pasa a solo lectura mostrando lo derivado (gastoDerivado,
-  // src/taller/partidas.ts) — sin partidas, sigue editable como siempre
-  // (visitas históricas y captura manual).
-  // Fix ronda 1: el valor SIEMPRE se pinta como número (nunca "" vacío) — un
-  // campo en blanco con partidas cotizadas pero nada autorizado leía como
-  // "esta visita no cuesta nada".
-  // Fix ronda 2 (Important 2): la leyenda declara lo pendiente con
-  // montoPendienteDeFirma (src/taller/partidas.ts) — NUNCA un residuo
-  // calculado aquí (cotizado - autorizado - rechazado solo cuadraba porque
-  // autorizar() congela precioAutorizado = precio; con una autorización a
-  // precio negociado el residuo mentiría).
+  // El candado de #tf-gasto vive en _tfGastoPintar(e).
   {
     const psGasto = e ? _partidasDeVisita(e) : [];
     _tfGastoPintar(e);

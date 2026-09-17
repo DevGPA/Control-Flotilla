@@ -45,11 +45,19 @@ describe("partidas dentro del registro de la unidad", () => {
     expect(c).toContain("Borrador del taller");
   });
 
+  // T6-8 (ronda 1, fix Important 1): _provPintar YA termina su propio cuerpo
+  // llamando _provPartidas — _bnRepintar llamándolo TAMBIÉN duplicaba el
+  // repintado de la lista y las firmas de foto (window.__urlFotoPartida) por
+  // cada miniatura visible, en cada autorizar/rechazar. Un solo punto de
+  // entrada: _bnRepintar solo pinta _tfGastoPintar + _provPintar.
   it("tras decidir se repinta el bloque, la tabla y el contador — sin recargar", () => {
-    const c = cuerpo("_bnRepintar");
-    expect(c).toContain("_provPartidas");
-    expect(c).toContain("renderTaller");
-    expect(c).toContain("updateTallerBadge");
+    const bnR = cuerpo("_bnRepintar");
+    expect(bnR).toContain("_tfGastoPintar(");
+    expect(bnR).toContain("_provPintar(e)");
+    expect(bnR).toContain("renderTaller");
+    expect(bnR).toContain("updateTallerBadge");
+    expect(bnR).not.toContain("_provPartidas(");
+    expect(cuerpo("_provPintar")).toContain("_provPartidas(e)");
   });
 
   it("pinta con textContent, nunca innerHTML", () => {
@@ -62,6 +70,10 @@ describe("partidas dentro del registro de la unidad", () => {
     const c = cuerpo("_provPartidas");
     expect(c).toContain("terminada");
     expect(c).toContain("e.tecnico");
+    // Minor 3 (ronda 1, T6-1): `fila` no lleva `entry` — nadie lo lee, y su
+    // presencia sugería (de mentiras) que _provPartidas necesita el entry
+    // completo en vez de solo visitaKey/proveedor.
+    expect(c).not.toContain("entry:");
   });
 
   it("el historial pinta terminada y cancelada con su propio rótulo, sin innerHTML", () => {
@@ -70,6 +82,14 @@ describe("partidas dentro del registro de la unidad", () => {
     expect(c).toContain("TERMINADA");
     expect(c).toContain("CANCELADA");
     expect(c).not.toContain(".innerHTML");
+  });
+
+  // Minor 2 (ronda 1): un monto ausente (rechazada/borrador sin precio nunca
+  // capturado) es un dato que falta, no un $0 — mismo criterio que
+  // _bnPartida (tienePrecio/esCero, R69(c)). Un 0 finito sigue siendo un
+  // "$0.00" real (p.ej. garantía/cortesía autorizada en $0).
+  it('una partida sin precio capturado dice "sin precio", nunca $0.00', () => {
+    expect(cuerpo("_provFilaHistorial")).toContain("sin precio");
   });
 
   it("la miniatura de la partida abre el visor de fotos", () => {
