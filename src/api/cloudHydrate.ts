@@ -77,7 +77,7 @@ import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../type
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
 import { migrateEstado, normalizeArea } from "../taller/types";
-import type { EstadoLiga, PromesaTaller, Distintivo } from "../taller/seguimiento";
+import type { EstadoLiga, PromesaTaller, Distintivo, ResumenPartidas } from "../taller/seguimiento";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -268,6 +268,10 @@ declare global {
     __estadoLiga?: (e: Partial<TallerEntry>) => EstadoLiga;
     __promesaTaller?: (e: Partial<TallerEntry>) => PromesaTaller;
     __etiquetaDistintivo?: (d: Distintivo) => string;
+    /** Capa pura de seguimiento (src/taller/seguimiento.ts): pendientes,
+     *  autorizadas (incluye terminada) y rechazadas de una visita — el
+     *  registro pinta los filtros y los totales, nunca cuenta a mano. */
+    __resumenPartidas?: (ps: Partida[]) => ResumenPartidas;
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a

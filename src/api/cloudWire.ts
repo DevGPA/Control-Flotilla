@@ -32,7 +32,12 @@ import {
 } from "./batchUpload";
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
 import { abrirVisorFotos } from "../taller/visorFotos";
-import { estadoLiga, promesaTaller, etiquetaDistintivo } from "../taller/seguimiento";
+import {
+  estadoLiga,
+  promesaTaller,
+  etiquetaDistintivo,
+  resumenPartidas,
+} from "../taller/seguimiento";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
@@ -535,6 +540,7 @@ export function setupCloud(): void {
   window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
   window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
   window.__etiquetaDistintivo = etiquetaDistintivo;
+  window.__resumenPartidas = resumenPartidas;
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo
