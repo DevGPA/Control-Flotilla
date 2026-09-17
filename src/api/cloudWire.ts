@@ -39,6 +39,7 @@ import {
   resumenPartidas,
   distintivoProveedor,
   prioridadDistintivo,
+  filasPendientes,
 } from "../taller/seguimiento";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
@@ -554,6 +555,12 @@ export function setupCloud(): void {
     );
   };
   window.__prioridadDistintivo = prioridadDistintivo;
+  // Task 8 (bandeja de entrada): una fila por UNIDAD con partidas pendientes,
+  // ordenada por la que más ha esperado — src/taller/seguimiento.ts la arma
+  // (testeada); el monolito ya no agrupa por visita a mano (__filasBandeja/
+  // _bnGrupo quedan sin caller, ver comentario junto a _bnGrupo).
+  window.__filasPendientes = (entries, porVisita) =>
+    filasPendientes(entries, porVisita, new Date().toISOString());
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo

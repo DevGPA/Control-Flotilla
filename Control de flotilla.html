@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-W04YauAbnh0QZ+lc4o/aGkD1zYXuGUVyAUpJWI2pToE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-g0oOKsg3pSF1TD6eYKKh/6pP9YWr210NnviS3l6crVg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -627,7 +627,7 @@
     </button>
     <button class="tl-subtab needs-hibrido" id="tltab-bandeja" role="tab" aria-selected="false" onclick="tlSwitch('bandeja')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
-      Por autorizar
+      Pendientes de firma
       <span class="tl-subbadge" id="tl-bandeja-cnt" style="display:none">0</span>
     </button>
     <button class="tl-subtab" id="tltab-historial" role="tab" aria-selected="false" onclick="tlSwitch('historial')">
@@ -759,9 +759,9 @@
       <tbody id="acc-tbody"></tbody>
     </table>
   </div>
-  <!-- Bandeja de firmas (Task 8): contenedor PROPIO, pintado por renderBandeja()
-       con createElement/textContent — la descripción y la nota de rechazo las
-       escribe un proveedor NO autenticado, nunca innerHTML con esos datos. -->
+  <!-- Pendientes de firma — bandeja de ENTRADA por unidad (Plan 2, Tarea 8):
+       contenedor PROPIO, pintado por renderBandeja() con createElement/textContent.
+       Decidir (autorizar/rechazar) vive DENTRO del registro de la unidad, nunca acá. -->
   <div id="tl-bandeja" style="display:none"></div>
 </div>
 
@@ -7070,7 +7070,7 @@ window.openGastoModal=openGastoModal;
 // ── Cambiar sub-vista del Taller ──────────────────────────
 function tlSwitch(v){
   tlSubView = v;
-  // 4 sub-pestañas: activas · bandeja (por autorizar) · historial · accesorios (limpiabrisas y batería por unidad).
+  // 4 sub-pestañas: activas · bandeja (pendientes de firma) · historial · accesorios (limpiabrisas y batería por unidad).
   const tabs = { activas:"tltab-activas", bandeja:"tltab-bandeja", historial:"tltab-historial", accesorios:"tltab-accesorios" };
   for(const [key,id] of Object.entries(tabs)){
     const el = document.getElementById(id);
@@ -8053,7 +8053,7 @@ function _opsVacio(emptyEl, ok){
 // ── Render tabla taller ───────────────────────────────────
 function renderTaller(){
   // Apagador (Task 10): togglea la clase del body ANTES de calcular nada —
-  // la sub-pestaña "Por autorizar" (.needs-hibrido) y el resto de esta
+  // la sub-pestaña "Pendientes de firma" (.needs-hibrido) y el resto de esta
   // función leen window.__tallerHibrido, nunca al revés.
   applyTallerHibridoGate();
   // El badge de la pestaña Taller pasa a contar lo que espera TU firma, via
@@ -8086,7 +8086,7 @@ function renderTaller(){
       _bdg.style.display = _pend ? "" : "none";
       _bdg.title = _pend ? `${_pend} partida(s) esperando tu autorización` : "";
     }
-    // Mismo conteo para la sub-pestaña "Por autorizar" — un solo _pend, nunca
+    // Mismo conteo para la sub-pestaña "Pendientes de firma" — un solo _pend, nunca
     // un segundo cálculo que pueda desalinearse del badge o de la bandeja.
     const _bnCnt = document.getElementById("tl-bandeja-cnt");
     if (_bnCnt) {
@@ -8112,13 +8112,14 @@ function renderTaller(){
   renderActivas();
 }
 
-// ── Bandeja de firmas (Task 8) ─────────────────────────────
-// Agrupada por VISITA, no por partida suelta: autorizar partidas aisladas
-// ciega al conjunto — se pueden firmar cuatro de $1,800 sin notar que van
-// $7,200 en una unidad que ya lleva $38 mil en el año. Las filas y el gasto
-// anual los arma src/ (filasBandeja/gastoAnualPorEco, testeadas); aquí solo
-// se pinta, y SIEMPRE con createElement/textContent — la descripción y la
-// nota de rechazo las escribe un proveedor NO autenticado desde la liga.
+// ── Pendientes de firma — bandeja de ENTRADA por unidad (Plan 2, Tarea 8) ──
+// Ya NO agrupa por visita ni pinta partidas/botones de decisión: firmar o
+// rechazar vive DENTRO del registro de la unidad (modal #taller-modal,
+// bloque Proveedor, _provPartidas — Task 6). Esta vista es un inbox: una
+// fila por unidad con partidas esperando firma, que abre ese registro con
+// el filtro ya en "pendientes". Filas/franja los arma src/ (filasPendientes/
+// filasBandeja + resumenBandeja, testeadas); aquí solo se pinta, SIEMPRE
+// con createElement/textContent.
 function renderBandeja(){
   const cont = document.getElementById("tl-bandeja");
   if(!cont) return;
@@ -8144,20 +8145,10 @@ function renderBandeja(){
   // scopeBySucursal aplica el mismo candado de sucursal que el resto del módulo.
   const entries = scopeBySucursal(tallerEntries || []);
   const porVisita = window.__tallerPartidas || new Map();
-  const anio = new Date().getFullYear();
-  // Task 9: el gasto anual también tiene que ver lo FIRMADO por partidas — una
-  // visita cerrada de años/meses anteriores cuyo gasto llegó entero por
-  // partidas no puede desaparecer del "Esta unidad: $X en <año>".
-  const anual = typeof window.__gastoAnualPorEco === "function"
-    ? window.__gastoAnualPorEco(entries, anio, _partidasDeVisita)
-    : new Map();
-  const filas = window.__filasBandeja(entries, porVisita, anual);
-  const motivos = window.__MOTIVOS_RECHAZO || [];
-
-  const entryPorVisita = new Map();
-  if(typeof window.__visitaKeyDe === "function"){
-    entries.forEach(e => entryPorVisita.set(window.__visitaKeyDe(e), e));
-  }
+  // Task 8: el contexto anual ("Esta unidad: $X en <año>") se pintaba en la
+  // tarjeta por visita — esa tarjeta ya no existe (inbox por unidad, más
+  // abajo) y no se repone acá. __gastoAnualPorEco sigue vivo para el Excel.
+  const filas = window.__filasBandeja(entries, porVisita, new Map());
 
   if(!filas.length){
     const vacio = document.createElement("div");
@@ -8185,11 +8176,75 @@ function renderBandeja(){
     cont.appendChild(franja);
   }
 
-  filas.forEach(fila => {
-    // Fix ronda 1 (Important 1): la fila YA trae sus partidas pendientes
-    // (filasBandeja las arma con partidasPendientesDeFirma) — el monolito
-    // nunca vuelve a preguntar estado==="propuesta" por su cuenta.
-    cont.appendChild(_bnGrupo(fila, fila.partidasPendientes, entryPorVisita.get(fila.visitaKey), motivos, anio));
+  // Task 8: el inbox — una fila por UNIDAD con partidas pendientes (no por
+  // visita ni por partida suelta). Decidir vive DENTRO del registro
+  // (_provPartidas, Task 6); acá solo se abre ese registro, con el filtro ya
+  // puesto en "pendientes" para que el usuario caiga directo en la lista.
+  if(typeof window.__filasPendientes !== "function"){
+    const avisoFallo = document.createElement("div");
+    avisoFallo.style.cssText = "padding:16px;color:var(--s2);font-size:12px;text-align:center";
+    avisoFallo.textContent = "Recarga la página para ver las unidades.";
+    cont.appendChild(avisoFallo);
+    if(window.refreshIcons) window.refreshIcons();
+    return;
+  }
+
+  window.__filasPendientes(entries, porVisita).forEach(fila => {
+    const row = document.createElement("div");
+    row.className = "bandeja-fila";
+    row.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px 16px;margin:0 16px 10px;background:var(--bg2);border:1px solid var(--ln);border-radius:10px;flex-wrap:wrap";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Abrir registro de la unidad ${fila.entry.eco || "—"}`);
+    row.style.cursor = "pointer";
+
+    // Task 6: la decisión vive en el registro — acá solo se navega ahí con
+    // el filtro ya en "pendientes" (mismas variables que consume _provPartidas).
+    const abrir = () => { _provFiltro = "pendientes"; _provFiltroId = fila.entry.id; openTallerModal(fila.entry.id); };
+    row.addEventListener("click", abrir);
+    row.addEventListener("keydown", ev => {
+      if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); abrir(); }
+    });
+
+    const izq = document.createElement("div");
+    izq.style.cssText = "flex:1;min-width:220px";
+    const titulo = document.createElement("div");
+    titulo.style.cssText = "font-size:14px;font-weight:700;color:var(--w1)";
+    titulo.textContent = `ECO ${fila.entry.eco || "—"} · ${fila.entry.plate || "—"}${fila.entry.brand ? " · " + fila.entry.brand : ""}`;
+    izq.appendChild(titulo);
+    const sub = document.createElement("div");
+    sub.style.cssText = "font-size:11px;color:var(--s2)";
+    sub.textContent = [fila.entry.sucursal, "Ingreso " + fmtDate(fila.entry.fentrada)].filter(Boolean).join(" · ");
+    izq.appendChild(sub);
+    row.appendChild(izq);
+
+    const mid = document.createElement("div");
+    mid.style.cssText = "display:flex;flex-direction:column;gap:4px;min-width:200px";
+    mid.appendChild(_provPill(fila.distintivo));
+    const linea = document.createElement("div");
+    linea.style.cssText = "font-size:12px;font-weight:600;color:var(--w1)";
+    linea.textContent = `${fila.n} partida${fila.n===1?"":"s"} · ${_fmtMon2(fila.monto)}`;
+    mid.appendChild(linea);
+    if(fila.masAntigua){
+      const espera = document.createElement("div");
+      espera.style.cssText = "font-size:10.5px;color:var(--s2)";
+      espera.textContent = `La más antigua espera desde ${fmtDate(fila.masAntigua)}`;
+      mid.appendChild(espera);
+    }
+    row.appendChild(mid);
+
+    // Botón explícito además del renglón clicable (affordance) — stopPropagation
+    // ANTES de abrir() para que un click en el botón no dispare el listener del
+    // renglón y abra el modal dos veces.
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tl-exp-btn";
+    btn.style.minHeight = "44px";
+    btn.textContent = "Abrir registro";
+    btn.addEventListener("click", ev => { ev.stopPropagation(); abrir(); });
+    row.appendChild(btn);
+
+    cont.appendChild(row);
   });
 
   if(window.refreshIcons) window.refreshIcons();
@@ -8207,6 +8262,11 @@ function _bnChip(texto, subtle){
   return s;
 }
 
+// Task 8: sin caller desde que renderBandeja pasó a ser un inbox por unidad
+// (arriba) — la decisión vive en _provPartidas, dentro del registro. Se deja
+// viva (igual que _bnChip/_bnPartida/_bnFooter/_bnAutorizarLote) porque "Autorizar
+// las N" en lote quedó sin lugar en la UI y esa es decisión de producto
+// pendiente, no borrado unilateral de código de otra tarea.
 function _bnGrupo(fila, ps, entry, motivos, anio){
   const card = document.createElement("div");
   card.className = "bandeja-grupo";

@@ -77,7 +77,13 @@ import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../type
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
 import { migrateEstado, normalizeArea } from "../taller/types";
-import type { EstadoLiga, PromesaTaller, Distintivo, ResumenPartidas } from "../taller/seguimiento";
+import type {
+  EstadoLiga,
+  PromesaTaller,
+  Distintivo,
+  ResumenPartidas,
+  FilaPendiente,
+} from "../taller/seguimiento";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -278,6 +284,14 @@ declare global {
     /** Prioridad de un distintivo para ordenar esa columna por urgencia
      *  (spec §6.2) — mismo orden que decide `distintivoProveedor`. */
     __prioridadDistintivo?: (d: Distintivo) => number;
+    /** Task 8 (bandeja de entrada): una fila por unidad con partidas
+     *  pendientes, ordenada por la que más ha esperado — capa pura en
+     *  src/taller/seguimiento.ts (filasPendientes, testeada); el monolito
+     *  solo pinta. */
+    __filasPendientes?: (
+      entries: TallerEntry[],
+      porVisita: ReadonlyMap<string, Partida[]>,
+    ) => FilaPendiente[];
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a
