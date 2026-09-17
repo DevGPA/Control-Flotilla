@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-g0oOKsg3pSF1TD6eYKKh/6pP9YWr210NnviS3l6crVg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-5nToMxIhWy/U76jb2kOoOP2pPAWRFEEMdRgrCj2r2TM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -2814,8 +2814,8 @@ window.applyRolePermissions=applyRolePermissions;
 // Apagador del esquema híbrido de Taller (Task 10, decisión 21 — se prende para
 // toda la flota y todos los talleres a la vez, sin piloto). UN gate reusable,
 // mismo patrón que body.ro-viewer/.needs-write arriba: una clase en <body> +
-// una regla CSS inyectada una sola vez. Hoy lo usa la sub-pestaña "Por
-// autorizar" (#tltab-bandeja); Task 11 cuelga su botón "Generar liga" de la
+// una regla CSS inyectada una sola vez. Hoy lo usa la sub-pestaña
+// "Pendientes de firma" (#tltab-bandeja); Task 11 cuelga su botón "Generar liga" de la
 // MISMA clase .needs-hibrido — no un candado nuevo por feature.
 // El badge, el candado de #tf-gasto y los guards de export NO son visibilidad
 // estática: leen window.__tallerHibrido (o, para el candado/export/analytics,
@@ -8103,10 +8103,10 @@ function renderTaller(){
   // Accesorios lo pinta su módulo (src/accesorios/wire.ts), no los renders legacy.
   if(tlSubView==="accesorios") return window.renderAccesorios && window.renderAccesorios();
   if(tlSubView==="historial") return renderHistorial();
-  // Apagador (Task 10): si el switch se apaga mientras el usuario mira "Por
-  // autorizar" (otro admin lo revocó en pleno uso — la próxima hidratación lo
-  // trae), no lo deja viendo una bandeja fantasma sin su pestaña: lo regresa
-  // a Activas.
+  // Apagador (Task 10): si el switch se apaga mientras el usuario mira
+  // "Pendientes de firma" (otro admin lo revocó en pleno uso — la próxima
+  // hidratación lo trae), no lo deja viendo una bandeja fantasma sin su
+  // pestaña: lo regresa a Activas.
   if(tlSubView==="bandeja" && !window.__tallerHibrido){ tlSwitch("activas"); return; }
   if(tlSubView==="bandeja") return renderBandeja();
   renderActivas();
@@ -8203,6 +8203,7 @@ function renderBandeja(){
     const abrir = () => { _provFiltro = "pendientes"; _provFiltroId = fila.entry.id; openTallerModal(fila.entry.id); };
     row.addEventListener("click", abrir);
     row.addEventListener("keydown", ev => {
+      if(ev.target !== row) return;
       if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); abrir(); }
     });
 

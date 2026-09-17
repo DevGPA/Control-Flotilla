@@ -50,6 +50,10 @@ describe("pestaña Pendientes de firma", () => {
     expect(cuerpo("renderBandeja")).toContain("stopPropagation");
   });
 
+  it("el keydown de la fila no dispara cuando el evento viene del botón anidado", () => {
+    expect(cuerpo("renderBandeja")).toContain("ev.target !== row");
+  });
+
   it("el contexto anual ya no se calcula acá (Task 8)", () => {
     expect(cuerpo("renderBandeja")).not.toContain("__gastoAnualPorEco(");
   });
