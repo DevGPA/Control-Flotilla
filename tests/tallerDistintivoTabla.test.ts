@@ -44,6 +44,17 @@ describe("distintivo del proveedor en la tabla de Taller", () => {
     expect(c).not.toContain('colspan="11"');
     expect(c).toContain("__prioridadDistintivo");
   });
+
+  // Deferred minor L488 (revisión final): en modo degradado (sin partidas
+  // confiables o sin los puentes) el orden efectivo cae a días, no a
+  // "proveedor" — la flechita/resaltado en ese encabezado mentía sobre
+  // cómo quedó ordenada la tabla.
+  it("el encabezado Proveedor no se marca activo cuando _provRanks es null (orden degradado)", () => {
+    const iInicio = html.indexOf("function renderActivas(");
+    const iFin = html.indexOf("\nfunction renderHistorial", iInicio);
+    const c = html.slice(iInicio, iFin);
+    expect(c).toContain('c.key==="proveedor" && !_provRanks');
+  });
 });
 
 describe("puente __prioridadDistintivo en cloudWire", () => {

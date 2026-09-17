@@ -99,4 +99,44 @@ describe("visor de fotos", () => {
     await Promise.resolve();
     expect(img.src).toContain("b.jpg");
   });
+
+  it("el foco queda atrapado: Tab desde el último botón visible vuelve al primero", () => {
+    abrir();
+    const visor = document.querySelector("#taller-visor-fotos")!;
+    const botones = Array.from(visor.querySelectorAll("button"));
+    const visibles = botones.filter((b) => b.style.visibility !== "hidden");
+    expect(visibles.length).toBeGreaterThan(1);
+    (visibles[visibles.length - 1] as HTMLButtonElement).focus();
+    expect(document.activeElement).toBe(visibles[visibles.length - 1]);
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(visibles[0]);
+  });
+
+  it("el foco queda atrapado: Shift+Tab desde el primer botón visible vuelve al último", () => {
+    abrir();
+    const visor = document.querySelector("#taller-visor-fotos")!;
+    const botones = Array.from(visor.querySelectorAll("button"));
+    const visibles = botones.filter((b) => b.style.visibility !== "hidden");
+    (visibles[0] as HTMLButtonElement).focus();
+    expect(document.activeElement).toBe(visibles[0]);
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
+    );
+    expect(document.activeElement).toBe(visibles[visibles.length - 1]);
+  });
+
+  it("con una sola foto las flechas ocultas no entran en la trampa: Tab desde Cerrar se queda en Cerrar", () => {
+    abrirVisorFotos({ llaves: ["a.jpg"], url });
+    const visor = document.querySelector("#taller-visor-fotos")!;
+    const cerrarBtn = visor.querySelector('button[aria-label="Cerrar"]') as HTMLButtonElement;
+    cerrarBtn.focus();
+    expect(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }),
+      );
+    }).not.toThrow();
+    expect(document.activeElement).toBe(cerrarBtn);
+  });
 });

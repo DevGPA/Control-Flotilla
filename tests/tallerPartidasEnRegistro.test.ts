@@ -113,4 +113,19 @@ describe("partidas dentro del registro de la unidad", () => {
     expect(c).toContain("__gastoDerivado");
     expect(c).toContain("Suma de las partidas autorizadas");
   });
+
+  // Minor 3 (revisión final): cero partidas del proveedor se pintaba como
+  // "Autorizado $0.00 · Esperando $0.00" — un costo inventado junto al
+  // #tf-gasto que sí captura la mano. Ahora es una sola línea honesta.
+  it("una visita sin partidas del proveedor dice eso, no inventa un $0.00", () => {
+    const c = cuerpo("_provPartidas");
+    expect(c).toContain("Esta visita no tiene partidas del proveedor.");
+  });
+
+  // Minor 6 (revisión final): la fila del inbox es clicable completa; sin
+  // stopPropagation la miniatura dispararía también el click de la fila.
+  it("_bnThumb detiene la propagación del click antes de abrir el visor", () => {
+    const c = cuerpo("_bnThumb");
+    expect(c).toContain("stopPropagation");
+  });
 });

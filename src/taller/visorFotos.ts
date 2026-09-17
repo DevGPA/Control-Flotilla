@@ -116,10 +116,33 @@ export function abrirVisorFotos(opts: {
   }
   cerrarActual = cerrar;
 
+  // Trampa de foco (spec §6.3): mientras el visor está abierto, Tab no debe
+  // escapar hacia el modal de abajo. Los controles focusables del overlay son
+  // sus botones — las flechas se ocultan (visibility:hidden) cuando solo hay
+  // una foto, y esas NO cuentan para el ciclo.
   function onKey(ev: KeyboardEvent): void {
     if (ev.key === "Escape") cerrar();
     else if (ev.key === "ArrowRight") mover(1);
     else if (ev.key === "ArrowLeft") mover(-1);
+    else if (ev.key === "Tab") {
+      const focos = Array.from(overlay.querySelectorAll("button")).filter(
+        (b) => b.style.visibility !== "hidden",
+      );
+      if (!focos.length) return;
+      const primero = focos[0]!;
+      const ultimo = focos[focos.length - 1]!;
+      const activo = document.activeElement;
+      const dentro = activo != null && overlay.contains(activo);
+      if (ev.shiftKey) {
+        if (!dentro || activo === primero) {
+          ev.preventDefault();
+          ultimo.focus();
+        }
+      } else if (!dentro || activo === ultimo) {
+        ev.preventDefault();
+        primero.focus();
+      }
+    }
   }
 
   btnCerrar.addEventListener("click", cerrar);

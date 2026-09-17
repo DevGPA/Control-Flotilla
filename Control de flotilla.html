@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-5nToMxIhWy/U76jb2kOoOP2pPAWRFEEMdRgrCj2r2TM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-XfbCrELCvMJ/lTKWoMfGlPmfjaxVrBWvlXBPTLn5lzg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7820,7 +7820,16 @@ function _provPintar(e){
   if(typeof e.kmTaller === "number"){
     const km = document.createElement("span");
     km.style.cssText = "font-size:12px;color:var(--w1)";
-    km.textContent = `km del taller ${e.kmTaller.toLocaleString("es-MX")}`;
+    // Spec 4.1/6.1.2: si el km que teclea Riesgos al ingreso difiere del
+    // que reporta el taller, se pintan los dos — un solo número escondía
+    // la discrepancia.
+    const kmIngreso = Number(e.km);
+    if(Number.isFinite(kmIngreso) && kmIngreso > 0 && kmIngreso !== e.kmTaller){
+      km.textContent = `km del taller ${e.kmTaller.toLocaleString("es-MX")} · km ingreso ${kmIngreso.toLocaleString("es-MX")}`;
+      km.title = "El taller reporta un kilometraje distinto al capturado por GPA al ingreso.";
+    } else {
+      km.textContent = `km del taller ${e.kmTaller.toLocaleString("es-MX")}`;
+    }
     filaT.appendChild(km);
   }
   if(prom.kind !== "sin-promesa"){
@@ -7878,6 +7887,16 @@ function _provPartidas(e){
   }
 
   const ps = _partidasDeVisita(e) || [];
+  // Minor 3 (revisión final): cero partidas es un dato que falta, no un
+  // costo de $0.00 — sin esto se pintaba "Autorizado $0.00 · Esperando
+  // $0.00" junto a un #tf-gasto capturado a mano, una contradicción.
+  if(!ps.length){
+    const aviso = document.createElement("div");
+    aviso.style.cssText = "font-size:12px;color:var(--s2)";
+    aviso.textContent = "Esta visita no tiene partidas del proveedor.";
+    cont.appendChild(aviso);
+    return;
+  }
   const r = window.__resumenPartidas(ps);
   if(r.pendientes.n === 0 && _provFiltro === "pendientes") _provFiltro = "todas";
 
@@ -8339,7 +8358,11 @@ function _bnThumb(p){
     const etiquetaBtn = `Ver ${n} foto${n === 1 ? "" : "s"}`;
     box.setAttribute("aria-label", etiquetaBtn);
     box.title = etiquetaBtn;
-    box.addEventListener("click", () => {
+    box.addEventListener("click", (ev) => {
+      // Minor 6 (revisión final): la fila de la bandeja es clicable
+      // completa; sin esto la miniatura dispararía TAMBIÉN el click de la
+      // fila (hoy inofensivo, pero un futuro contenedor clicable lo abriría doble).
+      ev.stopPropagation();
       if(typeof window.__abrirVisorFotos === "function"){
         window.__abrirVisorFotos({ llaves: p.fotos, inicial: 0, titulo: p.descripcion || "(sin descripción)", subtitulo });
       }
@@ -9829,7 +9852,11 @@ ${tlAlert}`;
   ];
   document.querySelector("#tl-thead tr").innerHTML = cols.map(c=>{
     if(!c.key) return `<th${c.cls?` class="${c.cls}"`:""}>${c.lbl}</th>`;
-    const active=tlSortCol===c.key;
+    // Deferred minor L488 (revisión final): sin partidas confiables o sin
+    // los puentes, _provRanks es null y el orden efectivo YA cayó a días —
+    // la columna "Proveedor" no debe verse activa (flechita/resaltado) si
+    // no es lo que en verdad está ordenando la tabla.
+    const active=tlSortCol===c.key && !(c.key==="proveedor" && !_provRanks);
     const arrow=active?(tlSortDir===1?" ▲":" ▼"):"";
     return `<th${c.cls?` class="${c.cls}"`:""} style="cursor:pointer;user-select:none${active?";color:var(--ac)":""}" data-action="tlSort" data-arg1="${escAttr(c.key)}">${c.lbl}${arrow}</th>`;
   }).join("");

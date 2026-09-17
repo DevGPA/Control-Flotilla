@@ -227,5 +227,12 @@ export function filasPendientes(
     });
   }
   // La que más ha esperado, arriba. Sin `propuestoEn` va al final.
-  return filas.sort((a, b) => (a.masAntigua ?? "9999").localeCompare(b.masAntigua ?? "9999"));
+  // Comparación simple sobre las mismas llaves ISO: localeCompare (I2, ronda
+  // final) dependía de la configuración regional del motor para algo que ya
+  // es comparable como texto plano — mismo resultado para timestamps ISO.
+  return filas.sort((a, b) => {
+    const ka = a.masAntigua ?? "9999";
+    const kb = b.masAntigua ?? "9999";
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
 }

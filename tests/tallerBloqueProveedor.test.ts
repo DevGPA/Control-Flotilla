@@ -63,4 +63,13 @@ describe("bloque Proveedor en el registro de la unidad", () => {
     expect(cuerpo).toContain("_provPintar(e)");
     expect(cuerpo).toMatch(/if\s*\(\s*e\s*\)\s*_provPintar\(e\)|e\s*\?\s*_provPintar\(e\)/);
   });
+
+  // Important 2 (revisión final): kmTaller sin el km de ingreso al lado se
+  // veía como el único dato — spec §4.1/§6.1.2 pide mostrar ambos si difieren.
+  it("_provPintar muestra km del taller y km de ingreso cuando difieren", () => {
+    const i = html.indexOf("function _provPintar(");
+    const cuerpo = html.slice(i, html.indexOf("\nfunction ", i + 10));
+    expect(cuerpo).toContain("km del taller");
+    expect(cuerpo).toContain("km ingreso");
+  });
 });
