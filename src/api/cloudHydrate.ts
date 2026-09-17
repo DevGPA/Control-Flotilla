@@ -272,6 +272,12 @@ declare global {
      *  autorizadas (incluye terminada) y rechazadas de una visita — el
      *  registro pinta los filtros y los totales, nunca cuenta a mano. */
     __resumenPartidas?: (ps: Partida[]) => ResumenPartidas;
+    /** Una sola señal por visita, la más urgente (Task 7): pinta la columna
+     *  "Proveedor" de la tabla de Taller, nunca decide la prioridad a mano. */
+    __distintivoProveedor?: (e: Partial<TallerEntry>, ps: Partida[]) => Distintivo;
+    /** Prioridad de un distintivo para ordenar esa columna por urgencia
+     *  (spec §6.2) — mismo orden que decide `distintivoProveedor`. */
+    __prioridadDistintivo?: (d: Distintivo) => number;
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a

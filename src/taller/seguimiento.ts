@@ -164,6 +164,23 @@ export function etiquetaDistintivo(d: Distintivo): string {
   }
 }
 
+/** Prioridad para ordenar la tabla por urgencia (spec §6.2): el mismo orden
+ *  que decide `distintivoProveedor`. 0 = más urgente. */
+export function prioridadDistintivo(d: Distintivo): number {
+  switch (d.kind) {
+    case "promesa-vencida":
+      return 0;
+    case "esperando-firma":
+      return 1;
+    case "liga-activa":
+      return 2;
+    case "liga-revocada":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
 export type FilaPendiente = {
   entry: TallerEntry;
   visitaKey: string;

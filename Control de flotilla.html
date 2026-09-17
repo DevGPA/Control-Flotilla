@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-EDSf0BVm9ovwy0t0retHz8Sg/0pErbUmYmecH0H/b4Y=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-W04YauAbnh0QZ+lc4o/aGkD1zYXuGUVyAUpJWI2pToE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8001,6 +8001,29 @@ function _provFilaHistorial(p){
   return row;
 }
 
+// Una sola pastilla con la señal más urgente de la visita (capa pura). La
+// reusan _provCelda (columna de la tabla) y Task 8 (bloque del registro).
+function _provPill(d){
+  const CLS = { "promesa-vencida":"pendiente", "esperando-firma":"diag", "liga-activa":"repar", "liga-revocada":"", "sin-liga":"" };
+  const span = document.createElement("span");
+  span.className = "tl-pill " + (CLS[d.kind] || "");
+  span.textContent = window.__etiquetaDistintivo(d);
+  if(d.kind === "liga-revocada") span.style.textDecoration = "line-through";
+  return span;
+}
+
+// Una sola señal por visita, la más urgente (capa pura). Con las partidas en
+// duda la celda se deja VACÍA: un "sin liga" ahí sería una mentira con formato
+// de dato.
+function _provCelda(e){
+  const td = document.createElement("td");
+  td.className = "needs-hibrido";
+  if(!_partidasConfiables() || typeof window.__distintivoProveedor !== "function") return td;
+  const d = window.__distintivoProveedor(e, _partidasDeVisita(e) || []);
+  td.appendChild(_provPill(d));
+  return td;
+}
+
 // Dinero DERIVADO de partidas cuando el tri-estado dice que no se puede creer:
 // un "$0" ahí sería una mentira con formato de dato. Se usa en las lecturas de
 // dinero de taller (KPI del mes, drill-down, Historial, expediente).
@@ -9538,7 +9561,7 @@ function renderActivas(){
   });
 
   // Solo unidades cuya entrada más reciente está activa (no cerrada)
-  const filtered = [...latestMap.values()]
+  const filteredPre = [...latestMap.values()]
     .filter(e=>!isClosed(e))
     .filter(e=>{
       if(filtSuc!=="all"&&e.sucursal!==filtSuc) return false;
@@ -9546,9 +9569,20 @@ function renderActivas(){
       if(filtTipo!=="all"&&e.tipo!==filtTipo) return false;
       if(filtQ && !_qMatch(filtQ, e.eco, [e.plate,e.tecnico,e.brand])) return false;
       return true;
-    })
-    .sort((a,b)=>{
-      if(tlSortCol){
+    });
+  // Orden por urgencia del Proveedor (Task 7, spec §6.2): un cálculo por fila,
+  // ANTES de ordenar y nunca dentro del comparador. Sin partidas confiables o
+  // sin los puentes, no se activa: el genérico de abajo degrada a orden por
+  // días (el entry no tiene campo "proveedor").
+  let _provRanks = null;
+  if(tlSortCol==="proveedor" && _partidasConfiables() && typeof window.__distintivoProveedor==="function" && typeof window.__prioridadDistintivo==="function"){
+    _provRanks = new Map(filteredPre.map(e=>[e, window.__prioridadDistintivo(window.__distintivoProveedor(e, _partidasDeVisita(e)||[]))]));
+  }
+  const filtered = filteredPre.sort((a,b)=>{
+      if(_provRanks){
+        const ra=_provRanks.get(a), rb=_provRanks.get(b);
+        if(ra!==rb) return (ra-rb)*tlSortDir;
+      } else if(tlSortCol){
         const va=String(a[tlSortCol]||""), vb=String(b[tlSortCol]||"");
         const cmp=va.localeCompare(vb,undefined,{numeric:true,sensitivity:"base"});
         if(cmp!==0) return cmp*tlSortDir;
@@ -9726,21 +9760,22 @@ ${tlAlert}`;
     {lbl:"Tipo",       key:"tipo"},
     {lbl:"F. Entrada", key:"fentrada"},
     {lbl:"Días",       key:null},
+    {lbl:"Proveedor", key:"proveedor", cls:"needs-hibrido"},
     {lbl:"F. Salida Est.", key:"fsalidaEst"},
     {lbl:"Técnico",    key:"tecnico"},
     {lbl:"Observaciones", key:null},
     {lbl:"",           key:null},
   ];
   document.querySelector("#tl-thead tr").innerHTML = cols.map(c=>{
-    if(!c.key) return `<th>${c.lbl}</th>`;
+    if(!c.key) return `<th${c.cls?` class="${c.cls}"`:""}>${c.lbl}</th>`;
     const active=tlSortCol===c.key;
     const arrow=active?(tlSortDir===1?" ▲":" ▼"):"";
-    return `<th style="cursor:pointer;user-select:none${active?";color:var(--ac)":""}" data-action="tlSort" data-arg1="${escAttr(c.key)}">${c.lbl}${arrow}</th>`;
+    return `<th${c.cls?` class="${c.cls}"`:""} style="cursor:pointer;user-select:none${active?";color:var(--ac)":""}" data-action="tlSort" data-arg1="${escAttr(c.key)}">${c.lbl}${arrow}</th>`;
   }).join("");
 
   const tbody = document.getElementById("tl-tbody");
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="11" class="tl-empty">Sin unidades activas en taller.<br><span style="font-size:10px">Registra un nuevo ingreso o revisa el Historial / Expedientes.</span></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="12" class="tl-empty">Sin unidades activas en taller.<br><span style="font-size:10px">Registra un nuevo ingreso o revisa el Historial / Expedientes.</span></td></tr>`;
     return;
   }
 
@@ -9769,6 +9804,7 @@ ${tlAlert}`;
       <td>${e.tipo?`<span class="tl-tipo ${tipoCls}">${escHtml(e.tipo)}</span>`:"—"}</td>
       <td>${fmtDate(e.fentrada)}</td>
       <td style="text-align:center">${diasTag}</td>
+      <td class="needs-hibrido" data-prov-cell="${escAttr(String(e.id))}"></td>
       <td>${fmtDate(e.fsalidaEst)}${(()=>{
         // Salida VENCIDA (P0 2026-08-14): la fecha prometida ya pasó y sigue dentro.
         if(e.estado==="Finalizado"||e.fsalidaReal||!e.fsalidaEst)return"";
@@ -9784,6 +9820,15 @@ ${tlAlert}`;
       </td>
     </tr>`;
   }).join("");
+
+  // Task 7: la pastilla del proveedor se pinta con DOM (createElement +
+  // textContent), nunca con el innerHTML de arriba; el placeholder de la fila
+  // solo reserva la celda para no romper el conteo de columnas.
+  const porId = new Map(filtered.map(e => [String(e.id), e]));
+  tbody.querySelectorAll("td[data-prov-cell]").forEach(td => {
+    const e = porId.get(td.dataset.provCell);
+    if(e) td.replaceWith(_provCelda(e));
+  });
 }
 
 // ── Vista: Historial / Expedientes ────────────────────────

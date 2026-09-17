@@ -37,6 +37,8 @@ import {
   promesaTaller,
   etiquetaDistintivo,
   resumenPartidas,
+  distintivoProveedor,
+  prioridadDistintivo,
 } from "../taller/seguimiento";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
@@ -541,6 +543,17 @@ export function setupCloud(): void {
   window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
   window.__etiquetaDistintivo = etiquetaDistintivo;
   window.__resumenPartidas = resumenPartidas;
+  // Task 7: una sola señal por visita para la columna "Proveedor" de la tabla
+  // de Taller — el monolito pinta y ordena, nunca decide la prioridad.
+  window.__distintivoProveedor = (e, ps) => {
+    const ahora = new Date().toISOString();
+    return distintivoProveedor(
+      estadoLiga(e, ahora),
+      promesaTaller(e, ahora.slice(0, 10)),
+      resumenPartidas(ps),
+    );
+  };
+  window.__prioridadDistintivo = prioridadDistintivo;
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo

@@ -6,6 +6,7 @@ import {
   filasPendientes,
   estadoLiga,
   promesaTaller,
+  prioridadDistintivo,
 } from "../src/taller/seguimiento";
 import { gastoDerivado, type Partida } from "../src/taller/partidas";
 import { visitaKeyDe } from "../src/api/tallerPartidas";
@@ -167,5 +168,42 @@ describe("filasPendientes — la bandeja de ENTRADA", () => {
       [k1, [P({ visitaKey: k1, estado: "autorizada", precioAutorizado: 100 })]],
     ]);
     expect(filasPendientes([e1], soloAutorizadas, "2026-09-15T12:00:00.000Z")).toEqual([]);
+  });
+});
+
+describe("prioridadDistintivo — el orden de la tabla es la misma prioridad", () => {
+  it("los cinco valores en orden (0 = más urgente)", () => {
+    expect(prioridadDistintivo({ kind: "promesa-vencida", dias: 1 })).toBe(0);
+    expect(prioridadDistintivo({ kind: "esperando-firma", n: 1 })).toBe(1);
+    expect(prioridadDistintivo({ kind: "liga-activa", dias: 1 })).toBe(2);
+    expect(prioridadDistintivo({ kind: "liga-revocada" })).toBe(3);
+    expect(prioridadDistintivo({ kind: "sin-liga" })).toBe(4);
+  });
+
+  it("para los mismos casos ya probados en distintivoProveedor, más urgente = número más bajo", () => {
+    const sinNada = resumenPartidas([]);
+    const conPendiente = resumenPartidas([P({ estado: "propuesta", precio: 550 })]);
+    const ligaActiva = estadoLiga(
+      { ligaCreadaEn: "2026-09-01T00:00:00.000Z" },
+      "2026-09-15T00:00:00.000Z",
+    );
+    const ligaRevocada = estadoLiga(
+      { ligaCreadaEn: "2026-09-01T00:00:00.000Z", ligaRevocadaEn: "2026-09-05T00:00:00.000Z" },
+      "2026-09-15T00:00:00.000Z",
+    );
+    const promVencida = promesaTaller({ fsalidaEstTaller: "2026-09-12" }, "2026-09-15");
+    const promNinguna = promesaTaller({}, "2026-09-15");
+
+    const orden = [
+      distintivoProveedor(ligaActiva, promVencida, conPendiente), // promesa-vencida
+      distintivoProveedor(ligaActiva, promNinguna, conPendiente), // esperando-firma
+      distintivoProveedor(ligaActiva, promNinguna, sinNada), // liga-activa
+      distintivoProveedor(ligaRevocada, promNinguna, sinNada), // liga-revocada
+      distintivoProveedor({ kind: "sin-liga" }, promNinguna, sinNada), // sin-liga
+    ].map(prioridadDistintivo);
+
+    for (let i = 1; i < orden.length; i++) {
+      expect(orden[i]!).toBeGreaterThan(orden[i - 1]!);
+    }
   });
 });
