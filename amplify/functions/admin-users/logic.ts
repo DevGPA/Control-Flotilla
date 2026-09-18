@@ -3,6 +3,10 @@
 // tests de vitest (mismo patrón que src/api/mergeCheckDones.ts). El handler
 // (handler.ts) hace el I/O contra Cognito/DynamoDB; aquí vive lo testeable.
 
+// node:crypto (stdlib, no AWS): la aleatoriedad de una contraseña no puede salir
+// de Math.random — es predecible desde el estado del motor.
+import { randomInt as randomIntSeguro } from "node:crypto";
+
 export const ALLOWED_DOMAIN = "gpa.com.mx";
 export const ROLES = ["admin", "operativo", "viewer"] as const;
 export type Rol = (typeof ROLES)[number];
@@ -162,4 +166,41 @@ export function mapCognitoError(err: unknown): string {
     default:
       return "Ocurrió un error al procesar la solicitud en el servidor de identidad.";
   }
+}
+
+// ── Contraseña temporal (2026-09-18) ──────────────────────────────────────────
+// Alfabetos sin caracteres que se confunden al DICTAR la contraseña por teléfono
+// (que es como llega a la persona): fuera I/l/1, O/o/0 y todo símbolo que suene
+// igual que otro. El guion separador aporta, de paso, el símbolo que exige la
+// política del pool.
+const MAYUS = "ABCDEFGHJKMNPQRSTUVWXYZ";
+const MINUS = "abcdefghijkmnpqrstuvwxyz";
+const DIGITOS = "23456789";
+
+/**
+ * Contraseña TEMPORAL para el restablecimiento desde el panel: tres bloques de
+ * cuatro separados por guiones (p. ej. `aB3d-Kf7h-Mn2p`). Cumple la política del
+ * pool (≥8, mayúscula, minúscula, número y símbolo) y está hecha para dictarse
+ * en voz alta sin errores.
+ *
+ * `aleatorio` se inyecta SOLO para los tests; en producción usa `randomInt` de
+ * node:crypto — una contraseña no se genera con Math.random.
+ */
+export function generarPasswordTemporal(
+  aleatorio: (max: number) => number = randomIntSeguro,
+): string {
+  const tomar = (alfabeto: string): string => alfabeto[aleatorio(alfabeto.length)]!;
+  // Una de cada clase garantizada; el resto, de la mezcla.
+  const mezcla = MAYUS + MINUS + DIGITOS;
+  const chars = [tomar(MAYUS), tomar(MINUS), tomar(DIGITOS)];
+  while (chars.length < 12) chars.push(tomar(mezcla));
+  // Barajado Fisher-Yates para que las clases garantizadas no queden siempre al
+  // frente (un patrón fijo al inicio adelgaza el espacio de búsqueda).
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = aleatorio(i + 1);
+    [chars[i], chars[j]] = [chars[j]!, chars[i]!];
+  }
+  return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)]
+    .map((b) => b.join(""))
+    .join("-");
 }

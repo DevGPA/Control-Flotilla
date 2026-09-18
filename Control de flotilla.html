@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-bn3iSZrV4iR3rjirR6sm7/WI7zUK72SV86T1VqPb+ZA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-lCVH9RuDA595gjglff3Fr0/HSa84CWnjtdxp/e0xsi4=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -851,6 +851,36 @@
     <div class="tl-mftr">
       <button class="tl-cancel" onclick="closeUsuarioModal()">Cancelar</button>
       <button class="tl-save" id="uf-save" onclick="saveUsuario()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CONTRASEÑA TEMPORAL (2026-09-18) ═══════════════════════════
+     La contraseña se muestra UNA sola vez y no se guarda en ningún lado: ni en la
+     bitácora ni en el perfil. Por eso el modal es explícito y hay que cerrarlo a
+     propósito — un aviso que se desvanece solo perdería el dato para siempre.
+     Los valores se inyectan con textContent (estándar XSS del repo). -->
+<div id="pass-temp-modal" onclick="if(event.target.id==='pass-temp-modal')closePassTempModal()">
+  <div class="tl-mcard" style="max-width:440px">
+    <div class="tl-mhdr">
+      <div class="tl-mttl">Contraseña temporal</div>
+      <button class="dcls" onclick="closePassTempModal()" aria-label="Cerrar" style="position:static">✕</button>
+    </div>
+    <div class="tl-mbody">
+      <div style="font-size:12px;color:var(--s1);line-height:1.5;margin-bottom:14px">
+        Entrégasela a <strong id="pt-email" style="color:var(--w1)"></strong> por teléfono o WhatsApp.
+        <strong style="color:var(--A)">No se envía por correo y no vas a poder volver a verla.</strong>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <code id="pt-pass" style="flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:19px;letter-spacing:1px;background:var(--bg2);border:1px solid var(--ln);border-radius:8px;padding:12px 14px;color:var(--w1);text-align:center;user-select:all"></code>
+        <button class="tl-save" id="pt-copy" onclick="copiarPassTemp()" style="white-space:nowrap">Copiar</button>
+      </div>
+      <div style="font-size:11px;color:var(--s2);line-height:1.5">
+        Al iniciar sesión, la app le pedirá definir su propia contraseña. La temporal caduca en 7 días.
+      </div>
+    </div>
+    <div class="tl-mftr">
+      <button class="tl-save" onclick="closePassTempModal()">Listo</button>
     </div>
   </div>
 </div>
@@ -7163,7 +7193,7 @@ function renderUsuarios(){
         <button class="uv-act" title="Editar" data-action="openUsuarioModal" data-arg1="${sub}"><i data-lucide="pencil" style="width:13px;height:13px"></i></button>
         <button class="uv-act" title="Cambiar rol" data-action="uvPromptRol" data-arg1="${sub}"><i data-lucide="shield" style="width:13px;height:13px"></i></button>
         <button class="uv-act" title="${desactivar?"Desactivar":"Reactivar"}" data-action="uvToggleEnabled" data-arg1="${sub}" data-arg2="${desactivar?"0":"1"}"><i data-lucide="${desactivar?"user-x":"user-check"}" style="width:13px;height:13px"></i></button>
-        <button class="uv-act" title="Restablecer contraseña" data-action="uvReset" data-arg1="${sub}"><i data-lucide="key-round" style="width:13px;height:13px"></i></button>
+        <button class="uv-act" title="Generar contraseña temporal" data-action="uvReset" data-arg1="${sub}"><i data-lucide="key-round" style="width:13px;height:13px"></i></button>
         <button class="uv-act uv-act-del" title="Eliminar" data-action="uvDelete" data-arg1="${sub}"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
       </td>
     </tr>`;
@@ -7304,12 +7334,37 @@ async function uvDelete(sub){
 window.uvDelete = uvDelete;
 async function uvReset(sub){
   const u=_uvUsers.find(x=>x.cognitoSub===sub);
-  if(!confirm(`¿Enviar correo de restablecimiento de contraseña a ${u?u.email:"este usuario"}?`)) return;
+  if(!confirm(`¿Generar una contraseña temporal para ${u?u.email:"este usuario"}?
+
+La anterior deja de servir de inmediato. Tendrás que dictársela por teléfono o WhatsApp — no se envía por correo.`)) return;
   try{ const r=await window.__admin.resetPassword(sub);
-    window.notify(r.ok?(r.message||"Correo enviado."):(r.error||"Error."), r.ok?"ok":"error", 5000);
+    if(r.ok && r.data && r.data.temporal){ showPassTemp(r.data.email||(u?u.email:""), r.data.temporal); }
+    else window.notify(r.ok?(r.message||"Listo."):(r.error||"Error."), r.ok?"ok":"error", 5000);
   }catch(e){ window.notify("Error.","error",4000); }
 }
 window.uvReset = uvReset;
+
+// La temporal se muestra UNA vez: el backend no la guarda en ningún lado (la
+// bitácora registra el hecho, nunca el secreto). De ahí el modal explícito en
+// lugar de un notify que se desvanece a los 5 segundos con el dato adentro.
+function showPassTemp(email, temporal){
+  document.getElementById("pt-email").textContent = email || "el usuario";
+  document.getElementById("pt-pass").textContent = temporal;
+  const b=document.getElementById("pt-copy"); b.textContent="Copiar"; b.disabled=false;
+  openModal("pass-temp-modal");
+}
+function closePassTempModal(){
+  closeModal("pass-temp-modal");
+  document.getElementById("pt-pass").textContent = ""; // no dejarla colgada en el DOM
+}
+window.closePassTempModal = closePassTempModal;
+async function copiarPassTemp(){
+  const t=document.getElementById("pt-pass").textContent||"";
+  const b=document.getElementById("pt-copy");
+  try{ await navigator.clipboard.writeText(t); b.textContent="Copiado ✓"; b.disabled=true; }
+  catch(e){ window.notify("No se pudo copiar; selécciona el texto a mano.","warn",4000); }
+}
+window.copiarPassTemp = copiarPassTemp;
 async function uvPromptRol(sub){
   const u=_uvUsers.find(x=>x.cognitoSub===sub);
   const nuevo = prompt(`Nuevo rol para ${u?u.email:"el usuario"} (admin / operativo / viewer):`, u?u.rol:"");

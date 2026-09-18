@@ -420,6 +420,7 @@
 /* Modal overlays (00000055 se vuelve casi invisible en dark porque ya es oscuro) */
 :root[data-theme="dark"] .pm-overlay,
 :root[data-theme="dark"] #taller-modal,
+:root[data-theme="dark"] #pass-temp-modal,
 :root[data-theme="dark"] #hist-modal {
   background: rgba(0, 0, 0, 0.72);
 }
@@ -4352,10 +4353,12 @@ select.filter-active {
    overlay de #taller-modal. SIN esta regla el modal se renderizaba SIEMPRE
    (faltaba el display:none por defecto) → aparecía solo al cargar la app.
    Catálogo de Unidades (fix 2026-06-23): #unidad-modal sufría el MISMO bug —
-   sin esta regla aparecía siempre, inline, sobre la vista activa (Inspecciones). */
+   sin esta regla aparecía siempre, inline, sobre la vista activa (Inspecciones).
+   Contraseña temporal (2026-09-18): #pass-temp-modal entra por la misma puerta. */
 #taller-modal,
 #usuario-modal,
-#unidad-modal {
+#unidad-modal,
+#pass-temp-modal {
   position: fixed;
   inset: 0;
   background: #00000055;
@@ -4367,7 +4370,8 @@ select.filter-active {
 }
 #taller-modal.open,
 #usuario-modal.open,
-#unidad-modal.open {
+#unidad-modal.open,
+#pass-temp-modal.open {
   display: flex;
 }
 .tl-mcard {

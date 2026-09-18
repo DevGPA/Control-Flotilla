@@ -19,7 +19,7 @@ import {
   AdminEnableUserCommand,
   AdminDisableUserCommand,
   AdminDeleteUserCommand,
-  AdminResetUserPasswordCommand,
+  AdminSetUserPasswordCommand,
   AdminAddUserToGroupCommand,
   AdminRemoveUserFromGroupCommand,
   ListUsersInGroupCommand,
@@ -34,6 +34,7 @@ import {
   buildAuditEvent,
   diffUserProfile,
   mapCognitoError,
+  generarPasswordTemporal,
 } from "./logic";
 
 const cognito = new CognitoIdentityProviderClient({});
@@ -328,13 +329,29 @@ async function handleResetPassword(
   const prev = await loadProfile(who.tenantId, sub);
   if (!prev) return { ok: false, error: "El perfil no existe." };
   try {
-    // Envía código por correo y deja al usuario en RESET_REQUIRED: deberá fijar
-    // una nueva contraseña en el siguiente inicio de sesión.
+    // 2026-09-18 — POR QUÉ NO `AdminResetUserPassword`: ese comando deja al usuario
+    // en RESET_REQUIRED esperando un código por correo, y la app no tenía pantalla
+    // donde pedirlo → la cuenta quedaba atorada (le pasó a tesorería). Aquí se fija
+    // una TEMPORAL que el admin dicta: el usuario cae en FORCE_CHANGE_PASSWORD, que
+    // es el paso "tu contraseña es temporal, define una nueva" que el login sí
+    // maneja. El autoservicio por correo vive en el login ("¿Olvidaste tu
+    // contraseña?"), donde el usuario SÍ tiene dónde escribir el código.
+    const temporal = generarPasswordTemporal();
     await cognito.send(
-      new AdminResetUserPasswordCommand({ UserPoolId: USER_POOL_ID, Username: prev.email }),
+      new AdminSetUserPasswordCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: prev.email,
+        Password: temporal,
+        Permanent: false,
+      }),
     );
+    // La contraseña NO va a la bitácora: se audita el hecho, nunca el secreto.
     await writeAudit(who, "reset_password", prev.email, {});
-    return { ok: true, message: "Se envió el correo para restablecer la contraseña." };
+    return {
+      ok: true,
+      message: "Contraseña temporal generada. Entrégasela al usuario por otro medio.",
+      data: { temporal, email: prev.email },
+    };
   } catch (e) {
     return { ok: false, error: mapCognitoError(e) };
   }
