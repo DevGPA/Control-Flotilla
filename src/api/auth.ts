@@ -12,6 +12,8 @@ import {
   fetchUserAttributes,
   fetchAuthSession,
   confirmSignIn,
+  resetPassword,
+  confirmResetPassword,
   type SignInInput,
 } from "aws-amplify/auth";
 import { clearPhotoCache } from "./photoFetch";
@@ -34,7 +36,44 @@ export interface AuthSession {
 export type LoginResult =
   | { status: "success" }
   | { status: "requireNewPassword" }
+  /** Cognito dejó la cuenta pendiente de restablecer: toca código + nueva. */
+  | { status: "requireReset" }
   | { status: "error"; message: string };
+
+/** Resultado de las acciones de recuperación (sin pasos intermedios). */
+export type AccionResult = { status: "success" } | { status: "error"; message: string };
+
+/**
+ * Traduce los errores de Cognito a algo que una persona pueda accionar.
+ *
+ * Los mensajes del SDK vienen en inglés y de vuelta con jerga ("Password reset
+ * required for the user"); el modal los escupía tal cual y dejaba al usuario sin
+ * saber qué hacer. Lo que NO se reconoce se devuelve tal cual: es preferible un
+ * mensaje feo a uno genérico que esconda la causa real.
+ */
+function mensajeAuth(e: unknown): string {
+  const err = e as { name?: string; message?: string };
+  switch (err?.name) {
+    case "NotAuthorizedException":
+      return "Correo o contraseña incorrectos.";
+    case "UserNotFoundException":
+      return "No hay ninguna cuenta con ese correo.";
+    case "UserNotConfirmedException":
+      return "La cuenta aún no está confirmada. Pide al administrador que la reactive.";
+    case "CodeMismatchException":
+      return "El código no coincide. Revísalo o pide uno nuevo.";
+    case "ExpiredCodeException":
+      return "El código ya caducó. Pide uno nuevo.";
+    case "InvalidPasswordException":
+      return "La contraseña debe tener al menos 8 caracteres, con mayúscula, minúscula, número y un símbolo.";
+    case "LimitExceededException":
+    case "TooManyRequestsException":
+    case "TooManyFailedAttemptsException":
+      return "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.";
+    default:
+      return err?.message || "Error desconocido";
+  }
+}
 
 /**
  * Re-canjea las credenciales del Identity Pool usando el idToken recién emitido.
@@ -73,12 +112,58 @@ export async function login(email: string, password: string): Promise<LoginResul
     if (result.nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED") {
       return { status: "requireNewPassword" };
     }
+    // Cuenta en RESET_REQUIRED. Cognito lo reporta por DOS caminos según el flujo
+    // (aquí como nextStep; más abajo como excepción) — los dos llevan a la misma
+    // pantalla de código, y antes los dos terminaban en un callejón sin salida.
+    if (result.nextStep.signInStep === "RESET_PASSWORD") {
+      return { status: "requireReset" };
+    }
     return {
       status: "error",
       message: `Login incompleto. Next step: ${result.nextStep.signInStep}`,
     };
   } catch (e) {
-    return { status: "error", message: (e as Error).message || "Error desconocido" };
+    if ((e as { name?: string })?.name === "PasswordResetRequiredException") {
+      return { status: "requireReset" };
+    }
+    return { status: "error", message: mensajeAuth(e) };
+  }
+}
+
+/**
+ * Paso 1 del autoservicio: pide a Cognito el código de un solo uso por correo.
+ *
+ * Un correo inexistente responde ÉXITO a propósito: contestar "esa cuenta no
+ * existe" convertiría la pantalla en un detector de correos válidos para
+ * cualquiera que la abra.
+ */
+export async function solicitarCodigoReset(email: string): Promise<AccionResult> {
+  const username = email.trim().toLowerCase();
+  try {
+    await resetPassword({ username });
+    return { status: "success" };
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    if (name === "UserNotFoundException") return { status: "success" };
+    return { status: "error", message: mensajeAuth(e) };
+  }
+}
+
+/** Paso 2 del autoservicio: canjea el código del correo por la contraseña nueva. */
+export async function confirmarReset(
+  email: string,
+  codigo: string,
+  nueva: string,
+): Promise<AccionResult> {
+  try {
+    await confirmResetPassword({
+      username: email.trim().toLowerCase(),
+      confirmationCode: codigo.trim(),
+      newPassword: nueva,
+    });
+    return { status: "success" };
+  } catch (e) {
+    return { status: "error", message: mensajeAuth(e) };
   }
 }
 
@@ -98,7 +183,7 @@ export async function confirmNewPassword(newPassword: string): Promise<LoginResu
       message: `Confirm falló. Next step: ${result.nextStep.signInStep}`,
     };
   } catch (e) {
-    return { status: "error", message: (e as Error).message || "Error desconocido" };
+    return { status: "error", message: mensajeAuth(e) };
   }
 }
 

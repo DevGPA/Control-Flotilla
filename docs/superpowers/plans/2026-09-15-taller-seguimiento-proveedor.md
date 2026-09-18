@@ -26,27 +26,29 @@
 
 ## Estructura de archivos
 
-| Archivo | Responsabilidad |
-|---|---|
-| `src/taller/types.ts` (modificar) | `TallerEntry` gana los campos del proveedor: `estadoOperativo`, `kmTaller`, `fsalidaEstTaller`, `fsalidaEstCompromiso`, `ligaVersion`, `ligaCreadaEn/Por`, `ligaRevocadaEn/Por`. |
-| `src/api/cloudHydrate.ts` (modificar) | Mapear esas columnas de la fila `Taller` al `TallerEntry`. Nada más. |
-| `src/taller/seguimiento.ts` (**crear**) | Capa pura: `estadoLiga`, `promesaTaller`, `resumenPartidas`, `distintivoProveedor`, `filasPendientes`, `etiquetaDistintivo`. Sin DOM, sin red. |
-| `src/taller/visorFotos.ts` (**crear**) | Visor de fotos reutilizable (overlay). Sin lógica de negocio. |
-| `src/api/cloudWire.ts` (modificar) | Puentes `window.__seguimiento*` y `window.__abrirVisorFotos` para el monolito. |
-| `Control de flotilla.html` (modificar) | Pinta: bloque Proveedor en el modal, lista de partidas con decisión, distintivo en la tabla, pestaña de pendientes. |
-| `src/taller/exportExcel.ts` (modificar) | Hoja "Partidas" y columnas de seguimiento. |
-| `tests/tallerSeguimiento*.test.ts` (**crear**) | Pruebas puras y estructurales por tarea. |
+| Archivo                                        | Responsabilidad                                                                                                                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/taller/types.ts` (modificar)              | `TallerEntry` gana los campos del proveedor: `estadoOperativo`, `kmTaller`, `fsalidaEstTaller`, `fsalidaEstCompromiso`, `ligaVersion`, `ligaCreadaEn/Por`, `ligaRevocadaEn/Por`. |
+| `src/api/cloudHydrate.ts` (modificar)          | Mapear esas columnas de la fila `Taller` al `TallerEntry`. Nada más.                                                                                                             |
+| `src/taller/seguimiento.ts` (**crear**)        | Capa pura: `estadoLiga`, `promesaTaller`, `resumenPartidas`, `distintivoProveedor`, `filasPendientes`, `etiquetaDistintivo`. Sin DOM, sin red.                                   |
+| `src/taller/visorFotos.ts` (**crear**)         | Visor de fotos reutilizable (overlay). Sin lógica de negocio.                                                                                                                    |
+| `src/api/cloudWire.ts` (modificar)             | Puentes `window.__seguimiento*` y `window.__abrirVisorFotos` para el monolito.                                                                                                   |
+| `Control de flotilla.html` (modificar)         | Pinta: bloque Proveedor en el modal, lista de partidas con decisión, distintivo en la tabla, pestaña de pendientes.                                                              |
+| `src/taller/exportExcel.ts` (modificar)        | Hoja "Partidas" y columnas de seguimiento.                                                                                                                                       |
+| `tests/tallerSeguimiento*.test.ts` (**crear**) | Pruebas puras y estructurales por tarea.                                                                                                                                         |
 
 ---
 
 ### Task 1: Las columnas del proveedor llegan a la app
 
 **Files:**
+
 - Modify: `src/taller/types.ts` (dentro de `export type TallerEntry`)
 - Modify: `src/api/cloudHydrate.ts` (mapeo `dedupedTaller.map((t) => {...})`)
 - Test: `tests/tallerSeguimientoHidratacion.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: nada.
 - Produces: `TallerEntry` con `estadoOperativo?: "revisando" | "reparando" | "esperandoRefaccion" | "lista"`, `kmTaller?: number`, `fsalidaEstTaller?: string`, `fsalidaEstCompromiso?: string`, `ligaVersion?: number`, `ligaCreadaEn?: string`, `ligaCreadaPor?: string`, `ligaRevocadaEn?: string`, `ligaRevocadaPor?: string`. Todas las tareas siguientes leen de aquí.
 
@@ -188,10 +190,12 @@ git commit -m "feat(taller): las columnas del proveedor llegan al TallerEntry"
 ### Task 2: Capa pura — estado de la liga y promesa del taller
 
 **Files:**
+
 - Create: `src/taller/seguimiento.ts`
 - Test: `tests/tallerSeguimientoEstado.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `TallerEntry` de la Tarea 1.
 - Produces:
   - `export const VIGENCIA_LIGA_DIAS = 90`
@@ -219,10 +223,7 @@ describe("estadoLiga", () => {
   });
 
   it("recién emitida: activa con los días que faltan", () => {
-    const r = estadoLiga(
-      { ligaCreadaEn: EMITIDA, ligaCreadaPor: POR },
-      "2026-09-15T12:00:00.000Z",
-    );
+    const r = estadoLiga({ ligaCreadaEn: EMITIDA, ligaCreadaPor: POR }, "2026-09-15T12:00:00.000Z");
     expect(r.kind).toBe("activa");
     if (r.kind !== "activa") throw new Error("kind");
     expect(r.diasRestantes).toBe(76); // 90 − 14 días transcurridos
@@ -350,7 +351,13 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 
 export type EstadoLiga =
   | { kind: "sin-liga" }
-  | { kind: "activa"; diasRestantes: number; venceEn: string; emitidaEn: string; emitidaPor: string }
+  | {
+      kind: "activa";
+      diasRestantes: number;
+      venceEn: string;
+      emitidaEn: string;
+      emitidaPor: string;
+    }
   | { kind: "vencida"; vencioEn: string; emitidaEn: string; emitidaPor: string }
   | { kind: "revocada"; revocadaEn: string; revocadaPor: string };
 
@@ -432,10 +439,12 @@ git commit -m "feat(taller): capa pura del estado de la liga y la promesa del ta
 ### Task 3: Capa pura — resumen de partidas, distintivo y pendientes
 
 **Files:**
+
 - Modify: `src/taller/seguimiento.ts`
 - Test: `tests/tallerSeguimientoDistintivo.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `estadoLiga`, `promesaTaller` (Tarea 2); `Partida` y `gastoDerivado` de `src/taller/partidas.ts`; `visitaKeyDe` de `src/api/tallerPartidas.ts`.
 - Produces:
   - `export type ResumenPartidas = { pendientes: {n, monto}, autorizadas: {n, monto}, rechazadas: {n, monto}, borradoresTaller: number }`
@@ -566,8 +575,18 @@ describe("distintivoProveedor — una sola señal, por prioridad", () => {
 });
 
 describe("filasPendientes — la bandeja de ENTRADA", () => {
-  const e1 = { id: "t1", plate: "JB4479A", fentrada: "2026-09-14", estado: "En Diagnóstico" } as TallerEntry;
-  const e2 = { id: "t2", plate: "JB4256A", fentrada: "2026-09-08", estado: "En Reparación" } as TallerEntry;
+  const e1 = {
+    id: "t1",
+    plate: "JB4479A",
+    fentrada: "2026-09-14",
+    estado: "En Diagnóstico",
+  } as TallerEntry;
+  const e2 = {
+    id: "t2",
+    plate: "JB4256A",
+    fentrada: "2026-09-08",
+    estado: "En Reparación",
+  } as TallerEntry;
   const k1 = visitaKeyDe(e1);
   const k2 = visitaKeyDe(e2);
 
@@ -578,7 +597,13 @@ describe("filasPendientes — la bandeja de ENTRADA", () => {
       [
         P({ partidaId: "b", visitaKey: k2, precio: 700, propuestoEn: "2026-09-13T09:00:00Z" }),
         P({ partidaId: "c", visitaKey: k2, precio: 500, propuestoEn: "2026-09-14T09:00:00Z" }),
-        P({ partidaId: "d", visitaKey: k2, estado: "autorizada", precio: 100, precioAutorizado: 100 }),
+        P({
+          partidaId: "d",
+          visitaKey: k2,
+          estado: "autorizada",
+          precio: 100,
+          precioAutorizado: 100,
+        }),
       ],
     ],
   ]);
@@ -722,7 +747,11 @@ export function filasPendientes(
       n: resumen.pendientes.n,
       monto: resumen.pendientes.monto,
       masAntigua: esperas[0],
-      distintivo: distintivoProveedor(estadoLiga(entry, ahoraISO), promesaTaller(entry, hoy), resumen),
+      distintivo: distintivoProveedor(
+        estadoLiga(entry, ahoraISO),
+        promesaTaller(entry, hoy),
+        resumen,
+      ),
     });
   }
   // La que más ha esperado, arriba. Sin `propuestoEn` va al final.
@@ -749,11 +778,13 @@ git commit -m "feat(taller): resumen de partidas, distintivo por prioridad y ban
 ### Task 4: Visor de fotos
 
 **Files:**
+
 - Create: `src/taller/visorFotos.ts`
 - Modify: `src/api/cloudWire.ts` (puente `window.__abrirVisorFotos`)
 - Test: `tests/tallerVisorFotos.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `urlFotoPartida` (ya expuesta como `window.__urlFotoPartida`, ver `cloudHydrate.ts`).
 - Produces: `export function abrirVisorFotos(opts: { llaves: readonly string[]; inicial?: number; titulo?: string; subtitulo?: string; url: (llave: string) => Promise<string | null> }): void` y el puente `window.__abrirVisorFotos` con la misma firma menos `url` (lo inyecta el puente).
 
@@ -965,13 +996,13 @@ Expected: PASS (5 pruebas).
 En `src/api/cloudWire.ts`, junto a los otros `window.__taller*` (buscar `window.__tallerLiga = {`), agregar antes de ese bloque:
 
 ```ts
-  // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
-  // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
-  window.__abrirVisorFotos = (opts) =>
-    abrirVisorFotos({
-      ...opts,
-      url: (llave) => urlFotoPartida(llave),
-    });
+// Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
+// del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
+window.__abrirVisorFotos = (opts) =>
+  abrirVisorFotos({
+    ...opts,
+    url: (llave) => urlFotoPartida(llave),
+  });
 ```
 
 Agregar el import al inicio del archivo:
@@ -1006,12 +1037,14 @@ git commit -m "feat(taller): visor de fotos del proveedor, reutilizable"
 ### Task 5: Bloque "Proveedor" en el registro — liga y estado del taller
 
 **Files:**
+
 - Modify: `Control de flotilla.html` (markup del modal tras la sección "Identificación de la unidad"; función `openTallerModal`; mover los dos botones de liga del pie al bloque)
 - Modify: `src/api/cloudWire.ts` (puentes `window.__estadoLiga`, `window.__promesaTaller`, `window.__etiquetaDistintivo`)
 - Modify: `nginx.conf` (regenerado por `csp:sync`)
 - Test: `tests/tallerBloqueProveedor.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `estadoLiga`, `promesaTaller` (Tarea 2).
 - Produces: en el monolito, `_provPintar(e)` (pinta todo el bloque para una visita) y el contenedor `#tf-proveedor`. La Tarea 6 cuelga la lista de partidas de `#tf-prov-partidas`.
 
@@ -1092,10 +1125,10 @@ Expected: FAIL — no existe `#tf-proveedor`.
 En `src/api/cloudWire.ts`, junto al puente del visor (Tarea 4):
 
 ```ts
-  // Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
-  window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
-  window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
-  window.__etiquetaDistintivo = etiquetaDistintivo;
+// Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
+window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
+window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
+window.__etiquetaDistintivo = etiquetaDistintivo;
 ```
 
 Import correspondiente:
@@ -1111,18 +1144,24 @@ Y sus tipos en el `declare global` de `cloudHydrate.ts` (junto al del visor), us
 En `Control de flotilla.html`, inmediatamente **después** del `<div id="tf-identidad-hint" ...>` y **antes** del `<div class="tl-sec">Mantenimiento</div>`:
 
 ```html
-      <!-- Seguimiento del proveedor (Plan 2, bloque 1). Todo lo que muestra ya
+<!-- Seguimiento del proveedor (Plan 2, bloque 1). Todo lo que muestra ya
            se guarda hoy: liga (columnas ligaCreadaEn/Por, ligaRevocada*) y lo
            que el taller reporta desde su liga (estadoOperativo, km, fsalidaEst
            y su compromiso). Riesgos VE y DECIDE; el taller REPORTA. -->
-      <div class="tl-sec needs-hibrido">Proveedor</div>
-      <div id="tf-proveedor" class="tl-field full needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
-        <div id="tf-prov-liga" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
-        <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
-        <div id="tf-prov-taller" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
-        <div id="tf-prov-taller-nota" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
-        <div id="tf-prov-partidas"></div>
-      </div>
+<div class="tl-sec needs-hibrido">Proveedor</div>
+<div
+  id="tf-proveedor"
+  class="tl-field full needs-hibrido"
+  style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px"
+>
+  <div id="tf-prov-liga" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
+  <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
+  <div id="tf-prov-taller" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
+  <div id="tf-prov-taller-nota" style="font-size:10px;color:var(--s2)">
+    Estado, km y fecha prometida los reporta el proveedor desde su liga.
+  </div>
+  <div id="tf-prov-partidas"></div>
+</div>
 ```
 
 Mover los dos `<button id="btn-liga-copiar">` y `<button id="btn-liga-revocar">` desde `.tl-mftr` hasta dentro de `#tf-prov-liga` (conservando clases `tl-exp-btn needs-liga needs-hibrido` y sus `onclick`).
@@ -1135,10 +1174,13 @@ En el script inline del monolito, junto a las demás funciones del taller (despu
 // Pinta el bloque Proveedor de una visita YA persistida. Todo el cálculo vive
 // en la capa pura (src/taller/seguimiento.ts): aquí solo se traduce a DOM.
 // XSS: createElement + textContent, nunca innerHTML.
-function _provPintar(e){
+function _provPintar(e) {
   const cont = document.getElementById("tf-proveedor");
-  if(!cont) return;
-  if(!e || typeof window.__estadoLiga !== "function"){ cont.style.display = "none"; return; }
+  if (!cont) return;
+  if (!e || typeof window.__estadoLiga !== "function") {
+    cont.style.display = "none";
+    return;
+  }
   cont.style.display = "flex";
 
   const liga = window.__estadoLiga(e);
@@ -1147,57 +1189,74 @@ function _provPintar(e){
   // ── Fila 1: la liga
   const filaLiga = document.getElementById("tf-prov-liga");
   const meta = document.getElementById("tf-prov-liga-meta");
-  for(const n of Array.from(filaLiga.childNodes)){
-    if(n.id !== "btn-liga-copiar" && n.id !== "btn-liga-revocar") n.remove();
+  for (const n of Array.from(filaLiga.childNodes)) {
+    if (n.id !== "btn-liga-copiar" && n.id !== "btn-liga-revocar") n.remove();
   }
   const pill = document.createElement("span");
-  pill.className = "tl-pill " + (liga.kind === "activa" ? "repar" : liga.kind === "revocada" ? "pendiente" : "");
-  pill.textContent = liga.kind === "activa" ? "Liga activa"
-    : liga.kind === "revocada" ? "Liga revocada"
-    : liga.kind === "vencida" ? "Liga vencida" : "Sin liga";
+  pill.className =
+    "tl-pill " + (liga.kind === "activa" ? "repar" : liga.kind === "revocada" ? "pendiente" : "");
+  pill.textContent =
+    liga.kind === "activa"
+      ? "Liga activa"
+      : liga.kind === "revocada"
+        ? "Liga revocada"
+        : liga.kind === "vencida"
+          ? "Liga vencida"
+          : "Sin liga";
   const detalle = document.createElement("span");
   detalle.style.cssText = "font-size:12px;color:var(--w1);font-weight:600";
   detalle.textContent = liga.kind === "activa" ? `Vence en ${liga.diasRestantes} días` : "";
   filaLiga.prepend(detalle);
   filaLiga.prepend(pill);
 
-  meta.textContent = liga.kind === "activa"
-    ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
-    : liga.kind === "revocada"
-      ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
-      : liga.kind === "vencida"
-        ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
-        : "Sin liga emitida para esta visita.";
+  meta.textContent =
+    liga.kind === "activa"
+      ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
+      : liga.kind === "revocada"
+        ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
+        : liga.kind === "vencida"
+          ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
+          : "Sin liga emitida para esta visita.";
 
   // ── Fila 2: lo que reporta el taller
   const filaT = document.getElementById("tf-prov-taller");
   filaT.textContent = "";
-  const ETIQ = { revisando:"REVISANDO", reparando:"REPARANDO", esperandoRefaccion:"ESPERANDO REFACCIÓN", lista:"LISTA" };
-  const CLS  = { revisando:"diag", reparando:"repar", esperandoRefaccion:"porrec", lista:"listo" };
-  if(e.estadoOperativo){
+  const ETIQ = {
+    revisando: "REVISANDO",
+    reparando: "REPARANDO",
+    esperandoRefaccion: "ESPERANDO REFACCIÓN",
+    lista: "LISTA",
+  };
+  const CLS = {
+    revisando: "diag",
+    reparando: "repar",
+    esperandoRefaccion: "porrec",
+    lista: "listo",
+  };
+  if (e.estadoOperativo) {
     const p = document.createElement("span");
     p.className = "tl-pill " + (CLS[e.estadoOperativo] || "");
     p.textContent = ETIQ[e.estadoOperativo] || e.estadoOperativo;
     filaT.appendChild(p);
   }
-  if(typeof e.kmTaller === "number"){
+  if (typeof e.kmTaller === "number") {
     const km = document.createElement("span");
     km.style.cssText = "font-size:12px;color:var(--w1)";
     km.textContent = `km del taller ${e.kmTaller.toLocaleString("es-MX")}`;
     filaT.appendChild(km);
   }
-  if(prom.kind !== "sin-promesa"){
+  if (prom.kind !== "sin-promesa") {
     const f = document.createElement("span");
     f.style.cssText = "font-size:12px;color:var(--w1)";
     f.textContent = `· promete salida ${fmtDate(prom.fecha)}`;
     filaT.appendChild(f);
-    if(prom.compromisoOriginal){
+    if (prom.compromisoOriginal) {
       const o = document.createElement("span");
       o.style.cssText = "font-size:10.5px;color:var(--s2)";
       o.textContent = `(había prometido ${fmtDate(prom.compromisoOriginal)})`;
       filaT.appendChild(o);
     }
-    if(prom.kind === "vencida"){
+    if (prom.kind === "vencida") {
       const v = document.createElement("span");
       v.className = "tl-pill pendiente";
       v.style.marginLeft = "auto";
@@ -1205,7 +1264,7 @@ function _provPintar(e){
       filaT.appendChild(v);
     }
   }
-  if(!filaT.childNodes.length){
+  if (!filaT.childNodes.length) {
     const nada = document.createElement("span");
     nada.style.cssText = "font-size:12px;color:var(--s2)";
     nada.textContent = "El taller aún no ha reportado estado.";
@@ -1217,7 +1276,8 @@ function _provPintar(e){
 En `openTallerModal`, donde hoy se resuelve `ligaOfrecible`, agregar al final del bloque:
 
 ```js
-    if(e) _provPintar(e); else document.getElementById("tf-proveedor").style.display = "none";
+if (e) _provPintar(e);
+else document.getElementById("tf-proveedor").style.display = "none";
 ```
 
 - [ ] **Step 6: CSP, batería y commit**
@@ -1238,11 +1298,13 @@ git commit -m "feat(taller): bloque Proveedor en el registro — liga y estado d
 ### Task 6: Partidas en el registro — historial y decisión inline
 
 **Files:**
+
 - Modify: `Control de flotilla.html` (`_provPartidas(e)` dentro de `#tf-prov-partidas`; reusar `_bnPartida`)
 - Modify: `nginx.conf`
 - Test: `tests/tallerPartidasEnRegistro.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `_provPintar` (Tarea 5), `resumenPartidas` (Tarea 3), `_bnPartida`, `_bnAutorizar`, `_bnRechazar`, `__guardarDecisionPartida`, `_partidasConfiables`, `_partidasDeVisita` (todos ya en el monolito).
 - Produces: `_provPartidas(e)` y `_provFiltro` (estado del filtro: `"todas" | "pendientes" | "autorizadas" | "rechazadas"`).
 
@@ -1318,7 +1380,7 @@ Expected: FAIL — no existe `_provPartidas`.
 En `src/api/cloudWire.ts` (junto a los puentes de la Tarea 5):
 
 ```ts
-  window.__resumenPartidas = resumenPartidas;
+window.__resumenPartidas = resumenPartidas;
 ```
 
 Import: agregar `resumenPartidas` a la línea de import de `../taller/seguimiento`. Tipo en `declare global` de `cloudHydrate.ts`.
@@ -1333,13 +1395,13 @@ let _provFiltro = "pendientes";
 // Lista completa de partidas de la visita, con su historial y la decisión
 // INLINE. Reusa _bnPartida (la MISMA fila de la bandeja, con sus botones y su
 // menú de motivos): aquí solo cambia dónde se pinta.
-function _provPartidas(e){
+function _provPartidas(e) {
   const cont = document.getElementById("tf-prov-partidas");
-  if(!cont) return;
+  if (!cont) return;
   cont.textContent = "";
-  if(!e) return;
+  if (!e) return;
 
-  if(!_partidasConfiables()){
+  if (!_partidasConfiables()) {
     const aviso = document.createElement("div");
     aviso.style.cssText = "padding:12px;color:var(--s2);font-size:12px";
     aviso.textContent = "No se pudieron cargar las partidas. Reintenta en unos segundos.";
@@ -1349,13 +1411,15 @@ function _provPartidas(e){
 
   const ps = _partidasDeVisita(e) || [];
   const r = window.__resumenPartidas(ps);
-  if(r.pendientes.n === 0 && _provFiltro === "pendientes") _provFiltro = "todas";
+  if (r.pendientes.n === 0 && _provFiltro === "pendientes") _provFiltro = "todas";
 
   // ── Filtros
   const barra = document.createElement("div");
-  barra.style.cssText = "display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid var(--ln);flex-wrap:wrap";
+  barra.style.cssText =
+    "display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid var(--ln);flex-wrap:wrap";
   const titulo = document.createElement("span");
-  titulo.style.cssText = "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--s1);margin-right:4px";
+  titulo.style.cssText =
+    "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--s1);margin-right:4px";
   titulo.textContent = "Partidas";
   barra.appendChild(titulo);
   const defs = [
@@ -1364,13 +1428,19 @@ function _provPartidas(e){
     ["autorizadas", "Autorizadas", r.autorizadas.n],
     ["rechazadas", "Rechazadas", r.rechazadas.n],
   ];
-  for(const [clave, etiqueta, n] of defs){
+  for (const [clave, etiqueta, n] of defs) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "tl-exp-btn";
-    if(_provFiltro === clave){ b.style.background = "var(--ac)"; b.style.color = "#fff"; }
+    if (_provFiltro === clave) {
+      b.style.background = "var(--ac)";
+      b.style.color = "#fff";
+    }
     b.textContent = `${etiqueta} · ${n}`;
-    b.addEventListener("click", () => { _provFiltro = clave; _provPartidas(e); });
+    b.addEventListener("click", () => {
+      _provFiltro = clave;
+      _provPartidas(e);
+    });
     barra.appendChild(b);
   }
   const totales = document.createElement("span");
@@ -1381,22 +1451,27 @@ function _provPartidas(e){
 
   // ── Lista
   const lista = document.createElement("div");
-  lista.style.cssText = "display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--ln);border-radius:8px;overflow:hidden;margin-top:8px";
+  lista.style.cssText =
+    "display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--ln);border-radius:8px;overflow:hidden;margin-top:8px";
   const visibles = ps.filter((p) =>
-    _provFiltro === "todas" ? true
-    : _provFiltro === "pendientes" ? p.estado === "propuesta"
-    : _provFiltro === "autorizadas" ? p.estado === "autorizada"
-    : p.estado === "rechazada");
+    _provFiltro === "todas"
+      ? true
+      : _provFiltro === "pendientes"
+        ? p.estado === "propuesta"
+        : _provFiltro === "autorizadas"
+          ? p.estado === "autorizada"
+          : p.estado === "rechazada",
+  );
 
-  if(!visibles.length){
+  if (!visibles.length) {
     const vacio = document.createElement("div");
     vacio.style.cssText = "padding:16px;color:var(--s2);font-size:12px;text-align:center";
     vacio.textContent = "No hay partidas en este filtro.";
     lista.appendChild(vacio);
   }
   const fila = { visitaKey: window.__visitaKeyDe(e), entry: e };
-  for(const p of visibles){
-    if(p.estado === "propuesta"){
+  for (const p of visibles) {
+    if (p.estado === "propuesta") {
       // La MISMA fila de la bandeja: botones, motivos y repintado incluidos.
       lista.appendChild(_bnPartida(fila, p, window.__MOTIVOS_RECHAZO));
       continue;
@@ -1408,9 +1483,10 @@ function _provPartidas(e){
 
 // Una partida ya decidida (o un borrador del taller): sin botones, con su
 // rastro completo — quién, cuándo y por qué.
-function _provFilaHistorial(p){
+function _provFilaHistorial(p) {
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--ln);align-items:center";
+  row.style.cssText =
+    "display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--ln);align-items:center";
   row.appendChild(_bnThumb(p));
 
   const info = document.createElement("div");
@@ -1419,31 +1495,46 @@ function _provFilaHistorial(p){
   linea1.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap";
   const desc = document.createElement("span");
   desc.style.cssText = "font-size:12.5px;color:var(--w1);font-weight:600";
-  if(p.estado === "rechazada"){ desc.style.textDecoration = "line-through"; desc.style.color = "var(--s1)"; }
+  if (p.estado === "rechazada") {
+    desc.style.textDecoration = "line-through";
+    desc.style.color = "var(--s1)";
+  }
   desc.textContent = p.descripcion || "(sin descripción)";
   const badge = document.createElement("span");
-  badge.className = "tl-pill " + (p.estado === "autorizada" ? "listo" : p.estado === "rechazada" ? "pendiente" : "");
+  badge.className =
+    "tl-pill " +
+    (p.estado === "autorizada" ? "listo" : p.estado === "rechazada" ? "pendiente" : "");
   const esDelTaller = String(p.creadoPor || "").indexOf("liga:") === 0;
-  badge.textContent = p.estado === "autorizada" ? "AUTORIZADA"
-    : p.estado === "rechazada" ? "RECHAZADA"
-    : p.estado === "cancelada" ? "CANCELADA"
-    : esDelTaller ? "Borrador del taller" : "Borrador";
+  badge.textContent =
+    p.estado === "autorizada"
+      ? "AUTORIZADA"
+      : p.estado === "rechazada"
+        ? "RECHAZADA"
+        : p.estado === "cancelada"
+          ? "CANCELADA"
+          : esDelTaller
+            ? "Borrador del taller"
+            : "Borrador";
   linea1.append(desc, badge);
 
   const precio = document.createElement("div");
-  precio.style.cssText = "font-size:12px;font-weight:700;color:" + (p.estado === "autorizada" ? "var(--w1)" : "var(--s1)");
+  precio.style.cssText =
+    "font-size:12px;font-weight:700;color:" +
+    (p.estado === "autorizada" ? "var(--w1)" : "var(--s1)");
   const monto = p.estado === "autorizada" ? p.precioAutorizado : p.precio;
   precio.textContent = `${_fmtMon2(typeof monto === "number" && isFinite(monto) ? monto : 0)} · ${p.tipo === "manoObra" ? "mano de obra" : "refacción"}`;
 
   const rastro = document.createElement("div");
   rastro.style.cssText = "font-size:10.5px;color:var(--s2)";
-  if(p.estado === "autorizada"){
+  if (p.estado === "autorizada") {
     rastro.textContent = `Autorizada por ${p.decididoPor || "desconocido"} · ${fmtDate(p.decididoEn)}`;
-  }else if(p.estado === "rechazada"){
+  } else if (p.estado === "rechazada") {
     const nota = p.motivoRechazoNota ? ` — ${p.motivoRechazoNota}` : "";
     rastro.textContent = `Rechazada por ${p.decididoPor || "desconocido"} · ${fmtDate(p.decididoEn)} · ${p.motivoRechazo || "sin motivo"}${nota}`;
-  }else{
-    rastro.textContent = esDelTaller ? "Capturada por el taller, aún sin enviar" : "Capturada por GPA, aún sin enviar";
+  } else {
+    rastro.textContent = esDelTaller
+      ? "Capturada por el taller, aún sin enviar"
+      : "Capturada por GPA, aún sin enviar";
   }
   info.append(linea1, precio, rastro);
   row.appendChild(info);
@@ -1454,10 +1545,13 @@ function _provFilaHistorial(p){
 En `_bnRepintar`, agregar el repintado del bloque cuando el modal está abierto:
 
 ```js
-  if(_tallerEditId && document.getElementById("taller-modal").classList.contains("open")){
-    const e = tallerEntries.find(x => x.id === _tallerEditId);
-    if(e){ _provPintar(e); _provPartidas(e); }
+if (_tallerEditId && document.getElementById("taller-modal").classList.contains("open")) {
+  const e = tallerEntries.find((x) => x.id === _tallerEditId);
+  if (e) {
+    _provPintar(e);
+    _provPartidas(e);
   }
+}
 ```
 
 Y en `_provPintar`, al final, llamar `_provPartidas(e)`.
@@ -1493,11 +1587,13 @@ git commit -m "feat(taller): historial y firma de partidas dentro del registro d
 ### Task 7: Distintivo "Proveedor" en la tabla de Taller
 
 **Files:**
+
 - Modify: `Control de flotilla.html` (columnas de la tabla de visitas y su pintado)
 - Modify: `nginx.conf`
 - Test: `tests/tallerDistintivoTabla.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `distintivoProveedor`, `etiquetaDistintivo`, `resumenPartidas`, `estadoLiga`, `promesaTaller` (Tareas 2 y 3).
 - Produces: `window.__distintivoProveedor(e, ps)` en `cloudWire.ts` y la columna en la tabla.
 
@@ -1541,14 +1637,14 @@ describe("distintivo del proveedor en la tabla de Taller", () => {
 En `cloudWire.ts`:
 
 ```ts
-  window.__distintivoProveedor = (e, ps) => {
-    const ahora = new Date().toISOString();
-    return distintivoProveedor(
-      estadoLiga(e, ahora),
-      promesaTaller(e, ahora.slice(0, 10)),
-      resumenPartidas(ps),
-    );
-  };
+window.__distintivoProveedor = (e, ps) => {
+  const ahora = new Date().toISOString();
+  return distintivoProveedor(
+    estadoLiga(e, ahora),
+    promesaTaller(e, ahora.slice(0, 10)),
+    resumenPartidas(ps),
+  );
+};
 ```
 
 - [ ] **Step 4: Columna y celda en el monolito**
@@ -1565,12 +1661,18 @@ Y la celda:
 // Una sola señal por visita, la más urgente (capa pura). Con las partidas en
 // duda la celda se deja VACÍA: un "sin liga" ahí sería una mentira con formato
 // de dato.
-function _provCelda(e){
+function _provCelda(e) {
   const td = document.createElement("td");
   td.className = "needs-hibrido";
-  if(!_partidasConfiables() || typeof window.__distintivoProveedor !== "function") return td;
+  if (!_partidasConfiables() || typeof window.__distintivoProveedor !== "function") return td;
   const d = window.__distintivoProveedor(e, _partidasDeVisita(e) || []);
-  const CLS = { "promesa-vencida":"pendiente", "esperando-firma":"diag", "liga-activa":"repar", "liga-revocada":"", "sin-liga":"" };
+  const CLS = {
+    "promesa-vencida": "pendiente",
+    "esperando-firma": "diag",
+    "liga-activa": "repar",
+    "liga-revocada": "",
+    "sin-liga": "",
+  };
   const span = document.createElement("span");
   span.className = "tl-pill " + (CLS[d.kind] || "");
   span.textContent = window.__etiquetaDistintivo(d);
@@ -1594,11 +1696,13 @@ git commit -m "feat(taller): distintivo del proveedor por renglon en la tabla"
 ### Task 8: La pestaña pasa a "Pendientes de firma" (bandeja de entrada)
 
 **Files:**
+
 - Modify: `Control de flotilla.html` (etiqueta de la pestaña y `renderBandeja`)
 - Modify: `nginx.conf`
 - Test: `tests/tallerBandejaEntrada.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `filasPendientes` (Tarea 3), `openTallerModal` (monolito).
 - Produces: `window.__filasPendientes` en `cloudWire.ts`.
 
@@ -1648,8 +1752,8 @@ describe("pestaña Pendientes de firma", () => {
 Puente en `cloudWire.ts`:
 
 ```ts
-  window.__filasPendientes = (entries, porVisita) =>
-    filasPendientes(entries, porVisita, new Date().toISOString());
+window.__filasPendientes = (entries, porVisita) =>
+  filasPendientes(entries, porVisita, new Date().toISOString());
 ```
 
 En el markup, cambiar el texto de la pestaña `#tltab-bandeja` de "Bandeja de firmas" a "Pendientes de firma".
@@ -1671,10 +1775,12 @@ git commit -m "feat(taller): la pestana pasa a bandeja de entrada de pendientes"
 ### Task 9: Las partidas salen en el Excel
 
 **Files:**
+
 - Modify: `src/taller/exportExcel.ts`
 - Test: `tests/tallerExcelPartidas.test.ts` (crear)
 
 **Interfaces:**
+
 - Consumes: `resumenPartidas` (Tarea 3), `window.__tallerPartidas` (mapa por visita).
 - Produces: hoja "Partidas" en el libro de Taller.
 
@@ -1691,9 +1797,20 @@ describe("Excel de Taller — hoja Partidas", () => {
   it("existe la hoja con sus encabezados exactos", () => {
     expect(src).toContain('addWorksheet("Partidas")');
     for (const h of [
-      "Unidad", "Placa", "Ingreso", "Descripción", "Tipo", "Precio propuesto",
-      "Estado", "Precio autorizado", "Decidido por", "Decidido el",
-      "Motivo de rechazo", "Nota", "Origen", "Fotos",
+      "Unidad",
+      "Placa",
+      "Ingreso",
+      "Descripción",
+      "Tipo",
+      "Precio propuesto",
+      "Estado",
+      "Precio autorizado",
+      "Decidido por",
+      "Decidido el",
+      "Motivo de rechazo",
+      "Nota",
+      "Origen",
+      "Fotos",
     ]) {
       expect(src, `falta el encabezado ${h}`).toContain(`"${h}"`);
     }

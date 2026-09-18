@@ -15,21 +15,22 @@ Tras el despliegue del esquema híbrido (2026-09-14) el ciclo funciona de punta 
 
 ## 2. Decisiones (cerradas con Navares, 2026-09-15)
 
-| # | Decisión | Razón |
-|---|---|---|
-| 1 | **Se firma y se ve el historial desde el registro de la unidad** (modal "Editar registro"). | Una persona firma y hay pocas visitas abiertas a la vez: todo en un lugar, con el contexto de la camioneta. |
-| 2 | La pestaña "Bandeja de firmas" pasa a **"Pendientes de firma"**: bandeja de **entrada** (lista por unidad con total) cuyo renglón **abre el registro**. Ahí no se firma. Se puede ocultar tras el piloto si nadie la usa. | Responde "¿qué me espera hoy, de todas las camionetas?" sin abrir una por una. |
-| 3 | Bloque **"Proveedor" arriba** del registro, debajo de la identificación. | Es lo primero que Riesgos quiere ver en una visita con liga. |
-| 4 | **Distintivo por renglón** en la tabla de Taller: una sola señal, la más urgente. | La tabla dice dónde entrar. |
-| 5 | **Fotos del taller en visor** grande (clic en la miniatura). | Hoy no se pueden revisar. |
-| 6 | **Excel y expediente PDF** incluyen las partidas con estado, motivo y firmante. | El rastro debe poder salir del sistema (una disputa con el taller). |
-| 7 | **Fuera de esta versión:** registrar cuándo entra el taller a la liga (último acceso); que Riesgos corrija lo que reporta el taller; avisos por correo; asignar la credencial `riesgos` desde el panel de usuarios. | v1 sin cambios de servidor. |
+| #   | Decisión                                                                                                                                                                                                                  | Razón                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 1   | **Se firma y se ve el historial desde el registro de la unidad** (modal "Editar registro").                                                                                                                               | Una persona firma y hay pocas visitas abiertas a la vez: todo en un lugar, con el contexto de la camioneta. |
+| 2   | La pestaña "Bandeja de firmas" pasa a **"Pendientes de firma"**: bandeja de **entrada** (lista por unidad con total) cuyo renglón **abre el registro**. Ahí no se firma. Se puede ocultar tras el piloto si nadie la usa. | Responde "¿qué me espera hoy, de todas las camionetas?" sin abrir una por una.                              |
+| 3   | Bloque **"Proveedor" arriba** del registro, debajo de la identificación.                                                                                                                                                  | Es lo primero que Riesgos quiere ver en una visita con liga.                                                |
+| 4   | **Distintivo por renglón** en la tabla de Taller: una sola señal, la más urgente.                                                                                                                                         | La tabla dice dónde entrar.                                                                                 |
+| 5   | **Fotos del taller en visor** grande (clic en la miniatura).                                                                                                                                                              | Hoy no se pueden revisar.                                                                                   |
+| 6   | **Excel y expediente PDF** incluyen las partidas con estado, motivo y firmante.                                                                                                                                           | El rastro debe poder salir del sistema (una disputa con el taller).                                         |
+| 7   | **Fuera de esta versión:** registrar cuándo entra el taller a la liga (último acceso); que Riesgos corrija lo que reporta el taller; avisos por correo; asignar la credencial `riesgos` desde el panel de usuarios.       | v1 sin cambios de servidor.                                                                                 |
 
 **Regla que gobierna todo el bloque:** _el taller REPORTA (estado operativo, km, fecha prometida, fotos, partidas); Riesgos VE y DECIDE (liga, firma)._ Una sola fuente de verdad por dato; nada de lo que reporta el taller se edita desde la app.
 
 ## 3. Alcance
 
 **Entra (v1):**
+
 - Bloque "Proveedor" en el modal, con cuatro partes: liga · estado del taller · partidas (lista completa con filtros y decisión inline) · fotos (por partida, con visor).
 - Distintivo "Proveedor" por renglón en la tabla de visitas de Taller.
 - Pestaña "Pendientes de firma" como bandeja de entrada por unidad.
@@ -47,15 +48,15 @@ Todo lo que el bloque muestra ya vive en la nube. Lo que falta es leerlo.
 
 `cloudHydrate.ts` construye `TallerEntry` desde `datos` (blob) y algunas columnas. Se añaden al mapeo, con `numOrUndef`/`String` según tipo y **sin normalizar**:
 
-| Columna | Campo nuevo en `TallerEntry` | Tipo | Quién la escribe |
-|---|---|---|---|
-| `ligaVersion` | `ligaVersion` | `number \| undefined` | resolver (emitir/revocar) |
-| `ligaCreadaEn`, `ligaCreadaPor` | `ligaCreadaEn`, `ligaCreadaPor` | `string \| undefined` | resolver (emitir) |
-| `ligaRevocadaEn`, `ligaRevocadaPor` | `ligaRevocadaEn`, `ligaRevocadaPor` | `string \| undefined` | resolver (revocar); emitir las pone en `null` |
-| `estadoOperativo` | `estadoOperativo` | `"revisando" \| "reparando" \| "esperandoRefaccion" \| "lista" \| undefined` | portal (`/api/visita`) |
-| `km` (columna) | `kmTaller` | `number \| undefined` | portal — distinto de `datos.km` (el que teclea Riesgos); se muestran los dos si difieren |
-| `fsalidaEst` (columna) | `fsalidaEstTaller` | `string \| undefined` | portal — la promesa VIGENTE |
-| `fsalidaEstCompromiso` | `fsalidaEstCompromiso` | `string \| undefined` | portal — la PRIMERA promesa, se escribe una sola vez (`actualizarVisita`) |
+| Columna                             | Campo nuevo en `TallerEntry`        | Tipo                                                                         | Quién la escribe                                                                         |
+| ----------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ligaVersion`                       | `ligaVersion`                       | `number \| undefined`                                                        | resolver (emitir/revocar)                                                                |
+| `ligaCreadaEn`, `ligaCreadaPor`     | `ligaCreadaEn`, `ligaCreadaPor`     | `string \| undefined`                                                        | resolver (emitir)                                                                        |
+| `ligaRevocadaEn`, `ligaRevocadaPor` | `ligaRevocadaEn`, `ligaRevocadaPor` | `string \| undefined`                                                        | resolver (revocar); emitir las pone en `null`                                            |
+| `estadoOperativo`                   | `estadoOperativo`                   | `"revisando" \| "reparando" \| "esperandoRefaccion" \| "lista" \| undefined` | portal (`/api/visita`)                                                                   |
+| `km` (columna)                      | `kmTaller`                          | `number \| undefined`                                                        | portal — distinto de `datos.km` (el que teclea Riesgos); se muestran los dos si difieren |
+| `fsalidaEst` (columna)              | `fsalidaEstTaller`                  | `string \| undefined`                                                        | portal — la promesa VIGENTE                                                              |
+| `fsalidaEstCompromiso`              | `fsalidaEstCompromiso`              | `string \| undefined`                                                        | portal — la PRIMERA promesa, se escribe una sola vez (`actualizarVisita`)                |
 
 Estos campos **no viajan en el upload** (`uploadTallerToCloud` no los toca: son columnas del servidor). `sinGastoSiTienePartidas` y el resto del chokepoint quedan intactos.
 
@@ -68,12 +69,19 @@ Ya están en memoria: `window.__tallerPartidas` (mapa `visitaKey → Partida[]`,
 ```ts
 export type EstadoLiga =
   | { kind: "sin-liga" }
-  | { kind: "activa"; venceEn: string; diasRestantes: number; emitidaEn: string; emitidaPor: string }
+  | {
+      kind: "activa";
+      venceEn: string;
+      diasRestantes: number;
+      emitidaEn: string;
+      emitidaPor: string;
+    }
   | { kind: "vencida"; vencioEn: string; emitidaEn: string; emitidaPor: string }
   | { kind: "revocada"; revocadaEn: string; revocadaPor: string };
 
 export function estadoLiga(e: LigaCampos, ahora: Date, vigenciaMs = VIGENCIA_LIGA_MS): EstadoLiga;
 ```
+
 - `sin-liga` si no hay `ligaCreadaEn`.
 - `revocada` si `ligaRevocadaEn` existe y es posterior o igual a `ligaCreadaEn` (emitir limpia las columnas de revocación, así que una re-emisión vuelve a `activa`).
 - `vencida` si `ahora ≥ ligaCreadaEn + vigencia` (90 días, **la misma constante** que usa el portal: `VIGENCIA_LIGA_MS` en `amplify/functions/taller-portal/token.ts`; como el frontend no importa del backend, se duplica en `seguimiento.ts` con un test que lea el archivo del portal y compare los dos valores).
@@ -87,19 +95,21 @@ export type PromesaTaller =
 
 export function promesaTaller(e: PromesaCampos, hoyISO: string): PromesaTaller;
 ```
+
 - Usa `fsalidaEstTaller` (la vigente); si difiere de `fsalidaEstCompromiso`, expone el compromiso original para pintarlo ("prometió 12/09, ahora dice 19/09").
 - `vencida` solo si la visita **no** está cerrada (`estado` ≠ Finalizado/Listo y sin `fsalidaReal`).
 - Comparación por fecha civil (`YYYY-MM-DD`), sin horas ni husos.
 
 ```ts
 export type ResumenPartidas = {
-  pendientes: { n: number; monto: number };   // estado "propuesta"
-  autorizadas: { n: number; monto: number };  // suma de precioAutorizado
-  rechazadas: { n: number; monto: number };   // suma de precio
-  borradoresTaller: number;                   // estado "borrador" con creadoPor "liga:…" — informativo
+  pendientes: { n: number; monto: number }; // estado "propuesta"
+  autorizadas: { n: number; monto: number }; // suma de precioAutorizado
+  rechazadas: { n: number; monto: number }; // suma de precio
+  borradoresTaller: number; // estado "borrador" con creadoPor "liga:…" — informativo
 };
 export function resumenPartidas(ps: readonly Partida[]): ResumenPartidas;
 ```
+
 - `montoPendienteDeFirma`/`gastoTotalDe` existentes siguen siendo la fuente para dinero de la visita; `resumenPartidas` **no** introduce una segunda fórmula de gasto: `autorizadas.monto` debe coincidir con `gastoDerivado(e, ps).gasto` y hay un test que lo exige.
 
 ```ts
@@ -109,13 +119,19 @@ export type Distintivo =
   | { kind: "liga-activa"; dias: number }
   | { kind: "liga-revocada" }
   | { kind: "sin-liga" };
-export function distintivoProveedor(liga: EstadoLiga, promesa: PromesaTaller, resumen: ResumenPartidas): Distintivo;
+export function distintivoProveedor(
+  liga: EstadoLiga,
+  promesa: PromesaTaller,
+  resumen: ResumenPartidas,
+): Distintivo;
 ```
+
 - Prioridad fija: promesa vencida › esperando firma (N ≥ 1) › liga activa › liga revocada › sin liga. Una liga **vencida** con nada pendiente se muestra como `sin-liga` (ya no sirve; emitir de nuevo la reactiva).
 
 ```ts
-export function filasPendientes(entries, partidasPorVisita): FilaPendiente[];  // para la bandeja de entrada
+export function filasPendientes(entries, partidasPorVisita): FilaPendiente[]; // para la bandeja de entrada
 ```
+
 - Una fila por visita con ≥ 1 `propuesta`: unidad, placa, ingreso, n, monto, la propuesta más antigua (`propuestoEn` mínimo), distintivo. Ordenadas por antigüedad de la más antigua (la que más espera, arriba). Reusa `filasBandeja` existente como insumo, no la duplica.
 
 ## 6. Pantallas
@@ -132,7 +148,7 @@ Se inserta después de la sección "Identificación de la unidad", como `.tl-sec
    - rechazada: descripción tachada, pastilla roja, "Rechazada por … el … · motivo" (+ nota si la hay);
    - borrador del taller (aún no enviado): pastilla gris "Borrador del taller", sin botones;
    - cancelada: no se lista (anulación) salvo bajo el filtro "Todas", con pastilla "Cancelada".
-   Filtro por defecto: **Pendientes** si hay alguna; si no, **Todas**.
+     Filtro por defecto: **Pendientes** si hay alguna; si no, **Todas**.
 4. **Fotos:** la miniatura de cada partida (44 px aquí, 56 en la bandeja) es un botón con `aria-label="Ver N fotos"`, contador de fotos en la esquina; clic abre el visor (§6.3).
 
 **Repintado:** al autorizar/rechazar desde el modal, la misma secuencia que la bandeja (BC-C1): `__guardarDecisionPartida` → `__cloudHydrate()` → repintar el bloque (lista, filtros, totales), el campo `#tf-gasto` derivado, el distintivo del renglón en la tabla y el contador de la pestaña, **sin recargar**. Si la partida ya fue decidida en otra pestaña (B-C3), el aviso dice quién y cuándo la decidió y el bloque se repinta.
@@ -143,13 +159,13 @@ Se inserta después de la sección "Identificación de la unidad", como `.tl-sec
 
 Nueva columna después de "Días", encabezado "Proveedor", visible solo con el apagador encendido (`needs-hibrido` en `th` y `td`). Contenido: una pastilla `tl-pill` por `distintivoProveedor(...)`:
 
-| Distintivo | Texto | Colores (tokens) |
-|---|---|---|
-| promesa-vencida | `Promesa vencida · Nd` | `--Rl` / `--tl-pend-fg` |
-| esperando-firma | `Esperando firma · N` | `--Al` / `--tl-warn-fg` |
-| liga-activa | `Liga activa · Nd` | `--Bl` / `--B` |
-| liga-revocada | `Liga revocada` (tachado) | `--bg3` / `--s2` |
-| sin-liga | `Sin liga` | `--bg3` / `--s2` |
+| Distintivo      | Texto                     | Colores (tokens)        |
+| --------------- | ------------------------- | ----------------------- |
+| promesa-vencida | `Promesa vencida · Nd`    | `--Rl` / `--tl-pend-fg` |
+| esperando-firma | `Esperando firma · N`     | `--Al` / `--tl-warn-fg` |
+| liga-activa     | `Liga activa · Nd`        | `--Bl` / `--B`          |
+| liga-revocada   | `Liga revocada` (tachado) | `--bg3` / `--s2`        |
+| sin-liga        | `Sin liga`                | `--bg3` / `--s2`        |
 
 Ordenable por urgencia (misma prioridad). Si la tabla queda ancha en pantallas chicas, la alternativa aprobada es pintar la pastilla debajo del No. Unidad en la primera celda (decisión de implementación, no de producto).
 
@@ -176,13 +192,13 @@ Mismo contenedor `#tl-bandeja`, mismo contador `#tl-bandeja-cnt`. Renombrada. Co
 
 ## 8. Errores y estados
 
-| Situación | Comportamiento |
-|---|---|
-| Partidas no cargadas (tri-estado) | Bloque: "No se pudieron cargar las partidas"; decisiones deshabilitadas; liga y estado del taller sí se pintan. Tabla: la pastilla no se pinta (celda vacía) para no mentir. |
-| Partida ya decidida en otra pestaña | Aviso "Esta partida ya fue autorizada/rechazada por … el …" y repintado. |
-| Fallo al decidir | Aviso "No se pudo autorizar/rechazar. Intenta de nuevo." (existente) y el botón se reactiva. |
-| Foto que no carga | Miniatura "Sin foto"; en el visor "Foto no disponible". |
-| Visita cerrada (Finalizado / con salida real) | Liga: no se ofrece emitir; promesa: no se marca vencida; partidas: historial completo, sin decisiones nuevas (misma regla de hoy). |
+| Situación                                     | Comportamiento                                                                                                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Partidas no cargadas (tri-estado)             | Bloque: "No se pudieron cargar las partidas"; decisiones deshabilitadas; liga y estado del taller sí se pintan. Tabla: la pastilla no se pinta (celda vacía) para no mentir. |
+| Partida ya decidida en otra pestaña           | Aviso "Esta partida ya fue autorizada/rechazada por … el …" y repintado.                                                                                                     |
+| Fallo al decidir                              | Aviso "No se pudo autorizar/rechazar. Intenta de nuevo." (existente) y el botón se reactiva.                                                                                 |
+| Foto que no carga                             | Miniatura "Sin foto"; en el visor "Foto no disponible".                                                                                                                      |
+| Visita cerrada (Finalizado / con salida real) | Liga: no se ofrece emitir; promesa: no se marca vencida; partidas: historial completo, sin decisiones nuevas (misma regla de hoy).                                           |
 
 ## 9. Pruebas
 

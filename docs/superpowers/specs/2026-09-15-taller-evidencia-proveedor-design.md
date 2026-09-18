@@ -6,24 +6,25 @@
 
 ## 1. Decisiones (cerradas 2026-09-15)
 
-| # | Decisión | Nota |
-|---|---|---|
-| 1 | **Cámara dentro de la liga como único camino normal para fotos**; cada foto guarda su **origen** ("cámara de la liga" o "archivo") y Riesgos lo ve. | Honestidad técnica: una página web no puede prohibir al 100 % que el sistema del celular ofrezca la galería; se elimina la opción del camino normal y se etiqueta la excepción. |
-| 2 | **Refacción exige al menos una foto.** El servidor lo aplica. | Hoy no hay mínimo (solo el máximo de 6). |
-| 3 | **Mano de obra no exige foto**, pero exige **concepto de un catálogo cerrado** + descripción libre de mínimo 15 caracteres. | Catálogo inicial: diagnóstico · desmontaje y montaje · ajuste o calibración · reparación · instalación · servicio. Editable por código. |
-| 4 | **Sin tope de precio** para mano de obra sin foto. | El control es la etiqueta "Sin evidencia" (decisión 6) y la firma de Riesgos. |
-| 5 | **Ligar la mano de obra a una refacción de la misma visita es opcional**; si va sola y el concepto no es diagnóstico ni servicio, se **resalta**. | "Mano de obra de: cambio de balatas". |
-| 6 | Riesgos ve la etiqueta **"Sin evidencia"** en cada partida de mano de obra sin foto ni refacción ligada, en el registro y en la bandeja de entrada. | La decisión sigue siendo humana, pero informada. |
-| 7 | **Factura del proveedor desde la liga: PDF y XML del CFDI.** Se aceptan por separado; la factura cuenta como completa con los dos. | El XML permite leer total, folio, UUID, fecha y RFC sin teclear. |
-| 8 | El taller puede anexar la factura **hasta 30 días después de finalizada la visita**, y en ese periodo la liga acepta **solo** la factura (nada de partidas ni cambios). | Refleja el flujo real: primero sale la camioneta, después llega la factura. Excepción controlada a la puerta de visita cerrada (A-8). |
-| 9 | La app **cruza** el total del CFDI contra la suma autorizada y el RFC receptor contra el de GPA; **avisa** si difieren, **no bloquea**. | El RFC de GPA vive en configuración (`AppConfig.rfcReceptor`), nunca en el repo público. |
-| 10 | **Riesgos también** puede anexar la factura desde Fleet (admin y operativo), con el mismo cruce y marcada con quién la subió. | Para cuando el taller la manda por correo. |
+| #   | Decisión                                                                                                                                                                | Nota                                                                                                                                                                            |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Cámara dentro de la liga como único camino normal para fotos**; cada foto guarda su **origen** ("cámara de la liga" o "archivo") y Riesgos lo ve.                     | Honestidad técnica: una página web no puede prohibir al 100 % que el sistema del celular ofrezca la galería; se elimina la opción del camino normal y se etiqueta la excepción. |
+| 2   | **Refacción exige al menos una foto.** El servidor lo aplica.                                                                                                           | Hoy no hay mínimo (solo el máximo de 6).                                                                                                                                        |
+| 3   | **Mano de obra no exige foto**, pero exige **concepto de un catálogo cerrado** + descripción libre de mínimo 15 caracteres.                                             | Catálogo inicial: diagnóstico · desmontaje y montaje · ajuste o calibración · reparación · instalación · servicio. Editable por código.                                         |
+| 4   | **Sin tope de precio** para mano de obra sin foto.                                                                                                                      | El control es la etiqueta "Sin evidencia" (decisión 6) y la firma de Riesgos.                                                                                                   |
+| 5   | **Ligar la mano de obra a una refacción de la misma visita es opcional**; si va sola y el concepto no es diagnóstico ni servicio, se **resalta**.                       | "Mano de obra de: cambio de balatas".                                                                                                                                           |
+| 6   | Riesgos ve la etiqueta **"Sin evidencia"** en cada partida de mano de obra sin foto ni refacción ligada, en el registro y en la bandeja de entrada.                     | La decisión sigue siendo humana, pero informada.                                                                                                                                |
+| 7   | **Factura del proveedor desde la liga: PDF y XML del CFDI.** Se aceptan por separado; la factura cuenta como completa con los dos.                                      | El XML permite leer total, folio, UUID, fecha y RFC sin teclear.                                                                                                                |
+| 8   | El taller puede anexar la factura **hasta 30 días después de finalizada la visita**, y en ese periodo la liga acepta **solo** la factura (nada de partidas ni cambios). | Refleja el flujo real: primero sale la camioneta, después llega la factura. Excepción controlada a la puerta de visita cerrada (A-8).                                           |
+| 9   | La app **cruza** el total del CFDI contra la suma autorizada y el RFC receptor contra el de GPA; **avisa** si difieren, **no bloquea**.                                 | El RFC de GPA vive en configuración (`AppConfig.rfcReceptor`), nunca en el repo público.                                                                                        |
+| 10  | **Riesgos también** puede anexar la factura desde Fleet (admin y operativo), con el mismo cruce y marcada con quién la subió.                                           | Para cuando el taller la manda por correo.                                                                                                                                      |
 
 **Regla que gobierna el bloque:** _la evidencia es del taller y las reglas son del servidor._ Nada de esto depende de que la pantalla del taller se porte bien: el portal rechaza lo que no cumple.
 
 ## 2. Alcance
 
 **Entra:**
+
 - Página de la liga (`amplify/functions/taller-portal/pagina.ts`): cámara en vivo dentro de la página (captura → JPEG → misma subida firmada de hoy), sin selector de galería; respaldo al selector con `capture` solo cuando la cámara no está disponible; selector de **concepto** para mano de obra; campo opcional "mano de obra de" (lista de refacciones ya capturadas en la visita).
 - Portal (`handler.ts` + `validacion.ts`): reglas de evidencia por tipo; validación del concepto y de la refacción ligada; origen por foto.
 - Esquema `TallerPartida`: tres campos nuevos, todos opcionales (aditivo, sin migración).
@@ -37,11 +38,11 @@
 
 ### 3.1 `TallerPartida` — campos nuevos (todos opcionales)
 
-| Campo | Tipo | Quién lo escribe | Significado |
-|---|---|---|---|
-| `conceptoMO` | `enum` `diagnostico \| desmontajeMontaje \| ajusteCalibracion \| reparacion \| instalacion \| servicio` | portal (y captura manual de GPA) | Obligatorio cuando `tipo === "manoObra"`; prohibido cuando `tipo === "refaccion"`. |
-| `refaccionRef` | `string` (`partidaId`) | portal | Opcional. Debe apuntar a una partida **de la misma visita** con `tipo === "refaccion"` y no cancelada. |
-| `fotosOrigen` | `string[]` alineado con `fotos` (`"camara" \| "archivo"`) | portal | Declarado por la página al subir cada foto (ver §4.3); el servidor lo persiste tal cual y lo etiqueta como declaración, no como prueba. |
+| Campo          | Tipo                                                                                                    | Quién lo escribe                 | Significado                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `conceptoMO`   | `enum` `diagnostico \| desmontajeMontaje \| ajusteCalibracion \| reparacion \| instalacion \| servicio` | portal (y captura manual de GPA) | Obligatorio cuando `tipo === "manoObra"`; prohibido cuando `tipo === "refaccion"`.                                                      |
+| `refaccionRef` | `string` (`partidaId`)                                                                                  | portal                           | Opcional. Debe apuntar a una partida **de la misma visita** con `tipo === "refaccion"` y no cancelada.                                  |
+| `fotosOrigen`  | `string[]` alineado con `fotos` (`"camara" \| "archivo"`)                                               | portal                           | Declarado por la página al subir cada foto (ver §4.3); el servidor lo persiste tal cual y lo etiqueta como declaración, no como prueba. |
 
 Las 5 partidas que ya existen en producción no tienen estos campos: se muestran como "sin dato" (no como "sin evidencia"). No hay backfill.
 
@@ -52,10 +53,17 @@ Las 5 partidas que ya existen en producción no tienen estos campos: se muestran
 ## 4. Reglas del servidor (`validacion.ts`, puras y probadas)
 
 ```ts
-export type Evidencia = { tipo: PartidaTipo; fotos: readonly string[]; conceptoMO?: string; descripcion: string; refaccionRef?: string };
+export type Evidencia = {
+  tipo: PartidaTipo;
+  fotos: readonly string[];
+  conceptoMO?: string;
+  descripcion: string;
+  refaccionRef?: string;
+};
 
 export function validarEvidencia(e: Evidencia): { ok: true } | { ok: false; motivo: string };
 ```
+
 - `refaccion`: `fotos.length ≥ 1`, si no → "Una refacción necesita al menos una foto". `conceptoMO` debe venir vacío.
 - `manoObra`: `conceptoMO ∈ CONCEPTOS_MO`, si no → "Elige el tipo de mano de obra"; `descripcion.trim().length ≥ 15`, si no → "Describe el trabajo (mínimo 15 caracteres)"; fotos opcionales (0–6).
 - Ambos: los límites actuales siguen (máximo 6 fotos, 10 MB, JPEG/PNG/WebP, descripción ≤ 500, precio finito ≤ tope).
@@ -63,6 +71,7 @@ export function validarEvidencia(e: Evidencia): { ok: true } | { ok: false; moti
 ```ts
 export function sinEvidencia(p: { tipo; fotos; conceptoMO?; refaccionRef? }): boolean;
 ```
+
 - `true` solo si `tipo === "manoObra"` y `fotos.length === 0` y no hay `refaccionRef` y `conceptoMO ∉ {diagnostico, servicio}`. Es la misma función que usa la app de Riesgos para la etiqueta (duplicada con test de igualdad, como el catálogo).
 
 En `crearPartida` (`handler.ts`): se llama `validarEvidencia`; si hay `refaccionRef`, se lee la partida referida (`TallerPartida.get` con la misma `visitaKey`) y se exige `tipo === "refaccion"` y `estado !== "cancelada"`; `fotosOrigen` se recorta al largo de `fotos` y se normaliza a `camara`/`archivo` (cualquier otro valor → `archivo`). Bitácora: acción `crear-partida` incluye `tipo`, `conceptoMO`, `nFotos`, `origen`.
@@ -98,13 +107,13 @@ En `crearPartida` (`handler.ts`): se llama `validarEvidencia`; si hay `refaccion
 
 ## 7. Errores y estados
 
-| Situación | Comportamiento |
-|---|---|
-| Refacción sin foto | Portal 400 "Una refacción necesita al menos una foto"; la página lo impide antes. |
-| Mano de obra sin concepto o descripción corta | Portal 400 con el mensaje del catálogo / del mínimo; la página lo impide antes. |
-| `refaccionRef` inexistente, de otra visita, cancelada o de tipo mano de obra | Portal 400 "La refacción ligada no existe en esta visita". |
-| Cámara no disponible o permiso negado | La página cae al selector con `capture`; la foto se marca "archivo". |
-| Partida anterior a este bloque | Sin concepto ni origen: "sin dato"; **no** se etiqueta "Sin evidencia". |
+| Situación                                                                    | Comportamiento                                                                    |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Refacción sin foto                                                           | Portal 400 "Una refacción necesita al menos una foto"; la página lo impide antes. |
+| Mano de obra sin concepto o descripción corta                                | Portal 400 con el mensaje del catálogo / del mínimo; la página lo impide antes.   |
+| `refaccionRef` inexistente, de otra visita, cancelada o de tipo mano de obra | Portal 400 "La refacción ligada no existe en esta visita".                        |
+| Cámara no disponible o permiso negado                                        | La página cae al selector con `capture`; la foto se marca "archivo".              |
+| Partida anterior a este bloque                                               | Sin concepto ni origen: "sin dato"; **no** se etiqueta "Sin evidencia".           |
 
 ## 8. Pruebas
 
@@ -117,6 +126,7 @@ En `crearPartida` (`handler.ts`): se llama `validarEvidencia`; si hay `refaccion
 ## 9. Plan de construcción
 
 Después del Bloque 1 (T1, T2), en la misma rama:
+
 - **T3 — Servidor:** esquema (3 campos opcionales), `validacion.ts` (reglas + catálogo + `sinEvidencia`), `handler.ts` (crearPartida, bitácora, CSP `media-src`), harness.
 - **T4 — Página de la liga:** cámara in-app con respaldo, selector de concepto, "mano de obra de", mensajes; conformidad ES5.
 - **T5 — Lado de Riesgos:** etiquetas, concepto en la lista, origen en el visor, captura manual con concepto, columnas de exports.
@@ -140,13 +150,13 @@ T3 y T4 tocan el portal público: revisión OPUS obligatoria (seguridad). Despli
 
 Modelo nuevo **`TallerFactura`**, identificador `["tenantId", "visitaKey", "facturaId"]`, autorización igual a `TallerPartida` (lectura por tenant, escritura `operativo`/`admin` sin `delete`, el portal por IAM). Nunca se borra: una factura sustituida se marca `sustituidaPor` y se conserva.
 
-| Campo | Tipo | Nota |
-|---|---|---|
-| `clase` | `enum pdf \| xml` | Un documento por fila; la factura "completa" es un par PDF+XML con el mismo `uuid` (o, sin XML, el PDF solo = incompleta). |
-| `key`, `nombre`, `bytes`, `mime` | string / number | `key` bajo `photos/<tenant>/taller-partidas/<visita>/factura/<facturaId>.<pdf\|xml>` — **dentro del prefijo que el Lambda ya tiene concedido** (`grantPut` y `GetObject` sobre `photos/*/taller-partidas/*`); ningún permiso nuevo. |
-| `subidoEn`, `subidoPor`, `origen` | string / string / `enum liga \| fleet` | `subidoPor` = `liga:<visitaKey>` o el correo de quien la subió desde Fleet. |
-| `uuid`, `serie`, `folio`, `fecha`, `subtotal`, `total`, `moneda`, `rfcEmisor`, `nombreEmisor`, `rfcReceptor` | del CFDI | Solo en filas `xml`, **parseados por el servidor** (nunca del cliente). |
-| `sustituidaPor` | `facturaId` | Cuando el taller o Riesgos anexa una versión nueva. |
+| Campo                                                                                                        | Tipo                                   | Nota                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clase`                                                                                                      | `enum pdf \| xml`                      | Un documento por fila; la factura "completa" es un par PDF+XML con el mismo `uuid` (o, sin XML, el PDF solo = incompleta).                                                                                                          |
+| `key`, `nombre`, `bytes`, `mime`                                                                             | string / number                        | `key` bajo `photos/<tenant>/taller-partidas/<visita>/factura/<facturaId>.<pdf\|xml>` — **dentro del prefijo que el Lambda ya tiene concedido** (`grantPut` y `GetObject` sobre `photos/*/taller-partidas/*`); ningún permiso nuevo. |
+| `subidoEn`, `subidoPor`, `origen`                                                                            | string / string / `enum liga \| fleet` | `subidoPor` = `liga:<visitaKey>` o el correo de quien la subió desde Fleet.                                                                                                                                                         |
+| `uuid`, `serie`, `folio`, `fecha`, `subtotal`, `total`, `moneda`, `rfcEmisor`, `nombreEmisor`, `rfcReceptor` | del CFDI                               | Solo en filas `xml`, **parseados por el servidor** (nunca del cliente).                                                                                                                                                             |
+| `sustituidaPor`                                                                                              | `facturaId`                            | Cuando el taller o Riesgos anexa una versión nueva.                                                                                                                                                                                 |
 
 Límites: PDF ≤ 10 MB (`TOPE_BYTES_FOTO` reutilizado), XML ≤ 1 MB; MIME `application/pdf`, `application/xml`, `text/xml`; máximo 6 documentos por visita (sustituciones incluidas).
 
@@ -175,13 +185,13 @@ Límites: PDF ≤ 10 MB (`TOPE_BYTES_FOTO` reutilizado), XML ≤ 1 MB; MIME `app
 
 ### 11.5 Errores
 
-| Situación | Comportamiento |
-|---|---|
-| Visita cerrada hace más de 30 días | Portal 401 opaco (misma respuesta que hoy); la liga dice "El plazo para anexar la factura venció; envíala a Riesgos". |
-| XML que no es CFDI timbrado | 400 con mensaje; el archivo subido queda huérfano en S3 (lo cubre la regla de lifecycle del hand-off). |
-| PDF/XML con MIME o tamaño fuera de límite | 400 antes de firmar la subida (mismo patrón que las fotos). |
-| Total o RFC difieren | Aviso rojo en Fleet; nada se bloquea; la decisión es de Tesorería. |
-| Segunda factura para la misma visita | Se guarda como sustitución; la fila muestra la vigente y "1 versión anterior". |
+| Situación                                 | Comportamiento                                                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Visita cerrada hace más de 30 días        | Portal 401 opaco (misma respuesta que hoy); la liga dice "El plazo para anexar la factura venció; envíala a Riesgos". |
+| XML que no es CFDI timbrado               | 400 con mensaje; el archivo subido queda huérfano en S3 (lo cubre la regla de lifecycle del hand-off).                |
+| PDF/XML con MIME o tamaño fuera de límite | 400 antes de firmar la subida (mismo patrón que las fotos).                                                           |
+| Total o RFC difieren                      | Aviso rojo en Fleet; nada se bloquea; la decisión es de Tesorería.                                                    |
+| Segunda factura para la misma visita      | Se guarda como sustitución; la fila muestra la vigente y "1 versión anterior".                                        |
 
 ### 11.6 Pruebas
 

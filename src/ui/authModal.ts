@@ -4,7 +4,7 @@
 // XSS-safe: usa textContent + appendChild (no innerHTML con input usuario).
 // Estilo: inline minimal — heredado del CSS app (--bg, --ac, etc.).
 
-import { login, confirmNewPassword } from "../api/auth";
+import { login, confirmNewPassword, solicitarCodigoReset, confirmarReset } from "../api/auth";
 
 export interface AuthModalOptions {
   /** Mensaje arriba del form (ej: "Sesión expirada"). Default: "Inicia sesión". */
@@ -133,6 +133,30 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
     });
     card.appendChild(btn);
 
+    // Recuperación (2026-09-18). Sin esta salida, una cuenta que Cognito dejaba
+    // pendiente de restablecer no tenía forma de volver: el único camino era pedirle
+    // al admin una contraseña temporal.
+    const olvide = document.createElement("button");
+    olvide.type = "button";
+    olvide.textContent = "¿Olvidaste tu contraseña?";
+    olvide.style.cssText = [
+      "display:block",
+      "width:100%",
+      "margin-top:14px",
+      "padding:4px",
+      "background:none",
+      "border:none",
+      "color:var(--s1)",
+      "font-size:12px",
+      "font-family:inherit",
+      "text-decoration:underline",
+      "cursor:pointer",
+    ].join(";");
+    olvide.addEventListener("click", () => {
+      pedirCodigo(emailInput.value.trim());
+    });
+    card.appendChild(olvide);
+
     backdrop.appendChild(card);
     document.body.appendChild(backdrop);
 
@@ -234,6 +258,173 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
       setTimeout(() => newPassInput.focus(), 50);
     };
 
+    // ── Recuperación de contraseña ──────────────────────────────────────────
+    // Deja el card con solo el encabezado (título + subtítulo) para montar el
+    // siguiente paso encima.
+    const limpiarCard = (titulo: string, subtitulo: string): void => {
+      while (card.children.length > 2) card.removeChild(card.lastChild!);
+      h.textContent = titulo;
+      sub.textContent = subtitulo;
+    };
+
+    const nuevoCampo = (
+      etiqueta: string,
+      tipo: string,
+      autocompletar: AutoFill,
+    ): HTMLInputElement => {
+      const lab = document.createElement("label");
+      lab.style.cssText = emailLabel.style.cssText;
+      lab.textContent = etiqueta;
+      card.appendChild(lab);
+      const inp = document.createElement("input");
+      inp.type = tipo;
+      inp.autocomplete = autocompletar;
+      inp.required = true;
+      inp.style.cssText = emailInput.style.cssText;
+      card.appendChild(inp);
+      return inp;
+    };
+
+    const nuevoBoton = (texto: string): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = texto;
+      b.style.cssText = btn.style.cssText;
+      b.addEventListener("mouseenter", () => {
+        if (!b.disabled) b.style.background = "var(--ac2)";
+      });
+      b.addEventListener("mouseleave", () => {
+        if (!b.disabled) b.style.background = "var(--ac)";
+      });
+      card.appendChild(b);
+      return b;
+    };
+
+    const nuevoEnlace = (texto: string, alHacerClic: () => void): void => {
+      const a = document.createElement("button");
+      a.type = "button";
+      a.textContent = texto;
+      a.style.cssText = olvide.style.cssText;
+      a.addEventListener("click", alHacerClic);
+      card.appendChild(a);
+    };
+
+    // Paso A: a qué correo mandamos el código.
+    const pedirCodigo = (emailPrevio: string): void => {
+      limpiarCard("Recuperar contraseña", "Te enviaremos un código por correo");
+      const correo = nuevoCampo("Correo", "email", "username");
+      correo.value = emailPrevio;
+      correo.style.marginBottom = "20px";
+
+      const errA = document.createElement("div");
+      errA.style.cssText = err.style.cssText;
+      card.appendChild(errA);
+
+      const btnA = nuevoBoton("Enviarme el código");
+      nuevoEnlace("Volver a iniciar sesión", () => volverALogin(correo.value.trim()));
+
+      const enviar = async (): Promise<void> => {
+        const valor = correo.value.trim();
+        if (!valor) {
+          errA.textContent = "Escribe tu correo";
+          return;
+        }
+        btnA.disabled = true;
+        btnA.textContent = "Enviando...";
+        errA.textContent = "";
+        const res = await solicitarCodigoReset(valor);
+        if (res.status === "success") {
+          escribirCodigo(valor);
+          return;
+        }
+        errA.textContent = res.message;
+        btnA.disabled = false;
+        btnA.textContent = "Enviarme el código";
+      };
+      btnA.addEventListener("click", () => void enviar());
+      correo.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          void enviar();
+        }
+      });
+      setTimeout(() => (emailPrevio ? btnA.focus() : correo.focus()), 50);
+    };
+
+    // Paso B: código del correo + contraseña nueva.
+    const escribirCodigo = (email: string): void => {
+      limpiarCard(
+        "Revisa tu correo",
+        `Enviamos un código a ${email}. Si no aparece en tu bandeja, busca en Correo no deseado.`,
+      );
+      const codigo = nuevoCampo("Código del correo", "text", "one-time-code");
+      codigo.inputMode = "numeric";
+      const nueva = nuevoCampo("Nueva contraseña", "password", "new-password");
+      const confirma = nuevoCampo("Confirmar contraseña", "password", "new-password");
+      confirma.style.marginBottom = "20px";
+
+      const errB = document.createElement("div");
+      errB.style.cssText = err.style.cssText;
+      card.appendChild(errB);
+
+      const btnB = nuevoBoton("Guardar contraseña");
+      nuevoEnlace("Enviar el código otra vez", () => pedirCodigo(email));
+
+      const guardar = async (): Promise<void> => {
+        if (!codigo.value.trim()) {
+          errB.textContent = "Escribe el código que te llegó por correo";
+          return;
+        }
+        if (nueva.value.length < 8) {
+          errB.textContent = "La contraseña debe tener al menos 8 caracteres";
+          return;
+        }
+        if (nueva.value !== confirma.value) {
+          errB.textContent = "Las contraseñas no coinciden";
+          return;
+        }
+        btnB.disabled = true;
+        btnB.textContent = "Guardando...";
+        errB.textContent = "";
+        const res = await confirmarReset(email, codigo.value, nueva.value);
+        if (res.status === "success") {
+          // Cognito NO deja la sesión abierta tras el canje: se vuelve al login,
+          // ya con el correo puesto, para entrar con la contraseña recién creada.
+          volverALogin(email, "Contraseña actualizada. Ya puedes iniciar sesión.");
+          return;
+        }
+        errB.textContent = res.message;
+        btnB.disabled = false;
+        btnB.textContent = "Guardar contraseña";
+      };
+      btnB.addEventListener("click", () => void guardar());
+      [codigo, nueva, confirma].forEach((inp) => {
+        inp.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            void guardar();
+          }
+        });
+      });
+      setTimeout(() => codigo.focus(), 50);
+    };
+
+    // Vuelve al formulario de entrada reconstruyendo el card con los nodos
+    // ORIGINALES (no copias): conservan sus listeners y su estado.
+    const volverALogin = (email: string, aviso?: string): void => {
+      limpiarCard("Control Flotilla", aviso ?? "Inicia sesión para continuar");
+      sub.style.color = aviso ? "var(--G)" : "var(--s1)";
+      for (const nodo of [emailLabel, emailInput, passLabel, passInput, err, btn, olvide]) {
+        card.appendChild(nodo);
+      }
+      emailInput.value = email;
+      passInput.value = "";
+      err.textContent = "";
+      btn.disabled = false;
+      btn.textContent = "Iniciar sesión";
+      setTimeout(() => passInput.focus(), 50);
+    };
+
     // Submit handler step 1.
     const handleSubmit = async (): Promise<void> => {
       const email = emailInput.value.trim();
@@ -253,6 +444,13 @@ export function showAuthModal(opts: AuthModalOptions = {}): Promise<void> {
       }
       if (res.status === "requireNewPassword") {
         showNewPasswordStep();
+        return;
+      }
+      // Cognito ya dejó la cuenta pendiente de restablecer (p. ej. porque un admin
+      // lo pidió): no hay contraseña que valga, así que se manda directo a canjear
+      // el código en vez de repetir un error que no lleva a ningún lado.
+      if (res.status === "requireReset") {
+        pedirCodigo(email);
         return;
       }
       err.textContent = res.message;

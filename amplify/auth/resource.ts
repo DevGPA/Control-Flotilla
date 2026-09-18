@@ -17,6 +17,18 @@ export const auth = defineAuth({
     // contexto y la URL de la app. Los placeholders username()/code() son
     // obligatorios (Cognito exige el de contraseña temporal en el cuerpo).
     email: {
+      // Correo del CÓDIGO de verificación — el que llega al usar "¿Olvidaste tu
+      // contraseña?". Sin esto salía la plantilla de fábrica de Cognito, en inglés
+      // y hablando de "tu nueva cuenta" ("Verify your new account") aunque se
+      // tratara de una cuenta de hace meses: nadie entendía qué hacer con él.
+      verificationEmailStyle: "CODE",
+      verificationEmailSubject: "Tu código para recuperar el acceso — Control de Flotilla GPA",
+      verificationEmailBody: (createCode) =>
+        `Recibimos una solicitud para restablecer la contraseña de tu cuenta en Control de Flotilla GPA.\n\n` +
+        `Tu código es: ${createCode()}\n\n` +
+        `Escríbelo en la pantalla de recuperación junto con tu nueva contraseña.\n` +
+        `El código caduca en 1 hora y solo sirve una vez.\n\n` +
+        `Si tú no lo pediste, ignora este correo: tu contraseña actual sigue funcionando.`,
       userInvitation: {
         emailSubject: "Acceso a Control de Flotilla GPA",
         emailBody: (username, code) =>

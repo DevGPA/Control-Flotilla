@@ -18,6 +18,7 @@ import {
   buildAuditEvent,
   diffUserProfile,
   mapCognitoError,
+  generarPasswordTemporal,
 } from "../amplify/functions/admin-users/logic";
 
 describe("validación de alta", () => {
@@ -202,5 +203,40 @@ describe("credencial `riesgos` (Task 14)", () => {
     const handlerSrc = readFileSync("amplify/functions/admin-users/handler.ts", "utf8");
     expect(handlerSrc).toContain("derivarTenantDeGrupos(groups)");
     expect(handlerSrc).not.toContain("groups.find((g) => !roleSet.has(g))");
+  });
+});
+
+// ── Contraseña temporal (2026-09-18) ──────────────────────────────────────────
+// El botón "Restablecer contraseña" del panel dejaba al usuario en RESET_REQUIRED
+// esperando un código por correo que la app nunca supo pedirle → cuenta atorada.
+// Ahora genera una temporal que el admin dicta; el usuario cae en el flujo de
+// "contraseña temporal" que el login SÍ maneja desde el día uno.
+describe("generarPasswordTemporal", () => {
+  const MUESTRAS = Array.from({ length: 200 }, () => generarPasswordTemporal());
+
+  it("cumple la política del pool: ≥8, mayúscula, minúscula, número y símbolo", () => {
+    for (const p of MUESTRAS) {
+      expect(p.length).toBeGreaterThanOrEqual(8);
+      expect(p).toMatch(/[A-Z]/);
+      expect(p).toMatch(/[a-z]/);
+      expect(p).toMatch(/[0-9]/);
+      expect(p).toMatch(/[-_@#$%*+=?]/);
+    }
+  });
+
+  it("no usa caracteres que se confunden al dictarla por teléfono", () => {
+    // Sin l/I/1, O/o/0, ni signos que se oyen igual al dictarlos.
+    const AMBIGUOS = ["l", "I", "1", "O", "o", "0", ".", ",", ";", ":", "'", '"', "|", "\\", "/"];
+    for (const p of MUESTRAS) {
+      for (const c of AMBIGUOS) expect(p.includes(c)).toBe(false);
+    }
+  });
+
+  it("no se repite entre llamadas", () => {
+    expect(new Set(MUESTRAS).size).toBeGreaterThan(MUESTRAS.length * 0.9);
+  });
+
+  it("cabe en un renglón para dictarla sin errores", () => {
+    for (const p of MUESTRAS) expect(p.length).toBeLessThanOrEqual(16);
   });
 });
