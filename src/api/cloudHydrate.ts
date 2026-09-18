@@ -77,6 +77,13 @@ import type { Unit, Finding, RiskLevel, ChecklistDB, WeeklyEntry } from "../type
 import type { WeeklyPeriodo } from "../weekly/weeklyStore";
 import type { TallerEntry, TallerEstado } from "../taller/types";
 import { migrateEstado, normalizeArea } from "../taller/types";
+import type {
+  EstadoLiga,
+  PromesaTaller,
+  Distintivo,
+  ResumenPartidas,
+  FilaPendiente,
+} from "../taller/seguimiento";
 
 interface ChecklistResultados {
   findings?: unknown[];
@@ -255,6 +262,36 @@ declare global {
     __visitaKeyDe?: (e: LegacyTallerEntry) => string;
     /** URL firmada de una foto de partida (llave completa, sin normalizar). */
     __urlFotoPartida?: (key: string) => Promise<string | null>;
+    /** Abre el visor de fotos del taller. Lo monta src/taller/visorFotos.ts. */
+    __abrirVisorFotos?: (opts: {
+      llaves: readonly string[];
+      inicial?: number;
+      titulo?: string;
+      subtitulo?: string;
+    }) => void;
+    /** Capa pura del seguimiento del proveedor (src/taller/seguimiento.ts):
+     *  el monolito PINTA `_provPintar(e)`, nunca recalcula fechas a mano. */
+    __estadoLiga?: (e: Partial<TallerEntry>) => EstadoLiga;
+    __promesaTaller?: (e: Partial<TallerEntry>) => PromesaTaller;
+    __etiquetaDistintivo?: (d: Distintivo) => string;
+    /** Capa pura de seguimiento (src/taller/seguimiento.ts): pendientes,
+     *  autorizadas (incluye terminada) y rechazadas de una visita — el
+     *  registro pinta los filtros y los totales, nunca cuenta a mano. */
+    __resumenPartidas?: (ps: Partida[]) => ResumenPartidas;
+    /** Una sola señal por visita, la más urgente (Task 7): pinta la columna
+     *  "Proveedor" de la tabla de Taller, nunca decide la prioridad a mano. */
+    __distintivoProveedor?: (e: Partial<TallerEntry>, ps: Partida[]) => Distintivo;
+    /** Prioridad de un distintivo para ordenar esa columna por urgencia
+     *  (spec §6.2) — mismo orden que decide `distintivoProveedor`. */
+    __prioridadDistintivo?: (d: Distintivo) => number;
+    /** Task 8 (bandeja de entrada): una fila por unidad con partidas
+     *  pendientes, ordenada por la que más ha esperado — capa pura en
+     *  src/taller/seguimiento.ts (filasPendientes, testeada); el monolito
+     *  solo pinta. */
+    __filasPendientes?: (
+      entries: TallerEntry[],
+      porVisita: ReadonlyMap<string, Partida[]>,
+    ) => FilaPendiente[];
     /**
      * Aritmética de "Autorizar las N" (fix ronda 1, Important 2): qué
      * partidas se pueden firmar en lote (tienen precio — Ruling B), a
@@ -1048,6 +1085,18 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         // Marca "ya estuvo en cloud" — la auto-migración no lo re-sube si otro
         // usuario lo borra (guarda anti-resurrección, Fase C2). Persiste al
         // IndexedDB local junto con el entry.
+        // Lo que reporta el proveedor y el estado de su liga: COLUMNAS de la
+        // fila, no `datos` (el blob lo reemplaza cada upload y las perdería).
+        // Ver spec 2026-09-15-taller-seguimiento-proveedor-design.md §4.1.
+        estadoOperativo: t.estadoOperativo ?? undefined,
+        kmTaller: numOrUndef(t.km),
+        fsalidaEstTaller: t.fsalidaEst ?? undefined,
+        fsalidaEstCompromiso: t.fsalidaEstCompromiso ?? undefined,
+        ligaVersion: numOrUndef(t.ligaVersion),
+        ligaCreadaEn: t.ligaCreadaEn ?? undefined,
+        ligaCreadaPor: t.ligaCreadaPor ?? undefined,
+        ligaRevocadaEn: t.ligaRevocadaEn ?? undefined,
+        ligaRevocadaPor: t.ligaRevocadaPor ?? undefined,
         _cloud: true,
       };
     });

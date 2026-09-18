@@ -14,7 +14,13 @@
  * formato de Excel (`formato` → `cell.z`). Antes las fechas iban como texto "14/08/2026", así
  * que Excel las ordenaba alfabéticamente y filtrar por rango no servía.
  */
-import { gastoDerivado, gastoTotalDe, totalesVisita, type Partida } from "./partidas";
+import {
+  gastoDerivado,
+  gastoTotalDe,
+  totalesVisita,
+  type Partida,
+  type PartidaEstado,
+} from "./partidas";
 import type { TallerEntry } from "./types";
 
 // Re-exportada: `gastoTotalDe` vive en ./partidas (fix ronda 2, Important 3 — junto a
@@ -66,6 +72,16 @@ function fecha(v: unknown): Date | "" {
 }
 
 const texto = (v: unknown): string => String(v ?? "").trim();
+
+/**
+ * Monto finito o "" — nunca un $0 fabricado (R69(c)): sin precio, celda vacía; un 0
+ * real (partida cotizada o autorizada en $0) SÍ se exporta como 0.
+ */
+function monto(v: unknown): number | "" {
+  if (v === undefined || v === null || v === "") return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? n : "";
+}
 
 /**
  * Gasto y visitas de un año, por eco — el número de contexto que convierte
@@ -327,6 +343,28 @@ export const CAMPOS_OMITIDOS: Record<string, string> = {
     "Bandera interna de hidratación (marca que el registro ya estuvo en la nube, guarda anti-resurrección). No es un dato de negocio.",
   gastoCapturadoOriginal:
     "R87 — el subtotal que Riesgos tecleó ANTES de que la visita tuviera partidas, conservado al recortarlo del payload (anulación, nunca borrado). No es el gasto de la visita (ese es la suma de lo firmado); es rastro. Si Navares decide exportarlo, entra como columna propia 'Capturado originalmente'.",
+
+  // ── Lo que reporta el PROVEEDOR desde su liga (bloque Proveedor en el registro de unidad)
+  estadoOperativo:
+    "Estado actual del taller (revisando, reparando, esperandoRefaccion, lista) reportado desde la liga del proveedor. Se muestra en el registro de la unidad; su exportación se decide junto con la factura del proveedor.",
+  kmTaller:
+    "Kilometraje que reportó el taller al abrir la liga (columna real del proveedor). NO sustituye a 'km' (lo que teclea Riesgos, que sí se exporta). Se muestra en el registro de la unidad; exportación a decidir con factura.",
+  fsalidaEstTaller:
+    "Fecha de salida estimada que el taller promete HOY, actualizada cada visita. NO sustituye a 'fsalidaEst' (lo que teclea Riesgos, que sí se exporta). Se muestra en el registro de la unidad; exportación a decidir con factura.",
+  fsalidaEstCompromiso:
+    "La PRIMERA promesa de fecha de salida, congelada por el portal. Se muestra en el registro de la unidad; exportación a decidir con factura.",
+
+  // ── Liga del proveedor (control de acceso, no dato de negocio de la visita)
+  ligaVersion:
+    "Versión actual de la liga del proveedor (contador de cambios en el portal). Es control de acceso, no un dato de negocio de la visita; no se exporta.",
+  ligaCreadaEn:
+    "Timestamp de emisión de la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaCreadaPor:
+    "Identidad del usuario que emitió la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaRevocadaEn:
+    "Timestamp de revocación de la liga del proveedor (NULL si no revocada). Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
+  ligaRevocadaPor:
+    "Identidad del usuario que revocó la liga del proveedor. Rastro administrativo vivo en la bitácora del portal, no en datos de la visita; no se exporta.",
 };
 
 /** Fila por entry, en el orden de las columnas. */
@@ -439,4 +477,122 @@ export const COLUMNAS_RESUMEN: ColumnaResumen[] = [
 /** Filas de la hoja de resumen. */
 export function filasResumen(unidades: readonly ResumenUnidad[]): (string | number | Date)[][] {
   return unidades.map((u) => COLUMNAS_RESUMEN.map((c) => c.valor(u)));
+}
+
+// ── Hoja de partidas del proveedor (Task 9) ─────────────────────────────────────
+/**
+ * Una fila por partida (no por visita): el ciclo de firma completo —qué se propuso,
+ * qué se autorizó, quién decidió y por qué se rechazó— vive en su propia hoja porque
+ * una visita puede traer varias partidas y "Detalle"/"Activas en Taller" son una fila
+ * por visita.
+ */
+export interface ColumnaPartida {
+  titulo: string;
+  ancho: number;
+  tipo: TipoColumna;
+  formato?: string;
+  valor: (e: TallerEntry, p: Partida) => string | number | Date;
+}
+
+export const ETIQUETA_ESTADO_PARTIDA: Record<PartidaEstado, string> = {
+  borrador: "Borrador",
+  propuesta: "Propuesta",
+  autorizada: "Autorizada",
+  rechazada: "Rechazada",
+  terminada: "Terminada",
+  cancelada: "Cancelada",
+};
+
+/**
+ * 14 columnas, en el orden que lee Riesgos: identidad de la visita, qué se pidió, el
+ * ciclo de firma (propuesto → estado → autorizado → quién/cuándo), por qué se rechazó
+ * si aplica, de dónde vino y cuánta evidencia trae.
+ *
+ * Canceladas y borradores SE EXPORTAN (etiquetadas, nunca ocultas) — ocultarlas
+ * borraría el rastro de qué se propuso y no llegó a autorizarse.
+ */
+export const COLUMNAS_PARTIDAS: ColumnaPartida[] = [
+  { titulo: "Unidad", ancho: 12, tipo: "texto", valor: (e) => texto(e.eco) },
+  { titulo: "Placa", ancho: 12, tipo: "texto", valor: (e) => texto(e.plate) },
+  {
+    titulo: "Ingreso",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (e) => fecha(e.fentrada),
+  },
+  { titulo: "Descripción", ancho: 48, tipo: "texto", valor: (_e, p) => texto(p.descripcion) },
+  {
+    titulo: "Tipo",
+    ancho: 14,
+    tipo: "texto",
+    valor: (_e, p) =>
+      p.tipo === "refaccion" ? "Refacción" : p.tipo === "manoObra" ? "Mano de obra" : "",
+  },
+  {
+    titulo: "Precio propuesto",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (_e, p) => monto(p.precio),
+  },
+  {
+    titulo: "Estado",
+    ancho: 14,
+    tipo: "texto",
+    valor: (_e, p) => ETIQUETA_ESTADO_PARTIDA[p.estado] ?? texto(p.estado),
+  },
+  {
+    titulo: "Precio autorizado",
+    ancho: 16,
+    tipo: "moneda",
+    formato: FMT_MONEDA,
+    valor: (_e, p) => monto(p.precioAutorizado),
+  },
+  { titulo: "Decidido por", ancho: 18, tipo: "texto", valor: (_e, p) => texto(p.decididoPor) },
+  {
+    titulo: "Decidido el",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (_e, p) => fecha(p.decididoEn),
+  },
+  {
+    titulo: "Motivo de rechazo",
+    ancho: 22,
+    tipo: "texto",
+    valor: (_e, p) => texto(p.motivoRechazo),
+  },
+  { titulo: "Nota", ancho: 30, tipo: "texto", valor: (_e, p) => texto(p.motivoRechazoNota) },
+  {
+    titulo: "Origen",
+    ancho: 10,
+    tipo: "texto",
+    valor: (_e, p) => (String(p.creadoPor ?? "").startsWith("liga:") ? "Taller" : "GPA"),
+  },
+  {
+    titulo: "Fotos",
+    ancho: 8,
+    tipo: "numero",
+    formato: "0",
+    valor: (_e, p) => p.fotos?.length ?? 0,
+  },
+];
+
+/**
+ * Una fila por partida de cada entry, en el orden dado (entry por entry, partida por
+ * partida). Sin `ctx.partidasDe` (o si devuelve `[]` para un entry), esa visita no
+ * aporta filas — la hoja sale con encabezados solamente (T9-2), nunca desaparece.
+ */
+export function filasPartidas(
+  entries: readonly TallerEntry[],
+  ctx: ContextoExport,
+): (string | number | Date)[][] {
+  const out: (string | number | Date)[][] = [];
+  for (const e of entries) {
+    for (const p of ctx.partidasDe?.(e) ?? []) {
+      out.push(COLUMNAS_PARTIDAS.map((c) => c.valor(e, p)));
+    }
+  }
+  return out;
 }

@@ -13,10 +13,12 @@
  */
 import ExcelJS from "exceljs";
 import {
+  COLUMNAS_PARTIDAS,
   COLUMNAS_RESUMEN,
   COLUMNAS_TALLER,
   diasEnTaller,
   filasDe,
+  filasPartidas,
   filasResumen,
   gastoTotalDe,
   type ColumnaResumen,
@@ -190,6 +192,12 @@ const TOTALES_TALLER = [
   .map((campo) => COLUMNAS_TALLER.findIndex((c: ColumnaTaller) => c.campo === campo))
   .filter((i) => i >= 0);
 
+// Task 9: SUM solo sobre lo AUTORIZADO — sumar "Precio propuesto" mezclaría montos
+// rechazados y cancelados con lo que de verdad se pagó.
+const TOTALES_PARTIDAS = [
+  COLUMNAS_PARTIDAS.findIndex((c) => c.titulo === "Precio autorizado"),
+].filter((i) => i >= 0);
+
 /**
  * Agregado del historial por unidad — la lógica que vivía inline en el monolito, ahora
  * pura y testeable. Solo las visitas CERRADAS cuentan; ordena por gasto descendente.
@@ -281,6 +289,20 @@ export async function buildActivasWorkbook(
     filas: filasDe(orden, COLUMNAS_TALLER, ctx),
     totales: TOTALES_TALLER,
   });
+
+  // Task 9: SIEMPRE se agrega, con o sin partidas (T9-2) — una hoja que aparece y
+  // desaparece según los datos confunde más que una vacía con solo encabezados.
+  const filasPartidasActivas = filasPartidas(orden, ctx);
+  hojaProfesional(wb.addWorksheet("Partidas"), {
+    titulo: "Partidas del proveedor · Activas · GPA",
+    subtitulo: subtituloDe(
+      [`${filasPartidasActivas.length} partida${filasPartidasActivas.length === 1 ? "" : "s"}`],
+      ctx.hoy,
+    ),
+    columnas: COLUMNAS_PARTIDAS,
+    filas: filasPartidasActivas,
+    totales: TOTALES_PARTIDAS,
+  });
   return wb;
 }
 
@@ -324,6 +346,20 @@ export async function buildHistorialWorkbook(
     columnas: COLUMNAS_TALLER,
     filas: filasDe(cerradas, COLUMNAS_TALLER, ctx),
     totales: TOTALES_TALLER,
+  });
+
+  // Task 9: mismo universo que "Detalle" (T9-3) — las partidas de las visitas
+  // CERRADAS, siempre presente aunque no haya ninguna (T9-2).
+  const filasPartidasHistorial = filasPartidas(cerradas, ctx);
+  hojaProfesional(wb.addWorksheet("Partidas"), {
+    titulo: "Historial de Taller · Partidas del proveedor · GPA",
+    subtitulo: subtituloDe(
+      [`${filasPartidasHistorial.length} partida${filasPartidasHistorial.length === 1 ? "" : "s"}`],
+      ctx.hoy,
+    ),
+    columnas: COLUMNAS_PARTIDAS,
+    filas: filasPartidasHistorial,
+    totales: TOTALES_PARTIDAS,
   });
   return wb;
 }

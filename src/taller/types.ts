@@ -52,6 +52,26 @@ export type TallerEntry = {
    */
   km?: number | string;
 
+  // ── Lo que reporta el PROVEEDOR desde su liga (columnas reales de `Taller`,
+  //    escritas por el portal y por el resolver). Se leen, nunca se escriben
+  //    desde la app: el taller es la única fuente de verdad de estos datos.
+  //    Separados a propósito de `km`/`fsalidaEst`, que son lo que teclea Riesgos.
+  /** Los 4 botones del taller (spec §6.1). */
+  estadoOperativo?: "revisando" | "reparando" | "esperandoRefaccion" | "lista";
+  /** Km que reportó el taller al abrir la liga (columna `km`). */
+  kmTaller?: number;
+  /** Fecha de salida que el taller promete HOY (columna `fsalidaEst`). */
+  fsalidaEstTaller?: string;
+  /** La PRIMERA promesa, congelada: el portal la escribe una sola vez. */
+  fsalidaEstCompromiso?: string;
+
+  // ── Liga del proveedor (columnas reales, ver amplify/data/resource.ts).
+  ligaVersion?: number;
+  ligaCreadaEn?: string;
+  ligaCreadaPor?: string;
+  ligaRevocadaEn?: string;
+  ligaRevocadaPor?: string;
+
   // Fechas (ISO string "YYYY-MM-DD" usualmente)
   freporte?: string;
   fentrada?: string;
