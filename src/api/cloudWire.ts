@@ -30,7 +30,17 @@ import {
   type LegacySemanalEntry,
   type LegacyTallerEntry,
 } from "./batchUpload";
-import { visitaKeyDe } from "./tallerPartidas";
+import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
+import { abrirVisorFotos } from "../taller/visorFotos";
+import {
+  estadoLiga,
+  promesaTaller,
+  etiquetaDistintivo,
+  resumenPartidas,
+  distintivoProveedor,
+  prioridadDistintivo,
+  filasPendientes,
+} from "../taller/seguimiento";
 import { mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
@@ -520,6 +530,37 @@ export function setupCloud(): void {
     return refIdTaller(unitUid, fechaEntrada);
   };
   window.__tallerCloudKey = tallerCloudKey;
+
+  // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
+  // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
+  window.__abrirVisorFotos = (opts) =>
+    abrirVisorFotos({
+      ...opts,
+      url: (llave) => urlFotoPartida(llave),
+    });
+
+  // Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
+  window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
+  window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
+  window.__etiquetaDistintivo = etiquetaDistintivo;
+  window.__resumenPartidas = resumenPartidas;
+  // Task 7: una sola señal por visita para la columna "Proveedor" de la tabla
+  // de Taller — el monolito pinta y ordena, nunca decide la prioridad.
+  window.__distintivoProveedor = (e, ps) => {
+    const ahora = new Date().toISOString();
+    return distintivoProveedor(
+      estadoLiga(e, ahora),
+      promesaTaller(e, ahora.slice(0, 10)),
+      resumenPartidas(ps),
+    );
+  };
+  window.__prioridadDistintivo = prioridadDistintivo;
+  // Task 8 (bandeja de entrada): una fila por UNIDAD con partidas pendientes,
+  // ordenada por la que más ha esperado — src/taller/seguimiento.ts la arma
+  // (testeada); el monolito ya no agrupa por visita a mano (__filasBandeja/
+  // _bnGrupo quedan sin caller, ver comentario junto a _bnGrupo).
+  window.__filasPendientes = (entries, porVisita) =>
+    filasPendientes(entries, porVisita, new Date().toISOString());
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo
