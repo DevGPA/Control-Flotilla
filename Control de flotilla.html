@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-XfbCrELCvMJ/lTKWoMfGlPmfjaxVrBWvlXBPTLn5lzg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-y/gisPTVXCkaIEBN3ldxrP/mv9h9Mly6UxXHlavSyIA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8503,9 +8503,18 @@ function _bnPartida(fila, p, motivos){
   contenedor.appendChild(panel);
 
   btnAutorizar.addEventListener("click", () => _bnAutorizar(fila, p, btnAutorizar));
-  btnRechazar.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  btnRechazar.addEventListener("click", () => { _bnPanelVisible(panel, panel.hidden); });
 
   return contenedor;
+}
+
+// El estilo EN LINEA le gana a la regla [hidden]{display:none} del navegador: con
+// display:flex declarado inline, panel.hidden dejaba de ocultar nada — el panel de
+// motivos nacia ABIERTO bajo cada partida pendiente y "✕ No autorizar" no hacia nada
+// visible. hidden y display se mueven JUNTOS, desde un solo lugar.
+function _bnPanelVisible(panel, visible){
+  panel.hidden = !visible;
+  panel.style.display = visible ? "flex" : "none";
 }
 
 // Panel de rechazo: menú CERRADO de MOTIVOS_RECHAZO (nunca texto libre a
@@ -8513,8 +8522,8 @@ function _bnPartida(fila, p, motivos){
 // mientras esa nota esté vacía — nunca deja confirmar un "Otro" en blanco.
 function _bnPanelRechazo(fila, p, motivos){
   const panel = document.createElement("div");
-  panel.hidden = true;
-  panel.style.cssText = "width:100%;padding:10px 16px 14px;background:var(--bg3);border-top:1px dashed var(--ln);display:flex;flex-direction:column;gap:8px";
+  panel.style.cssText = "width:100%;padding:10px 16px 14px;background:var(--bg3);border-top:1px dashed var(--ln);flex-direction:column;gap:8px";
+  _bnPanelVisible(panel, false);
 
   const lbl = document.createElement("label");
   lbl.style.cssText = "font-size:10.5px;color:var(--s2);font-weight:600;text-transform:uppercase;letter-spacing:.4px";
@@ -8586,7 +8595,7 @@ function _bnPanelRechazo(fila, p, motivos){
     nota.hidden = true;
     errorMsg.style.display = "none";
     btnConfirmar.disabled = true;
-    panel.hidden = true;
+    _bnPanelVisible(panel, false);
   });
 
   btnConfirmar.addEventListener("click", () => {
