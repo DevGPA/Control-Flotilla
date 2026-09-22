@@ -13,11 +13,14 @@ type Upsert = {
   ligaRevocadaPor?: string;
 };
 const upserts: Upsert[] = [];
+// Cuando es true, el upsert simulado falla: prueba que el entry local NO se toca sin éxito.
+let fallaUpsert = false;
 vi.mock("../src/api/client", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/api/client")>();
   return {
     ...real,
     upsertTaller: (arg: Upsert) => {
+      if (fallaUpsert) return Promise.reject(new Error("falla simulada del backend"));
       upserts.push(arg);
       return Promise.resolve({});
     },
@@ -114,6 +117,41 @@ describe("uploadTallerToCloud — el cierre revoca la liga en el mismo guardado"
     await uploadTallerToCloud([visita({ fsalidaReal: "2026-09-22" })], "tenant-x");
     expect(upserts).toHaveLength(1);
     expect(upserts[0]!.ligaRevocadaPor).toBe("cierre:desconocido");
+  });
+
+  it("tras el guardado, el entry LOCAL ya trae la revocación (igual que la nube)", async () => {
+    upserts.length = 0;
+    const v = visita({ fsalidaReal: "2026-09-22", ligaVersion: 1 });
+    await uploadTallerToCloud([v], "tenant-x", undefined, "op@ejemplo.test");
+    expect(v.ligaVersion).toBe(2);
+    expect(v.ligaRevocadaEn).toBe(upserts[0]!.ligaRevocadaEn);
+    expect(v.ligaRevocadaPor).toBe("cierre:op@ejemplo.test");
+  });
+
+  it("un segundo guardado de la MISMA visita cerrada ya no vuelve a sellar la revocación", async () => {
+    upserts.length = 0;
+    const v = visita({ fsalidaReal: "2026-09-22", ligaVersion: 1 });
+    await uploadTallerToCloud([v], "tenant-x", undefined, "op@ejemplo.test");
+    await uploadTallerToCloud([v], "tenant-x", undefined, "op@ejemplo.test");
+    expect(upserts).toHaveLength(2);
+    expect(upserts[0]!.ligaVersion).toBe(2);
+    expect(upserts[1]).not.toHaveProperty("ligaVersion");
+    expect(upserts[1]).not.toHaveProperty("ligaRevocadaEn");
+    expect(v.ligaVersion).toBe(2);
+  });
+
+  it("si el upsert FALLA, el entry local no se toca y el error se reporta", async () => {
+    upserts.length = 0;
+    fallaUpsert = true;
+    try {
+      const v = visita({ fsalidaReal: "2026-09-22", ligaVersion: 1 });
+      const res = await uploadTallerToCloud([v], "tenant-x", undefined, "op@ejemplo.test");
+      expect(res.errors).toHaveLength(1);
+      expect(v.ligaVersion).toBe(1);
+      expect(v).not.toHaveProperty("ligaRevocadaEn");
+    } finally {
+      fallaUpsert = false;
+    }
   });
 });
 

@@ -11,7 +11,9 @@ import { analyzeRow } from "../analyzer/analyzeRow";
 import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
 import type { Partida } from "../taller/partidas";
 import type { TallerEntry } from "../taller/types";
-import { revocacionPorCierre } from "../taller/seguimiento";
+// Del módulo HOJA ../taller/liga, no de ../taller/seguimiento: seguimiento importa de
+// tallerPartidas, que importa de este archivo — sería un ciclo.
+import { revocacionPorCierre } from "../taller/liga";
 import { placaVigente } from "../fleet/placaVigente";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
@@ -537,6 +539,11 @@ export async function uploadTallerToCloud(
         // Solo al cerrar con liga vigente; si no, no viaja ninguna llave de liga (ni undefined).
         ...(revocacion ?? {}),
       });
+      // La nube ya tiene la revocación: el entry local se pone igual AHORA, no en el
+      // siguiente refresco — así el bloque Proveedor dice "Liga revocada" al instante y un
+      // segundo guardado de la misma visita ya no encuentra nada que revocar (no vuelve a
+      // sellar ligaRevocadaEn). Solo tras el éxito: si el upsert falló, no se toca.
+      if (revocacion) Object.assign(e, revocacion);
       // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
       // pero el caller solo necesita totales agregados. Sumamos a semanal
       // por convención hasta refactor del shape.

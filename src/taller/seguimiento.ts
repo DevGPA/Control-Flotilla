@@ -8,70 +8,17 @@
  */
 import type { TallerEntry } from "./types";
 import type { Partida } from "./partidas";
+import { DIA_MS, estadoLiga, visitaCerrada, type EstadoLiga } from "./liga";
+// Las reglas de la liga viven en ./liga (módulo hoja, ver ahí por qué); se re-exportan
+// para que quien ya importaba de aquí no cambie.
+export { VIGENCIA_LIGA_DIAS, estadoLiga, revocacionPorCierre, type EstadoLiga } from "./liga";
 import { visitaKeyDe } from "../api/tallerPartidas";
 import type { LegacyTallerEntry } from "../api/batchUpload";
-
-/** Debe coincidir con VIGENCIA_LIGA_MS del portal (taller-portal/token.ts).
- *  El frontend no puede importar del backend, así que se duplica y una prueba
- *  compara ambos valores: si alguien cambia uno, la prueba cae. */
-export const VIGENCIA_LIGA_DIAS = 90;
-
-const DIA_MS = 24 * 60 * 60 * 1000;
-
-export type EstadoLiga =
-  | { kind: "sin-liga" }
-  | {
-      kind: "activa";
-      diasRestantes: number;
-      venceEn: string;
-      emitidaEn: string;
-      emitidaPor: string;
-    }
-  | { kind: "vencida"; vencioEn: string; emitidaEn: string; emitidaPor: string }
-  /** Liga vigente (emitida, no revocada, no vencida) en una visita YA CERRADA: el portal la
-   *  rechaza y el siguiente guardado la revoca (revocacionPorCierre). Solo la alcanzan las
-   *  visitas cerradas ANTES de que el cierre revocara. */
-  | { kind: "cerrada"; emitidaEn: string; emitidaPor: string }
-  | { kind: "revocada"; revocadaEn: string; revocadaPor: string };
-
-export function estadoLiga(e: Partial<TallerEntry>, ahoraISO: string): EstadoLiga {
-  const emitidaEn = (e.ligaCreadaEn ?? "").trim();
-  if (!emitidaEn) return { kind: "sin-liga" };
-
-  const revocadaEn = (e.ligaRevocadaEn ?? "").trim();
-  // Una revocación solo cuenta si es POSTERIOR a la emisión vigente: emitir
-  // limpia esas columnas, pero una fila vieja puede traer ambas.
-  if (revocadaEn && Date.parse(revocadaEn) >= Date.parse(emitidaEn)) {
-    return { kind: "revocada", revocadaEn, revocadaPor: (e.ligaRevocadaPor ?? "").trim() };
-  }
-
-  const emitidaPor = (e.ligaCreadaPor ?? "").trim();
-  const vence = Date.parse(emitidaEn) + VIGENCIA_LIGA_DIAS * DIA_MS;
-  const ahora = Date.parse(ahoraISO);
-  if (!Number.isFinite(vence) || !Number.isFinite(ahora)) return { kind: "sin-liga" };
-
-  const venceEn = new Date(vence).toISOString();
-  if (ahora >= vence) return { kind: "vencida", vencioEn: venceEn, emitidaEn, emitidaPor };
-  if (visitaCerrada(e)) return { kind: "cerrada", emitidaEn, emitidaPor };
-  return {
-    kind: "activa",
-    diasRestantes: Math.ceil((vence - ahora) / DIA_MS),
-    venceEn,
-    emitidaEn,
-    emitidaPor,
-  };
-}
 
 export type PromesaTaller =
   | { kind: "sin-promesa" }
   | { kind: "vigente"; fecha: string; diasRestantes: number; compromisoOriginal?: string }
   | { kind: "vencida"; fecha: string; diasVencida: number; compromisoOriginal?: string };
-
-/** Una visita cerrada ya no debe nada: su promesa no vence. */
-function visitaCerrada(e: Partial<TallerEntry>): boolean {
-  if ((e.fsalidaReal ?? "").trim()) return true;
-  return e.estado === "Finalizado";
-}
 
 export function promesaTaller(e: Partial<TallerEntry>, hoyISO: string): PromesaTaller {
   const fecha = (e.fsalidaEstTaller ?? "").trim().slice(0, 10);
@@ -91,27 +38,6 @@ export function promesaTaller(e: Partial<TallerEntry>, hoyISO: string): PromesaT
     return { kind: "vencida", fecha, diasVencida: -dias, compromisoOriginal };
   }
   return { kind: "vigente", fecha, diasRestantes: Math.max(dias, 0), compromisoOriginal };
-}
-
-/**
- * Decisión 2 (spec §4.2): al CERRAR una visita cuya liga sigue vigente, el MISMO guardado la
- * revoca — no una segunda llamada que pueda fallar ni un permiso que 3 de 4 operativos no
- * tienen (`revocarLigaTaller` es admin/riesgos). Reabrir no la resucita.
- * Devuelve los tres campos a incluir en el upsert, o null si no hay nada que revocar.
- * `(e.ligaVersion ?? 1) + 1` es la MISMA regla que `revocarLiga` en el portal.
- */
-export function revocacionPorCierre(
-  e: Partial<TallerEntry>,
-  ahoraISO: string,
-  quien: string,
-): { ligaVersion: number; ligaRevocadaEn: string; ligaRevocadaPor: string } | null {
-  // "cerrada" = liga vigente en visita cerrada: exactamente el caso a revocar.
-  if (estadoLiga(e, ahoraISO).kind !== "cerrada") return null;
-  return {
-    ligaVersion: (e.ligaVersion ?? 1) + 1,
-    ligaRevocadaEn: ahoraISO,
-    ligaRevocadaPor: `cierre:${(quien ?? "").trim() || "desconocido"}`,
-  };
 }
 
 export type ResumenPartidas = {
