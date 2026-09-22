@@ -95,13 +95,15 @@ export function revocacionPorCierre(
   e: Partial<TallerEntry>, cerrada: boolean, ahoraISO: string, quien: string,
 ): { ligaVersion: number; ligaRevocadaEn: string; ligaRevocadaPor: string } | null {
   if (!cerrada) return null;
-  if (estadoLiga(e, ahoraISO).kind !== "activa") return null;   // la MISMA regla que pinta el bloque Proveedor
+  // "cerrada" (decisión 5) = liga vigente (emitida, no revocada, no vencida) en una visita
+  // cerrada: es EXACTAMENTE el caso que hay que revocar. La MISMA regla que pinta el bloque.
+  if (estadoLiga(e, ahoraISO).kind !== "cerrada") return null;
   return { ligaVersion: (e.ligaVersion ?? 1) + 1, ligaRevocadaEn: ahoraISO, ligaRevocadaPor: `cierre:${quien}` };
 }
 ```
 
 - `uploadTallerToCloud` ya deriva `estatus = e.fsalidaReal ? "cerrado" : "abierto"`. Cuando `estatus === "cerrado"`,
-  llama `revocacionPorCierre(e, true, ahora, quien)` y, si devuelve algo, **lo incluye en el mismo `upsertTaller`**
+  llama `revocacionPorCierre(e, true, ahora, quien)` (que internamente exige `estadoLiga(e).kind === "cerrada"`, ver 4.5) y, si devuelve algo, **lo incluye en el mismo `upsertTaller`**
   (`TallerInput` gana los tres campos opcionales). `quien` = correo de la sesión (`getSession().email`), el mismo
   que ya usa la anulación (`cloudWire.ts`, `anuladoPor`). El prefijo `cierre:` distingue en el rastro una revocación
   por cierre de una manual.
@@ -187,7 +189,9 @@ vencida). Con la decisión 2 en vigor, este estado solo lo alcanzan las visitas 
 
 ## 7. Riesgos y mitigaciones
 
-- **Doble criterio de "liga activa":** `revocacionPorCierre` reutiliza `estadoLiga` — una sola regla.
+- **Doble criterio de "liga vigente":** `revocacionPorCierre` reutiliza `estadoLiga` (estado `cerrada`) — una sola regla.
+- **Orden de estados en `estadoLiga`:** sin-liga → revocada → vencida → **cerrada** → activa. Una liga vencida en visita
+  cerrada es "vencida" (no se revoca: ya no sirve); solo la vigente pasa a "cerrada" y se revoca al guardar.
 - **Guarda de cliente insuficiente:** documentada; la identidad sin fecha (#11) es el cierre real.
 - **El portal consulta `Anulacion` en cada petición:** una lectura más por request, como ya hace con `AppConfig`.
 - **Visitas cerradas históricas con liga "activa":** quedan como "cerrada" en pantalla; el portal ya las rechazaba.
