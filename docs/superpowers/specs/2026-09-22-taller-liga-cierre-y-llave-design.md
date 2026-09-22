@@ -24,18 +24,18 @@ partidas y el tombstone de anulación (`refIdTaller`). Eso produce, verificado e
    `datos.fsalidaReal ?? t.fechaSalida` la revive: una visita abierta carga una salida fantasma.
 6. El bloque Proveedor dice "Liga activa · N días" en visitas cerradas cuya liga el portal ya rechaza.
 
-**Regla que gobierna el frente:** *una visita nace sin herencia y su liga muere con ella.*
+**Regla que gobierna el frente:** _una visita nace sin herencia y su liga muere con ella._
 
 ## 2. Decisiones (cerradas con Navares, 2026-09-22)
 
-| # | Decisión | Por qué |
-|---|---|---|
-| 1 | **El alta se niega a guardar si la identidad ya está en uso** (vigente o anulada), y explica por qué. Aplica al alta, al reingreso y a corregir la fecha de una visita existente. | Cierra la sobrescritura y la herencia hoy, sin tocar el esquema. El arreglo de fondo (identidad sin fecha) es el frente #11. |
-| 2 | **Dar salida revoca la liga, en el mismo guardado de la visita** (enfoque A). Reabrir no la resucita: se emite una nueva a propósito. | Un solo acto, sin segunda llamada que pueda fallar; funciona para los 3 operativos activos sin la credencial `riesgos` (que hoy no pueden llamar `revocarLigaTaller`); no cambia quién puede emitir/revocar a mano. |
-| 3 | **Anular revoca la liga (primero revocar, después anular) y el portal rechaza visitas anuladas.** | Anular es solo de admin, y admin sí puede revocar. El portal ya tiene grant IAM sobre todos los modelos: puede leer `Anulacion`. Defensa en profundidad. |
-| 4 | **La fecha de salida se borra de verdad** (`null` explícito) y la hidratación deja de caer a la columna. | Es la única causa de la salida fantasma. |
-| 5 | **El bloque Proveedor dice "Liga cerrada con la visita"** cuando la visita está cerrada y la liga no fue revocada (visitas históricas). | La pantalla no debe prometer lo que el portal niega. |
-| 6 | **Un solo frente**, con **revisión de seguridad** al final (toca el portal y el contrato de escritura). | Lo pidió Navares; los seis puntos se entienden juntos. |
+| #   | Decisión                                                                                                                                                                          | Por qué                                                                                                                                                                                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **El alta se niega a guardar si la identidad ya está en uso** (vigente o anulada), y explica por qué. Aplica al alta, al reingreso y a corregir la fecha de una visita existente. | Cierra la sobrescritura y la herencia hoy, sin tocar el esquema. El arreglo de fondo (identidad sin fecha) es el frente #11.                                                                                        |
+| 2   | **Dar salida revoca la liga, en el mismo guardado de la visita** (enfoque A). Reabrir no la resucita: se emite una nueva a propósito.                                             | Un solo acto, sin segunda llamada que pueda fallar; funciona para los 3 operativos activos sin la credencial `riesgos` (que hoy no pueden llamar `revocarLigaTaller`); no cambia quién puede emitir/revocar a mano. |
+| 3   | **Anular revoca la liga (primero revocar, después anular) y el portal rechaza visitas anuladas.**                                                                                 | Anular es solo de admin, y admin sí puede revocar. El portal ya tiene grant IAM sobre todos los modelos: puede leer `Anulacion`. Defensa en profundidad.                                                            |
+| 4   | **La fecha de salida se borra de verdad** (`null` explícito) y la hidratación deja de caer a la columna.                                                                          | Es la única causa de la salida fantasma.                                                                                                                                                                            |
+| 5   | **El bloque Proveedor dice "Liga cerrada con la visita"** cuando la visita está cerrada y la liga no fue revocada (visitas históricas).                                           | La pantalla no debe prometer lo que el portal niega.                                                                                                                                                                |
+| 6   | **Un solo frente**, con **revisión de seguridad** al final (toca el portal y el contrato de escritura).                                                                           | Lo pidió Navares; los seis puntos se entienden juntos.                                                                                                                                                              |
 
 Se descarta la opción B (abrir `revocarLigaTaller` a `operativo`: cambia la política de la credencial `riesgos` y son
 dos pasos que pueden quedar a medias) y la C (rechazo en el portal por hora de cierre: invisible en pantalla y más
@@ -60,14 +60,14 @@ Función pura, sin DOM ni red:
 ```ts
 export type LlaveEnUso =
   | { kind: "libre" }
-  | { kind: "vigente"; id: string; fentrada: string }     // otra visita visible con la misma llave
+  | { kind: "vigente"; id: string; fentrada: string } // otra visita visible con la misma llave
   | { kind: "anulada"; fentrada: string; anuladaEn?: string };
 
 export function llaveEnUso(
   candidata: { id?: string; unitUid: string; fechaEntrada: string },
   vigentes: readonly { id: string; unitUid: string; fechaEntrada: string }[],
-  anuladas: ReadonlyMap<string, { anuladoEn?: string }>,   // window.__anuladasActivas (refId → info)
-): LlaveEnUso
+  anuladas: ReadonlyMap<string, { ts?: string }>, // window.__anuladasActivas (refId → AnulacionInfo)
+): LlaveEnUso;
 ```
 
 - `vigentes` son las visitas en memoria (`tallerEntries`, ya sin anuladas) con su llave calculada por
@@ -77,34 +77,45 @@ export function llaveEnUso(
 - El monolito, en `saveTallerEntry` (tras las validaciones existentes y antes de `tallerEntries.push`), calcula la
   llave de la entrada candidata con `window.__tallerCloudKey(entry)` y llama al puente `window.__llaveEnUso`. Si el
   resultado no es `libre`: `notify` con el mensaje de abajo, `_markInvalid("tf-fentrada")` y `return` — **no guarda**.
-- Mensajes (UI): *"La unidad {eco} ya tiene una visita con fecha de atención {dd/mm/aaaa} ({vigente|anulada}).
-  Cambia la fecha o abre la existente."* Con `anulada`: *"…(anulada el {dd/mm/aaaa}). Cambia la fecha, o
-  restáurala desde Anulados si es la misma visita."*
+- Mensajes (UI): _"La unidad {eco} ya tiene una visita con fecha de atención {dd/mm/aaaa} ({vigente|anulada}).
+  Cambia la fecha o abre la existente."_ Con `anulada`: _"…(anulada el {dd/mm/aaaa}). Cambia la fecha, o
+  restáurala desde Anulados si es la misma visita."_
 - La guarda corre también en **reingreso** (mismo `saveTallerEntry`) y en **edición** cuando el usuario corrige
   `fentrada`/placa/eco hacia una llave ya usada (el candado B-C4 solo cubre visitas con partidas).
 - **Límite declarado:** es una guarda de cliente; una sesión desactualizada o un segundo cliente pueden seguir
   colisionando en el servidor. Se documenta; el cierre real es el frente #11.
 
-### 4.2 El cierre revoca la liga (decisión 2) — `src/api/batchUpload.ts` (`uploadTallerToCloud`) + `src/taller/seguimiento.ts`
+### 4.2 El cierre revoca la liga (decisión 2) — `src/api/batchUpload.ts` (`uploadTallerToCloud`) + `src/taller/liga.ts`
 
-Regla pura nueva en `seguimiento.ts`, junto a `estadoLiga`:
+Regla pura nueva junto a `estadoLiga`. **Dónde vive (ajuste de construcción):** `estadoLiga`, `visitaCerrada`,
+`VIGENCIA_LIGA_DIAS` y `revocacionPorCierre` se mudaron a `src/taller/liga.ts`, un módulo HOJA (solo importa
+tipos); `seguimiento.ts` los re-exporta, así que sus importadores no cambian. Motivo: `batchUpload` necesita
+`revocacionPorCierre`, y `seguimiento` importa de `tallerPartidas`, que importa de `batchUpload` — dejarla en
+`seguimiento` cerraba un ciclo de imports.
 
 ```ts
-/** Al CERRAR una visita cuya liga está activa, el mismo guardado la revoca. */
+/** Al CERRAR una visita cuya liga sigue vigente, el mismo guardado la revoca. */
 export function revocacionPorCierre(
-  e: Partial<TallerEntry>, cerrada: boolean, ahoraISO: string, quien: string,
+  e: Partial<TallerEntry>,
+  ahoraISO: string,
+  quien: string,
 ): { ligaVersion: number; ligaRevocadaEn: string; ligaRevocadaPor: string } | null {
-  if (!cerrada) return null;
   // "cerrada" (decisión 5) = liga vigente (emitida, no revocada, no vencida) en una visita
-  // cerrada: es EXACTAMENTE el caso que hay que revocar. La MISMA regla que pinta el bloque.
+  // cerrada: es EXACTAMENTE el caso que hay que revocar. La MISMA regla que pinta el bloque;
+  // ella decide qué es "cerrada" (fsalidaReal o estado Finalizado) — no hay compuerta aparte.
   if (estadoLiga(e, ahoraISO).kind !== "cerrada") return null;
-  return { ligaVersion: (e.ligaVersion ?? 1) + 1, ligaRevocadaEn: ahoraISO, ligaRevocadaPor: `cierre:${quien}` };
+  return {
+    ligaVersion: (e.ligaVersion ?? 1) + 1,
+    ligaRevocadaEn: ahoraISO,
+    ligaRevocadaPor: `cierre:${(quien ?? "").trim() || "desconocido"}`, // nunca "cierre:" vacío
+  };
 }
 ```
 
-- `uploadTallerToCloud` ya deriva `estatus = e.fsalidaReal ? "cerrado" : "abierto"`. Cuando `estatus === "cerrado"`,
-  llama `revocacionPorCierre(e, true, ahora, quien)` (que internamente exige `estadoLiga(e).kind === "cerrada"`, ver 4.5) y, si devuelve algo, **lo incluye en el mismo `upsertTaller`**
-  (`TallerInput` gana los tres campos opcionales). `quien` = correo de la sesión (`getSession().email`), el mismo
+- `uploadTallerToCloud` llama `revocacionPorCierre(e, ahora, quien)` en cada entry (la regla devuelve `null` en
+  abierta, sin liga, revocada o vencida; no se filtra antes por `estatus`, que solo mira `fsalidaReal` y
+  divergiría de la regla) y, si devuelve algo, **lo incluye en el mismo `upsertTaller`** (`TallerInput` gana los
+  tres campos opcionales; si es `null`, no viaja ninguna llave de liga — ni `undefined`). `quien` = correo de la sesión (`getSession().email`), el mismo
   que ya usa la anulación (`cloudWire.ts`, `anuladoPor`). El prefijo `cierre:` distingue en el rastro una revocación
   por cierre de una manual.
 - La versión sube desde `e.ligaVersion` (la copia hidratada); si otra sesión la subió antes, el portal igual rechaza
@@ -114,8 +125,11 @@ export function revocacionPorCierre(
   `finalizarDesdeModal` (registro) y `saveTallerEntry` con estado `Finalizado` (que rellena `fsalidaReal` con hoy).
 - **Autorización:** `Taller` permite `update` a `operativo` a nivel de modelo (sin restricción por campo,
   `resource.ts:~127`), así que los tres campos viajan con el guardado normal. No se toca `revocarLigaTaller`.
-- Tras el guardado, `_bnRepintar`/`_provPintar` ya repintan el bloque: dirá **"Liga revocada"** con
-  "Revocada por cierre:{correo} · fecha".
+- Tras el upsert exitoso, `uploadTallerToCloud` aplica los tres campos al entry LOCAL (`Object.assign`): el
+  registro queda igual que la nube sin esperar el refresco (`__cloudReplaceTaller` no re-hidrata), así
+  `_bnRepintar`/`_provPintar` pintan **"Liga revocada"** con "Revocada por cierre:{correo} · fecha" de inmediato y un
+  segundo guardado de la misma visita ya no encuentra nada que revocar (no re-sella `ligaRevocadaEn`). Si el
+  upsert falla, el entry local no se toca.
 
 ### 4.3 Anular revoca y el portal rechaza anuladas (decisión 3)
 
@@ -133,13 +147,13 @@ export function revocacionPorCierre(
 
 ### 4.4 La fecha de salida se borra (decisión 4)
 
-- `batchUpload.ts`: `fechaSalida: e.fsalidaReal || null` (el campo es `a.date()` opcional: `null` explícito limpia la
+- `batchUpload.ts`: `fechaSalida: e.fsalidaReal || null` (el campo es `a.string()` opcional en `resource.ts`: `null` explícito limpia la
   columna; `undefined` la deja como estaba — esa era la falla). `TallerInput.fechaSalida` pasa a `string | null`.
 - `cloudHydrate.ts`: `fsalidaReal: String(datos.fsalidaReal ?? "")` — **sin** fallback a `t.fechaSalida`. La columna
   siempre se derivó de `datos.fsalidaReal`, así que cuando difieren la columna es la que está mal. `fentrada`
   conserva su fallback a `t.fechaEntrada` (es parte de la llave, siempre presente).
 
-### 4.5 "Liga cerrada con la visita" (decisión 5) — `src/taller/seguimiento.ts`
+### 4.5 "Liga cerrada con la visita" (decisión 5) — `src/taller/liga.ts` (re-exportado por `seguimiento.ts`)
 
 `EstadoLiga` gana `{ kind: "cerrada"; emitidaEn: string; emitidaPor: string }`: cuando hay liga emitida, no revocada,
 no vencida, **y la visita está cerrada** (`visitaCerrada(e)`, que ya existe en el módulo). `_provPintar` la pinta con la
@@ -149,21 +163,21 @@ vencida). Con la decisión 2 en vigor, este estado solo lo alcanzan las visitas 
 ### 4.6 Datos y permisos: nada nuevo
 
 - Sin cambios en `amplify/data/resource.ts`. `Anulacion` ya existe; el portal ya tiene `allow.resource(tallerPortal)
-  .to(["query","mutate"])` a nivel de esquema.
+.to(["query","mutate"])` a nivel de esquema.
 - Sin backfill. La revocación manual del incidente ya se hizo (`JB4479A|2026-09-14`, `ligaVersion 2`).
 
 ## 5. Errores y estados
 
-| Situación | Comportamiento |
-|---|---|
-| Alta/edición con llave en uso (vigente) | No guarda; aviso con la fecha y "abre la existente"; foco en la fecha. |
-| Alta con llave de una visita anulada | No guarda; aviso que ofrece cambiar la fecha o restaurar desde Anulados. |
-| Cierre de visita con liga activa | Se cierra Y se revoca en el mismo guardado; el bloque dice "Liga revocada · por cierre". |
-| Cierre sin liga o con liga ya revocada/vencida | Solo se cierra; nada más viaja. |
-| Anular con liga activa; revocar falla | No se anula; aviso "No se pudo revocar la liga; la visita no se anuló. Intenta de nuevo." |
-| El taller abre una liga de visita anulada | Portal: aviso genérico de liga inválida; bitácora: "visita anulada". |
-| Quitar la fecha de salida a una visita cerrada | La columna se limpia; al recargar sigue sin salida. La liga NO revive (ya está revocada). |
-| Visita cerrada antes de este frente, liga sin revocar | Bloque: "Liga cerrada con la visita"; el portal ya la rechazaba. |
+| Situación                                             | Comportamiento                                                                            |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Alta/edición con llave en uso (vigente)               | No guarda; aviso con la fecha y "abre la existente"; foco en la fecha.                    |
+| Alta con llave de una visita anulada                  | No guarda; aviso que ofrece cambiar la fecha o restaurar desde Anulados.                  |
+| Cierre de visita con liga activa                      | Se cierra Y se revoca en el mismo guardado; el bloque dice "Liga revocada · por cierre".  |
+| Cierre sin liga o con liga ya revocada/vencida        | Solo se cierra; nada más viaja.                                                           |
+| Anular con liga activa; revocar falla                 | No se anula; aviso "No se pudo revocar la liga; la visita no se anuló. Intenta de nuevo." |
+| El taller abre una liga de visita anulada             | Portal: aviso genérico de liga inválida; bitácora: "visita anulada".                      |
+| Quitar la fecha de salida a una visita cerrada        | La columna se limpia; al recargar sigue sin salida. La liga NO revive (ya está revocada). |
+| Visita cerrada antes de este frente, liga sin revocar | Bloque: "Liga cerrada con la visita"; el portal ya la rechazaba.                          |
 
 ## 6. Pruebas
 
