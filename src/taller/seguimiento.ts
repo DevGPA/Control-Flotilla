@@ -28,6 +28,10 @@ export type EstadoLiga =
       emitidaPor: string;
     }
   | { kind: "vencida"; vencioEn: string; emitidaEn: string; emitidaPor: string }
+  /** Liga vigente (emitida, no revocada, no vencida) en una visita YA CERRADA: el portal la
+   *  rechaza y el siguiente guardado la revoca (revocacionPorCierre). Solo la alcanzan las
+   *  visitas cerradas ANTES de que el cierre revocara. */
+  | { kind: "cerrada"; emitidaEn: string; emitidaPor: string }
   | { kind: "revocada"; revocadaEn: string; revocadaPor: string };
 
 export function estadoLiga(e: Partial<TallerEntry>, ahoraISO: string): EstadoLiga {
@@ -48,6 +52,7 @@ export function estadoLiga(e: Partial<TallerEntry>, ahoraISO: string): EstadoLig
 
   const venceEn = new Date(vence).toISOString();
   if (ahora >= vence) return { kind: "vencida", vencioEn: venceEn, emitidaEn, emitidaPor };
+  if (visitaCerrada(e)) return { kind: "cerrada", emitidaEn, emitidaPor };
   return {
     kind: "activa",
     diasRestantes: Math.ceil((vence - ahora) / DIA_MS),
@@ -86,6 +91,27 @@ export function promesaTaller(e: Partial<TallerEntry>, hoyISO: string): PromesaT
     return { kind: "vencida", fecha, diasVencida: -dias, compromisoOriginal };
   }
   return { kind: "vigente", fecha, diasRestantes: Math.max(dias, 0), compromisoOriginal };
+}
+
+/**
+ * Decisión 2 (spec §4.2): al CERRAR una visita cuya liga sigue vigente, el MISMO guardado la
+ * revoca — no una segunda llamada que pueda fallar ni un permiso que 3 de 4 operativos no
+ * tienen (`revocarLigaTaller` es admin/riesgos). Reabrir no la resucita.
+ * Devuelve los tres campos a incluir en el upsert, o null si no hay nada que revocar.
+ * `(e.ligaVersion ?? 1) + 1` es la MISMA regla que `revocarLiga` en el portal.
+ */
+export function revocacionPorCierre(
+  e: Partial<TallerEntry>,
+  ahoraISO: string,
+  quien: string,
+): { ligaVersion: number; ligaRevocadaEn: string; ligaRevocadaPor: string } | null {
+  // "cerrada" = liga vigente en visita cerrada: exactamente el caso a revocar.
+  if (estadoLiga(e, ahoraISO).kind !== "cerrada") return null;
+  return {
+    ligaVersion: (e.ligaVersion ?? 1) + 1,
+    ligaRevocadaEn: ahoraISO,
+    ligaRevocadaPor: `cierre:${(quien ?? "").trim() || "desconocido"}`,
+  };
 }
 
 export type ResumenPartidas = {
@@ -145,7 +171,7 @@ export function distintivoProveedor(
   if (resumen.pendientes.n > 0) return { kind: "esperando-firma", n: resumen.pendientes.n };
   if (liga.kind === "activa") return { kind: "liga-activa", dias: liga.diasRestantes };
   if (liga.kind === "revocada") return { kind: "liga-revocada" };
-  // Una liga vencida ya no sirve para nada: se lee igual que no tenerla.
+  // Una liga vencida o cerrada con la visita ya no sirve: se lee igual que no tenerla.
   return { kind: "sin-liga" };
 }
 
