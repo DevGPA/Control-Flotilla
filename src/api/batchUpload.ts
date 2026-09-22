@@ -511,7 +511,9 @@ export async function uploadTallerToCloud(
         tenantId,
         unitUid: String(unitUid),
         fechaEntrada,
-        fechaSalida: e.fsalidaReal || undefined,
+        // Decisión 4 (spec §4.4): `null` EXPLÍCITO limpia la columna; `undefined` la dejaba
+        // como estaba y la salida "revivía" al hidratar (salida fantasma, incidente 2026-09-22).
+        fechaSalida: e.fsalidaReal || null,
         folio: e.id,
         motivo,
         estatus,

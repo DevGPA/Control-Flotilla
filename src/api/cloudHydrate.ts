@@ -1067,7 +1067,9 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         freporte: String(datos.freporte ?? ""),
         fentrada: String(datos.fentrada ?? t.fechaEntrada),
         fsalidaEst: String(datos.fsalidaEst ?? ""),
-        fsalidaReal: String(datos.fsalidaReal ?? t.fechaSalida ?? ""),
+        // Decisión 4: la columna `fechaSalida` siempre se derivó de datos.fsalidaReal; cuando
+        // difieren, la columna es la que está mal. Sin fallback: no se revive una salida borrada.
+        fsalidaReal: String(datos.fsalidaReal ?? ""),
         km: Number(datos.km) || 0,
         gasto: numOrUndef(datos.gasto),
         gastoRef: numOrUndef(datos.gastoRef),

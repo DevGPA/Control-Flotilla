@@ -127,7 +127,7 @@ export type TallerInput = {
   tenantId: string;
   unitUid: string;
   fechaEntrada: string;
-  fechaSalida?: string;
+  fechaSalida?: string | null;
   folio?: string;
   motivo: string;
   estatus: "abierto" | "cerrado";
