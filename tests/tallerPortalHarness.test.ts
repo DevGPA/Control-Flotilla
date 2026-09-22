@@ -84,7 +84,8 @@
  *  · `aws-amplify`                 → `Amplify.configure` no-op
  *  · `aws-amplify/data`            → `generateClient` con `models.Taller.{get,update}`,
  *                                    `models.TallerPartida.{create,list,update}` y
- *                                    `models.AppConfig.get`, sobre un almacén en memoria
+ *                                    `models.AppConfig.get` y `models.Anulacion.get`, sobre
+ *                                    un almacén en memoria
  *  · `@aws-sdk/client-s3`          → `S3Client`/`PutObjectCommand`/`GetObjectCommand`
  *  · `@aws-sdk/s3-request-presigner`→ `getSignedUrl` devuelve una URL FALSA que
  *                                    incrusta Bucket/Key/ContentType/ContentLength
@@ -120,6 +121,8 @@ const g = vi.hoisted(() => ({
   taller: new Map<string, Record<string, unknown>>(),
   partidas: new Map<string, Record<string, unknown>>(),
   appConfig: new Map<string, Record<string, unknown>>(),
+  // Tombstones de anulación: `${tenantId}|${refId}` → fila (decisión 3, spec §4.3).
+  anulaciones: new Map<string, Record<string, unknown>>(),
   lecturasAppConfig: 0,
   fallaAppConfig: false,
   llamadas: [] as string[],
@@ -150,6 +153,14 @@ vi.mock("aws-amplify/data", () => ({
           g.lecturasAppConfig += 1;
           if (g.fallaAppConfig) return { data: null, errors: ERR };
           return { data: g.appConfig.get(llave.tenantId) ?? null, errors: undefined };
+        },
+      },
+      Anulacion: {
+        get: async (llave: { tenantId: string; refId: string }) => {
+          g.llamadas.push("Anulacion.get");
+          if (g.fallas.has("Anulacion.get")) return { data: null, errors: ERR };
+          const fila = g.anulaciones.get(`${llave.tenantId}|${llave.refId}`);
+          return { data: fila ?? null, errors: undefined };
         },
       },
       Taller: {
@@ -310,6 +321,7 @@ function limpiar() {
   g.taller.clear();
   g.partidas.clear();
   g.appConfig.clear();
+  g.anulaciones.clear();
   g.lecturasAppConfig = 0;
   g.fallaAppConfig = false;
   g.llamadas.length = 0;
@@ -438,6 +450,22 @@ function primero<T>(a: T[]): T {
   const x = a[0];
   if (x === undefined) throw new Error("se esperaba al menos un elemento");
   return x;
+}
+
+/** Tombstone de anulación de LA visita sembrada. El refId va LITERAL a propósito: la prueba
+ *  afirma que el portal compone la misma llave que el frontend (`taller|unitUid|fechaEntrada`). */
+function sembrarAnulacion(extra: Fila = {}) {
+  const refId = `taller|${UNIDAD}|${FECHA}`;
+  g.anulaciones.set(`${TENANT}|${refId}`, {
+    tenantId: TENANT,
+    refId,
+    modulo: "taller",
+    ts: "2026-09-10T12:00:00.000Z",
+    por: "admin@ejemplo.invalid",
+    motivo: "registro de prueba",
+    restauradaTs: null,
+    ...extra,
+  });
 }
 
 function sembrarVisita(extra: Fila = {}, datosExtra: Fila = {}) {
@@ -753,8 +781,86 @@ describe("P5 — visita cerrada: 401 opaco en toda ruta, y no se acuña liga nue
   });
 });
 
-describe("P2-P6 (opacidad transversal) — los seis motivos son INDISTINGUIBLES afuera", () => {
-  it("firma mala, vencido, revocado, cerrado, apagado y visita ausente dan respuestas byte-idénticas", async () => {
+describe("P5b — visita ANULADA (tombstone activo): 401 opaco en toda ruta (decisión 3)", () => {
+  it("las rutas JSON responden 401 opaco y NADA se firma ni se crea", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarAnulacion();
+    const token = acunar();
+    for (const r of RUTAS_PUBLICAS.filter((x) => !x.html)) {
+      const res = http(
+        await handler(
+          eventoHttp({ ruta: r.ruta, metodo: r.metodo, token, query: r.query, body: r.body }),
+        ),
+      );
+      expect(res.statusCode, r.nombre).toBe(401);
+      expect(res.body, r.nombre).toBe(CUERPO_OPACO);
+    }
+    expect(g.creacionesPartida).toEqual([]);
+    expect(g.firmas).toEqual([]);
+  });
+
+  it("la PÁGINA responde 401 en HTML con la página de liga inválida", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarAnulacion();
+    const res = http(await handler(eventoHttp({ ruta: "/", metodo: "GET", token: acunar() })));
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["content-type"]).toContain("text/html");
+    expect(res.body).toContain("Esta liga ya no sirve");
+  });
+
+  it("el tombstone se consulta DESPUÉS de leer la visita y con el refId del frontend", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarAnulacion();
+    await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar() }));
+    const iTaller = g.llamadas.indexOf("Taller.get");
+    const iTomb = g.llamadas.indexOf("Anulacion.get");
+    expect(iTaller).toBeGreaterThanOrEqual(0);
+    expect(iTomb).toBeGreaterThan(iTaller);
+  });
+
+  it("una anulación RESTAURADA (restauradaTs) ya no es una anulación: la visita vuelve a servir", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarAnulacion({ restauradaTs: "2026-09-11T09:00:00.000Z" });
+    const res = http(
+      await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar() })),
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("sin tombstone, la visita sirve igual que antes (la consulta no cambia el camino feliz)", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    const res = http(
+      await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar() })),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(g.llamadas).toContain("Anulacion.get");
+  });
+
+  it("si la lectura del tombstone FALLA, la puerta se cierra: nada se sirve, firma ni crea", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    g.fallas.add("Anulacion.get");
+    const token = acunar();
+    for (const r of RUTAS_PUBLICAS.filter((x) => !x.html)) {
+      const res = http(
+        await handler(
+          eventoHttp({ ruta: r.ruta, metodo: r.metodo, token, query: r.query, body: r.body }),
+        ),
+      );
+      expect(res.statusCode, r.nombre).not.toBe(200);
+    }
+    expect(g.creacionesPartida).toEqual([]);
+    expect(g.firmas).toEqual([]);
+  });
+});
+
+describe("P2-P6 (opacidad transversal) — los siete motivos son INDISTINGUIBLES afuera", () => {
+  it("firma mala, vencido, revocado, cerrado, anulado, apagado y visita ausente dan respuestas byte-idénticas", async () => {
     const respuestas: RespuestaHttp[] = [];
     const recoger = async (preparar: () => Promise<{ handler: Handler; token: string }>) => {
       limpiar();
@@ -782,6 +888,12 @@ describe("P2-P6 (opacidad transversal) — los seis motivos son INDISTINGUIBLES 
     await recoger(async () => {
       const handler = await cargarHandler();
       sembrarVisita({ estatus: "cerrado" });
+      return { handler, token: acunar() };
+    });
+    await recoger(async () => {
+      const handler = await cargarHandler();
+      sembrarVisita();
+      sembrarAnulacion();
       return { handler, token: acunar() };
     });
     await recoger(async () => {

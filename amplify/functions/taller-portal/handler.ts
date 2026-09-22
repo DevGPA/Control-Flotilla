@@ -55,6 +55,7 @@ import {
   visitaCerrada,
   type PartidaEntrante,
 } from "./validacion";
+import { esAnulacionActiva, refIdTaller } from "../../../src/anulacion/anulacion";
 
 /** Error de negocio "la liga ya no sirve" detectado DESPUÉS de que el token
  *  verificó bien su firma (revocación por ligaVersion, o la visita referida
@@ -523,10 +524,10 @@ async function esquemaHibridoEncendido(tenantId: string): Promise<boolean> {
  * chequeo de revocación (`ligaRevocada`, pura, en validacion.ts). Lo cruza
  * TODA ruta autenticada — ver el comentario en `handler()`.
  *
- * Tres motivos de rechazo, los tres con el MISMO 401 opaco hacia afuera
+ * Motivos de rechazo, todos con el MISMO 401 opaco hacia afuera
  * (`ErrorLigaInvalida`): la visita no existe, la liga fue revocada
- * (`ligaVersion`), el esquema está apagado (R90) o la visita ya está CERRADA
- * (A-8). Ninguno le dice al taller cuál de los cuatro fue.
+ * (`ligaVersion`), el esquema está apagado (R90), la visita ya está CERRADA
+ * (A-8) o la visita fue ANULADA (decisión 3). Ninguno le dice al taller cuál fue.
  */
 async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["type"]> {
   // R90: el apagador va PRIMERO — con el esquema apagado no se toca ni la fila
@@ -547,6 +548,16 @@ async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["t
   if (visitaCerrada({ estatus: v.estatus, estadoEnDatos: parseDatos(v.datos).estado })) {
     throw new ErrorLigaInvalida("visita cerrada");
   }
+  // Decisión 3 (spec §4.3): una visita ANULADA por admin no es una visita. Sin este candado,
+  // el taller seguía leyendo y escribiendo partidas en un tombstone (incidente 2026-09-22).
+  // Mismo refId que compone el frontend (refIdTaller) y la misma regla de "activa"
+  // (esAnulacionActiva: sin restauradaTs) — nunca una cadena ni un predicado a mano.
+  const { data: tomb, errors: errTomb } = await client.models.Anulacion.get({
+    tenantId: tk.t,
+    refId: refIdTaller(tk.u, tk.f),
+  });
+  if (errTomb) throw new Error(`Anulacion.get: ${JSON.stringify(errTomb)}`);
+  if (tomb && esAnulacionActiva(tomb)) throw new ErrorLigaInvalida("visita anulada");
   return v;
 }
 
