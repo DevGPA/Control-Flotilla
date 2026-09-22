@@ -632,15 +632,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const html = readFileSync(join(__dirname, "..", "Control de flotilla.html"), "utf8");
-const cuerpo = (nombre: string, hastaFn?: string): string => {
+const cuerpo = (nombre: string): string => {
   const i = html.indexOf(`function ${nombre}(`);
   expect(i, `no existe ${nombre}`).toBeGreaterThan(-1);
-  const fin = hastaFn ? html.indexOf(`\nfunction ${hastaFn}`, i) : html.indexOf("\nfunction ", i + 10);
-  return html.slice(i, fin);
+  return html.slice(i, html.indexOf("\nfunction ", i + 10));
 };
 
 describe("decisión 1 — la guarda del alta en saveTallerEntry", () => {
-  const c = cuerpo("saveTallerEntry", "");
+  const c = cuerpo("saveTallerEntry");
   it("consulta window.__llaveEnUso ANTES de meter la visita en tallerEntries", () => {
     const iGuarda = c.indexOf("window.__llaveEnUso(");
     expect(iGuarda).toBeGreaterThan(-1);
@@ -657,8 +656,9 @@ describe("decisión 1 — la guarda del alta en saveTallerEntry", () => {
 describe("decisión 3 — anular revoca la liga PRIMERO", () => {
   const i = html.indexOf('window.__anulaciones.anular(window.__tallerRefId(e),"taller",motivo)');
   const bloque = html.slice(html.lastIndexOf("onConfirm:async(motivo)=>{", i), i + 60);
-  it("revoca (solo si la liga está vigente) antes de anular, y aborta si revocar falla", () => {
+  it("revoca (si la liga está activa O cerrada-pero-vigente) antes de anular, y aborta si revocar falla", () => {
     expect(bloque).toContain("__estadoLiga(e)");
+    expect(bloque).toContain('"cerrada"');
     expect(bloque).toContain("__tallerLiga.revocar(");
     expect(bloque.indexOf("__tallerLiga.revocar(")).toBeLessThan(bloque.indexOf("__anulaciones.anular("));
     expect(bloque).toContain("la visita no se anuló");
@@ -719,7 +719,10 @@ por:
         // PRIMERO revocar (admin sí puede), DESPUÉS anular: si anular falla, solo queda una
         // liga muerta — inofensivo. Si revocar falla, NO se anula (throw → el overlay lo
         // muestra y no cierra).
-        if(typeof window.__estadoLiga === "function" && window.__estadoLiga(e).kind === "activa"
+        const ligaE = typeof window.__estadoLiga === "function" ? window.__estadoLiga(e).kind : "sin-liga";
+        // "activa" (visita abierta) o "cerrada" (visita cerrada con liga vigente): en ambos la
+        // liga sigue viva para el portal si la visita se reabre — hay que matarla.
+        if((ligaE === "activa" || ligaE === "cerrada")
            && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
           const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
           const r = await window.__tallerLiga.revocar(unitUid, fechaEntrada);
