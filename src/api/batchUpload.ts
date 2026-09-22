@@ -10,6 +10,8 @@ import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
 import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
 import type { Partida } from "../taller/partidas";
+import type { TallerEntry } from "../taller/types";
+import { revocacionPorCierre } from "../taller/seguimiento";
 import { placaVigente } from "../fleet/placaVigente";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
@@ -486,6 +488,9 @@ export async function uploadTallerToCloud(
    *  vía `visitaKeyDe`/`juntaVisitaKey` en el llamador, nunca una llave hecha a mano aquí
    *  (esta capa no puede depender de `src/api/tallerPartidas.ts` sin crear un ciclo). */
   partidasDe?: (e: LegacyTallerEntry) => Partida[] | undefined,
+  /** Correo de la sesión, para el rastro "cierre:<quien>" (decisión 2). Ausente en el
+   *  llamador de migración. */
+  quien?: string,
 ): Promise<BatchResult> {
   const start = Date.now();
   const result: BatchResult = {
@@ -507,6 +512,17 @@ export async function uploadTallerToCloud(
       const estatus = e.fsalidaReal ? ("cerrado" as const) : ("abierto" as const);
       const motivo = e.tipo || e.estado || "Sin motivo";
       const tienePartidas = (partidasDe?.(e)?.length ?? 0) > 0;
+      // Decisión 2 (spec §4.2): si esta escritura CIERRA la visita y su liga sigue vigente,
+      // la revocación viaja en el MISMO upsert — sin segunda llamada ni permiso extra
+      // (revocarLigaTaller es admin/riesgos; cerrar es de cualquier operativo). La regla es
+      // UNA sola (estadoLiga/revocacionPorCierre): ella decide qué es "cerrada" (fsalidaReal
+      // o estado Finalizado) y devuelve null en todo lo demás — aquí no se filtra por
+      // `estatus`, que solo mira fsalidaReal y divergiría de la regla.
+      const revocacion = revocacionPorCierre(
+        e as Partial<TallerEntry>,
+        new Date().toISOString(),
+        quien ?? "",
+      );
       await upsertTaller({
         tenantId,
         unitUid: String(unitUid),
@@ -518,6 +534,8 @@ export async function uploadTallerToCloud(
         motivo,
         estatus,
         datos: sinGastoSiTienePartidas(e, tienePartidas),
+        // Solo al cerrar con liga vigente; si no, no viaja ninguna llave de liga (ni undefined).
+        ...(revocacion ?? {}),
       });
       // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
       // pero el caller solo necesita totales agregados. Sumamos a semanal

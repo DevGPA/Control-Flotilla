@@ -32,6 +32,7 @@ import {
 } from "./batchUpload";
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
 import { abrirVisorFotos } from "../taller/visorFotos";
+import { llaveEnUso, type LlaveEnUso } from "../taller/llaveVisita";
 import {
   estadoLiga,
   promesaTaller,
@@ -175,6 +176,9 @@ declare global {
      *  (Task 11) nunca deriva unitUid/fechaEntrada de campos de formulario
      *  crudos, para no apuntar a una visita que el backend no encuentra. */
     __tallerCloudKey?: (e: LegacyTallerEntry) => { unitUid: string; fechaEntrada: string };
+    /** Decisión 1 (spec §4.1): ¿la llave (unitUid+fechaEntrada) de la visita candidata ya la usa
+     *  otra visita vigente o una anulada? El monolito NO guarda si no es "libre". */
+    __llaveEnUso?: (candidata: LegacyTallerEntry, vigentes: LegacyTallerEntry[]) => LlaveEnUso;
     /** Ciclo de firma del taller (Task 11): emitir/revocar la liga del
      *  proveedor + componer el mensaje de WhatsApp. El gate de ROL real es
      *  AppSync (grupo admin/operativo, ver data/resource.ts); needs-write +
@@ -365,7 +369,13 @@ export function setupCloud(): void {
       return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
     }
     window.notify?.(`Subiendo ${entries.length} taller a DynamoDB…`, "info", 2500);
-    const res = await uploadTallerToCloud(entries, session.tenantId, partidasDeEntry);
+    // Decisión 2: el correo viaja para el rastro "cierre:<quien>" de la revocación por cierre.
+    const res = await uploadTallerToCloud(
+      entries,
+      session.tenantId,
+      partidasDeEntry,
+      session.email,
+    );
     const summary = `Cloud taller: ${res.semanal} OK · ${res.errors.length} errors`;
     if (res.errors.length > 0) {
       console.warn("[cloudSyncTaller] errors:", res.errors);
@@ -405,7 +415,12 @@ export function setupCloud(): void {
   // simplemente no encuentra filas que borrar.
   window.__cloudReplaceTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const res = await uploadTallerToCloud([entry], session.tenantId, partidasDeEntry);
+    const res = await uploadTallerToCloud(
+      [entry],
+      session.tenantId,
+      partidasDeEntry,
+      session.email,
+    );
     if (res.errors.length) {
       throw new Error(`replaceTaller upsert falló: ${res.errors[0]?.error ?? "?"}`);
     }
@@ -530,6 +545,15 @@ export function setupCloud(): void {
     return refIdTaller(unitUid, fechaEntrada);
   };
   window.__tallerCloudKey = tallerCloudKey;
+
+  // Decisión 1 (spec §4.1): la guarda del alta. Las llaves se componen con tallerCloudKey (la
+  // misma que usa el registro, la liga y el tombstone) y las anuladas salen del mapa de la
+  // hidratación (__anuladasActivas). La regla es pura (src/taller/llaveVisita.ts); el monolito
+  // solo pregunta y, si no es "libre", no guarda.
+  window.__llaveEnUso = (candidata, vigentes) => {
+    const k = (e: LegacyTallerEntry) => ({ id: String(e.id ?? ""), ...tallerCloudKey(e) });
+    return llaveEnUso(k(candidata), vigentes.map(k), window.__anuladasActivas ?? new Map());
+  };
 
   // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
   // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.

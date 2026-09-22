@@ -132,6 +132,11 @@ export type TallerInput = {
   motivo: string;
   estatus: "abierto" | "cerrado";
   datos?: unknown;
+  /** Decisión 2 (spec §4.2): revocación por cierre en el MISMO upsert. Solo viajan al cerrar
+   *  una visita con liga vigente (revocacionPorCierre); si no, no se mandan. */
+  ligaVersion?: number;
+  ligaRevocadaEn?: string;
+  ligaRevocadaPor?: string;
 };
 
 export async function upsertTaller(input: TallerInput): Promise<Schema["Taller"]["type"]> {
