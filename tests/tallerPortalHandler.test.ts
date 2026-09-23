@@ -479,3 +479,20 @@ describe("decisión 3 (spec §4.3): el portón rechaza visitas ANULADAS", () => 
     );
   });
 });
+
+// ── B-1 (revisión de seguridad): segunda cerradura por RASTRO, con la regla del escritorio ──
+describe("B-1: el portón también rechaza por rastro de revocación, con la MISMA regla que el escritorio", () => {
+  const i = handlerSrc.indexOf("async function cargarVisitaVigente(");
+  const cuerpo = handlerSrc.slice(i, handlerSrc.indexOf("\n}", i));
+  it("importa estadoLiga y columnasLigaDe de src/taller/liga (módulo hoja): no reimplementa la regla", () => {
+    expect(handlerSrc).toMatch(
+      /import \{[^}]*estadoLiga[^}]*\} from "\.\.\/\.\.\/\.\.\/src\/taller\/liga"/,
+    );
+    expect(cuerpo).toContain("estadoLiga(columnasLigaDe(v)");
+  });
+  it("el chequeo va tras el de versión y antes de devolver la visita, con su propio motivo en bitácora", () => {
+    const iRastro = cuerpo.indexOf('ErrorLigaInvalida("liga revocada (rastro)")');
+    expect(iRastro).toBeGreaterThan(cuerpo.indexOf('ErrorLigaInvalida("liga revocada")'));
+    expect(iRastro).toBeLessThan(cuerpo.lastIndexOf("return v;"));
+  });
+});

@@ -164,6 +164,22 @@ export async function upsertTaller(input: TallerInput): Promise<Schema["Taller"]
   throw new Error(`upsertTaller(create) sin errores pero sin data: ${JSON.stringify(created)}`);
 }
 
+/**
+ * Lee UNA fila de `Taller` por su llave real; `null` si no existe. Lanza si AppSync devuelve
+ * errores: quien la usa para decidir sobre la liga (B-1, `uploadTallerToCloud`) debe fallar
+ * cerrado, nunca seguir con la copia local.
+ */
+export async function getTaller(input: {
+  tenantId: string;
+  unitUid: string;
+  fechaEntrada: string;
+}): Promise<Schema["Taller"]["type"] | null> {
+  const c = getClient();
+  const { data, errors } = await c.models.Taller.get(input);
+  throwOnErrors("getTaller", errors);
+  return data ?? null;
+}
+
 export async function listTaller(tenantId: string): Promise<Schema["Taller"]["type"][]> {
   const c = getClient();
   return listAll<Schema["Taller"]["type"]>(

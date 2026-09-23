@@ -56,6 +56,7 @@ import {
   type PartidaEntrante,
 } from "./validacion";
 import { esAnulacionActiva, refIdTaller } from "../../../src/anulacion/anulacion";
+import { columnasLigaDe, estadoLiga } from "../../../src/taller/liga";
 
 /** Error de negocio "la liga ya no sirve" detectado DESPUÉS de que el token
  *  verificó bien su firma (revocación por ligaVersion, o la visita referida
@@ -525,9 +526,10 @@ async function esquemaHibridoEncendido(tenantId: string): Promise<boolean> {
  * TODA ruta autenticada — ver el comentario en `handler()`.
  *
  * Motivos de rechazo, todos con el MISMO 401 opaco hacia afuera
- * (`ErrorLigaInvalida`): la visita no existe, la liga fue revocada
- * (`ligaVersion`), el esquema está apagado (R90), la visita ya está CERRADA
- * (A-8) o la visita fue ANULADA (decisión 3). Ninguno le dice al taller cuál fue.
+ * (`ErrorLigaInvalida`): la visita no existe, la liga fue revocada (por
+ * `ligaVersion`, o por su rastro `ligaRevocadaEn ≥ ligaCreadaEn` — B-1), el
+ * esquema está apagado (R90), la visita ya está CERRADA (A-8) o la visita fue
+ * ANULADA (decisión 3). Ninguno le dice al taller cuál fue.
  */
 async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["type"]> {
   // R90: el apagador va PRIMERO — con el esquema apagado no se toca ni la fila
@@ -542,6 +544,14 @@ async function cargarVisitaVigente(tk: PortalToken): Promise<Schema["Taller"]["t
   if (errors) throw new Error(`Taller.get: ${JSON.stringify(errors)}`);
   if (!v) throw new ErrorLigaInvalida("visita no encontrada");
   if (ligaRevocada(v.ligaVersion, tk)) throw new ErrorLigaInvalida("liga revocada");
+  // B-1 (revisión de seguridad): segunda cerradura, por RASTRO, con la MISMA regla que pinta
+  // "Liga revocada" en el escritorio (estadoLiga, src/taller/liga.ts — módulo hoja): si
+  // `ligaRevocadaEn` es igual o posterior a `ligaCreadaEn`, la liga no sirve aunque la versión
+  // coincida con el token. Sin esto, un cierre calculado desde una copia local vieja podía
+  // sellar la revocación con la versión del token VIVO: pantalla "revocada", portal sirviendo.
+  if (estadoLiga(columnasLigaDe(v), new Date().toISOString()).kind === "revocada") {
+    throw new ErrorLigaInvalida("liga revocada (rastro)");
+  }
   // A-8: una liga vive 90 días. Sin este candado, el taller seguía creando
   // partidas y llamando /api/enviar sobre una visita FINALIZADA, y esas
   // partidas caían en la bandeja de una visita cuyo costo ya se dio por final.

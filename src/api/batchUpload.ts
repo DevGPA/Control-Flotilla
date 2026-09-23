@@ -8,12 +8,25 @@
 
 import type { LoadedZip } from "../io/zipLoader";
 import { analyzeRow } from "../analyzer/analyzeRow";
-import { upsertUnit, upsertChecklist, upsertSemanal, upsertTaller, type UnitInput } from "./client";
+import {
+  upsertUnit,
+  upsertChecklist,
+  upsertSemanal,
+  upsertTaller,
+  getTaller,
+  type UnitInput,
+} from "./client";
 import type { Partida } from "../taller/partidas";
 import type { TallerEntry } from "../taller/types";
 // Del módulo HOJA ../taller/liga, no de ../taller/seguimiento: seguimiento importa de
 // tallerPartidas, que importa de este archivo — sería un ciclo.
-import { revocacionPorCierre } from "../taller/liga";
+import {
+  cierraVisitaConLiga,
+  columnasLigaDe,
+  conLigaDeNube,
+  revocacionPorCierre,
+  type ColumnasLiga,
+} from "../taller/liga";
 import { placaVigente } from "../fleet/placaVigente";
 
 /** Shape mínima de Unit que el legacy expone en window.units. */
@@ -520,11 +533,21 @@ export async function uploadTallerToCloud(
       // UNA sola (estadoLiga/revocacionPorCierre): ella decide qué es "cerrada" (fsalidaReal
       // o estado Finalizado) y devuelve null en todo lo demás — aquí no se filtra por
       // `estatus`, que solo mira fsalidaReal y divergiría de la regla.
-      const revocacion = revocacionPorCierre(
-        e as Partial<TallerEntry>,
-        new Date().toISOString(),
-        quien ?? "",
-      );
+      // B-1 (revisión de seguridad): al CERRAR una visita que alguna vez tuvo liga, la liga se toma
+      // de la NUBE, no de la copia local (puede tener minutos de atraso): si allá ya está revocada,
+      // no se pisa el rastro; si allá hay una re-emitida viva, se revoca ESA versión; y la versión
+      // nunca baja. Una lectura extra solo en ese camino. Si la lectura falla, falla el guardado de
+      // este entry (fail-closed): nunca se escribe una versión calculada a ciegas.
+      let base = e as Partial<TallerEntry>;
+      let ligaNube: ColumnasLiga | null = null;
+      if (cierraVisitaConLiga(base)) {
+        const fila = await getTaller({ tenantId, unitUid: String(unitUid), fechaEntrada });
+        if (fila) {
+          ligaNube = columnasLigaDe(fila);
+          base = conLigaDeNube(base, ligaNube);
+        }
+      }
+      const revocacion = revocacionPorCierre(base, new Date().toISOString(), quien ?? "");
       await upsertTaller({
         tenantId,
         unitUid: String(unitUid),
@@ -543,6 +566,9 @@ export async function uploadTallerToCloud(
       // siguiente refresco — así el bloque Proveedor dice "Liga revocada" al instante y un
       // segundo guardado de la misma visita ya no encuentra nada que revocar (no vuelve a
       // sellar ligaRevocadaEn). Solo tras el éxito: si el upsert falló, no se toca.
+      // Primero lo que la nube ya tenía de la liga (si se leyó), encima la revocación de este
+      // guardado (si la hubo): el espejo local queda igual que la nube.
+      if (ligaNube) Object.assign(e, ligaNube);
       if (revocacion) Object.assign(e, revocacion);
       // Reuse semanal counter — BatchResult shape no tiene `taller` campo,
       // pero el caller solo necesita totales agregados. Sumamos a semanal

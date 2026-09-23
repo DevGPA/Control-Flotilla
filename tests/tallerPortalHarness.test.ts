@@ -727,6 +727,72 @@ describe("P4 — liga revocada (ligaVersion de la fila ≠ v del token): 401 opa
   });
 });
 
+describe("P4b — rastro de revocación (ligaRevocadaEn ≥ ligaCreadaEn): 401 opaco AUNQUE la versión coincida (B-1)", () => {
+  // B-1 (revisión de seguridad, escenario b): un cierre calculado desde una copia local vieja pudo
+  // sellar ligaRevocadaEn con ligaVersion = la del token VIVO. La versión no lo detecta; el rastro
+  // sí — con la MISMA regla (estadoLiga, src/taller/liga.ts) que pinta "Liga revocada" en el escritorio.
+  const EMITIDA = "2026-09-01T10:00:00.000Z";
+  const REVOCADA_DESPUES = "2026-09-02T10:00:00.000Z";
+
+  it("una fila sellada como revocada con la versión del token vivo no lee, no escribe, no firma nada", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ ligaVersion: 1, ligaCreadaEn: EMITIDA, ligaRevocadaEn: REVOCADA_DESPUES });
+    const token = acunar({ v: 1 });
+    for (const r of RUTAS_PUBLICAS.filter((x) => !x.html)) {
+      const res = http(
+        await handler(
+          eventoHttp({ ruta: r.ruta, metodo: r.metodo, token, query: r.query, body: r.body }),
+        ),
+      );
+      expect(res.statusCode, r.nombre).toBe(401);
+      expect(res.body, r.nombre).toBe(CUERPO_OPACO);
+    }
+    expect(g.creacionesPartida).toEqual([]);
+    expect(g.escriturasTaller).toEqual([]);
+    expect(g.firmas).toEqual([]);
+  });
+
+  it("la PÁGINA responde 401 en HTML con la página de liga inválida", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ ligaVersion: 1, ligaCreadaEn: EMITIDA, ligaRevocadaEn: REVOCADA_DESPUES });
+    const res = http(
+      await handler(eventoHttp({ ruta: "/", metodo: "GET", token: acunar({ v: 1 }) })),
+    );
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["content-type"]).toContain("text/html");
+    expect(res.body).toContain("Esta liga ya no sirve");
+  });
+
+  it("un rastro de revocación ANTERIOR a la emisión vigente (liga re-emitida) no cuenta: la visita sirve", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ ligaVersion: 2, ligaCreadaEn: REVOCADA_DESPUES, ligaRevocadaEn: EMITIDA });
+    const res = http(
+      await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar({ v: 2 }) })),
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("revocación en el MISMO instante que la emisión cuenta como revocada (≥, no >)", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ ligaVersion: 1, ligaCreadaEn: EMITIDA, ligaRevocadaEn: EMITIDA });
+    const res = http(
+      await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar({ v: 1 }) })),
+    );
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("el motivo va a la bitácora del servidor, nunca a la respuesta", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ ligaVersion: 1, ligaCreadaEn: EMITIDA, ligaRevocadaEn: REVOCADA_DESPUES });
+    const res = http(
+      await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token: acunar({ v: 1 }) })),
+    );
+    expect(res.statusCode).toBe(401);
+    expect(res.body).not.toContain("rastro");
+    expect(bitacoras.some((l) => l.includes("liga revocada (rastro)"))).toBe(true);
+  });
+});
+
 describe("P5 — visita cerrada: 401 opaco en toda ruta, y no se acuña liga nueva", () => {
   const cerradas: Array<[string, Fila, Fila]> = [
     ["por la columna estatus", { estatus: "cerrado" }, {}],
@@ -859,8 +925,8 @@ describe("P5b — visita ANULADA (tombstone activo): 401 opaco en toda ruta (dec
   });
 });
 
-describe("P2-P6 (opacidad transversal) — los siete motivos son INDISTINGUIBLES afuera", () => {
-  it("firma mala, vencido, revocado, cerrado, anulado, apagado y visita ausente dan respuestas byte-idénticas", async () => {
+describe("P2-P6 (opacidad transversal) — los ocho motivos son INDISTINGUIBLES afuera", () => {
+  it("firma mala, vencido, revocado (versión), revocado (rastro), cerrado, anulado, apagado y visita ausente dan respuestas byte-idénticas", async () => {
     const respuestas: RespuestaHttp[] = [];
     const recoger = async (preparar: () => Promise<{ handler: Handler; token: string }>) => {
       limpiar();
@@ -895,6 +961,15 @@ describe("P2-P6 (opacidad transversal) — los siete motivos son INDISTINGUIBLES
       sembrarVisita();
       sembrarAnulacion();
       return { handler, token: acunar() };
+    });
+    await recoger(async () => {
+      const handler = await cargarHandler();
+      sembrarVisita({
+        ligaVersion: 1,
+        ligaCreadaEn: "2026-09-01T10:00:00.000Z",
+        ligaRevocadaEn: "2026-09-02T10:00:00.000Z",
+      });
+      return { handler, token: acunar({ v: 1 }) };
     });
     await recoger(async () => {
       const handler = await cargarHandler();

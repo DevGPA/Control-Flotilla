@@ -87,3 +87,61 @@ export function revocacionPorCierre(
     ligaRevocadaPor: `cierre:${(quien ?? "").trim() || "desconocido"}`,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-1 (revisión de seguridad): la liga se toma de la NUBE antes de cerrar.
+//
+// La copia local de una visita puede tener minutos de atraso (poll de 4 min; sin hidratación
+// mientras hay un modal abierto). Si en esa ventana Riesgos actuó sobre la liga, calcular la
+// revocación por cierre desde la copia local: (a) PISABA el rastro de una revocación manual
+// (`ligaRevocadaPor` pasaba de riesgos a "cierre:<quien>"); (b) tras revocar y RE-EMITIR,
+// sellaba `ligaRevocadaEn` con la versión del token VIVO (pantalla "Liga revocada", portal
+// sirviendo al reabrir); (c) tras dos revocaciones, BAJABA la versión y un token ya revocado
+// revivía. Por eso `uploadTallerToCloud` relee la fila al cerrar y compone el entry con
+// `conLigaDeNube`; la revocación sigue saliendo de `revocacionPorCierre` — UNA sola regla.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Las cinco columnas de la liga, con la forma que tienen en el entry (sin null). */
+export type ColumnasLiga = Pick<
+  TallerEntry,
+  "ligaVersion" | "ligaCreadaEn" | "ligaCreadaPor" | "ligaRevocadaEn" | "ligaRevocadaPor"
+>;
+
+/** Proyecta una fila de la nube (`Taller`, campos nullable) a las cinco columnas del entry:
+ *  `null` ⇒ `undefined`, la MISMA lectura que hace la hidratación (cloudHydrate.ts). */
+export function columnasLigaDe(fila: {
+  ligaVersion?: number | null;
+  ligaCreadaEn?: string | null;
+  ligaCreadaPor?: string | null;
+  ligaRevocadaEn?: string | null;
+  ligaRevocadaPor?: string | null;
+}): ColumnasLiga {
+  return {
+    ligaVersion: typeof fila.ligaVersion === "number" ? fila.ligaVersion : undefined,
+    ligaCreadaEn: fila.ligaCreadaEn ?? undefined,
+    ligaCreadaPor: fila.ligaCreadaPor ?? undefined,
+    ligaRevocadaEn: fila.ligaRevocadaEn ?? undefined,
+    ligaRevocadaPor: fila.ligaRevocadaPor ?? undefined,
+  };
+}
+
+/** El entry local con la liga tal como está en la NUBE: emisión y revocación de allá (la copia
+ *  local puede traer marcas viejas) y la versión nunca por debajo de la de allá — el interruptor
+ *  del portal es `!==`, así que bajarla revive tokens. No muta `e`. */
+export function conLigaDeNube(e: Partial<TallerEntry>, nube: ColumnasLiga): Partial<TallerEntry> {
+  return {
+    ...e,
+    ligaCreadaEn: nube.ligaCreadaEn,
+    ligaCreadaPor: nube.ligaCreadaPor,
+    ligaRevocadaEn: nube.ligaRevocadaEn,
+    ligaRevocadaPor: nube.ligaRevocadaPor,
+    ligaVersion: Math.max(nube.ligaVersion ?? 1, e.ligaVersion ?? 1),
+  };
+}
+
+/** ¿Este guardado CIERRA una visita cuya copia local alguna vez tuvo liga? Solo entonces vale
+ *  una lectura extra a la nube antes de escribir (camino raro: cerrar con liga). Se relee aunque
+ *  la copia local diga "revocada": Riesgos pudo re-emitir después de esa copia. */
+export function cierraVisitaConLiga(e: Partial<TallerEntry>): boolean {
+  return visitaCerrada(e) && Boolean((e.ligaCreadaEn ?? "").trim());
+}
