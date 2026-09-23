@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-QIkG/apk90QutydhMfEsmNvo5sSTEMqUWfztfqvBWUc=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-BqwxH25NlWAMuNMMtcklQDc1PsrLLf3rz81A2bmfFvM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -11241,6 +11241,25 @@ async function saveTallerEntry(){
     // lista blanca de este `entry` lo omitía y `upsertTaller` reemplaza `datos`
     // COMPLETO ⇒ el siguiente guardado lo borraba de DynamoDB para siempre.
     gastoCapturadoOriginal: srcEntry?.gastoCapturadoOriginal,
+    // Columnas SOLO-NUBE: las cuelga la hidratación (cloudHydrate.ts), el formulario no las
+    // captura, y esta lista blanca las PERDÍA: `tallerEntries[idx]=entry` dejaba la copia local
+    // "sin-liga" hasta el siguiente refresco, así que cerrar desde el modal NO revocaba la liga
+    // (revocacionPorCierre veía un entry sin liga — decisión 2 rota en este camino) y anular
+    // tras editar se saltaba la revocación (__estadoLiga decía "sin-liga" — decisión 3). Se
+    // arrastran de srcEntry, como gastoCapturadoOriginal. En un alta o reingreso srcEntry es
+    // null ⇒ undefined (JSON.stringify las omite): una visita nueva no hereda liga de nadie.
+    ligaVersion:          srcEntry?.ligaVersion,
+    ligaCreadaEn:         srcEntry?.ligaCreadaEn,
+    ligaCreadaPor:        srcEntry?.ligaCreadaPor,
+    ligaRevocadaEn:       srcEntry?.ligaRevocadaEn,
+    ligaRevocadaPor:      srcEntry?.ligaRevocadaPor,
+    // Lo que reporta el proveedor y la marca anti-resurrección de la migración: misma pérdida
+    // (preexistente a este frente), mismo remedio.
+    estadoOperativo:      srcEntry?.estadoOperativo,
+    kmTaller:             srcEntry?.kmTaller,
+    fsalidaEstTaller:     srcEntry?.fsalidaEstTaller,
+    fsalidaEstCompromiso: srcEntry?.fsalidaEstCompromiso,
+    _cloud:               srcEntry?._cloud,
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),
@@ -11333,8 +11352,10 @@ async function deleteTallerEntry(id){
           const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
           const r = await window.__tallerLiga.revocar(unitUid, fechaEntrada);
           if(!r || "error" in r){
-            window.notify?.("No se pudo revocar la liga del proveedor; la visita no se anuló. Intenta de nuevo.","error",6000);
-            throw new Error("liga no revocada");
+            // UN solo mensaje, en el overlay que la persona está mirando: ErrorLegible le dice a
+            // src/anulacion/ui.ts que este texto es para ella (con un Error cualquiera pintaría su
+            // genérico de sesión/rol — falso aquí: la sesión sirve, lo que falló fue revocar).
+            throw new window.__anulacionUI.ErrorLegible("No se pudo revocar la liga del proveedor; la visita no se anuló. Intenta de nuevo.");
           }
         }
         await window.__anulaciones.anular(window.__tallerRefId(e),"taller",motivo);
