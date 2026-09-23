@@ -118,11 +118,28 @@ export function revocacionPorCierre(
   tres campos opcionales; si es `null`, no viaja ninguna llave de liga — ni `undefined`). `quien` = correo de la sesión (`getSession().email`), el mismo
   que ya usa la anulación (`cloudWire.ts`, `anuladoPor`). El prefijo `cierre:` distingue en el rastro una revocación
   por cierre de una manual.
-- La versión sube desde `e.ligaVersion` (la copia hidratada); si otra sesión la subió antes, el portal igual rechaza
-  (la comparación es `actual !== token.v`), y la siguiente hidratación trae el valor real. **No hay carrera que
-  reviva un token.**
+- **La liga se toma de la NUBE antes de cerrar (B-1, revisión de seguridad).** La copia local puede tener minutos
+  de atraso (poll de 4 min; sin hidratación con un modal abierto): calcular `ligaVersion + 1` desde ella (a) pisaba
+  el rastro de una revocación manual, (b) tras revocar y re-emitir sellaba la revocación con la versión del token
+  VIVO (pantalla "revocada", portal sirviendo al reabrir) y (c) tras dos revocaciones BAJABA la versión y revivía
+  un token revocado. Por eso, cuando el guardado CIERRA una visita cuya copia local alguna vez tuvo liga
+  (`cierraVisitaConLiga`), `uploadTallerToCloud` relee la fila (`getTaller`, `src/api/client.ts`) y compone el
+  entry con `conLigaDeNube` (emisión y revocación de la nube; versión = máximo de ambas) ANTES de pedirle a
+  `revocacionPorCierre` la revocación: si la nube ya está revocada no viaja nada (y el espejo local toma el rastro
+  de la nube); si hay una re-emitida viva se revoca ESA versión. Si la lectura falla, falla el guardado de ese
+  entry (fail-closed, se reporta como cualquier error de subida). Segunda cerradura en el portal:
+  `cargarVisitaVigente` también rechaza (mismo 401 opaco; motivo "liga revocada (rastro)" solo en bitácora) cuando
+  `estadoLiga(columnasLigaDe(fila)).kind === "revocada"` — la MISMA regla, importada de `src/taller/liga.ts`.
+  Residual aceptado: una liga EMITIDA después de la última hidratación y antes del cierre no se relee (la copia
+  local no trae `ligaCreadaEn`); queda "cerrada" (decisión 5) y la revoca el siguiente guardado tras hidratar.
 - Cubre los tres caminos de cierre porque los tres terminan en `uploadTallerToCloud`: `finalizarUnidad` (tabla),
   `finalizarDesdeModal` (registro) y `saveTallerEntry` con estado `Finalizado` (que rellena `fsalidaReal` con hoy).
+  **Requisito del tercero (I1, revisión final):** `saveTallerEntry` arma el `entry` por lista blanca desde el
+  formulario; DEBE arrastrar de `srcEntry` las columnas solo-nube que el formulario no captura — `ligaVersion`,
+  `ligaCreadaEn`, `ligaCreadaPor`, `ligaRevocadaEn`, `ligaRevocadaPor` (y, por la misma pérdida, `estadoOperativo`,
+  `kmTaller`, `fsalidaEstTaller`, `fsalidaEstCompromiso`, `_cloud`). Sin ellas el entry llega "sin-liga", nada se
+  revoca y la copia local (`tallerEntries[idx]=entry`) queda sin liga hasta el siguiente refresco, con lo que
+  también anular se saltaría la revocación. Prueba estructural: `tests/tallerLigaCierreUi.test.ts`.
 - **Autorización:** `Taller` permite `update` a `operativo` a nivel de modelo (sin restricción por campo,
   `resource.ts:~127`), así que los tres campos viajan con el guardado normal. No se toca `revocarLigaTaller`.
 - Tras el upsert exitoso, `uploadTallerToCloud` aplica los tres campos al entry LOCAL (`Object.assign`): el
@@ -133,10 +150,13 @@ export function revocacionPorCierre(
 
 ### 4.3 Anular revoca y el portal rechaza anuladas (decisión 3)
 
-- **Monolito**, en el `onConfirm` de la anulación de Taller (~`:11245`): si la visita tiene liga activa
-  (`window.__estadoLiga(e).kind === "activa"`), llama **primero** `window.__tallerLiga.revocar(unitUid, fechaEntrada)`
-  y **después** `window.__anulaciones.anular(...)`. Si revocar falla, se aborta con aviso ("No se pudo revocar la
-  liga; la visita no se anuló") — nunca se anula con una liga viva. Anular es `needs-admin`; admin puede revocar.
+- **Monolito**, en el `onConfirm` de la anulación de Taller (~`:11245`): si la visita tiene liga vigente
+  (`window.__estadoLiga(e).kind` es `"activa"` o `"cerrada"` — una liga vigente en visita cerrada revive al
+  reabrir), llama **primero** `window.__tallerLiga.revocar(unitUid, fechaEntrada)` y **después**
+  `window.__anulaciones.anular(...)`. Si revocar falla, se aborta lanzando `ErrorLegible` ("No se pudo revocar la
+  liga del proveedor; la visita no se anuló. Intenta de nuevo."), que el overlay de anulación (`src/anulacion/ui.ts`)
+  pinta tal cual y no cierra — UN solo mensaje, en vez de su texto genérico de sesión/rol — y nunca se anula con
+  una liga viva. Anular es `needs-admin`; admin puede revocar.
 - **Portal**, `cargarVisitaVigente` (`handler.ts` ~`:531-549`): tras el chequeo de revocación y antes/después del de
   visita cerrada, consulta `Anulacion` por `refId = refIdTaller(tk.u, tk.f)` y la considera activa **si no tiene `restauradaTs`**
   (`esAnulacionActiva`, la misma regla de `buildAnuladasActivas`: las restauradas no excluyen) y lanza `ErrorLigaInvalida("visita anulada")`. El refId se
