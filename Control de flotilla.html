@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-PV1EasUVuXpBl/cHrBTczzOqXIwxAwCZgxl0zqVbQIo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-1tYW+hFbYOUslh61lv6cwL3d7r0UK6IScaAbyAf/u7c=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -10561,6 +10561,17 @@ async function copiarLigaProveedor(){
       window.notify?.((r && r.error) || "No se pudo generar la liga.","error");
       return;
     }
+    // Espejo local (decisión 2; hallazgo de la prueba en Chrome 2026-09-24): `emitir`
+    // devuelve la liga RELEÍDA de la nube. Sin esto la copia local seguía "Sin liga"
+    // hasta la hidratación y emitir + dar salida sin recargar NO revocaba la liga
+    // (cierraVisitaConLiga veía un entry sin ligaCreadaEn y la subida no releía la nube).
+    if(r.liga){
+      Object.assign(e, r.liga);
+      if(typeof saveTallerDB==="function") saveTallerDB().catch(err=>console.warn("[liga] espejo local no persistido en IndexedDB:",err));
+      // Repintar solo si el modal sigue en ESTA visita: la espera fue larga (mutación +
+      // relectura) y la persona pudo abrir otra; la copia local ya quedó bien de todos modos.
+      if(typeof _provPintar==="function" && _tallerEditId===e.id) _provPintar(e);
+    }
     const msg = window.__tallerLiga.mensajeWhatsApp({ eco: e.eco||"", placa: e.plate||"", url: r.url });
     let copiado = false;
     try{
@@ -10599,6 +10610,15 @@ async function revocarLigaProveedor(){
     if(!r || "error" in r){
       window.notify?.((r && r.error) || "No se pudo revocar la liga.","error");
       return;
+    }
+    // Espejo local: misma regla que en copiarLigaProveedor — el bloque dice
+    // "Liga revocada" al instante, sin esperar la hidratación.
+    if(r.liga){
+      Object.assign(e, r.liga);
+      if(typeof saveTallerDB==="function") saveTallerDB().catch(err=>console.warn("[liga] espejo local no persistido en IndexedDB:",err));
+      // Repintar solo si el modal sigue en ESTA visita: la espera fue larga (mutación +
+      // relectura) y la persona pudo abrir otra; la copia local ya quedó bien de todos modos.
+      if(typeof _provPintar==="function" && _tallerEditId===e.id) _provPintar(e);
     }
     window.notify?.("Liga revocada.","ok");
   }catch(err){

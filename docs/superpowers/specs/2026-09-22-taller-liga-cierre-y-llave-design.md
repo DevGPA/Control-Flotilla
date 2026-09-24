@@ -130,8 +130,25 @@ export function revocacionPorCierre(
   entry (fail-closed, se reporta como cualquier error de subida). Segunda cerradura en el portal:
   `cargarVisitaVigente` también rechaza (mismo 401 opaco; motivo "liga revocada (rastro)" solo en bitácora) cuando
   `estadoLiga(columnasLigaDe(fila)).kind === "revocada"` — la MISMA regla, importada de `src/taller/liga.ts`.
-  Residual aceptado: una liga EMITIDA después de la última hidratación y antes del cierre no se relee (la copia
-  local no trae `ligaCreadaEn`); queda "cerrada" (decisión 5) y la revoca el siguiente guardado tras hidratar.
+  **La copia local se entera al EMITIR y al REVOCAR (espejo inmediato; hallazgo de la prueba en Chrome
+  2026-09-24, cerrado en esta rama).** Antes, `__tallerLiga.emitir` devolvía solo `{url, expira}` y `revocar` solo
+  `{ligaVersion}`: la copia local (`tallerEntries`) no traía `ligaCreadaEn/ligaCreadaPor/ligaVersion/ligaRevocadaEn/
+ligaRevocadaPor` hasta la siguiente hidratación (F5 / foco / sondeo de 4 min, que además se pospone con el modal
+  abierto). Consecuencias: (a) el bloque Proveedor seguía en "Sin liga" tras emitir; (b) —el hueco funcional de la
+  decisión 2— emitir y dar salida enseguida sin recargar dejaba a `cierraVisitaConLiga(e)` en false: la subida no
+  releía la nube, `revocacionPorCierre` devolvía null y la liga NO se revocaba; si luego se reabría, revivía.
+  Diseño real: tras la mutación exitosa, el puente (`src/api/cloudWire.ts`, `window.__tallerLiga`) conserva la
+  sesión (`const session = await ensureSession()`), relee la fila con `getTaller({ tenantId, unitUid,
+fechaEntrada })` y devuelve `liga: columnasLigaDe(fila)` — `emitir` ⇒ `{ url, expira, liga? }`, `revocar` ⇒
+  `{ ligaVersion, liga? }`; `columnasLigaDe` es la ÚNICA proyección nube→entry (la misma de la hidratación y de la
+  subida: una sola regla de liga). El monolito (`copiarLigaProveedor` y `revocarLigaProveedor`) espeja la copia
+  local con `Object.assign(e, r.liga)` + `saveTallerDB()` + `_provPintar(e)`: el bloque dice **"Liga activa"** /
+  **"Liga revocada"** al instante (sin reabrir el modal ni F5) y cerrar sin recargar SÍ revoca, porque el entry ya
+  trae `ligaCreadaEn` cuando llega a `uploadTallerToCloud`. Si la relectura falla o la fila no aparece, la
+  emisión/revocación YA ocurrió: se devuelve sin `liga` con un `console.warn` (la siguiente hidratación corrige la
+  copia local) — NUNCA se convierte en `{error}`. El `onConfirm` de anular también llama `revocar` pero no
+  espeja: la visita se anula y sale de la lista. Pruebas: `tests/tallerLigaEspejoLocal.test.ts` (estructural) y el
+  arnés en Chrome (C1b emitir sobre visita sin liga, C14 emitir + dar salida sin recargar, C15 revocar a mano).
 - Cubre los tres caminos de cierre porque los tres terminan en `uploadTallerToCloud`: `finalizarUnidad` (tabla),
   `finalizarDesdeModal` (registro) y `saveTallerEntry` con estado `Finalizado` (que rellena `fsalidaReal` con hoy).
   **Requisito del tercero (I1, revisión final):** `saveTallerEntry` arma el `entry` por lista blanca desde el
