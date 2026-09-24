@@ -20,6 +20,9 @@ const AHORA = new Date().toISOString();
 // Relativo al reloj: una emisión literal quedaría "vencida" a los 90 días y la prueba en rojo.
 const iso = (diasAtras: number): string => new Date(Date.now() - diasAtras * DIA_MS).toISOString();
 const EMITIDA = iso(7);
+// Calculada UNA sola vez: dos llamadas a iso(1) en la misma prueba (entrada y esperado) cayeron
+// con 1 ms de diferencia y la prueba salio en rojo por azar (2026-09-24).
+const REVOCADA_AYER = iso(1);
 const RIESGOS = "riesgos@ejemplo.test";
 const OPERATIVO = "op@ejemplo.test";
 
@@ -56,14 +59,14 @@ describe("columnasLigaDe — proyecta la fila de la nube (campos null) a las 5 c
         ligaVersion: 3,
         ligaCreadaEn: EMITIDA,
         ligaCreadaPor: RIESGOS,
-        ligaRevocadaEn: iso(1),
+        ligaRevocadaEn: REVOCADA_AYER,
         ligaRevocadaPor: RIESGOS,
       }),
     ).toEqual({
       ligaVersion: 3,
       ligaCreadaEn: EMITIDA,
       ligaCreadaPor: RIESGOS,
-      ligaRevocadaEn: iso(1),
+      ligaRevocadaEn: REVOCADA_AYER,
       ligaRevocadaPor: RIESGOS,
     });
   });
@@ -73,7 +76,7 @@ describe("conLigaDeNube — la nube manda en emisión y revocación; la versión
   it("toma las cuatro marcas de la nube y conserva lo demás del entry local", () => {
     const nube = {
       ligaVersion: 2,
-      ligaCreadaEn: iso(1),
+      ligaCreadaEn: REVOCADA_AYER,
       ligaCreadaPor: RIESGOS,
       ligaRevocadaEn: undefined,
       ligaRevocadaPor: undefined,
@@ -97,7 +100,7 @@ describe("conLigaDeNube — la nube manda en emisión y revocación; la versión
   });
   it("no muta el entry local que recibe", () => {
     const copia = { ...local };
-    conLigaDeNube(copia, { ligaVersion: 9, ligaRevocadaEn: iso(1) });
+    conLigaDeNube(copia, { ligaVersion: 9, ligaRevocadaEn: REVOCADA_AYER });
     expect(copia).toEqual(local);
   });
 });
@@ -108,7 +111,7 @@ describe("revocacionPorCierre sobre la liga de la NUBE — los tres escenarios d
       ligaVersion: 2,
       ligaCreadaEn: EMITIDA,
       ligaCreadaPor: RIESGOS,
-      ligaRevocadaEn: iso(1),
+      ligaRevocadaEn: REVOCADA_AYER,
       ligaRevocadaPor: RIESGOS,
     };
     expect(revocacionPorCierre(conLigaDeNube(local, nube), AHORA, OPERATIVO)).toBeNull();
@@ -121,7 +124,7 @@ describe("revocacionPorCierre sobre la liga de la NUBE — los tres escenarios d
   it("(b) Riesgos revocó y RE-EMITIÓ (token vivo v2) ⇒ v3, con revocación POSTERIOR a la nueva emisión", () => {
     const nube = {
       ligaVersion: 2,
-      ligaCreadaEn: iso(1),
+      ligaCreadaEn: REVOCADA_AYER,
       ligaCreadaPor: RIESGOS,
       ligaRevocadaEn: undefined,
       ligaRevocadaPor: undefined,
@@ -138,7 +141,7 @@ describe("revocacionPorCierre sobre la liga de la NUBE — los tres escenarios d
   it("(c) la nube ya va en v3 (dos revocaciones) con liga viva ⇒ v4, nunca v2 (un token v2 revocado no revive)", () => {
     const nube = {
       ligaVersion: 3,
-      ligaCreadaEn: iso(1),
+      ligaCreadaEn: REVOCADA_AYER,
       ligaCreadaPor: RIESGOS,
       ligaRevocadaEn: undefined,
       ligaRevocadaPor: undefined,
@@ -156,7 +159,7 @@ describe("cierraVisitaConLiga — cuándo vale la pena releer la nube (una lectu
     expect(cierraVisitaConLiga(local)).toBe(true);
     expect(cierraVisitaConLiga({ ...local, fsalidaReal: "", estado: "Finalizado" })).toBe(true);
     // La copia local dice "revocada": igual se relee — Riesgos pudo re-emitir después de esa copia.
-    expect(cierraVisitaConLiga({ ...local, ligaRevocadaEn: iso(1) })).toBe(true);
+    expect(cierraVisitaConLiga({ ...local, ligaRevocadaEn: REVOCADA_AYER })).toBe(true);
   });
   it("abierta, o cerrada sin rastro de liga ⇒ false (ni una lectura extra)", () => {
     expect(cierraVisitaConLiga({ ...local, fsalidaReal: "", estado: "En Reparación" })).toBe(false);
