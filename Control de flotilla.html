@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-BqwxH25NlWAMuNMMtcklQDc1PsrLLf3rz81A2bmfFvM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-q8m6d29D8CyN5tzhiixEZUNeVHvuGspxJCdv8sdprkM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -10417,6 +10417,7 @@ function _tfGastoPintar(e){
 
 function openTallerModal(id){
   _tallerEditId = id||null;
+  _clearInvalid(["tf-eco","tf-tipo","tf-km","tf-fentrada","tf-fsalida-est","tf-fsalida-real"]);
   const e = id ? tallerEntries.find(x=>x.id===id) : null;
   document.getElementById("tl-mttl").textContent = e ? "Editar registro" : "Agregar unidad al taller";
   const isClosed = v => v==="Finalizado"||v==="Listo";
@@ -11174,6 +11175,12 @@ function _markInvalid(id){
   const clear=()=>{el.style.outline="";el.style.outlineOffset="";el.removeEventListener("input",clear);el.removeEventListener("change",clear);};
   el.addEventListener("input",clear);el.addEventListener("change",clear);
   el.focus();
+}
+// El marcador solo se limpia con input/change; abrir OTRA visita asigna .value por código
+// (sin eventos) y lo dejaba pegado en un campo válido (hallazgo C13 de la prueba en Chrome,
+// frecuente desde que la guarda de la llave marca la fecha). Se limpia al abrir el modal.
+function _clearInvalid(ids){
+  ids.forEach(id=>{const el=document.getElementById(id);if(el){el.style.outline="";el.style.outlineOffset="";}});
 }
 async function saveTallerEntry(){
   if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura: no puedes guardar registros de taller.","warn",4000); return; }

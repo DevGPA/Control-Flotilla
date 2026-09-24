@@ -124,3 +124,23 @@ describe("decisión 5 — el bloque Proveedor dice 'Liga cerrada con la visita'"
     expect(c).not.toContain(".innerHTML");
   });
 });
+
+describe("higiene — el marcador rojo de un bloqueo no se queda pegado al abrir otra visita (C13)", () => {
+  it("openTallerModal limpia el marcador de TODOS los campos que saveTallerEntry puede marcar", () => {
+    const abrir = sinComentarios(cuerpo("openTallerModal"));
+    const guardar = sinComentarios(cuerpo("saveTallerEntry"));
+    const i = abrir.indexOf("_clearInvalid([");
+    expect(i, "openTallerModal no llama _clearInvalid").toBeGreaterThan(-1);
+    const lista = abrir.slice(i, abrir.indexOf("]", i));
+    // Cada campo que saveTallerEntry marca con _markInvalid debe estar en la lista que se limpia.
+    const marcados = [...guardar.matchAll(/_markInvalid\("([^"]+)"\)/g)].map((m) => m[1]);
+    expect(marcados.length).toBeGreaterThan(0);
+    for (const id of marcados) expect(lista, `falta ${id}`).toContain(`"${id}"`);
+    expect(lista).toContain('"tf-fentrada"');
+  });
+  it("_clearInvalid deshace exactamente lo que pone _markInvalid (outline y outlineOffset)", () => {
+    const c = sinComentarios(cuerpo("_clearInvalid"));
+    expect(c).toContain('el.style.outline=""');
+    expect(c).toContain('el.style.outlineOffset=""');
+  });
+});
