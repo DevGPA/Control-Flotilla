@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-q8m6d29D8CyN5tzhiixEZUNeVHvuGspxJCdv8sdprkM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-PV1EasUVuXpBl/cHrBTczzOqXIwxAwCZgxl0zqVbQIo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -9808,7 +9808,7 @@ function renderActivas(){
     ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--R)18,var(--bg2));border-bottom:1px solid var(--Rl);color:var(--s1)"><span style="color:var(--R);display:inline-flex;align-items:center;gap:4px;font-weight:700"><i data-lucide="clock" style="width:11px;height:11px"></i> ${vencidas.length} unidad${vencidas.length>1?"es con la salida estimada VENCIDA":" con la salida estimada VENCIDA"}:</span> <b>${vencidas.slice(0,5).map(e=>escHtml((e.eco||e.plate||"?")+" (+"+_diasVenc(e)+"d)")).join(", ")}${vencidas.length>5?" y "+(vencidas.length-5)+" más...":""}</b></div>`
     : "";
   const tlAlert = (urgEcos.length
-    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":"lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
+    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":" lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
     : "") + tlVencAlert;
 
   const _klbl = (ico,txt) => `<div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="${ico}" style="width:11px;height:11px"></i> ${txt}</div>`;
@@ -9970,7 +9970,7 @@ ${tlAlert}`;
       })()}</td>
       <td style="font-size:11px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
       <td style="max-width:200px;color:var(--s1);font-size:11px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
-      <td onclick="event.stopPropagation()">
+      <td>
         <button class="tl-fin-btn" data-action="finalizarUnidad" data-arg1="${escAttr(e.id)}" data-stop-propagation="1" title="Marcar como Finalizado">✓ Salida</button>
       </td>
     </tr>`;
@@ -11038,7 +11038,7 @@ function finalizarUnidad(id){
   const avisoPartidas = (nPend || nBorr)
     ? `\n\n⚠ Esta visita tiene ${nPend} partida${nPend===1?"":"s"} esperando firma y ${nBorr} borrador${nBorr===1?"":"es"} sin enviar.\nSi la finalizas ahora, su costo puede cambiar después de cerrada.`
     : "";
-  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresorla en cualquier momento desde el Historial.`)) return;
+  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresarla en cualquier momento desde el Historial.`)) return;
   e.estado = "Finalizado";
   e.fsalidaReal = e.fsalidaReal || new Date().toISOString().slice(0,10);
   e.updatedAt   = new Date().toISOString();
