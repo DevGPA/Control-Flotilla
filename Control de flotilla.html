@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-WTCPrHng/LFTCIL0Fcq+DIExMVB+Cdy71iao7DuOlIo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-OGWMvFEJvYGCuN649y/j60MGp/uUFzC7A5D89gS5eWE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1554,7 +1554,7 @@
     try{
       const t=document.createElement("div");
       t.setAttribute("role", kind==="error"?"alert":"status");
-      t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS[kind]||COLORS.info};color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px;animation:up .2s ease;display:flex;gap:8px;align-items:flex-start;line-height:1.35`;
+      t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS[kind]||COLORS.info};color:var(--toast-fg,#fff);padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px;animation:up .2s ease;display:flex;gap:8px;align-items:flex-start;line-height:1.35`;
       const ico=document.createElement("span");ico.textContent=ICONS[kind]||ICONS.info;ico.style.cssText="font-weight:700;flex-shrink:0";
       const body=document.createElement("span");body.textContent=String(msg||"");
       t.appendChild(ico);t.appendChild(body);
@@ -1569,11 +1569,11 @@
   window.notifyUndo=function(msg,onCommit,ms=5000,onUndo){
     const t=document.createElement("div");
     t.setAttribute("role","status");
-    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:var(--w1);color:#fff;padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
+    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:var(--w1);color:var(--toast-fg,#fff);padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
     const body=document.createElement("span");body.textContent=String(msg||"");body.style.flex="1";
     const btn=document.createElement("button");
     btn.textContent="DESHACER";
-    btn.style.cssText="background:var(--A);color:#fff;border:none;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
+    btn.style.cssText="background:var(--A);color:var(--toast-fg,#fff);border:none;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
     t.appendChild(body);t.appendChild(btn);
     document.body.appendChild(t);stack++;
     let done=false;
@@ -1585,11 +1585,11 @@
   window.notifyAction=function(msg,btnLabel,onAction,ms=8000){
     const t=document.createElement("div");
     t.setAttribute("role","alert");
-    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS.warn};color:#fff;padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
+    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS.warn};color:var(--toast-fg,#fff);padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
     const body=document.createElement("span");body.textContent=String(msg||"");body.style.flex="1";
     const btn=document.createElement("button");
     btn.textContent=String(btnLabel||"REINTENTAR");
-    btn.style.cssText="background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
+    btn.style.cssText="background:transparent;color:inherit;border:1px solid currentColor;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
     t.appendChild(body);t.appendChild(btn);
     document.body.appendChild(t);stack++;
     let done=false;
@@ -2242,6 +2242,17 @@ function isoDayOf(v){
   const dmy=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(dmy)return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
   return "";
+}
+// dd/mm/aaaa de una marca de atendido. ESPEJO de fechaMarca en
+// src/ui/detail/renderChecklist.ts: el ts ISO (UTC) se muestra en fecha LOCAL —
+// tomar el día del string UTC hacía que lo marcado después de las 18:00 saliera "mañana".
+function fechaMarca(ts){
+  const s=String(ts||"");
+  if(s.includes("T")){
+    const d=new Date(s);
+    if(!isNaN(d.getTime())) return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  }
+  return s.slice(0,10).split("-").reverse().join("/");
 }
 function resolveDoneEntry(dm,f){
   if(!dm)return undefined;
@@ -3398,7 +3409,7 @@ function loadWBSemanal(wb, fname){
         showView("semanales");
         // Pequeño toast de confirmación
         const toast=document.createElement("div");
-        toast.style.cssText="position:fixed;bottom:24px;right:24px;background:var(--ac);color:#fff;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:up .2s ease";
+        toast.style.cssText="position:fixed;bottom:24px;right:24px;background:var(--ac);color:var(--toast-fg,#fff);padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:up .2s ease";
         toast.textContent=`✓ ${periodoLbl} — ${entries.length} unidades importadas`;
         document.body.appendChild(toast);
         setTimeout(()=>toast.remove(),3500);
@@ -4693,10 +4704,12 @@ function renderChecklist(u,body){
       if(done){
         // Overlay auto-resueltos (spec 2026-07-23): distinguir auto vs manual.
         const _e=resolveDoneEntry(doneMap,f);
-        const _fe=_e&&_e.ts?_e.ts.slice(0,10).split("-").reverse().join("/"):"";
+        const _fe=_e&&_e.ts?fechaMarca(_e.ts):"";
+        // Del correo basta el usuario ("tesoreria@gpa.com.mx" → "tesoreria").
+        const _by=_e&&_e.by?String(_e.by).split("@")[0]:"";
         const _meta=_e&&_e.auto===true
-          ?`<span style="margin-left:6px;font-size:9px;color:var(--G);font-style:italic">resuelto — inspección ${escHtml(_fe||"posterior")}</span>`
-          :(_e&&(_e.by||_fe)?`<span style="margin-left:6px;font-size:9px;color:var(--s2);font-style:italic">atendido${_e.by?` — ${escHtml(_e.by)}`:""}${_fe?` · ${escHtml(_fe)}`:""}</span>`:"");
+          ?`<span class="ck-meta" style="color:var(--G)">resuelto — inspección ${escHtml(_fe||"posterior")}</span>`
+          :(_e&&(_by||_fe)?`<span class="ck-meta" style="color:var(--s2)">atendido${_by?` — ${escHtml(_by)}`:""}${_fe?` · ${escHtml(_fe)}`:""}</span>`:"");
         html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}${_meta}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
       } else {
         const cls=f.lv==="Urgente"?"ck-fail-u":f.lv==="Completar"?"ck-fail-c":"ck-fail-r";
@@ -4778,11 +4791,13 @@ async function toggleCheckItem(uid,itemKey,aliasText,want){
   // semanas distintos en sesión cloud) comparten la marca. El corte temporal de
   // isFindingDone decide por-fila si la marca aplica.
   const targets=units.filter(x=>x===u||(plate&&(x.plate||plateOfUid(x.uid))===plate));
+  // Quién marcó, visible desde ya (la nube ya lo guarda como `por`, pero solo se veía al recargar).
+  const by=(window.__cloudSession&&window.__cloudSession.email)||undefined;
   for(const t of targets){
     if(!checklistDB[t.uid]) checklistDB[t.uid]={};
     // Tombstone {done:false,ts} en vez de delete: conserva el ts para que el
     // LWW del dual-read gane a marcas viejas bajo el texto display.
-    checklistDB[t.uid][itemKey]={done:nowDone,ts};
+    checklistDB[t.uid][itemKey]=by?{done:nowDone,ts,by}:{done:nowDone,ts};
     try{ await dbPut("checklist",t.uid,stripAutoDM(checklistDB[t.uid])); }
     catch(e){ console.warn("[toggleCheckItem] dbPut falló:",t.uid,e); }
     recalcRisk(t);
@@ -5639,7 +5654,7 @@ function _pdfProgreso(){
       if(!el){
         el=document.createElement("div");
         el.setAttribute("role","status");
-        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
+        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:var(--toast-fg,#fff);padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
         document.body.appendChild(el);
       }
       el.textContent=txt;

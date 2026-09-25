@@ -179,6 +179,9 @@
   --violet: #7c3aed;
   --violet-d: #f3e8ff;
   --violet-l: #c4b5fd;
+  /* Texto de los avisos flotantes (notify/notifyUndo/notifyAction): su fondo usa
+     --ac/--A/--R/--G/--w1, que en oscuro se ACLARAN → ahí el texto va oscuro. */
+  --toast-fg: #fff;
   --tl-warn-fg: #92400e;
   --tl-repar-bg: #dbeafe;
   --tl-repar-fg: #1e40af;
@@ -258,6 +261,7 @@
   --violet: #c4b5fd;
   --violet-d: rgba(167, 139, 250, 0.1);
   --violet-l: rgba(196, 181, 253, 0.28);
+  --toast-fg: var(--bg);
   --tl-warn-fg: #e8b86b;
   --tl-repar-bg: rgba(59, 130, 246, 0.14);
   --tl-repar-fg: #93c5fd;
@@ -2054,7 +2058,7 @@ select.filter-active {
   border-radius: 6px;
 }
 .dmtag-l {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--s2);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -3062,18 +3066,20 @@ select.filter-active {
   height: 1px;
   background: var(--ln2);
 }
+/* Una columna también en escritorio: en 2 columnas con texto nowrap, la 2ª columna
+   (y su casilla) quedaba FUERA del panel de detalle (551px de contenido en 498px). */
 .ck-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 4px;
 }
 .ck-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 6px 8px;
   border-radius: var(--r1);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
 }
@@ -3091,9 +3097,15 @@ select.filter-active {
 .ck-item-body:hover {
   background: rgba(255, 255, 255, 0.06);
 }
+/* El texto del hallazgo se AJUSTA (antes se cortaba con "…" y había que adivinarlo). */
 .ck-txt {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+/* "atendido — quién · fecha" / "resuelto — inspección …" junto al hallazgo. */
+.ck-meta {
+  margin-left: 6px;
+  font-size: 10px;
+  font-style: italic;
   white-space: nowrap;
 }
 
@@ -3101,7 +3113,7 @@ select.filter-active {
 .ck-arrastre {
   flex-shrink: 0;
   margin-left: 6px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--A);
   white-space: nowrap;
@@ -3112,16 +3124,16 @@ select.filter-active {
 }
 .ck-checkbox {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   border: 1.5px solid var(--s3);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--bg);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   color: transparent;
   padding: 0;
@@ -4089,6 +4101,9 @@ select.filter-active {
 .fm-ok {
   background: var(--Gl);
   box-shadow: inset 0 0 0 1px var(--G);
+  color: #065f46; /* --G sobre --Gl+--bg2 daba 3.89:1; este da ~5.5:1 (AA) */
+}
+:root[data-theme="dark"] .fm-ok {
   color: var(--G);
 }
 .fm-taller {
@@ -5983,16 +5998,15 @@ body:not([data-view="inspecciones"]) #alerts-panel {
     white-space: nowrap;
   }
   .tr .pill {
-    padding: 2px 5px;
-    font-size: 8px;
-    letter-spacing: 0.2px;
+    padding: 2px 3px; /* "COMPLETAR" a 10px = ~70px; la celda deja 72px */
+    font-size: 10px; /* 8px era ilegible; mínimo de la app = 10px */
+    letter-spacing: 0;
+    gap: 0;
   }
-  /* Checklist del panel detalle: el grid 2-col (554px de contenido) desbordaba el
-     viewport de 390px — items cortados a la derecha. Una columna en móvil. */
-  .ck-grid {
-    grid-template-columns: 1fr;
+  /* A 10px "COMPLETAR" no cabía en la celda con el punto: el color ya dice la severidad. */
+  .tr .pill .pd {
+    display: none;
   }
-
   /* Drop zone más compacta */
   #dz {
     padding: 24px 16px;
