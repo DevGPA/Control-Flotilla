@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-fWd494CtwbA6MP8NlGtR68htVZa3DWW2+vHWal8zj3c=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-WTCPrHng/LFTCIL0Fcq+DIExMVB+Cdy71iao7DuOlIo=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -342,18 +342,20 @@
      tope y scroll interno — la app es de viewport fijo (#app overflow:hidden) y
      apilados a lo ancho aplastaban la tabla. syncOpsRow() gobierna el wrapper. -->
 <div id="ops-row" style="display:none">
-<!-- MAPA DE FLOTA (Híbrido B×C H4): cada tile es una unidad, agrupadas por
-     sucursal. Lo puebla buildKPIs vía window.__fleetMap (src/ui/fleetMap.ts,
-     lógica pura testeada). Mismo criterio de estado que el hero y las alertas. -->
+<!-- MAPA DE FLOTA (Híbrido B×C H4): una tarjeta por sucursal con sus unidades
+     numeradas. Lo puebla buildKPIs vía window.__fleetMap (src/ui/fleetMap.ts,
+     lógica pura testeada). Color = operativa/en taller (criterio de la dona);
+     puntito rojo = urgente sin atender o servicio vencido. La leyenda vive en el
+     título (ahorra un renglón). -->
 <div id="fleet-map-panel" style="display:none;padding:10px 14px;background:var(--bg);border:var(--card-bd);box-shadow:var(--card-sh);border-radius:var(--r2)">
-  <div class="fm-title" id="fm-header" title="Mostrar/ocultar mapa"><span role="heading" aria-level="2">Mapa de flota</span><span class="fm-hint">cada cuadro es una unidad · click abre su expediente</span><span id="fm-chev" style="margin-left:auto;display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--s2)"></i></span></div>
+  <div class="fm-title" id="fm-header" title="Mostrar/ocultar mapa"><span role="heading" aria-level="2">Mapa de flota</span><span class="fm-hint">cada cuadro es una unidad · click abre su expediente</span>
+    <span class="fm-legend" aria-hidden="true">
+      <span class="fm-lg"><span class="fm-sw fm-sw-ok"></span>Operativa</span>
+      <span class="fm-lg"><span class="fm-sw fm-sw-taller"></span>En taller</span>
+      <span class="fm-lg"><span class="fm-lgdot"></span>Urgente sin atender</span>
+    </span>
+    <span id="fm-chev" style="display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--s2)"></i></span></div>
   <div id="fleet-map"></div>
-  <div class="fm-legend" aria-hidden="true">
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Gl);box-shadow:inset 0 0 0 1px var(--G)"></span>Operativa</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Al);box-shadow:inset 0 0 0 1px var(--A)"></span>Revisar</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Rl);box-shadow:inset 0 0 0 1.5px var(--R)"></span>Requiere atención</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--violet-l);box-shadow:inset 0 0 0 1px var(--violet)"></span>En taller</span>
-  </div>
 </div>
 
 <!-- ALERTS SUMMARY — RETIRADO a petición del usuario (H8, 2026-07-03). Todo el
@@ -3767,19 +3769,37 @@ function buildKPIs(){
       legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
   }
 
-  // Híbrido B×C H4: mapa de flota — flags con las MISMAS reglas que el hero/alertas;
-  // la agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
+  // Híbrido B×C H4: mapa de flota. Color = operativa/en taller (MISMO criterio que la
+  // dona, decisión Navares 2026-09-25); puntito rojo = hallazgos Urgentes SIN atender
+  // de la última inspección (incluye llanta crítica) o servicio vencido (salvo que su
+  // hallazgo Mant:Servicio ya esté marcado atendido). Los motivos van a la tarjeta flotante.
+  // La agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
   const fmWrap=document.getElementById("fleet-map-panel"), fmEl=document.getElementById("fleet-map");
   if(fmWrap&&fmEl&&window.__fleetMap){
     // H9: índice key→unidad del catálogo (misma derivación de key que el módulo)
     // para el click de dos niveles: detalle si hay inspección en rango; si no, ficha.
     const fmKey=x=>x.uid!=null?String(x.uid):String(x.eco??x.plate??"?");
     const fmIndex=new Map(fleet.map(x=>[fmKey(x),x]));
+    // Marcas "atendido" por PLACA: checklistDB va por uid de fila (placa o placa__fecha)
+    // y el catálogo no recibe el fan-out de toggleCheckItem → se juntan aquí con LWW por ts.
+    const fmDone=new Map();
+    for(const uid in (checklistDB||{})){
+      const p=plateOfUid(uid).trim(); if(!p) continue;
+      const acc=fmDone.get(p)||{}, m=checklistDB[uid]||{};
+      for(const k in m){ const e=m[k]; if(e&&(!acc[k]||(e.ts||"")>(acc[k].ts||""))) acc[k]=e; }
+      fmDone.set(p,acc);
+    }
+    const fmAlertas=x=>{
+      const dm=fmDone.get(String(x.plate||plateOfUid(x.uid)).trim())||{};
+      const out=(x.F||[]).filter(f=>f.lv==="Urgente"&&!isFindingDone(dm,f,x.fecha)).map(f=>f.text||f.key);
+      const svcF=(x.F||[]).find(f=>f.key==="Mant:Servicio");
+      if(svcStatus(x)==="vencido"&&!(svcF&&isFindingDone(dm,svcF,x.fecha))) out.push("Servicio vencido");
+      return out;
+    };
     const model=window.__fleetMap.build(fleet.map(x=>({
       uid:x.uid,eco:x.eco,plate:x.plate,branch:x.branch,
       enTaller:isUnitEnTaller(x),
-      atencion:x.risk==="Urgente"||(x.minT!=null&&x.minT<=TCRIT)||svcStatus(x)==="vencido",
-      revisar:x.risk==="Revisar"||x.risk==="Completar"||svcStatus(x)==="proximo"
+      alertas:fmAlertas(x)
     })));
     const has=model.some(g=>g.tiles.length);
     fmWrap.dataset.has=has?"1":"0";
@@ -4168,12 +4188,11 @@ function syncOpsRow(){
 }
 
 // Híbrido H5: pliega/expande el mapa de flota (persistido, como las alertas).
+// La leyenda vive en el título y se queda visible aunque el mapa esté plegado.
 function setFleetMapCollapsed(collapsed){
   const m=document.getElementById("fleet-map");
-  const l=document.querySelector("#fleet-map-panel .fm-legend");
   const ch=document.getElementById("fm-chev");
   if(m)m.style.display=collapsed?"none":"";
-  if(l)l.style.display=collapsed?"none":"";
   if(ch)ch.style.transform=collapsed?"rotate(0deg)":"rotate(180deg)";
   try{localStorage.setItem("cf_fleetmap_collapsed",collapsed?"1":"0");}catch(e){}
 }

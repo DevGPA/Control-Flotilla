@@ -3916,10 +3916,12 @@ select.filter-active {
   flex: 1 1 320px;
   min-width: 0;
 }
+/* Tarjetas por sucursal: ~2 filas de tarjetas a 1366-1440px de ancho sin scroll. */
 #fleet-map {
-  max-height: 150px;
+  max-height: 240px;
   overflow-y: auto;
   scrollbar-width: thin;
+  padding-top: 4px; /* el puntito rojo asoma 4px arriba del tile */
 }
 #alerts-list {
   max-height: 160px;
@@ -3930,7 +3932,7 @@ select.filter-active {
    ~5-6 filas visibles. El contenido sigue completo vía scroll interno. */
 @media (max-height: 800px) {
   #fleet-map {
-    max-height: 105px;
+    max-height: 175px;
   }
   #alerts-list {
     max-height: 110px;
@@ -3988,7 +3990,8 @@ select.filter-active {
 }
 
 /* ════ MAPA DE FLOTA (Híbrido B×C H4) ════════════════════════
-   Tiles por unidad agrupados por sucursal; el urgente pulsa. */
+   Una tarjeta por sucursal con sus unidades numeradas (diseño "tarjeta por
+   sucursal", 2026-09-25); el urgente sin atender lleva un puntito que pulsa. */
 .fm-title {
   display: flex;
   align-items: baseline;
@@ -4007,69 +4010,119 @@ select.filter-active {
   letter-spacing: 0.2px;
 }
 #fleet-map {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 26px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: 10px;
   margin-top: 10px;
 }
-.fm-glbl {
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--s2);
+.fm-card {
+  background: var(--bg2);
+  border-radius: 10px;
+  padding: 9px 12px 11px;
+  min-width: 0;
+}
+.fm-chead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-bottom: 6px;
 }
+.fm-cname {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--w1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-ccount {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--s2);
+  white-space: nowrap;
+}
+.fm-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--ln2);
+  margin-bottom: 9px;
+}
+.fm-bar-ok {
+  background: var(--G);
+}
+.fm-bar-taller {
+  background: var(--violet);
+}
 .fm-dots {
-  display: grid;
-  grid-template-columns: repeat(7, 18px);
-  gap: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .fm-tile {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 6px;
   border: none;
-  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition:
-    transform 0.14s ease,
-    box-shadow 0.14s ease;
+  transition: transform 0.14s ease;
 }
 .fm-tile:hover,
 .fm-tile:focus-visible {
-  transform: scale(1.35);
+  transform: scale(1.12);
   z-index: 2;
   position: relative;
+}
+.fm-tile:focus-visible {
+  outline: 2px solid var(--B, #1d4ed8);
+  outline-offset: 2px;
 }
 .fm-ok {
   background: var(--Gl);
   box-shadow: inset 0 0 0 1px var(--G);
-}
-.fm-rev {
-  background: var(--Al);
-  box-shadow: inset 0 0 0 1px var(--A);
+  color: var(--G);
 }
 .fm-taller {
   background: var(--violet-l);
   box-shadow: inset 0 0 0 1px var(--violet);
+  color: #5b21b6; /* --violet sobre --violet-l da 2.9:1; este da 5.2:1 (AA) */
 }
-/* Perf F1-9: fmPulse animaba box-shadow (no compositable) → repaint por frame en
-   CADA tile urgente del mapa. Ahora el anillo expansivo es un ::after con borde
-   estático animado por transform:scale + opacity (compositor puro, estilo "ping"). */
-.fm-urg {
-  background: var(--Rl);
-  box-shadow: inset 0 0 0 1.5px var(--R);
+:root[data-theme="dark"] .fm-taller {
+  color: var(--violet);
+}
+/* Puntito rojo (urgente sin atender / servicio vencido) en la esquina: el color del
+   tile sigue siendo operativa/taller. ::after = punto fijo; ::before = anillo "ping"
+   animado por transform+opacity (compositor puro — Perf F1-9: nada de box-shadow). */
+.fm-alerta {
   position: relative;
 }
-.fm-urg::after {
+.fm-alerta::before,
+.fm-alerta::after {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  border: 2px solid rgba(225, 29, 72, 0.35);
-  animation: fmPing 1.8s ease-out infinite;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   pointer-events: none;
+}
+.fm-alerta::after {
+  background: var(--R);
+  box-shadow: 0 0 0 2px var(--bg2);
+}
+.fm-alerta::before {
+  background: rgba(225, 29, 72, 0.45);
+  animation: fmPing 1.8s ease-out infinite;
 }
 @keyframes fmPing {
   0% {
@@ -4078,25 +4131,35 @@ select.filter-active {
   }
   60%,
   100% {
-    transform: scale(1.45);
+    transform: scale(2.4);
     opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .fm-urg::after {
+  .fm-alerta::before {
     animation: none;
     opacity: 0;
   }
 }
+.fm-lgdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--R);
+  display: inline-block;
+}
+/* Leyenda dentro del título (a la derecha, antes del chevron). */
 .fm-legend {
-  display: flex;
+  margin-left: auto;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--ln2);
-  font-size: var(--text-2xs);
+  justify-content: flex-end;
+  gap: 4px 14px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--s2);
+  text-transform: none;
+  letter-spacing: 0;
 }
 .fm-lg {
   display: inline-flex;
@@ -4104,10 +4167,62 @@ select.filter-active {
   gap: 5px;
 }
 .fm-sw {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 3px;
   display: inline-block;
+}
+.fm-sw-ok {
+  background: var(--Gl);
+  box-shadow: inset 0 0 0 1px var(--G);
+}
+.fm-sw-taller {
+  background: var(--violet-l);
+  box-shadow: inset 0 0 0 1px var(--violet);
+}
+/* Tarjeta flotante del tile: vive en <body> con position:fixed (el mapa tiene
+   overflow y la recortaría). La coloca renderFleetMap (src/ui/fleetMap.ts). */
+.fm-tip {
+  position: fixed;
+  z-index: 10000;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: var(--w1);
+  color: var(--bg);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+.fm-tip[hidden] {
+  display: none;
+}
+.fm-tip-t {
+  font-weight: 700;
+}
+.fm-tip-r {
+  color: #fb7185;
+  font-weight: 600;
+}
+.fm-tip-h {
+  font-size: 10.5px;
+  opacity: 0.65;
+}
+.fm-tip::after {
+  content: "";
+  position: absolute;
+  left: var(--fm-tip-ax, 50%);
+  top: 100%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--w1);
+}
+.fm-tip-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--w1);
 }
 .alert-chip {
   display: inline-flex;
@@ -5989,14 +6104,15 @@ body:not([data-view="inspecciones"]) #alerts-panel {
     font-size: 12px;
   }
   /* Híbrido H4: tiles del mapa de flota más picables en móvil */
-  .fm-dots {
-    grid-template-columns: repeat(7, 26px);
-    gap: 6px;
-  }
   .fm-tile {
-    width: 26px;
-    height: 26px;
+    min-width: 36px;
+    height: 30px;
     border-radius: 7px;
+    font-size: 12px;
+  }
+  /* En celular la leyenda baja a su propio renglón bajo el título */
+  #fm-header {
+    flex-wrap: wrap;
   }
   /* Lote 3: #btn-rango ya usa .btn-accent (sin estilo inline) → sin !important */
   #btn-rango {
@@ -6514,11 +6630,11 @@ body[data-hydrating] .uv-empty::before {
     height: 390px;
   }
 }
-/* Mapa de flota: con altura de sobra (1080p+) caben más unidades sin scroll
-   interno; el tope de 150px era para laptops. */
+/* Mapa de flota: con altura de sobra (1080p+) caben más tarjetas sin scroll
+   interno; el tope base de 240px es para laptops. */
 @media (min-height: 1000px) {
   #fleet-map {
-    max-height: 280px;
+    max-height: 360px;
   }
 }
 
