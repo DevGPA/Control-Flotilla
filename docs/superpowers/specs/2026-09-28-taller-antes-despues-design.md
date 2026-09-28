@@ -26,6 +26,7 @@ No hay que crear campos nuevos en la base de datos: el esquema ya tiene reservad
 | 8   | **El dinero no cambia.** `precioAutorizado` sigue siendo el monto; terminar no toca montos ni totales.                                                                                                                 | `totalesVisita` ya suma `autorizada` + `terminada` como autorizado.                                                                                                           |
 | 9   | **Orden:** la rama sale de `feat/taller-liga-cierre` y se despliega **después** de ella. El Bloque 2 va después de este frente.                                                                                        | La liga-cierre toca la misma pantalla y aporta el candado "visita cerrada o anulada ⇒ la liga no acepta nada".                                                                |
 | 10  | Mientras no exista el Bloque 2, el después se toma con **el mismo selector de hoy** (`capture="environment"`). Cuando llegue el Bloque 2, su cámara obligatoria y el "origen" por foto aplican **también** al después. | Anotarlo en el plan del Bloque 2.                                                                                                                                             |
+| 11  | **Navares lo ve funcionando en local antes de producción.** Es condición para abrir el PR.                                                                                                                             | Regla suya para todo cambio (2026-09-28). Cómo se arma la vista local: §8.1.                                                                                                  |
 
 **Regla que gobierna el frente:** _la evidencia es del taller y las reglas son del servidor_ (heredada del Bloque 2). La pantalla del taller solo es cortesía: el portal rechaza lo que no cumple.
 
@@ -192,6 +193,15 @@ Es una **ruta nueva en el portal público** ⇒ revisión de seguridad obligator
 - **Batería completa:** `test:run`, `typecheck`, `lint`, `build`, `audit:csp`, `audit:xss`, e2e contra la referencia (60/67).
 - **Prueba manual de Navares (obligatoria, regla del frente híbrido):** con una **visita real**, liga emitida y el **celular** del taller: subir un hallazgo, autorizarlo con la cuenta de **Riesgos** (no con admin), subir el después, verlo en Fleet en A+, y finalizar una visita con una refacción sin después para ver el aviso.
 
+### 8.1 Vista local para Navares (antes del PR)
+
+La ruta nueva del portal solo existe en la nube después de desplegar, así que "verlo en local" se arma con dos piezas que no tocan producción:
+
+- **La liga en el navegador de la computadora (y del celular en la misma red):** un script `scripts/preview-liga-local.mjs` sirve la página real de `pagina.ts` contra un **servidor simulado en memoria** que usa las **mismas** funciones de `validacion.ts` (incluida `validarTerminacion`). Trae una visita de ejemplo con un hallazgo en cada estado (borrador, propuesta, autorizada refacción, autorizada mano de obra, terminada, rechazada). Las fotos se guardan en memoria. Nada sale a internet.
+- **Fleet con `npm run dev`** y datos sembrados por el arnés de `?e2e=1` (patrón de la memoria `control-flotilla-prueba-chrome-monolito`): el registro de una unidad con partidas terminadas y sin después, el visor A+ y el aviso al finalizar.
+
+Navares recorre las dos. Hasta que diga que está bien, no hay PR.
+
 ## 9. Preguntas que quedan abiertas (no bloquean el plan)
 
 - **El taller subió una foto equivocada.** Con la decisión 4 no hay forma de corregirla desde la liga. Si pasa en la práctica, la salida natural es que Riesgos pueda "reabrir" un hallazgo terminado desde Fleet. Se decide si pasa.
@@ -202,5 +212,6 @@ Es una **ruta nueva en el portal público** ⇒ revisión de seguridad obligator
 1. Que `feat/taller-liga-cierre` pase la prueba manual de Navares y se fusione a `main`.
 2. Llevar `main` a esta rama (merge, no rebase) y correr la batería.
 3. Revisión de seguridad + revisión final de la rama.
-4. PR → merge = deploy (Amplify). El push lo corre Navares desde el worktree del frente.
-5. Humo en producción con la prueba manual de §8.
+4. **Navares lo ve en local (§8.1) y da el visto bueno.**
+5. PR → merge = deploy (Amplify). El push lo corre Navares desde el worktree del frente.
+6. Humo en producción con la prueba manual de §8.
