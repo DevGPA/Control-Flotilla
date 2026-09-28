@@ -178,6 +178,11 @@ describe("conformidad ES5 del <script> servido (A-6)", () => {
       expect(re.test(script), `el script servido usa ${nombre}`).toBe(false);
     });
   }
+
+  it("el panel del después reusa subirFotos: un reintento no vuelve a subir lo que ya tiene llave (Review Focus 2)", () => {
+    expect(script).toContain("subirFotos(items)");
+    expect(script).toContain("RUTA_TERMINAR");
+  });
 });
 
 // ── Tope de precio del lado cliente ─────────────────────────────────────────
