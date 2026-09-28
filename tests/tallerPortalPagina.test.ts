@@ -171,6 +171,7 @@ describe("conformidad ES5 del <script> servido (A-6)", () => {
     ["template literal (`)", /`/],
     ["class", /(^|[^A-Za-z0-9_$])class\s+[A-Za-z_$]/],
     ["spread/rest (...)", /\.\.\./],
+    ["coma colgante en una llamada (ES2017)", /,\s*\)/],
   ];
   for (const [nombre, re] of prohibidos) {
     it(`no usa ${nombre}`, () => {

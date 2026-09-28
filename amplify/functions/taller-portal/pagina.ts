@@ -474,7 +474,7 @@ textarea{min-height:72px; resize:vertical}
     var meta = el(
       "p",
       "hallazgo-meta" + (tachado ? " tachado" : ""),
-      tipoTxt + " · " + moneda(precioMostrado),
+      tipoTxt + " · " + moneda(precioMostrado)
     );
     cuerpo.appendChild(meta);
 
@@ -724,7 +724,7 @@ textarea{min-height:72px; resize:vertical}
               if (!resPut.ok) throw new Error("subida");
               item.key = firma.key;
             });
-          },
+          }
         );
       });
     });
