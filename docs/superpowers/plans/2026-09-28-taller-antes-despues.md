@@ -16,7 +16,7 @@
 - **Stagea solo tus rutas:** `git add <ruta> <ruta>`. Nunca `git add -A` ni `git add .`.
 - **Repo PÚBLICO:** solo datos ficticios en pruebas, scripts y demo (tenant `acme` o `demo`, placas `AAA111`/`PRB0006`, correos `@ejemplo.invalid` o `@ejemplo.test`). Nada de ids de infraestructura.
 - **Sin `innerHTML` con datos**, ni en `src/` ni en la página de la liga (`createElement` + `textContent`). Guardas: `npm run audit:xss` y `PATRON_SINK_PELIGROSO` de `tests/tallerPortalPagina.test.ts`.
-- **Página de la liga (`pagina.ts`) = ES5 dentro de un literal de plantilla de TypeScript.** En el `<script>` servido: prohibidos `=>`, `const`, `let`, `class`, comillas invertidas, `?.`, `??`, `...` (tres puntos, incluso en comentarios del script). No escribas `${` ni barras invertidas dentro del script: el literal de TS las interpretaría.
+- **Página de la liga (`pagina.ts`) = ES5 dentro de un literal de plantilla de TypeScript.** En el `<script>` servido: prohibidos `=>`, `const`, `let`, `class`, comillas invertidas, `?.`, `??`, `...` (tres puntos, incluso en comentarios del script) y **comas colgantes en llamadas** (`f(a, b,)`, que es ES2017; las de arreglos y objetos sí son ES5). No escribas `${` ni barras invertidas dentro del script: el literal de TS las interpretaría.
 - **CSP del monolito:** todo cambio a un `<script>` en línea de `Control de flotilla.html` ⇒ `npm run csp:sync` y re-stagear **`Control de flotilla.html` y `nginx.conf`**. Tras el commit, corre `npm run audit:csp` otra vez (el hook reformatea).
 - **CSP de la liga** es `'unsafe-inline'` sin hash: editar `pagina.ts` no requiere `csp:sync`.
 - **El servidor pone estado, fechas y autoría.** Nada de lo que mande el cliente en esos campos se escribe.
@@ -891,6 +891,31 @@ git commit -m "feat(taller): POST /api/terminar — el taller sube el después d
 
 **Recordatorio:** todo lo que agregues al `<script>` va DENTRO del literal de plantilla de `paginaProveedor`. ES5 estricto (ver Global Constraints). Sin comillas invertidas, sin `${`, sin barras invertidas.
 
+- [ ] **Step 0: Defecto preexistente — dos comas ES2017 en el script que ya está en producción (commit propio)**
+
+Encontrado al escribir este plan (verificado contra `origin/main`): el `<script>` servido tiene dos comas colgantes en llamadas, que son sintaxis ES2017. En un WebView Android anterior a Chrome 58, la IIFE entera no parsea y la liga se queda en "Cargando…" (la misma clase de falla que A-6). La guarda ES5 actual no las ve porque no revisa comas.
+
+1. En `tests/tallerPortalPagina.test.ts`, agrega al arreglo `prohibidos` de `describe("conformidad ES5 del <script> servido (A-6)", …)`:
+
+```ts
+    ["coma colgante en una llamada (ES2017)", /,\s*\)/],
+```
+
+2. Run: `npx vitest run tests/tallerPortalPagina.test.ts` — Expected: FAIL en "no usa coma colgante en una llamada (ES2017)".
+
+3. En `amplify/functions/taller-portal/pagina.ts`, quita las dos comas:
+   - En `tarjetaPartida` (~línea 477): `      tipoTxt + " · " + moneda(precioMostrado),` → `      tipoTxt + " · " + moneda(precioMostrado)` (la línea siguiente es `    );`).
+   - En `subirFotos` (~línea 727): el `},` que cierra `function (firma) { … }` justo antes de `        );` → `}`.
+
+4. Run: `npx vitest run tests/tallerPortalPagina.test.ts` — Expected: PASS.
+
+5. Commit:
+
+```bash
+git add amplify/functions/taller-portal/pagina.ts tests/tallerPortalPagina.test.ts
+git commit -m "fix(taller): dos comas ES2017 en la liga dejaban la página en blanco en WebViews Android viejos" -m "Mismo modo de falla que A-6: una coma colgante en una llamada no parsea antes de Chrome 58 y la IIFE entera muere. La guarda ES5 ahora las busca." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
 - [ ] **Step 1: Escribir las pruebas que fallan**
 
 Crea `tests/tallerPortalPaginaDespues.test.ts`:
@@ -1135,7 +1160,7 @@ describe("liga · totales (Review Focus 1)", () => {
 });
 ```
 
-Y en `tests/tallerPortalPagina.test.ts`, dentro de `describe("conformidad ES5 del <script> servido (A-6)", …)`, agrega:
+Y en `tests/tallerPortalPagina.test.ts`, dentro de `describe("conformidad ES5 del <script> servido (A-6)", …)`, agrega esta prueba (la guarda de comas colgantes ya quedó en el Step 0 y cubrirá también el código nuevo):
 
 ```ts
 it("el panel del después reusa subirFotos: un reintento no vuelve a subir lo que ya tiene llave (Review Focus 2)", () => {
@@ -1151,353 +1176,280 @@ Expected: FAIL — no existen los botones ni los textos del después; el total b
 
 - [ ] **Step 3: Implementar en `pagina.ts`**
 
+⚠ Copia este código TAL CUAL. Va marcado para que prettier no lo reformatee: prettier agrega comas al final de las llamadas partidas en varias líneas (`el("p", "x",\n)`), que son ES2017 y rompen la página en WebViews Android viejos. Si tu editor reformatea al pegar, revisa que ninguna llamada termine en `,` antes del `)`.
+
+<!-- prettier-ignore-start -->
+
 (a) **CSS.** Justo antes de `</style>`, agrega:
 
 ```css
-.despues {
-  margin-top: 10px;
-}
-.despues-panel {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px dashed rgba(30, 79, 163, 0.45);
-  border-radius: var(--r1);
-  background: rgba(30, 79, 163, 0.04);
-}
-.despues-lbl {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink2);
-  margin: 0 0 6px;
-}
-.despues-regla {
-  font-size: 12px;
-  color: var(--a);
-  margin: 4px 0 0;
-}
-.btn-despues {
-  width: 100%;
-  margin-top: 8px;
-  font-size: 14px;
-}
-.btn-link {
-  background: none;
-  border: none;
-  color: var(--ac);
-  font-weight: 600;
-  font-size: 13px;
-  padding: 6px 0;
-  min-height: 0;
-  cursor: pointer;
-}
-.par {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.par figure {
-  margin: 0;
-  text-align: center;
-}
-.par-foto {
-  width: 72px;
-  height: 72px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #f1f5f9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: var(--ink3);
-}
-.par-foto img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.par figcaption {
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--ink3);
-  letter-spacing: 0.05em;
-  margin-top: 2px;
-}
-.msg-ok-despues {
-  font-size: 12px;
-  color: var(--g);
-  margin: 6px 0 0;
-}
-.espera-despues {
-  font-size: 12px;
-  color: var(--ink3);
-  font-style: italic;
-  margin: 6px 0 0;
-}
+.despues{margin-top:10px}
+.despues-panel{margin-top:10px; padding:10px; border:1px dashed rgba(30,79,163,.45); border-radius:var(--r1); background:rgba(30,79,163,.04)}
+.despues-lbl{font-size:12px; font-weight:700; color:var(--ink2); margin:0 0 6px}
+.despues-regla{font-size:12px; color:var(--a); margin:4px 0 0}
+.btn-despues{width:100%; margin-top:8px; font-size:14px}
+.btn-link{background:none; border:none; color:var(--ac); font-weight:600; font-size:13px; padding:6px 0; min-height:0; cursor:pointer}
+.par{display:flex; gap:8px; margin-top:8px}
+.par figure{margin:0; text-align:center}
+.par-foto{width:72px; height:72px; border-radius:8px; overflow:hidden; background:#f1f5f9; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--ink3)}
+.par-foto img{width:100%; height:100%; object-fit:cover}
+.par figcaption{font-size:10px; font-weight:800; color:var(--ink3); letter-spacing:.05em; margin-top:2px}
+.msg-ok-despues{font-size:12px; color:var(--g); margin:6px 0 0}
+.espera-despues{font-size:12px; color:var(--ink3); font-style:italic; margin:6px 0 0}
 ```
 
 (b) **HTML.** Justo después de `<input id="in-foto" type="file" accept="image/*" capture="environment" hidden>`, agrega:
 
 ```html
-<input id="in-foto-despues" type="file" accept="image/*" capture="environment" hidden />
+      <input id="in-foto-despues" type="file" accept="image/*" capture="environment" hidden>
 ```
 
 (c) **Script — variables.** Después de `var RUTA_FOTO = "/api/foto";` agrega `var RUTA_TERMINAR = "/api/terminar";`. Después de la línea de `var previewsLocal = {};` agrega:
 
 ```js
-// Antes y después (spec 2026-09-28 §5): un solo panel abierto a la vez.
-// despues = { partidaId, tipo, fotos: [{ file, key }], error } — key se llena al
-// subir y un reintento no vuelve a subir lo que ya tiene key (igual que fotosDraft).
-var despues = null;
-var previewsDespues = {}; // partidaId -> object URL de la primera foto del después
+  // Antes y después (spec 2026-09-28 §5): un solo panel abierto a la vez.
+  // despues = { partidaId, tipo, fotos: [{ file, key }], error } — key se llena al
+  // subir y un reintento no vuelve a subir lo que ya tiene key (igual que fotosDraft).
+  var despues = null;
+  var previewsDespues = {}; // partidaId -> object URL de la primera foto del después
 ```
 
 (d) **Script — funciones nuevas.** Justo antes de `function tarjetaPartida(p) {`, agrega:
 
 ```js
-// Miniatura de UNA llave: la previa local si existe; si no, URL firmada por demanda.
-function pintarLlave(cont, llave, previa, alt) {
-  if (previa) {
-    var img0 = el("img", null);
-    img0.src = previa;
-    img0.alt = alt;
-    cont.appendChild(img0);
-    return;
-  }
-  if (!llave) {
-    cont.appendChild(document.createTextNode("Sin foto"));
-    return;
-  }
-  fetch(conToken(RUTA_FOTO) + "&key=" + encodeURIComponent(llave))
-    .then(function (res) {
-      if (!res.ok) throw new Error("http-" + res.status);
-      return res.json();
-    })
-    .then(function (datos) {
-      if (!datos || !datos.url) throw new Error("sin-url");
-      var img = el("img", null);
-      img.src = datos.url;
-      img.alt = alt;
-      cont.textContent = "";
-      cont.appendChild(img);
-    })
-    .catch(function () {
-      // Firma fallida: el recuadro se queda vacío; nunca rompe la tarjeta.
-    });
-}
-
-function parAntesDespues(p) {
-  var par = el("div", "par");
-  var fotosAntes = p.fotos || [];
-  var fotosDespues = p.evidenciaFinal || [];
-  var lados = [
-    ["ANTES", fotosAntes[0], previewsLocal[p.partidaId], "Foto de antes"],
-    ["DESPUÉS", fotosDespues[0], previewsDespues[p.partidaId], "Foto de después"],
-  ];
-  for (var i = 0; i < lados.length; i++) {
-    var fig = el("figure", null);
-    var caja = el("div", "par-foto");
-    pintarLlave(caja, lados[i][1], lados[i][2], lados[i][3]);
-    fig.appendChild(caja);
-    fig.appendChild(el("figcaption", null, lados[i][0]));
-    par.appendChild(fig);
-  }
-  return par;
-}
-
-function abrirDespues(p) {
-  if (!despues || despues.partidaId !== p.partidaId) {
-    despues = { partidaId: p.partidaId, tipo: p.tipo, fotos: [], error: null };
-  }
-  pintarPartidas();
-}
-
-function enviarDespues(p, msg, boton) {
-  var items = despues && despues.partidaId === p.partidaId ? despues.fotos : [];
-  if (p.tipo !== "manoObra" && items.length === 0) {
-    msg.textContent = "Una refacción necesita al menos una foto de la pieza nueva.";
-    return;
-  }
-  boton.disabled = true;
-  msg.textContent = "Enviando…";
-  subirFotos(items)
-    .then(function (claves) {
-      return peticionJson(RUTA_TERMINAR, { partidaId: p.partidaId, fotos: claves });
-    })
-    .catch(function (err) {
-      if (err && err.message === "http-409") {
-        msg.textContent = "Este hallazgo ya se había marcado como terminado.";
-        despues = null;
-        cargar();
-      } else {
-        msg.textContent = "No se pudo enviar. Revisa tu señal e intenta de nuevo.";
-        boton.disabled = false;
-      }
-      throw new Error("terminar");
-    })
-    .then(function (acuse) {
-      try {
-        p.estado = "terminada";
-        p.evidenciaFinal = (acuse && acuse.evidenciaFinal) || [];
-        p.terminadoEn = (acuse && acuse.terminadoEn) || null;
-        if (items[0] && items[0].file) {
-          previewsDespues[p.partidaId] = URL.createObjectURL(items[0].file);
-        }
-        despues = null;
-        pintarPartidas();
-      } catch (e) {
-        msg.textContent = "Se envió, pero no se pudo actualizar la lista. Recarga la página.";
-      }
-    })
-    .catch(function () {
-      // El re-throw de arriba aterriza aquí: ya avisó.
-    });
-}
-
-function bloqueDespues(p) {
-  var cont = el("div", "despues");
-  var msg = el("p", "msg");
-  msg.setAttribute("aria-live", "polite");
-  var esRefaccion = p.tipo !== "manoObra";
-  var abierto = despues && despues.partidaId === p.partidaId;
-
-  if (!abierto) {
-    if (esRefaccion) {
-      var abrir = el(
-        "button",
-        "btn btn-primario btn-despues",
-        "📷 Subir foto del trabajo terminado",
-      );
-      abrir.type = "button";
-      abrir.addEventListener("click", function () {
-        abrirDespues(p);
-        document.getElementById("in-foto-despues").click();
-      });
-      cont.appendChild(abrir);
-    } else {
-      var directo = el("button", "btn btn-despues", "✓ Marcar como terminado");
-      directo.type = "button";
-      directo.addEventListener("click", function () {
-        enviarDespues(p, msg, directo);
-      });
-      cont.appendChild(directo);
-      var opcional = el("button", "btn-link", "+ Agregar foto (opcional)");
-      opcional.type = "button";
-      opcional.addEventListener("click", function () {
-        abrirDespues(p);
-        document.getElementById("in-foto-despues").click();
-      });
-      cont.appendChild(opcional);
+  // Miniatura de UNA llave: la previa local si existe; si no, URL firmada por demanda.
+  function pintarLlave(cont, llave, previa, alt) {
+    if (previa) {
+      var img0 = el("img", null);
+      img0.src = previa;
+      img0.alt = alt;
+      cont.appendChild(img0);
+      return;
     }
-    cont.appendChild(msg);
+    if (!llave) {
+      cont.appendChild(document.createTextNode("Sin foto"));
+      return;
+    }
+    fetch(conToken(RUTA_FOTO) + "&key=" + encodeURIComponent(llave))
+      .then(function (res) {
+        if (!res.ok) throw new Error("http-" + res.status);
+        return res.json();
+      })
+      .then(function (datos) {
+        if (!datos || !datos.url) throw new Error("sin-url");
+        var img = el("img", null);
+        img.src = datos.url;
+        img.alt = alt;
+        cont.textContent = "";
+        cont.appendChild(img);
+      })
+      .catch(function () {
+        // Firma fallida: el recuadro se queda vacío; nunca rompe la tarjeta.
+      });
+  }
+
+  function parAntesDespues(p) {
+    var par = el("div", "par");
+    var fotosAntes = p.fotos || [];
+    var fotosDespues = p.evidenciaFinal || [];
+    var lados = [
+      ["ANTES", fotosAntes[0], previewsLocal[p.partidaId], "Foto de antes"],
+      ["DESPUÉS", fotosDespues[0], previewsDespues[p.partidaId], "Foto de después"],
+    ];
+    for (var i = 0; i < lados.length; i++) {
+      var fig = el("figure", null);
+      var caja = el("div", "par-foto");
+      pintarLlave(caja, lados[i][1], lados[i][2], lados[i][3]);
+      fig.appendChild(caja);
+      fig.appendChild(el("figcaption", null, lados[i][0]));
+      par.appendChild(fig);
+    }
+    return par;
+  }
+
+  function abrirDespues(p) {
+    if (!despues || despues.partidaId !== p.partidaId) {
+      despues = { partidaId: p.partidaId, tipo: p.tipo, fotos: [], error: null };
+    }
+    pintarPartidas();
+  }
+
+  function enviarDespues(p, msg, boton) {
+    var items = despues && despues.partidaId === p.partidaId ? despues.fotos : [];
+    if (p.tipo !== "manoObra" && items.length === 0) {
+      msg.textContent = "Una refacción necesita al menos una foto de la pieza nueva.";
+      return;
+    }
+    boton.disabled = true;
+    msg.textContent = "Enviando…";
+    subirFotos(items)
+      .then(function (claves) {
+        return peticionJson(RUTA_TERMINAR, { partidaId: p.partidaId, fotos: claves });
+      })
+      .catch(function (err) {
+        if (err && err.message === "http-409") {
+          msg.textContent = "Este hallazgo ya se había marcado como terminado.";
+          despues = null;
+          cargar();
+        } else {
+          msg.textContent = "No se pudo enviar. Revisa tu señal e intenta de nuevo.";
+          boton.disabled = false;
+        }
+        throw new Error("terminar");
+      })
+      .then(function (acuse) {
+        try {
+          p.estado = "terminada";
+          p.evidenciaFinal = (acuse && acuse.evidenciaFinal) || [];
+          p.terminadoEn = (acuse && acuse.terminadoEn) || null;
+          if (items[0] && items[0].file) {
+            previewsDespues[p.partidaId] = URL.createObjectURL(items[0].file);
+          }
+          despues = null;
+          pintarPartidas();
+        } catch (e) {
+          msg.textContent = "Se envió, pero no se pudo actualizar la lista. Recarga la página.";
+        }
+      })
+      .catch(function () {
+        // El re-throw de arriba aterriza aquí: ya avisó.
+      });
+  }
+
+  function bloqueDespues(p) {
+    var cont = el("div", "despues");
+    var msg = el("p", "msg");
+    msg.setAttribute("aria-live", "polite");
+    var esRefaccion = p.tipo !== "manoObra";
+    var abierto = despues && despues.partidaId === p.partidaId;
+
+    if (!abierto) {
+      if (esRefaccion) {
+        var abrir = el("button", "btn btn-primario btn-despues", "📷 Subir foto del trabajo terminado");
+        abrir.type = "button";
+        abrir.addEventListener("click", function () {
+          abrirDespues(p);
+          document.getElementById("in-foto-despues").click();
+        });
+        cont.appendChild(abrir);
+      } else {
+        var directo = el("button", "btn btn-despues", "✓ Marcar como terminado");
+        directo.type = "button";
+        directo.addEventListener("click", function () {
+          enviarDespues(p, msg, directo);
+        });
+        cont.appendChild(directo);
+        var opcional = el("button", "btn-link", "+ Agregar foto (opcional)");
+        opcional.type = "button";
+        opcional.addEventListener("click", function () {
+          abrirDespues(p);
+          document.getElementById("in-foto-despues").click();
+        });
+        cont.appendChild(opcional);
+      }
+      cont.appendChild(msg);
+      return cont;
+    }
+
+    var panel = el("div", "despues-panel");
+    panel.appendChild(el("p", "despues-lbl", "Foto del trabajo terminado"));
+    var tira = el("div", "draft-fotos");
+    despues.fotos.forEach(function (item, idx) {
+      var chip = el("div", "draft-foto");
+      var img = document.createElement("img");
+      img.src = URL.createObjectURL(item.file);
+      img.alt = "Foto " + (idx + 1) + " del trabajo terminado";
+      chip.appendChild(img);
+      tira.appendChild(chip);
+    });
+    panel.appendChild(tira);
+    if (despues.fotos.length < TOPE_FOTOS) {
+      var tomar = el("button", "btn btn-sec btn-despues", despues.fotos.length ? "+ Otra foto" : "📷 Tomar foto");
+      tomar.type = "button";
+      tomar.addEventListener("click", function () {
+        document.getElementById("in-foto-despues").click();
+      });
+      panel.appendChild(tomar);
+    }
+    if (despues.error) {
+      panel.appendChild(el("p", "despues-regla", despues.error));
+      despues.error = null;
+    }
+    if (esRefaccion && despues.fotos.length === 0) {
+      panel.appendChild(el("p", "despues-regla", "Una refacción necesita al menos una foto de la pieza nueva."));
+    }
+    var enviar = el("button", "btn btn-primario btn-despues", "Marcar como terminado");
+    enviar.type = "button";
+    enviar.disabled = esRefaccion && despues.fotos.length === 0;
+    enviar.addEventListener("click", function () {
+      enviarDespues(p, msg, enviar);
+    });
+    panel.appendChild(enviar);
+    var cancelar = el("button", "btn-link", "Cancelar");
+    cancelar.type = "button";
+    cancelar.addEventListener("click", function () {
+      despues = null;
+      pintarPartidas();
+    });
+    panel.appendChild(cancelar);
+    panel.appendChild(msg);
+    cont.appendChild(panel);
     return cont;
   }
-
-  var panel = el("div", "despues-panel");
-  panel.appendChild(el("p", "despues-lbl", "Foto del trabajo terminado"));
-  var tira = el("div", "draft-fotos");
-  despues.fotos.forEach(function (item, idx) {
-    var chip = el("div", "draft-foto");
-    var img = document.createElement("img");
-    img.src = URL.createObjectURL(item.file);
-    img.alt = "Foto " + (idx + 1) + " del trabajo terminado";
-    chip.appendChild(img);
-    tira.appendChild(chip);
-  });
-  panel.appendChild(tira);
-  if (despues.fotos.length < TOPE_FOTOS) {
-    var tomar = el(
-      "button",
-      "btn btn-sec btn-despues",
-      despues.fotos.length ? "+ Otra foto" : "📷 Tomar foto",
-    );
-    tomar.type = "button";
-    tomar.addEventListener("click", function () {
-      document.getElementById("in-foto-despues").click();
-    });
-    panel.appendChild(tomar);
-  }
-  if (despues.error) {
-    panel.appendChild(el("p", "despues-regla", despues.error));
-    despues.error = null;
-  }
-  if (esRefaccion && despues.fotos.length === 0) {
-    panel.appendChild(
-      el("p", "despues-regla", "Una refacción necesita al menos una foto de la pieza nueva."),
-    );
-  }
-  var enviar = el("button", "btn btn-primario btn-despues", "Marcar como terminado");
-  enviar.type = "button";
-  enviar.disabled = esRefaccion && despues.fotos.length === 0;
-  enviar.addEventListener("click", function () {
-    enviarDespues(p, msg, enviar);
-  });
-  panel.appendChild(enviar);
-  var cancelar = el("button", "btn-link", "Cancelar");
-  cancelar.type = "button";
-  cancelar.addEventListener("click", function () {
-    despues = null;
-    pintarPartidas();
-  });
-  panel.appendChild(cancelar);
-  panel.appendChild(msg);
-  cont.appendChild(panel);
-  return cont;
-}
 ```
 
 (e) **Script — `tarjetaPartida`.** Justo después del bloque `if (p.estado === "rechazada" && p.motivoRechazo) { … }` y antes de `card.appendChild(cuerpo);`, agrega:
 
 ```js
-// Antes y después (spec 2026-09-28 §5).
-if (p.estado === "autorizada") {
-  cuerpo.appendChild(bloqueDespues(p));
-} else if (p.estado === "terminada") {
-  cuerpo.appendChild(parAntesDespues(p));
-  cuerpo.appendChild(el("p", "msg-ok-despues", "Este hallazgo ya no se puede cambiar."));
-} else if (p.estado === "propuesta") {
-  cuerpo.appendChild(
-    el("p", "espera-despues", "El botón del después aparece cuando GPA lo autorice."),
-  );
-}
+    // Antes y después (spec 2026-09-28 §5).
+    if (p.estado === "autorizada") {
+      cuerpo.appendChild(bloqueDespues(p));
+    } else if (p.estado === "terminada") {
+      cuerpo.appendChild(parAntesDespues(p));
+      cuerpo.appendChild(el("p", "msg-ok-despues", "Este hallazgo ya no se puede cambiar."));
+    } else if (p.estado === "propuesta") {
+      cuerpo.appendChild(el("p", "espera-despues", "El botón del después aparece cuando GPA lo autorice."));
+    }
 ```
 
 (f) **Script — `actualizarTotalesYPie`.** Cambia las dos condiciones para que `terminada` cuente igual que `autorizada`:
 
 ```js
-if (
-  p.estado === "propuesta" ||
-  p.estado === "autorizada" ||
-  p.estado === "terminada" ||
-  p.estado === "rechazada"
-) {
-  cot += p.precio || 0;
-}
-// A-6: ternario, nunca coalescencia nula (ver tarjetaPartida). Terminar un
-// hallazgo no le quita nada a lo autorizado (Review Focus 1, spec 2026-09-28).
-if (p.estado === "autorizada" || p.estado === "terminada")
-  aut += (p.precioAutorizado != null ? p.precioAutorizado : p.precio) || 0;
+      if (
+        p.estado === "propuesta" ||
+        p.estado === "autorizada" ||
+        p.estado === "terminada" ||
+        p.estado === "rechazada"
+      ) {
+        cot += p.precio || 0;
+      }
+      // A-6: ternario, nunca coalescencia nula (ver tarjetaPartida). Terminar un
+      // hallazgo no le quita nada a lo autorizado (Review Focus 1, spec 2026-09-28).
+      if (p.estado === "autorizada" || p.estado === "terminada")
+        aut += (p.precioAutorizado != null ? p.precioAutorizado : p.precio) || 0;
 ```
 
 (g) **Script — foto del después.** Justo después del listener de `document.getElementById("in-foto").addEventListener("change", …)`, agrega:
 
 ```js
-document.getElementById("in-foto-despues").addEventListener("change", function (ev) {
-  var input = ev.target;
-  var f = input.files && input.files[0];
-  input.value = "";
-  if (!f || !despues) return;
-  if (despues.fotos.length >= TOPE_FOTOS) return;
-  var err = validarArchivo(f);
-  if (err) {
-    despues.error = err;
+  document.getElementById("in-foto-despues").addEventListener("change", function (ev) {
+    var input = ev.target;
+    var f = input.files && input.files[0];
+    input.value = "";
+    if (!f || !despues) return;
+    if (despues.fotos.length >= TOPE_FOTOS) return;
+    var err = validarArchivo(f);
+    if (err) {
+      despues.error = err;
+      pintarPartidas();
+      return;
+    }
+    despues.fotos.push({ file: f, key: null });
     pintarPartidas();
-    return;
-  }
-  despues.fotos.push({ file: f, key: null });
-  pintarPartidas();
-});
+  });
 ```
+
+<!-- prettier-ignore-end -->
 
 - [ ] **Step 4: Correr y ver que pasan**
 
