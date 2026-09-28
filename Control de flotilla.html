@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-OGWMvFEJvYGCuN649y/j60MGp/uUFzC7A5D89gS5eWE=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-dJts7pJvbB0uC4UFIT5WX/Zdk27He99URYyEbVPHQFA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -288,11 +288,11 @@
     <!-- Cobertura del ciclo (2026-08): "¿vamos al corriente?" como titular, no nota al
          pie. El % vive en hero-val porque hero-sub desaparece en laptops (max-height:800px).
          La llena buildKPIs vía window.__cobertura; clic → las que faltan (missingMensual). -->
-    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades con inspección en el rango · clic para ver las que faltan">
+    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades sin checklist en el rango · clic: también incluye las que están en taller">
       <div class="hero-icon" style="background:var(--B)"><i data-lucide="clipboard-check" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" id="kv_cob">—</div>
-        <div class="hero-lbl">Cobertura del ciclo</div>
+        <div class="hero-lbl">Unidades sin checklist</div>
         <div class="hero-sub" id="ks_cob"></div>
       </div>
     </div>
@@ -3736,10 +3736,10 @@ function buildKPIs(){
       const cs=getComputedStyle(document.documentElement);
       const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
       const kvc=document.getElementById("kv_cob");
-      if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
+      if(kvc){ kvc.textContent=String(cob.faltan); kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
       const ksc=document.getElementById("ks_cob");
-      if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
-      cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
+      if(ksc) ksc.textContent=`${cob.pct}% al corriente · ${cob.conCheck}/${cob.total}`;
+      cobCard.title=`${cob.faltan} de ${cob.total} unidades sin checklist en el rango · clic: la lista suma también las que están en taller`;
       cobCard.style.display="flex";
     } else {
       // Sin catálogo cloud no hay denominador: la card queda oculta (fail-closed).
@@ -8904,7 +8904,7 @@ const _FLEET_MODAL_META = {
   tiresCrit:     { ttl:`Unidades con llanta crítica (≤${TCRIT}mm)`, col:"Llanta mín" },
   svc:           { ttl:"Servicio vencido o próximo",     col:"Servicio" },
   taller:        { ttl:"Unidades en taller",             col:"Estado" },
-  missingMensual:{ ttl:"Sin check mensual en el rango",  col:"Último check" },
+  missingMensual:{ ttl:"Sin checklist o en taller",      col:"Estado" },
   missingSemanal:{ ttl:"Sin check semanal en el rango",  col:"Último check" },
 };
 function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal"; }
@@ -8926,7 +8926,13 @@ function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
   if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
-  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate||u.uid) && !u.esMontacargas; // falta = no presente en el rango (montacargas excluidos)
+  if(_isMissingKind(_fleetModalKind)){
+    if(u.esMontacargas) return false; // no hacen checklist de vehiculo
+    // Mensual: una sola vista con lo que no esta al corriente Y lo que no esta
+    // disponible. Una unidad en taller entra aunque ya tenga su checklist.
+    if(_fleetModalKind==="missingMensual" && typeof isUnitEnTaller==="function" && isUnitEnTaller(u)) return true;
+    return !_missingPresent.has(u.plate||u.uid); // falta = no presente en el rango
+  }
   return true;
 }
 // Celda de detalle (6ª columna) según el kind.
@@ -8946,8 +8952,22 @@ function _fleetDetailCell(u){
   }
   if(_isMissingKind(_fleetModalKind)){
     const last = _fleetModalKind==="missingSemanal" ? _missingLast.get(u.plate) : pickStrFleet(u.fecha);
-    return last ? `<span style="color:var(--s2);font-size:11px">${escHtml(String(last).slice(0,10))}</span>`
-                : `<span style="color:var(--R);font-weight:600">Nunca</span>`;
+    if(_fleetModalKind==="missingSemanal"){
+      return last ? `<span style="color:var(--s2);font-size:11px">${escHtml(String(last).slice(0,10))}</span>`
+                  : `<span style="color:var(--R);font-weight:600">Nunca</span>`;
+    }
+    // Mensual: la fila puede estar aqui por no tener checklist, por estar en
+    // taller, o por las dos. El motivo se dice explicito para que la mezcla
+    // no se lea como un error de conteo.
+    const sinCheck = !_missingPresent.has(u.plate||u.uid);
+    const enTaller = typeof isUnitEnTaller==="function" && isUnitEnTaller(u);
+    const motivos = [];
+    if(sinCheck) motivos.push(`<span style="color:var(--R);font-weight:600">Sin checklist</span>`);
+    if(enTaller) motivos.push(`<span style="color:var(--violet);font-weight:600">En taller</span>`);
+    const fecha = last ? `<span style="color:var(--s2);font-size:10px">${escHtml(String(last).slice(0,10))}</span>`
+                       : (sinCheck ? `<span style="color:var(--s2);font-size:10px">nunca</span>` : "");
+    const sep = `<span style="color:var(--s2);font-size:10px"> · </span>`;
+    return motivos.join(sep) + (fecha ? sep + fecha : "");
   }
   return "";
 }
@@ -9008,9 +9028,21 @@ window.renderFleetModalRows = function(){
     return _qMatch(q, u.eco, [u.plate,u.brand,u.branch]);
   });
   const sub = document.getElementById("fleet-mod-sub");
-  if(sub) sub.textContent = rows.length === base.length
-    ? `${base.length} unidad${base.length!==1?"es":""}`
-    : `${rows.length} de ${base.length}`;
+  if(sub){
+    const cuenta = rows.length === base.length
+      ? `${base.length} unidad${base.length!==1?"es":""}`
+      : `${rows.length} de ${base.length}`;
+    let desglose = "";
+    if(_fleetModalKind==="missingMensual"){
+      let sc=0, tl=0;
+      for(const u of rows){
+        if(!_missingPresent.has(u.plate||u.uid)) sc++;
+        if(typeof isUnitEnTaller==="function" && isUnitEnTaller(u)) tl++;
+      }
+      desglose = ` · ${sc} sin checklist · ${tl} en taller`;
+    }
+    sub.textContent = cuenta + desglose;
+  }
   const showDet = _fleetModalKind !== "all";
   const tbody = document.getElementById("fleet-mod-tbody");
   if(!tbody) return;
