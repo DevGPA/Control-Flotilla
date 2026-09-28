@@ -40,14 +40,17 @@ import {
   type PortalToken,
 } from "./token";
 import {
+  ErrorConflicto,
   ErrorEntrada,
   MIMES_FOTO,
   TOPE_FOTOS_PARTIDA,
   TOPE_PARTIDAS_VISITA,
+  decidirTerminacion,
   esKmValido,
   ligaRevocada,
   llaveFoto,
   llaveFotoValida,
+  proyectarPartidaParaTaller,
   puedeEnviarAAutorizacion,
   secretoUtilizable,
   validarPartidaEntrante,
@@ -390,6 +393,14 @@ export const handler = async (event: any) => {
       return json(200, await enviarAAutorizacion(tk, visitaKey, visita, rastro));
     }
 
+    if (metodo === "POST" && ruta === "/api/terminar") {
+      // Antes y después (spec 2026-09-28 §4.1): el taller sube la foto del trabajo
+      // hecho DENTRO del hallazgo autorizado. Las reglas son del servidor
+      // (decidirTerminacion, pura, validacion.ts); la página solo es cortesía.
+      const body = parseBody(event);
+      return json(200, await terminarPartida(tk, visitaKey, body, rastro));
+    }
+
     if (metodo === "POST" && ruta === "/api/visita") {
       const body = parseBody(event);
       await actualizarVisita(tk, body, visita);
@@ -426,6 +437,10 @@ export const handler = async (event: any) => {
     if (e instanceof ErrorLigaInvalida) {
       bitacora("rechazado-tras-verificar", tk, { ...rastro, motivo: e.message });
       return esPagina ? html(401, PAGINA_LIGA_INVALIDA) : json(401, { error: "liga no válida" });
+    }
+    if (e instanceof ErrorConflicto) {
+      bitacora("rechazado-conflicto", tk, { ...rastro, motivo: e.message });
+      return json(409, { error: e.message });
     }
     if (e instanceof ErrorEntrada) {
       bitacora("rechazado-entrada", tk, { ...rastro, motivo: e.message });
@@ -702,19 +717,7 @@ async function leerVisita(tk: PortalToken, visitaKey: string, visita: Schema["Ta
     },
     partidas: partidas
       .filter((p) => p.estado !== "cancelada")
-      .map((p) => ({
-        partidaId: p.partidaId,
-        descripcion: p.descripcion,
-        tipo: p.tipo,
-        precio: p.precio,
-        // Congelado en el momento de la firma (Task 8): la página lo usa
-        // para sumar "Autorizado" con lo REALMENTE firmado, no con la
-        // cotización original.
-        precioAutorizado: p.precioAutorizado ?? null,
-        estado: p.estado,
-        motivoRechazo: p.motivoRechazo ?? null,
-        fotos: p.fotos ?? [],
-      })),
+      .map((p) => proyectarPartidaParaTaller(p)),
   };
 }
 
@@ -895,6 +898,62 @@ async function enviarAAutorizacion(
   bitacora("enviar-autorizacion", tk, { ...rastro, enviadas: borradores.length });
 
   return { enviadas: borradores.length };
+}
+
+/**
+ * Antes y después (spec 2026-09-28 §4.1): marca un hallazgo AUTORIZADO de ESTA visita
+ * como terminado, con la evidencia del trabajo hecho. La partida se busca DENTRO de
+ * las de la visita (`listarPartidasDeVisita`, con su cinturón por visitaKey): nunca
+ * por id suelto, así que una partida de otra visita o de otro tenant no existe para
+ * esta liga. La decisión es de `decidirTerminacion` (pura). El acuse es una
+ * proyección, jamás la fila cruda (A-1), y la bitácora va DESPUÉS de escribir.
+ */
+async function terminarPartida(
+  tk: PortalToken,
+  visitaKey: string,
+  body: Record<string, unknown>,
+  rastro: Record<string, unknown>,
+) {
+  const partidaId = String(body.partidaId ?? "");
+  const partidas = await listarPartidasDeVisita(tk.t, visitaKey);
+  const partida = partidaId ? partidas.find((p) => p.partidaId === partidaId) : undefined;
+  const cambios = decidirTerminacion(
+    tk.t,
+    visitaKey,
+    partida,
+    body.fotos,
+    new Date().toISOString(),
+  );
+  // decidirTerminacion ya lanzó si la partida no es de esta visita.
+  const fila = partida!;
+
+  if (!cambios) {
+    // Reintento idéntico (mala señal): ya estaba así; no se escribe nada.
+    bitacora("terminar-partida-reintento", tk, { ...rastro, partidaId });
+    const p = proyectarPartidaParaTaller(fila);
+    return {
+      partidaId: p.partidaId,
+      estado: p.estado,
+      evidenciaFinal: p.evidenciaFinal,
+      terminadoEn: p.terminadoEn,
+    };
+  }
+
+  const client = await getDataClient();
+  const { errors } = await client.models.TallerPartida.update({
+    tenantId: tk.t,
+    visitaKey,
+    partidaId: fila.partidaId,
+    ...cambios,
+  });
+  if (errors) throw new Error(`TallerPartida.update: ${JSON.stringify(errors)}`);
+  bitacora("terminar-partida", tk, { ...rastro, partidaId, fotos: cambios.evidenciaFinal.length });
+  return {
+    partidaId: fila.partidaId,
+    estado: cambios.estado,
+    evidenciaFinal: cambios.evidenciaFinal,
+    terminadoEn: cambios.terminadoEn,
+  };
 }
 
 /**
