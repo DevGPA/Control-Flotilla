@@ -135,6 +135,144 @@ export function llaveFotoValida(tenantId: string, visitaKey: string, key: string
   return new RegExp(`^[A-Za-z0-9_.:@+-]{1,120}\\.(?:${EXTENSIONES_FOTO})$`).test(cola);
 }
 
+/**
+ * Error de CONFLICTO: la petición tiene buena forma pero choca con el estado actual
+ * (p. ej., terminar con OTRAS fotos un hallazgo que ya está terminado). El handler lo
+ * traduce a 409. No extiende ErrorEntrada a propósito: el catch de ErrorEntrada
+ * respondería 400, y el taller no se enteraría de que su hallazgo YA quedó terminado.
+ */
+export class ErrorConflicto extends Error {}
+
+/** Lo que el servidor necesita de una partida para decidir si se puede terminar. */
+export type PartidaTerminable = {
+  estado?: string | null;
+  tipo?: string | null;
+  evidenciaFinal?: readonly (string | null)[] | null;
+  version?: number | null;
+};
+
+export type CambiosTerminacion = {
+  estado: "terminada";
+  evidenciaFinal: string[];
+  terminadoEn: string;
+  version: number;
+};
+
+/**
+ * Antes y después (spec 2026-09-28 §4.2): decide qué hacer con el "trabajo terminado"
+ * que manda el taller. Pura: no escribe nada.
+ *
+ * - Devuelve los cambios EXACTOS a escribir, o `null` cuando no hay que escribir
+ *   (reintento idéntico sobre una partida ya terminada: el taller tiene mala señal).
+ * - Lanza ErrorEntrada (400) o ErrorConflicto (409).
+ *
+ * Solo una partida `autorizada` se termina. Una refacción exige al menos una foto; la
+ * mano de obra no (decisión 3). Una fila vieja sin `tipo` cuenta como refacción, que es
+ * el caso estricto. La hora la pone el servidor (`ahoraIso`), nunca el cliente.
+ */
+export function decidirTerminacion(
+  tenantId: string,
+  visitaKey: string,
+  partida: PartidaTerminable | null | undefined,
+  fotos: unknown,
+  ahoraIso: string,
+): CambiosTerminacion | null {
+  if (!partida) throw new ErrorEntrada("Este hallazgo no existe en esta visita");
+
+  if (fotos !== undefined && !Array.isArray(fotos)) throw new ErrorEntrada("fotos no válidas");
+  const llaves = Array.isArray(fotos) ? fotos.map(String) : [];
+  if (llaves.length > TOPE_FOTOS_PARTIDA) {
+    throw new ErrorEntrada(`Máximo ${TOPE_FOTOS_PARTIDA} fotos por hallazgo`);
+  }
+  if (new Set(llaves).size !== llaves.length) throw new ErrorEntrada("fotos repetidas");
+  for (const k of llaves) {
+    if (!llaveFotoValida(tenantId, visitaKey, k)) throw new ErrorEntrada("llave de foto no válida");
+  }
+
+  const estado = partida.estado ?? "borrador";
+  if (estado === "terminada") {
+    const previas = (partida.evidenciaFinal ?? []).filter(
+      (k): k is string => typeof k === "string",
+    );
+    if (mismoConjunto(previas, llaves)) return null;
+    throw new ErrorConflicto("Este hallazgo ya se marcó como terminado y no se puede cambiar");
+  }
+  if (estado === "borrador" || estado === "propuesta") {
+    throw new ErrorEntrada("Este hallazgo todavía no está autorizado");
+  }
+  if (estado !== "autorizada") {
+    // rechazada, cancelada o un valor desconocido: nunca se termina.
+    throw new ErrorEntrada("Este hallazgo no fue autorizado");
+  }
+  if (partida.tipo !== "manoObra" && llaves.length === 0) {
+    throw new ErrorEntrada("Una refacción necesita al menos una foto del trabajo terminado");
+  }
+  return {
+    estado: "terminada",
+    evidenciaFinal: llaves,
+    terminadoEn: ahoraIso,
+    version: (typeof partida.version === "number" ? partida.version : 1) + 1,
+  };
+}
+
+/** Mismo conjunto de llaves, sin importar el orden. Las repetidas ya se rechazaron. */
+function mismoConjunto(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const s = new Set(a);
+  return b.every((k) => s.has(k));
+}
+
+/** Lo que se lee de una fila de `TallerPartida` para proyectarla al taller. */
+export type FilaPartidaProyectable = {
+  partidaId: string;
+  descripcion: string;
+  tipo?: string | null;
+  precio: number;
+  precioAutorizado?: number | null;
+  estado?: string | null;
+  motivoRechazo?: string | null;
+  fotos?: readonly (string | null)[] | null;
+  evidenciaFinal?: readonly (string | null)[] | null;
+  terminadoEn?: string | null;
+};
+
+export type PartidaParaTaller = {
+  partidaId: string;
+  descripcion: string;
+  tipo: string | null;
+  precio: number;
+  precioAutorizado: number | null;
+  estado: string | null;
+  motivoRechazo: string | null;
+  fotos: string[];
+  evidenciaFinal: string[];
+  terminadoEn: string | null;
+};
+
+/**
+ * Lo ÚNICO que el taller ve de cada partida (propiedad 12 del arnés: lista blanca
+ * exacta). Un campo nuevo del modelo NO viaja hasta que se agregue aquí a propósito.
+ *
+ * `precioAutorizado` va congelado desde la firma (Task 8 del Plan 1): la página suma
+ * "Autorizado" con lo REALMENTE firmado, no con la cotización original.
+ */
+export function proyectarPartidaParaTaller(p: FilaPartidaProyectable): PartidaParaTaller {
+  const soloTexto = (xs: readonly (string | null)[] | null | undefined): string[] =>
+    (xs ?? []).filter((k): k is string => typeof k === "string");
+  return {
+    partidaId: p.partidaId,
+    descripcion: p.descripcion,
+    tipo: p.tipo ?? null,
+    precio: p.precio,
+    precioAutorizado: p.precioAutorizado ?? null,
+    estado: p.estado ?? null,
+    motivoRechazo: p.motivoRechazo ?? null,
+    fotos: soloTexto(p.fotos),
+    evidenciaFinal: soloTexto(p.evidenciaFinal),
+    terminadoEn: p.terminadoEn ?? null,
+  };
+}
+
 /** Tope superior del kilometraje aceptado (mismo que aplicaba
  *  `actualizarVisita` a mano antes de A-15). */
 export const KM_MAX = 3_000_000;

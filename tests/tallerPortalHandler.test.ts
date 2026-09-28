@@ -16,6 +16,10 @@ import {
   validarPartidaEntrante,
   validarTamanoFoto,
   visitaCerrada,
+  ErrorConflicto,
+  ErrorEntrada,
+  decidirTerminacion,
+  proyectarPartidaParaTaller,
 } from "../amplify/functions/taller-portal/validacion";
 
 // `handler.ts` importa el modulo virtual $amplify/env/taller-portal y el SDK de
@@ -494,5 +498,195 @@ describe("B-1: el portón también rechaza por rastro de revocación, con la MIS
     const iRastro = cuerpo.indexOf('ErrorLigaInvalida("liga revocada (rastro)")');
     expect(iRastro).toBeGreaterThan(cuerpo.indexOf('ErrorLigaInvalida("liga revocada")'));
     expect(iRastro).toBeLessThan(cuerpo.lastIndexOf("return v;"));
+  });
+});
+
+describe("decidirTerminacion — el después lo decide el SERVIDOR (spec 2026-09-28 §4.2)", () => {
+  const T = "acme";
+  const V = "AAA111|2026-09-01";
+  const k = (n: string) => llaveFoto(T, V, n, "image/jpeg");
+  const AHORA = "2026-09-16T15:00:00.000Z";
+  const autorizada = (sobre: Record<string, unknown> = {}) => ({
+    estado: "autorizada",
+    tipo: "refaccion",
+    evidenciaFinal: [] as string[],
+    version: 3,
+    ...sobre,
+  });
+
+  it("refacción autorizada con foto: terminada, con sus fotos, la hora del servidor y versión + 1", () => {
+    expect(decidirTerminacion(T, V, autorizada(), [k("d1")], AHORA)).toEqual({
+      estado: "terminada",
+      evidenciaFinal: [k("d1")],
+      terminadoEn: AHORA,
+      version: 4,
+    });
+  });
+
+  it("refacción sin foto ⇒ se rechaza con el mensaje del spec", () => {
+    expect(() => decidirTerminacion(T, V, autorizada(), [], AHORA)).toThrow(
+      "Una refacción necesita al menos una foto del trabajo terminado",
+    );
+    expect(() => decidirTerminacion(T, V, autorizada(), undefined, AHORA)).toThrow(ErrorEntrada);
+  });
+
+  it("una fila vieja SIN tipo se trata como refacción: sin foto no pasa", () => {
+    expect(() => decidirTerminacion(T, V, autorizada({ tipo: null }), [], AHORA)).toThrow(
+      "Una refacción necesita al menos una foto",
+    );
+  });
+
+  it("mano de obra se termina sin foto", () => {
+    expect(decidirTerminacion(T, V, autorizada({ tipo: "manoObra" }), [], AHORA)).toEqual({
+      estado: "terminada",
+      evidenciaFinal: [],
+      terminadoEn: AHORA,
+      version: 4,
+    });
+  });
+
+  it("mano de obra también acepta fotos (opcionales)", () => {
+    const r = decidirTerminacion(T, V, autorizada({ tipo: "manoObra" }), [k("d1")], AHORA);
+    expect(r?.evidenciaFinal).toEqual([k("d1")]);
+  });
+
+  it.each(["borrador", "propuesta"])("%s ⇒ todavía no está autorizado", (estado) => {
+    expect(() => decidirTerminacion(T, V, autorizada({ estado }), [k("d1")], AHORA)).toThrow(
+      "Este hallazgo todavía no está autorizado",
+    );
+  });
+
+  it("sin estado (fila vieja) se trata como borrador, nunca como autorizada", () => {
+    expect(() => decidirTerminacion(T, V, autorizada({ estado: null }), [k("d1")], AHORA)).toThrow(
+      "todavía no está autorizado",
+    );
+  });
+
+  it.each(["rechazada", "cancelada", "inventado"])("%s ⇒ no fue autorizado", (estado) => {
+    expect(() => decidirTerminacion(T, V, autorizada({ estado }), [k("d1")], AHORA)).toThrow(
+      "Este hallazgo no fue autorizado",
+    );
+  });
+
+  it("partida que no está en esta visita ⇒ no existe", () => {
+    expect(() => decidirTerminacion(T, V, undefined, [k("d1")], AHORA)).toThrow(
+      "Este hallazgo no existe en esta visita",
+    );
+  });
+
+  it(`más de ${TOPE_FOTOS_PARTIDA} fotos ⇒ 400`, () => {
+    const demas = Array.from({ length: TOPE_FOTOS_PARTIDA + 1 }, (_, i) => k(`d${i}`));
+    expect(() => decidirTerminacion(T, V, autorizada(), demas, AHORA)).toThrow(
+      `Máximo ${TOPE_FOTOS_PARTIDA} fotos por hallazgo`,
+    );
+  });
+
+  it("llave de otra visita o con forma inválida ⇒ 400", () => {
+    const otra = llaveFoto(T, "BBB222|2026-09-02", "d1", "image/jpeg");
+    expect(() => decidirTerminacion(T, V, autorizada(), [otra], AHORA)).toThrow(
+      "llave de foto no válida",
+    );
+    expect(() => decidirTerminacion(T, V, autorizada(), ["cualquier/cosa.jpg"], AHORA)).toThrow(
+      "llave de foto no válida",
+    );
+  });
+
+  it("fotos repetidas ⇒ 400 (el conjunto se compara al reintentar)", () => {
+    expect(() => decidirTerminacion(T, V, autorizada(), [k("d1"), k("d1")], AHORA)).toThrow(
+      "fotos repetidas",
+    );
+  });
+
+  it("fotos que no son arreglo ⇒ 400", () => {
+    expect(() => decidirTerminacion(T, V, autorizada(), "x", AHORA)).toThrow("fotos no válidas");
+  });
+
+  it("ya terminada + las MISMAS llaves (en otro orden) ⇒ null: es un reintento, no se escribe", () => {
+    const ya = autorizada({ estado: "terminada", evidenciaFinal: [k("d1"), k("d2")] });
+    expect(decidirTerminacion(T, V, ya, [k("d2"), k("d1")], AHORA)).toBeNull();
+  });
+
+  it("mano de obra terminada sin foto + reintento sin foto ⇒ null", () => {
+    const ya = autorizada({ tipo: "manoObra", estado: "terminada", evidenciaFinal: [] });
+    expect(decidirTerminacion(T, V, ya, [], AHORA)).toBeNull();
+  });
+
+  it("ya terminada + llaves DISTINTAS ⇒ ErrorConflicto (409), que NO es ErrorEntrada", () => {
+    const ya = autorizada({ estado: "terminada", evidenciaFinal: [k("d1")] });
+    let err: unknown;
+    try {
+      decidirTerminacion(T, V, ya, [k("otra")], AHORA);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ErrorConflicto);
+    expect(err).not.toBeInstanceOf(ErrorEntrada);
+    expect((err as Error).message).toBe(
+      "Este hallazgo ya se marcó como terminado y no se puede cambiar",
+    );
+  });
+
+  it("versión ausente cuenta como 1", () => {
+    const r = decidirTerminacion(T, V, autorizada({ version: null }), [k("d1")], AHORA);
+    expect(r?.version).toBe(2);
+  });
+});
+
+describe("proyectarPartidaParaTaller — lo único que el taller ve de cada hallazgo", () => {
+  const fila = {
+    partidaId: "p-1",
+    descripcion: "Balatas",
+    tipo: "refaccion",
+    precio: 1850,
+    precioAutorizado: 1850,
+    estado: "terminada",
+    motivoRechazo: null,
+    fotos: ["a.jpg", null],
+    evidenciaFinal: ["b.jpg"],
+    terminadoEn: "2026-09-16T15:00:00.000Z",
+    // Internos: jamás salen.
+    creadoPor: "liga:AAA111|2026-09-01",
+    decididoPor: "riesgos@ejemplo.invalid",
+    motivoRechazoNota: "NOTA-INTERNA",
+    tenantId: "tenant-interno",
+    version: 4,
+  };
+
+  it("devuelve EXACTAMENTE estas llaves", () => {
+    expect(Object.keys(proyectarPartidaParaTaller(fila)).sort()).toEqual([
+      "descripcion",
+      "estado",
+      "evidenciaFinal",
+      "fotos",
+      "motivoRechazo",
+      "partidaId",
+      "precio",
+      "precioAutorizado",
+      "terminadoEn",
+      "tipo",
+    ]);
+  });
+
+  it("tira los nulos de los arreglos y rellena ausentes con null o []", () => {
+    const p = proyectarPartidaParaTaller({
+      partidaId: "p-2",
+      descripcion: "x",
+      precio: 1,
+      fotos: null,
+    });
+    expect(p.fotos).toEqual([]);
+    expect(p.evidenciaFinal).toEqual([]);
+    expect(p.terminadoEn).toBeNull();
+    expect(p.precioAutorizado).toBeNull();
+    expect(p.tipo).toBeNull();
+    expect(p.estado).toBeNull();
+    expect(proyectarPartidaParaTaller(fila).fotos).toEqual(["a.jpg"]);
+  });
+
+  it("ningún campo interno viaja", () => {
+    const txt = JSON.stringify(proyectarPartidaParaTaller(fila));
+    for (const m of ["liga:", "riesgos@", "NOTA-INTERNA", "tenant-interno"]) {
+      expect(txt).not.toContain(m);
+    }
   });
 });
