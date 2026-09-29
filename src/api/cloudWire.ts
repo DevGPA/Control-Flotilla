@@ -43,7 +43,7 @@ import {
   prioridadDistintivo,
   filasPendientes,
 } from "../taller/seguimiento";
-import { mensajeWhatsApp, type Partida } from "../taller/partidas";
+import { avisoSinDespues, mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
   upsertUnit,
@@ -582,6 +582,8 @@ export function setupCloud(): void {
   window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
   window.__etiquetaDistintivo = etiquetaDistintivo;
   window.__resumenPartidas = resumenPartidas;
+  // Antes y después (spec 2026-09-28 §6.2): el aviso al cerrar se calcula en src/.
+  window.__avisoSinDespues = avisoSinDespues;
   // Task 7: una sola señal por visita para la columna "Proveedor" de la tabla
   // de Taller — el monolito pinta y ordena, nunca decide la prioridad.
   window.__distintivoProveedor = (e, ps) => {

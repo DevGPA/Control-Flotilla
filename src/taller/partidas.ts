@@ -37,6 +37,9 @@ export type Partida = {
   motivoRechazo?: string;
   motivoRechazoNota?: string;
   fotos: string[];
+  /** Antes y después (spec 2026-09-28): llaves de la foto del trabajo terminado.
+   *  Las sube el taller desde la liga al terminar un hallazgo autorizado. */
+  evidenciaFinal?: string[];
   /** Congelado al firmar. */
   precioAutorizado?: number;
   recotizaDe?: string;
@@ -182,6 +185,47 @@ export function pendientesDeFirma(ps: Partida[]): number {
  */
 export function montoPendienteDeFirma(ps: Partida[]): number {
   return partidasPendientesDeFirma(ps).reduce((s, p) => s + (p.precio ?? 0), 0);
+}
+
+/**
+ * Antes y después (spec 2026-09-28, decisiones 3 y 6): refacciones AUTORIZADAS que
+ * todavía no tienen foto del trabajo terminado. Una `terminada` nunca cuenta (ya tiene
+ * su después, o es mano de obra terminada sin foto) y la mano de obra autorizada
+ * tampoco: su foto es opcional. Una partida sin `tipo` (fila vieja) cuenta como
+ * refacción, el caso estricto, igual que el portal (`decidirTerminacion`).
+ */
+export function refaccionesSinDespues(ps: Partida[]): Partida[] {
+  return ps.filter((p) => p.estado === "autorizada" && p.tipo !== "manoObra");
+}
+
+const fmtMontoAviso = (n: number): string =>
+  "$" + n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * El renglón que se suma al confirm de "Finalizar" y al guardar la salida (spec §6.2):
+ * avisa, no bloquea. `""` si no falta ninguna foto. Hasta 3 refacciones se nombran con
+ * su monto firmado; con más, solo el número. El monolito solo PINTA este texto.
+ */
+export function avisoSinDespues(ps: Partida[]): string {
+  const faltan = refaccionesSinDespues(ps);
+  if (!faltan.length) return "";
+  const n = faltan.length;
+  const cabeza =
+    n === 1
+      ? "⚠ 1 refacción autorizada no tiene foto del después"
+      : `⚠ ${n} refacciones autorizadas no tienen foto del después`;
+  const detalle =
+    n <= 3
+      ? ": " +
+        faltan
+          .map((p) => {
+            const d = p.descripcion || "(sin descripción)";
+            const m = p.precioAutorizado;
+            return typeof m === "number" && Number.isFinite(m) ? `${d} (${fmtMontoAviso(m)})` : d;
+          })
+          .join(", ")
+      : "";
+  return `${cabeza}${detalle}.\nSi la finalizas, la liga del taller se cierra y ya no podrá subirla.`;
 }
 
 export type GastoDerivado = {
