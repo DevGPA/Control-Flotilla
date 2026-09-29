@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // main.ts — entry point Vite-served. Cargado por el legado via
 // `<script type="module" src="/src/main.ts"></script>` (Vite lo resuelve en
 // dev; para file:// no hace nada, el legado sigue usando su renderTable inline).
@@ -1094,4 +1095,15 @@ if (readFlag("USE_URL_STATE")) {
     "[control-flotilla] USE_URL_STATE activo — filtros sincronizan con URL. " +
       "Usa window.__syncUrlState({tab, filter, branch, search}) para escribir.",
   );
+}
+
+// ─── Vista local "antes y después" (spec 2026-09-28 §8.1) — SOLO `npm run dev` ───
+// import.meta.env.DEV es `false` en el build: Rollup elimina la rama y el módulo de la
+// demo nunca viaja a producción. Requiere ?e2e=1 (sin Cognito) y demo=antes-despues.
+if (
+  import.meta.env.DEV &&
+  window.location.search.includes("e2e=1") &&
+  window.location.search.includes("demo=antes-despues")
+) {
+  void import("./dev/demoAntesDespues").then((m) => m.montarDemo());
 }
