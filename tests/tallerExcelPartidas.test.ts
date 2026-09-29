@@ -37,6 +37,8 @@ const TITULOS_ESPERADOS = [
   "Nota",
   "Origen",
   "Fotos",
+  "Fotos después",
+  "Terminado el",
 ];
 
 const entry = (over: Partial<TallerEntry> = {}): TallerEntry => ({
@@ -64,7 +66,7 @@ describe("estructura — la hoja Partidas existe en los dos libros", () => {
     expect(ocurrencias).toHaveLength(2);
   });
 
-  it("exportExcel.ts trae los 14 encabezados exactos y etiqueta las canceladas", () => {
+  it("exportExcel.ts trae los 16 encabezados exactos y etiqueta las canceladas", () => {
     const src = readFileSync(join(__dirname, "..", "src", "taller", "exportExcel.ts"), "utf8");
     for (const h of TITULOS_ESPERADOS) {
       expect(src, `falta el encabezado ${h}`).toContain(`"${h}"`);
@@ -74,7 +76,7 @@ describe("estructura — la hoja Partidas existe en los dos libros", () => {
 });
 
 describe("COLUMNAS_PARTIDAS / filasPartidas — capa pura", () => {
-  it("son exactamente 14 columnas, en el orden esperado", () => {
+  it("son exactamente 16 columnas, en el orden esperado", () => {
     expect(COLUMNAS_PARTIDAS.map((c) => c.titulo)).toEqual(TITULOS_ESPERADOS);
   });
 
@@ -237,5 +239,40 @@ describe("workbook — hoja Partidas en Activas e Historial", () => {
     const wsHistorial = wbHistorial.getWorksheet("Partidas")!;
     expect(wsHistorial).toBeTruthy();
     expect(wsHistorial.getRow(FILA_HEADER + 1).getCell(1).value).toBeNull();
+  });
+});
+
+describe("antes y después en el Excel (spec 2026-09-28 §6.5)", () => {
+  const iFD = () => COLUMNAS_PARTIDAS.findIndex((c) => c.titulo === "Fotos después");
+  const iTE = () => COLUMNAS_PARTIDAS.findIndex((c) => c.titulo === "Terminado el");
+  const ctx = (ps: Partida[]): ContextoExport => ({ hoy: HOY, partidasDe: () => ps });
+
+  it("una terminada trae cuántas fotos del después y cuándo se terminó", () => {
+    const [fila] = filasPartidas(
+      [entry()],
+      ctx([
+        partida({
+          estado: "terminada",
+          evidenciaFinal: ["a.jpg", "b.jpg"],
+          terminadoEn: "2026-09-16T15:00:00.000Z",
+        }),
+      ]),
+    );
+    expect(fila![iFD()]).toBe(2);
+    expect(fila![iTE()]).toBeInstanceOf(Date);
+  });
+
+  it("una terminada SIN foto (mano de obra) dice 0, no vacío", () => {
+    const [fila] = filasPartidas(
+      [entry()],
+      ctx([partida({ tipo: "manoObra", estado: "terminada", evidenciaFinal: [] })]),
+    );
+    expect(fila![iFD()]).toBe(0);
+  });
+
+  it("mientras no esté terminada, las dos celdas van vacías (un 0 diría 'se terminó sin foto')", () => {
+    const [fila] = filasPartidas([entry()], ctx([partida({ estado: "autorizada" })]));
+    expect(fila![iFD()]).toBe("");
+    expect(fila![iTE()]).toBe("");
   });
 });
