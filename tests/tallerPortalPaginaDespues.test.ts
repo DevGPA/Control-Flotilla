@@ -235,3 +235,47 @@ describe("liga · totales (Review Focus 1)", () => {
     expect(autorizado()).toBe("$2,000.00");
   });
 });
+
+describe("liga · terminar OTRO hallazgo no cierra el panel del después ya abierto", () => {
+  const refaccionA = () => partida({});
+  const manoObraB = () =>
+    partida({
+      partidaId: "mo-1",
+      descripcion: "Ajuste de freno de mano",
+      tipo: "manoObra",
+      precio: 350,
+      precioAutorizado: 350,
+      fotos: [],
+    });
+
+  it("200 en B: el panel abierto de A sigue abierto, con sus fotos", async () => {
+    respuestaTerminar = {
+      status: 200,
+      body: {
+        partidaId: "mo-1",
+        estado: "terminada",
+        evidenciaFinal: [],
+        terminadoEn: "2026-09-16T15:00:00.000Z",
+      },
+    };
+    await montar([refaccionA(), manoObraB()]);
+    boton(tarjeta("Balatas delanteras"), "Subir foto del trabajo terminado")!.click();
+    boton(tarjeta("Ajuste de freno"), "Marcar como terminado")!.click();
+    await asentar();
+    const a = tarjeta("Balatas delanteras");
+    expect(a.textContent).toContain("Foto del trabajo terminado");
+    expect(boton(a, "Marcar como terminado")!.disabled).toBe(true);
+    expect(tarjeta("Ajuste de freno").textContent).toContain("Terminada");
+  });
+
+  it("409 en B: el panel de A sobrevive incluso al re-render de cargar()", async () => {
+    respuestaTerminar = { status: 409, body: { error: "ya terminado" } };
+    await montar([refaccionA(), manoObraB()]);
+    boton(tarjeta("Balatas delanteras"), "Subir foto del trabajo terminado")!.click();
+    boton(tarjeta("Ajuste de freno"), "Marcar como terminado")!.click();
+    await asentar();
+    const a = tarjeta("Balatas delanteras");
+    expect(a.textContent).toContain("Foto del trabajo terminado");
+    expect(boton(a, "Marcar como terminado")!.disabled).toBe(true);
+  });
+});

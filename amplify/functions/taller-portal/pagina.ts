@@ -541,7 +541,7 @@ textarea{min-height:72px; resize:vertical}
       .catch(function (err) {
         if (err && err.message === "http-409") {
           msg.textContent = "Este hallazgo ya se había marcado como terminado.";
-          despues = null;
+          if (despues && despues.partidaId === p.partidaId) despues = null;
           cargar();
         } else {
           msg.textContent = "No se pudo enviar. Revisa tu señal e intenta de nuevo.";
@@ -557,7 +557,7 @@ textarea{min-height:72px; resize:vertical}
           if (items[0] && items[0].file) {
             previewsDespues[p.partidaId] = URL.createObjectURL(items[0].file);
           }
-          despues = null;
+          if (despues && despues.partidaId === p.partidaId) despues = null;
           pintarPartidas();
         } catch (e) {
           msg.textContent = "Se envió, pero no se pudo actualizar la lista. Recarga la página.";
