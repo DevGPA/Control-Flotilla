@@ -6,6 +6,7 @@
   "description": "GPA fleet control — checklist + taller + historial",
   "scripts": {
     "dev": "vite",
+    "preview:liga": "node scripts/preview-liga-local.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",
