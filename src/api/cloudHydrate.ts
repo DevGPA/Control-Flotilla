@@ -273,6 +273,13 @@ declare global {
       titulo?: string;
       subtitulo?: string;
     }) => void;
+    /** Visor A+ antes|después (spec 2026-09-28 §6.4). Lo monta src/taller/visorFotos.ts. */
+    __abrirVisorAntesDespues?: (opts: {
+      antes: { llaves: readonly string[]; fecha?: string };
+      despues: { llaves: readonly string[]; fecha?: string };
+      titulo?: string;
+      subtitulo?: string;
+    }) => void;
     /** Capa pura del seguimiento del proveedor (src/taller/seguimiento.ts):
      *  el monolito PINTA `_provPintar(e)`, nunca recalcula fechas a mano. */
     __estadoLiga?: (e: Partial<TallerEntry>) => EstadoLiga;
