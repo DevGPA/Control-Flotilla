@@ -12,8 +12,7 @@
 // Lo que NO replica (y lo dice): la firma HMAC de la liga, el apagador, el portón de
 // visita cerrada o anulada, la CSP del portal y S3 (las fotos viven en memoria). Tampoco
 // los chequeos que viven en handler.ts y no en validacion.ts: los topes de hallazgos y
-// fotos de POST /api/partida, el portón de km/fecha de POST /api/enviar y la lista de
-// estados y la forma de fecha de POST /api/visita.
+// fotos de POST /api/partida y la lista de estados y la forma de fecha de POST /api/visita.
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -319,6 +318,10 @@ async function atender(req, res) {
       return json(res, 200, { partidaId, fotos: llaves });
     }
     if (metodo === "POST" && ruta === "/api/enviar") {
+      if (!V.puedeEnviarAAutorizacion(visita))
+        throw new V.ErrorEntrada(
+          "Falta kilometraje o fecha estimada de salida para enviar a autorización",
+        );
       let enviadas = 0;
       for (const p of partidas.values())
         if (p.estado === "borrador") {
