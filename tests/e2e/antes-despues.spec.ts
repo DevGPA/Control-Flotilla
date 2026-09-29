@@ -26,7 +26,9 @@ test.describe("antes y después por hallazgo — registro de la unidad (demo loc
     await expect(page.locator("#tf-prov-partidas")).toContainText("Sin foto del después");
   });
 
-  test("🖼 abre ANTES y DESPUÉS lado a lado; Esc lo cierra", async ({ page }) => {
+  test("🖼 abre ANTES y DESPUÉS lado a lado; la tira cambia la foto; pantalla completa; Esc lo cierra", async ({
+    page,
+  }) => {
     await page
       .getByRole("button", { name: /Antes y después/ })
       .first()
@@ -35,6 +37,38 @@ test.describe("antes y después por hallazgo — registro de la unidad (demo loc
     await expect(visor).toBeVisible();
     await expect(visor).toContainText("ANTES · 14 sep · 1 foto");
     await expect(visor).toContainText("DESPUÉS · 16 sep · 2 fotos");
+
+    // Spec §8: se cambia la foto con la tira. Solo cambia SU lado.
+    const imgAntes = visor.locator('img[data-lado="antes"]');
+    const imgDespues = visor.locator('img[data-lado="despues"]');
+    await expect(imgAntes).toHaveAttribute("src", /^data:/);
+    await expect(imgDespues).toHaveAttribute("src", /^data:/);
+    const srcAntes = await imgAntes.getAttribute("src");
+    const srcDespues1 = await imgDespues.getAttribute("src");
+    const mini2 = visor.getByRole("button", { name: "después: foto 2 de 2" });
+    await expect(mini2).toHaveAttribute("aria-pressed", "false");
+    await mini2.click();
+    await expect(mini2).toHaveAttribute("aria-pressed", "true");
+    await expect(imgDespues).toHaveAttribute("src", /^data:/);
+    await expect(imgDespues).not.toHaveAttribute("src", srcDespues1!);
+    await expect(imgAntes).toHaveAttribute("src", srcAntes!);
+
+    // Spec §8: abre pantalla completa. El clic real de Playwright falla si algo tapa el
+    // botón (el aviso MODO DEMO lo tapaba antes de moverlo arriba y sin atrapar clics).
+    await page.getByRole("button", { name: "Ver antes en pantalla completa" }).click();
+    await expect(page.locator("#taller-visor-fotos")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Fotos del taller" })).toBeVisible();
+    await expect(visor).toHaveCount(0);
+
+    // Esc cierra la pantalla completa y el A+ vuelve con su estado (la foto 2 del después).
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#taller-visor-fotos")).toHaveCount(0);
+    await expect(visor).toBeVisible();
+    await expect(visor.getByRole("button", { name: "después: foto 2 de 2" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
     await page.keyboard.press("Escape");
     await expect(visor).toHaveCount(0);
   });

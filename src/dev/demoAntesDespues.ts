@@ -41,14 +41,16 @@ function dibujo(
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-const GASTADO = dibujo("#3f3a36", "#8a5a33", 4, "balata 2 mm · disco rayado", "#fca5a5");
-const NUEVO = dibujo("#334155", "#cbd5e1", 12, "balata nueva 12 mm", "#bbf7d0");
+// Un dibujo DISTINTO por llave: si dos llaves compartieran imagen, tocar la miniatura 2
+// no cambiaría la foto grande y la demo (y su prueba) no dejarían ver que la tira funciona.
+const gastado = (texto: string) => dibujo("#3f3a36", "#8a5a33", 4, texto, "#fca5a5");
+const nuevo = (texto: string) => dibujo("#334155", "#cbd5e1", 12, texto, "#bbf7d0");
 const FOTOS: Record<string, string> = {
-  "demo/antes-balatas-delanteras.png": GASTADO,
-  "demo/antes-balatas-traseras.png": GASTADO,
-  "demo/despues-balatas-traseras-1.png": NUEVO,
-  "demo/despues-balatas-traseras-2.png": NUEVO,
-  "demo/antes-amortiguador.png": GASTADO,
+  "demo/antes-balatas-delanteras.png": gastado("delanteras · balata 2 mm · disco rayado"),
+  "demo/antes-balatas-traseras.png": gastado("traseras · balata 2 mm · disco rayado"),
+  "demo/despues-balatas-traseras-1.png": nuevo("balata nueva 12 mm · vista 1"),
+  "demo/despues-balatas-traseras-2.png": nuevo("balata nueva 12 mm · vista 2"),
+  "demo/antes-amortiguador.png": gastado("amortiguador · fuga de aceite"),
 };
 
 async function esperar(cond: () => boolean, ms = 20_000): Promise<boolean> {
