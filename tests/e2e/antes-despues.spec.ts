@@ -15,7 +15,7 @@ test.describe("antes y después por hallazgo — registro de la unidad (demo loc
     await page.goto(URL_DEMO);
     await expect(page.locator("#demo-antes-despues")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#taller-modal.open")).toBeVisible();
-    // La lista de hallazgos abre en "Pendientes": las autorizadas y terminadas viven en "Autorizadas".
+    // El registro abre en "Todas" (agrupado); el filtro "Autorizadas" sigue existiendo y aísla ese grupo.
     await page
       .locator("#tf-prov-partidas")
       .getByRole("button", { name: /Autorizadas/ })

@@ -520,3 +520,98 @@ describe("_fichaPintar y la liga con nombre (§4.2, §4.7)", () => {
     expect(cuerpo("_fichaPintar")).not.toContain(".innerHTML");
   });
 });
+
+describe("hallazgos del taller agrupados y firmas con nombre (§4.3)", () => {
+  const cuerpo = (nombre: string): string => {
+    const i = html.indexOf(`function ${nombre}(`);
+    expect(i, `no existe ${nombre}`).toBeGreaterThan(-1);
+    return html.slice(i, html.indexOf("\nfunction ", i + 10));
+  };
+  const P = (s: Record<string, unknown> = {}): Record<string, unknown> => ({
+    partidaId: "p",
+    visitaKey: "vk",
+    descripcion: "Balatas",
+    estado: "autorizada",
+    tipo: "refaccion",
+    fotos: ["a.jpg"],
+    precio: 1850,
+    precioAutorizado: 1850,
+    creadoEn: "2026-09-14T16:00:00.000Z",
+    decididoPor: "11111111-2222-4333-8444-555555555555",
+    decididoEn: "2026-09-15T10:00:00.000Z",
+    ...s,
+  });
+  function filaDe(p: Record<string, unknown>, win: Record<string, unknown> = {}): HTMLElement {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fabrica = new Function(
+      "window",
+      "_bnThumb",
+      "_fmtMon2",
+      "fmtDate",
+      `${cuerpo("_provFilaHistorial")}\nreturn _provFilaHistorial;`,
+    );
+    const fn = fabrica(
+      win,
+      () => document.createElement("button"),
+      (n: number) => `$${n.toFixed(2)}`,
+      (d: unknown) => String(d ?? "").slice(0, 10),
+    ) as (p: unknown) => HTMLElement;
+    return fn(p);
+  }
+  it("estructura: abre en 'Todas', tres subtítulos, título nuevo, sin la línea de totales", () => {
+    expect(html).toContain('let _provFiltro = "todas";');
+    const c = cuerpo("_provPartidas");
+    for (const s of [
+      "Hallazgos del taller (",
+      "espera",
+      "tu firma",
+      "Esperan tu firma",
+      "Autorizados · suman ",
+      "No autorizados",
+      "Autorizar y No autorizar se guardan solos; no necesitas Guardar.",
+      "window.__ordenarHallazgos",
+      "_bnPartida(",
+      "window.__resumenPartidas(",
+      "_partidasConfiables()",
+      "No se pudieron cargar las partidas",
+      "Esta visita no tiene partidas del proveedor.",
+      "terminada",
+      "e.tecnico",
+    ]) {
+      expect(c, s).toContain(s);
+    }
+    expect(c).not.toContain("Autorizado ${");
+    expect(c).not.toContain('_provFiltro = "pendientes"; }');
+    expect(c).not.toContain(".innerHTML");
+  });
+  it("_provFilaHistorial con window = {} ⇒ 'Autorizada por un usuario de GPA', sin GUID ni excepción", () => {
+    const t = filaDe(P()).textContent ?? "";
+    expect(t).toContain("Autorizada por un usuario de GPA");
+    expect(t).not.toContain("11111111-2222");
+  });
+  it("con el puente ⇒ 'Autorizada por Ana López'; rechazada y terminada igual", () => {
+    const win = { __nombreDeUsuario: () => "Ana López" };
+    expect(filaDe(P(), win).textContent).toContain("Autorizada por Ana López");
+    expect(
+      filaDe(P({ estado: "rechazada", motivoRechazo: "Precio alto" }), win).textContent,
+    ).toContain("Rechazada por Ana López");
+    expect(
+      filaDe(P({ estado: "terminada", terminadoEn: "2026-09-16" }), win).textContent,
+    ).toContain("Autorizada por Ana López");
+  });
+  it("una terminada con fotos: tocar la miniatura abre el A+ (misma llamada que el botón)", () => {
+    const abrir = vi.fn();
+    const fila = filaDe(
+      P({ estado: "terminada", evidenciaFinal: ["b.jpg"], terminadoEn: "2026-09-16" }),
+      {
+        __abrirVisorAntesDespues: abrir,
+      },
+    );
+    (fila.querySelector("button") as HTMLButtonElement).click();
+    expect(abrir).toHaveBeenCalledTimes(1);
+    expect(abrir.mock.calls[0]![0]).toMatchObject({
+      antes: { llaves: ["a.jpg"] },
+      despues: { llaves: ["b.jpg"] },
+    });
+  });
+});
