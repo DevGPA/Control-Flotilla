@@ -1,6 +1,6 @@
 # Taller híbrido · Antes y después por hallazgo
 
-**Fecha:** 2026-09-28 · **Estado:** decisiones cerradas con Navares; spec para su revisión · **Rama:** `feat/taller-antes-despues` (sale de `feat/taller-liga-cierre`)
+**Fecha:** 2026-09-28 · **Estado:** construido, revisado (seguridad + revisión final) y con el visto bueno de Navares en local (2026-09-30); PR pendiente · **Rama:** `feat/taller-antes-despues` (sale de `feat/taller-liga-cierre`)
 **Antecedentes:** `2026-09-04-taller-esquema-hibrido-proveedor-design.md` (Plan 1) · `2026-09-15-taller-seguimiento-proveedor-design.md` (Bloque 1) · `2026-09-15-taller-evidencia-proveedor-design.md` (Bloque 2, donde este tema quedó como "candidato a Bloque 3") · `2026-09-22-taller-liga-cierre-y-llave-design.md` (la liga muere con la visita).
 **Maqueta aprobada:** `.superpowers/brainstorm/3514-1790630708/content/antes-despues.html` y `antes-despues-v2.html` (locales, ignorados por git).
 
@@ -69,35 +69,41 @@ Cuerpo: `{ partidaId: string, fotos: string[] }`.
 
 1. Cruza **el mismo portón** que todas las rutas (`cargarVisitaVigente`): apagador encendido, token válido, liga no revocada, y visita no cerrada ni anulada (candado que aporta la liga-cierre).
 2. `parseBody`: un cuerpo que no es objeto JSON ⇒ 400 (R101).
-3. Busca la partida **dentro de** `listarPartidasDeVisita(tk.t, visitaKey)` por `partidaId`. Nunca por id suelto: una partida de otra visita simplemente no existe para esta liga.
-4. `validarTerminacion(partida, llaves)` (pura, `validacion.ts`; ver 4.2).
-5. Escribe con `TallerPartida.update`: `estado: "terminada"`, `evidenciaFinal: llaves`, `terminadoEn: ahora` (hora del servidor), `version: version + 1`.
-6. `bitacora("terminar-partida", tk, { ...rastro, partidaId, fotos: llaves.length })`, **después** de escribir (patrón de `enviarAAutorizacion`).
-7. Responde un **acuse proyectado**: `{ partidaId, estado: "terminada", evidenciaFinal, terminadoEn }`. Nunca la fila cruda (patrón A-1 / §2.3.3).
+3. Busca la partida **dentro de** `listarPartidasDeVisita(tk.t, visitaKey)` por `partidaId` (un `partidaId` ausente o vacío deja la partida en `undefined`). Nunca por id suelto: una partida de otra visita simplemente no existe para esta liga.
+4. `decidirTerminacion(tk.t, visitaKey, partida, body.fotos, ahoraIso)` (pura, `validacion.ts`; ver 4.2). Devuelve los cambios exactos a escribir, o `null` si es un reintento idéntico sobre una partida ya terminada; lanza `ErrorEntrada` (⇒ 400) o `ErrorConflicto` (⇒ 409).
+5. Con cambios: escribe con `TallerPartida.update` exactamente lo que devolvió: `estado: "terminada"`, `evidenciaFinal: llaves`, `terminadoEn: ahora` (hora del servidor; lo que mande el cliente se ignora), `version: version + 1` (una fila sin `version` cuenta como 1).
+6. `bitacora("terminar-partida", tk, { ...rastro, partidaId, fotos: llaves.length })`, **después** de escribir (patrón de `enviarAAutorizacion`). Con `null` no se escribe nada y la bitácora dice `terminar-partida-reintento`.
+7. Responde un **acuse proyectado**: `{ partidaId, estado: "terminada", evidenciaFinal, terminadoEn }`; en el reintento, el mismo acuse a partir de `proyectarPartidaParaTaller` de la fila. Nunca la fila cruda (patrón A-1 / §2.3.3).
 
-### 4.2 `validarTerminacion` (pura)
+### 4.2 `decidirTerminacion` (pura)
 
-Lanza `ErrorEntrada` (⇒ 400 con mensaje legible) cuando:
+`decidirTerminacion(tenantId, visitaKey, partida, fotos, ahoraIso): CambiosTerminacion | null`. No escribe nada: devuelve **los cambios exactos** (`{ estado: "terminada", evidenciaFinal, terminadoEn: ahoraIso, version: version + 1 }`), devuelve `null` cuando no hay que escribir, o lanza. (construido: el spec la llamaba `validarTerminacion` y solo lanzaba; la función construida también decide qué se escribe, para que el handler no repita la regla.)
 
-| Caso                                   | Mensaje                                                          |
-| -------------------------------------- | ---------------------------------------------------------------- |
-| La partida no está en esta visita      | "Este hallazgo no existe en esta visita"                         |
-| `estado` es `borrador` o `propuesta`   | "Este hallazgo todavía no está autorizado"                       |
-| `estado` es `rechazada` o `cancelada`  | "Este hallazgo no fue autorizado"                                |
-| `tipo` es `refaccion` y no trae fotos  | "Una refacción necesita al menos una foto del trabajo terminado" |
-| Más de `TOPE_FOTOS_PARTIDA` fotos      | "Máximo 6 fotos por hallazgo"                                    |
-| Alguna llave no pasa `llaveFotoValida` | "llave de foto no válida"                                        |
+Lanza `ErrorEntrada` (⇒ 400 con mensaje legible), en este orden, cuando:
+
+| Caso                                                                         | Mensaje                                                          |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| La partida no está en esta visita (o no vino `partidaId`)                    | "Este hallazgo no existe en esta visita"                         |
+| `fotos` viene y no es un arreglo                                             | "fotos no válidas"                                               |
+| Más de `TOPE_FOTOS_PARTIDA` fotos                                            | "Máximo 6 fotos por hallazgo"                                    |
+| Una llave repetida en el mismo envío                                         | "fotos repetidas"                                                |
+| Alguna llave no pasa `llaveFotoValida`                                       | "llave de foto no válida"                                        |
+| `estado` es `borrador` o `propuesta` (o viene vacío: cuenta como `borrador`) | "Este hallazgo todavía no está autorizado"                       |
+| `estado` es `rechazada`, `cancelada` o cualquier valor desconocido           | "Este hallazgo no fue autorizado"                                |
+| `tipo` no es `manoObra` y no trae fotos                                      | "Una refacción necesita al menos una foto del trabajo terminado" |
+
+Las llaves se revisan **antes** que el estado (una terminada con llaves malas también da 400, no 409), y el bloque "ya terminada" de abajo se evalúa justo después de las llaves, antes de las filas de estado.
 
 **Ya terminada (`estado === "terminada"`):**
 
-- Si las llaves recibidas son **las mismas** que ya tiene `evidenciaFinal` (mismo conjunto) ⇒ 200 con el mismo acuse, sin escribir (es un reintento de red: el taller tiene mala señal).
-- Si son **distintas** ⇒ 409 "Este hallazgo ya se marcó como terminado y no se puede cambiar" (decisión 4).
+- Si las llaves recibidas son **las mismas** que ya tiene `evidenciaFinal` (mismo conjunto, sin importar el orden) ⇒ devuelve `null`: 200 con el mismo acuse, sin escribir (es un reintento de red: el taller tiene mala señal).
+- Si son **distintas** ⇒ lanza `ErrorConflicto` ⇒ 409 "Este hallazgo ya se marcó como terminado y no se puede cambiar" (decisión 4).
 
-Mano de obra con `fotos: []` es válida (decisión 3). Una partida sin `tipo` (fila vieja) se trata como `refaccion`, que es el caso estricto.
+Mano de obra con `fotos: []` (o sin `fotos`) es válida (decisión 3). Una partida sin `tipo` (fila vieja) se trata como `refaccion`, que es el caso estricto.
 
 ### 4.3 Carrera con Riesgos
 
-La ruta lee, valida y escribe, igual que `enviarAAutorizacion`. La ventana entre leer y escribir es de milisegundos. Hoy, desde Fleet, nada saca a una partida de `autorizada`: la regla pura `puedeCancelar` permitiría a Riesgos cancelarla, pero **no tiene ningún caller** en la app. **El plan confirma** que la firma (`__guardarDecisionPartida` / `camposDeDecision`) tampoco re-decide una partida ya autorizada. Si alguna de las dos cosas cambia, la escritura usa `version` como condición; mientras tanto, el riesgo queda documentado como aceptado.
+La ruta lee, valida y escribe, igual que `enviarAAutorizacion`. La ventana entre leer y escribir es de milisegundos. Hoy, desde Fleet, nada saca a una partida de `autorizada`: la regla pura `puedeCancelar` permitiría a Riesgos cancelarla, pero **no tiene ningún caller** en la app. **Confirmado en la revisión final (construido):** la firma (`__guardarDecisionPartida` / `camposDeDecision`) tampoco re-decide una partida ya autorizada; ningún caller de la app saca una partida de `autorizada`. Si alguna de las dos cosas cambia, la escritura usa `version` como condición; mientras tanto, el riesgo queda documentado como aceptado.
 
 ## 5. Página de la liga (`pagina.ts`)
 
@@ -117,45 +123,47 @@ En `pintarPartidas`, según el estado de cada hallazgo:
 
 ### 6.1 Capa pura (`src/taller/partidas.ts`)
 
-- `refaccionesSinDespues(ps: Partida[]): Partida[]` devuelve las partidas `autorizada` de tipo `refaccion` (o sin tipo). Una `terminada` nunca cuenta, y la mano de obra autorizada tampoco (decisión 3).
-- Puente `window.__refaccionesSinDespues` junto a `__pendientesDeFirma` (`src/api/cloudHydrate.ts`).
+- `refaccionesSinDespues(ps: Partida[]): Partida[]` devuelve las partidas `autorizada` cuyo `tipo` no es `manoObra` (refacción o sin tipo). Una `terminada` nunca cuenta, y la mano de obra autorizada tampoco (decisión 3).
+- `avisoSinDespues(ps: Partida[]): string` arma el **texto** del aviso de §6.2 a partir de `refaccionesSinDespues`; `""` cuando no falta ninguna foto. El monolito solo lo pinta.
+- Puente `window.__avisoSinDespues = avisoSinDespues`, publicado desde `src/api/cloudWire.ts` (junto a `__resumenPartidas`), que corre siempre, también con `?e2e=1`; su tipo vive en la declaración de `Window` de `cloudHydrate.ts`. (construido: el spec pedía `__refaccionesSinDespues` desde `cloudHydrate`; se publica el texto ya armado para que el monolito no repita la regla ni el formato del monto.)
+- Puente `window.__abrirVisorAntesDespues` (también en `cloudWire.ts`), que inyecta la misma `urlFoto` firmada que usa `__abrirVisorFotos`.
 
 ### 6.2 Aviso al finalizar (monolito, `finalizarUnidad`)
 
-`finalizarUnidad` ya arma `avisoPartidas` (C-I5) y lo muestra en el `confirm`. Se le agrega una línea:
+`finalizarUnidad` ya arma `avisoPartidas` (C-I5) y lo muestra en el `confirm`. Se le suma el renglón de `_avisoSinDespues(e)`, que le pregunta a `window.__avisoSinDespues` con las partidas de la visita (sin puente, no avisa). Texto construido:
 
-> ⚠ 1 refacción autorizada no tiene foto del después: Balatas delanteras desgastadas ($1,850). Si finalizas, la liga del taller se cierra y ya no podrá subirla.
+> ⚠ 1 refacción autorizada no tiene foto del después: Balatas delanteras desgastadas ($1,850.00).
+> Si la finalizas, la liga del taller se cierra y ya no podrá subirla.
 
-La línea lista descripciones cuando son 3 o menos; si son más, da el número. Se puede finalizar igual (decisión 6). Este es el camino de "✓ Finalizar" en la tabla y en el modal (`finalizarDesdeModal`).
+Con más de una: "⚠ N refacciones autorizadas no tienen foto del después: …". La línea lista descripciones con su monto autorizado (`$1,850.00`, dos decimales, `es-MX`) cuando son 3 o menos; si son más, solo da el número. Se puede finalizar igual (decisión 6). Este es el camino de "✓ Finalizar" en la tabla y en el modal (`finalizarDesdeModal` cierra el modal y llama a `finalizarUnidad`).
 
-**El plan verifica** si guardar el modal con "Fecha real de salida" también cierra la visita (y revoca la liga, por la liga-cierre). Si la cierra, el mismo aviso va ahí; si no, se documenta.
+**Guardar el modal con "Fecha real de salida" también cierra la visita** (`batchUpload.ts` deriva el estatus `cerrado` de `fsalidaReal`, y con ello la liga muere por la liga-cierre). Por eso `saveTallerEntry` da el mismo aviso en un `confirm` propio ("…¿Guardar la salida de todos modos?"), **solo cuando la visita se cierra en ese guardado**: `cierraAhora = srcEntry existe && !srcEntry.fsalidaReal && !!entry.fsalidaReal`. Solo mira `fsalidaReal`: una visita que ya estaba cerrada y se vuelve a guardar no pregunta otra vez; una visita legada en `Finalizado` sin fecha real preguntaría una vez al ponerle la fecha (aceptado). Cancelar ese `confirm` no guarda nada.
 
 ### 6.3 Lista del registro (`_provFilaHistorial` / `_provPartidas`)
 
-- Refacción `autorizada` sin después: distintivo ámbar **"Sin foto del después"**.
-- `terminada`: ya muestra "TERMINADA · terminada el …"; se agrega "🖼 antes y después", que abre el visor A+.
+- Refacción `autorizada` sin después (`estado === "autorizada" && tipo !== "manoObra"`): chip ámbar `tl-pill diag` con el texto **"Sin foto del después"**, en la primera línea de la fila junto a la pastilla del estado (construido: `diag`, el mismo ámbar de "esperando firma" — es un pendiente, no un rechazo; `pendiente` es rojo).
+- `terminada`: ya muestra "TERMINADA · terminada el …"; si tiene alguna foto (antes o después) se agrega el botón **"🖼 Antes y después"**, que llama a `window.__abrirVisorAntesDespues` con `{ antes: { llaves: p.fotos, fecha: p.creadoEn }, despues: { llaves: p.evidenciaFinal, fecha: p.terminadoEn }, titulo: descripción, subtitulo: "Refacción · $1,650.00 · terminada el …" }`. Sin puente, el botón no hace nada.
 
 ### 6.4 Visor A+ (`src/taller/visorFotos.ts`)
 
-`abrirVisorFotos` gana un modo de dos grupos sin romper a quienes lo llaman hoy:
+(construido: en vez de darle a `abrirVisorFotos` un modo `grupos`, hay una función hermana en el mismo archivo; el visor simple queda intacto para quienes lo llaman hoy y solo gana un callback opcional.)
 
 ```ts
-abrirVisorFotos({
-  grupos: [
-    { etiqueta: "Antes", fecha: p.creadoEn, llaves: p.fotos },
-    { etiqueta: "Después", fecha: p.terminadoEn, llaves: p.evidenciaFinal },
-  ],
+abrirVisorAntesDespues({
+  antes: { llaves: p.fotos, fecha: p.creadoEn }, // GrupoFotos
+  despues: { llaves: p.evidenciaFinal, fecha: p.terminadoEn },
   titulo,
   subtitulo,
   url,
 });
 ```
 
-- Los dos grupos van lado a lado, cada uno con su foto grande, la leyenda "ANTES · 14 sep · 2 fotos" y su tira de miniaturas. Una miniatura cambia solo la foto de su lado.
-- El botón "Ver en pantalla completa" usa el overlay que ya existe (con su trampa de foco y cierre con Esc).
-- Si un grupo viene vacío (mano de obra sin foto), ese lado dice "Sin foto" y no se rompe.
-- Las llamadas actuales con `llaves` siguen funcionando igual (un solo grupo).
-- Sin `innerHTML`. Las URLs son firmadas y se piden por demanda con la misma función `url`.
+- Overlay propio `#taller-visor-antes-despues` (`role="dialog"`, "Antes y después del hallazgo"), con la misma trampa de foco, Esc, clic en el fondo y regla de "un solo visor vivo" del visor simple: abrir uno cierra el otro. Si los dos grupos vienen vacíos, no abre nada.
+- Los dos grupos van lado a lado (`grid 1fr 1fr`), cada uno con su foto grande, la leyenda "ANTES · 14 sep · 2 fotos" / "DESPUÉS · 16 sep · 1 foto" (`fechaCorta`, exportada: una fecha sola `YYYY-MM-DD` se lee tal cual; un instante ISO usa el día local) y su tira de miniaturas cuando hay más de una foto. Una miniatura cambia solo la foto de su lado (`img[data-lado]`, `button[data-miniatura]` con `aria-pressed`).
+- Cada lado con fotos lleva el botón **"⛶ Pantalla completa"** (`aria-label` "Ver antes|después en pantalla completa"): abre el visor simple existente (`abrirVisorFotos`, con `inicial` en la foto que se ve y el nuevo `alCerrar?: (i: number) => void`) con subtítulo "Antes · 14 sep". Cuando el usuario lo cierra (✕, Esc o fondo), `alCerrar` vuelve a montar el A+ con el mismo estado — la foto en la que quedó ese lado y la del otro — y el foco en ese mismo botón. `alCerrar` no se llama cuando otro visor lo reemplaza.
+- Si un grupo viene vacío (mano de obra sin foto), ese lado dice "Sin foto" y no lleva tira ni botón de pantalla completa.
+- Las llamadas actuales a `abrirVisorFotos` con `llaves` siguen funcionando igual.
+- Sin `innerHTML`. Las URLs son firmadas y se piden por demanda con la misma función `url`; las respuestas que llegan tarde se descartan por generación.
 
 ### 6.5 Excel (`src/taller/exportExcel.ts`)
 
@@ -181,26 +189,46 @@ Es una **ruta nueva en el portal público** ⇒ revisión de seguridad obligator
 10. Cuerpo que no es objeto JSON ⇒ 400.
 11. La forma del evento es la **real** de Amplify Gen 2 (`fieldName` en la raíz; lección R102).
 
+**Postura aceptada (revisión de seguridad, construido):** la foto del después puede ser **cualquier llave bien formada del prefijo de esta visita** (`llaveFotoValida`), incluso una llave ya usada en el antes o una que nunca se subió: el portal no hace `HeadObject` contra S3. Es exactamente la misma postura que ya tiene `POST /api/partida` para el antes; se acepta y queda documentada. Una llave inexistente solo produce "Foto no disponible" en los visores.
+
+**Cómo las ejecuta el arnés** (`describe("P18 — POST /api/terminar…")`, más los recorridos de `RUTAS_PUBLICAS`, donde `POST /api/terminar` ya está inscrito):
+
+| #   | Prueba(s)                                                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | "una partida de OTRA visita no existe para esta liga — aunque la consulta dejara de acotar" · "una partida de OTRO tenant, con la misma visita y el mismo id, tampoco existe"                                |
+| 2   | `it.each` "partida borrador \| propuesta \| rechazada \| cancelada ⇒ 400 y nada se escribe"                                                                                                                  |
+| 3   | "refacción sin foto ⇒ 400 con el mensaje del spec y NADA se escribe"                                                                                                                                         |
+| 4   | `it.each` "llave de otra visita \| de otro tenant \| de inspecciones \| con travesía (..) ⇒ 400 y nada se escribe"                                                                                           |
+| 5   | "más de 6 fotos ⇒ 400"                                                                                                                                                                                       |
+| 6   | "visita cerrada ⇒ 401 opaco y nada se escribe (el portón va primero)" en P18; revocada (P4 por versión, P4b por rastro), cerrada (P5) y anulada (P5b) recorren todas las rutas JSON de `RUTAS_PUBLICAS`      |
+| 7   | P6 "apagado ⇒ 401 opaco en las N rutas públicas" (recorre `RUTAS_PUBLICAS`)                                                                                                                                  |
+| 8   | "reintento idéntico (la respuesta se perdió por mala señal) ⇒ 200 con el mismo acuse y CERO escrituras" · "cambiar el después de una terminada ⇒ 409 y cero escrituras"                                      |
+| 9   | "el acuse no trae nada interno aunque la fila lo tenga" (llaves exactas `estado, evidenciaFinal, partidaId, terminadoEn`)                                                                                    |
+| 10  | `it.each` "cuerpo que no es objeto (null \| [] \| 5 \| "texto" \| true) ⇒ 400 y nada se escribe"                                                                                                             |
+| 11  | "un evento con un fieldName desconocido no alcanza /api/terminar: cae al perímetro y sin liga da 401" (payload con `fieldName` en la raíz); la forma real del resolver la cubren las regresiones R102 de P17 |
+
+Sin número pero también ejecutadas: la hora y la versión las pone el servidor (lo que mande el cliente se ignora, el dinero no cambia), la bitácora va después de escribir y sin token, `sin partidaId ⇒ 400`, y `GET /api/visita` le muestra al taller su antes y su después.
+
 **Riesgo conocido que ni se abre ni se cierra aquí:** la autorización de `TallerPartida` es por modelo (M-2). Un usuario interno con permiso de escritura podría escribir `evidenciaFinal` directo por la API. Pertenece al frente #11.
 
 ## 8. Pruebas
 
-- **Unitarias puras:** `validarTerminacion` (cada fila de 4.2 + idempotencia), `refaccionesSinDespues`, filas del Excel.
-- **Handler + arnés:** las 11 propiedades de §7, con `tests/tallerPortalHandler.test.ts` y el arnés.
-- **Página de la liga:** `tests/tallerPortalPagina.test.ts` cubre qué botón aparece en cada estado y tipo, y que el botón de terminar de una refacción nace deshabilitado.
-- **Fleet:** mapeo de `evidenciaFinal`, visor en modo dos grupos (incluido un grupo vacío) y una línea más en el aviso de `finalizarUnidad`.
-- **Chrome real** (arnés de `control-flotilla-prueba-chrome-monolito`): el registro con una partida terminada abre el visor A+, se cambia la foto con la tira, abre pantalla completa, y finalizar muestra el aviso. La red externa va bloqueada.
-- **Batería completa:** `test:run`, `typecheck`, `lint`, `build`, `audit:csp`, `audit:xss`, e2e contra la referencia (60/67).
+- **Unitarias puras:** `decidirTerminacion` (cada fila de 4.2 + idempotencia + 409) en `tests/tallerPortalHandler.test.ts`; `refaccionesSinDespues`, `avisoSinDespues` y el mapeo de `evidenciaFinal` en `tests/tallerAntesDespuesPuro.test.ts`; filas del Excel en `tests/tallerExcelPartidas.test.ts`.
+- **Handler + arnés:** las 11 propiedades de §7, con `tests/tallerPortalHandler.test.ts` y el arnés (`P18` de `tests/tallerPortalHarness.test.ts`).
+- **Página de la liga:** `tests/tallerPortalPaginaDespues.test.ts` cubre qué botón aparece en cada estado y tipo, que el botón de terminar de una refacción nace deshabilitado, los totales, y que terminar otro hallazgo no cierra el panel del después ya abierto.
+- **Fleet:** visor A+ (dos grupos, un grupo vacío, tira por lado y pantalla completa con ida y vuelta) en `tests/tallerVisorAntesDespues.test.ts`; la fila del registro, `finalizarUnidad` y `saveTallerEntry` en `tests/tallerAntesDespuesMonolito.test.ts`.
+- **Chrome real** (construido como `tests/e2e/antes-despues.spec.ts`, 4 pruebas sobre la demo de §8.1, con la red externa bloqueada por Playwright): la fila dice "Sin foto del después"; el 🖼 abre el A+ con las dos leyendas, la miniatura 2 del después cambia solo su lado, "Ver antes en pantalla completa" abre el visor simple y Esc vuelve al A+ con la foto 2 del después todavía marcada, y otro Esc lo cierra; finalizar con una refacción sin después avisa y cancelar deja la visita "En Reparación"; y la demo corta la red externa ella misma (fetch y XHR) dejando lo local vivo. La **liga** se probó aparte en Chrome real a 390×844 con un script desechable (`.scratch`, no versionado) contra la vista local: 16/16 (6 tarjetas; terminada con ANTES/DESPUÉS con imagen; mano de obra a un toque ⇒ Terminada + "Sin foto"; refacción con foto del selector ⇒ Terminada con después visible; total Autorizado fijo; persiste tras recargar; el panel autoriza y la liga ofrece subir el después).
+- **Batería completa:** `test:run`, `typecheck`, `lint`, `build` (la demo queda fuera de `dist`), `audit:csp`, `audit:xss`, smoke de la vista local (`preview:liga --smoke`), e2e contra la referencia **64/71** (71 pruebas; los 7 fallos son los ambientales conocidos; las 4 de antes-despues pasan). Sobre el merge con `main` salen **63/71**: se suma `kpi-taller.spec.ts:89`, que ya falla en `main` desde el PR #24 (espera el título viejo del modal, "Sin check mensual"; la prueba es idéntica a la de `main`) y se ajusta en un PR aparte. `audit:xss` marca **1 sospechoso preexistente de `main`** (`Control de flotilla.html`, `body.innerHTML` de llantas, commit `eaf6bb9`): no es de este frente; se avisa en el PR.
 - **Prueba manual de Navares (obligatoria, regla del frente híbrido):** con una **visita real**, liga emitida y el **celular** del taller: subir un hallazgo, autorizarlo con la cuenta de **Riesgos** (no con admin), subir el después, verlo en Fleet en A+, y finalizar una visita con una refacción sin después para ver el aviso.
 
 ### 8.1 Vista local para Navares (antes del PR)
 
-La ruta nueva del portal solo existe en la nube después de desplegar, así que "verlo en local" se arma con dos piezas que no tocan producción:
+La ruta nueva del portal solo existe en la nube después de desplegar, así que "verlo en local" se armó con dos piezas que no tocan producción:
 
-- **La liga en el navegador de la computadora (y del celular en la misma red):** un script `scripts/preview-liga-local.mjs` sirve la página real de `pagina.ts` contra un **servidor simulado en memoria** que usa las **mismas** funciones de `validacion.ts` (incluida `validarTerminacion`). Trae una visita de ejemplo con un hallazgo en cada estado (borrador, propuesta, autorizada refacción, autorizada mano de obra, terminada, rechazada). Las fotos se guardan en memoria. Nada sale a internet.
-- **Fleet con `npm run dev`** y datos sembrados por el arnés de `?e2e=1` (patrón de la memoria `control-flotilla-prueba-chrome-monolito`): el registro de una unidad con partidas terminadas y sin después, el visor A+ y el aviso al finalizar.
+- **La liga en el navegador de la computadora (y del celular en la misma red):** `npm run preview:liga` (`scripts/preview-liga-local.mjs`) sirve la página real de `pagina.ts` en `http://localhost:5180` contra un **servidor simulado en memoria** que carga `validacion.ts` con Vite y usa sus **mismas** funciones (`decidirTerminacion`, `llaveFoto`, `proyectarPartidaParaTaller`…). Trae una visita de ejemplo con **6 hallazgos**, uno por estado: autorizada refacción, autorizada mano de obra, terminada (con antes y después), propuesta, rechazada y borrador. Las fotos son dibujos SVG y viven en memoria; `/__panel` hace de Riesgos (autorizar). `--red` la abre a la misma red para el celular; `--smoke` se prueba sola y sale. Nada sale a internet. Lo que **no** replica lo dice en su cabecera: la firma HMAC, el apagador, el portón de visita cerrada/anulada, la CSP del portal, S3 y los chequeos que viven en `handler.ts` y no en `validacion.ts`.
+- **Fleet con `npm run dev`** y la URL `Control de flotilla.html?e2e=1&demo=antes-despues`: `src/dev/demoAntesDespues.ts` (solo desarrollo: `main.ts` la importa detrás de `import.meta.env.DEV`, así que no viaja al build) siembra una visita **inventada** con hallazgos en cada estado y abre su registro con las funciones reales de la app: la fila con "Sin foto del después", el visor A+ y el aviso al finalizar. Todo lo que tocaría la nube o el disco es un doble que no escribe (DynamoDB, S3, IndexedDB); la demo **corta la red externa ella misma** (fetch y XHR: solo `localhost`, `data:` y `blob:`), no corre si hay una sesión real abierta y pone el letrero "MODO DEMO · datos inventados · nada se guarda" arriba, sin atrapar clics.
 
-Navares recorre las dos. Hasta que diga que está bien, no hay PR.
+Navares recorrió las dos y dio el visto bueno el 2026-09-30.
 
 ## 9. Preguntas que quedan abiertas (no bloquean el plan)
 
@@ -209,9 +237,9 @@ Navares recorre las dos. Hasta que diga que está bien, no hay PR.
 
 ## 10. Despliegue
 
-1. Que `feat/taller-liga-cierre` pase la prueba manual de Navares y se fusione a `main`.
-2. Llevar `main` a esta rama (merge, no rebase) y correr la batería.
-3. Revisión de seguridad + revisión final de la rama.
-4. **Navares lo ve en local (§8.1) y da el visto bueno.**
+1. ✅ `feat/taller-liga-cierre` pasó la prueba manual de Navares y se fusionó a `main` el 2026-09-30 (PR #25).
+2. ✅ `main` traído a esta rama (merge, no rebase) el 2026-09-30; la batería se repitió sobre el merge (`98ba585`) el mismo día: vitest 189 archivos / 2,561 pruebas, typecheck, lint, build, `audit:csp` verdes; e2e 63/71 (7 ambientales + `kpi-taller.spec.ts:89`, preexistente de `main`).
+3. ✅ Revisión de seguridad + revisión final de la rama (3 lentes de seguridad + 4 de revisión final; los hallazgos quedaron como menores, sin críticos abiertos).
+4. ✅ **Navares lo vio en local (§8.1) y dio el visto bueno el 2026-09-30.**
 5. PR → merge = deploy (Amplify). El push lo corre Navares desde el worktree del frente.
 6. Humo en producción con la prueba manual de §8.
