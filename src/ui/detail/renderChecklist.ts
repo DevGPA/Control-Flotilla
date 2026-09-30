@@ -295,10 +295,9 @@ function findingItem(
 
   // Overlay auto-resueltos (spec 2026-07-23): origen explícito del atendido.
   if (isDone && doneEntry) {
-    // ts puede ser día ("2026-07-06", autos) o ISO completo (manuales) → día.
-    const fecha = doneEntry.ts ? doneEntry.ts.slice(0, 10).split("-").reverse().join("/") : "";
+    const fecha = doneEntry.ts ? fechaMarca(doneEntry.ts) : "";
     const meta = document.createElement("span");
-    meta.style.cssText = "margin-left:6px;font-size:9px;font-style:italic";
+    meta.className = "ck-meta";
     if (doneEntry.auto) {
       meta.style.color = "var(--G)";
       meta.textContent = fecha
@@ -306,11 +305,28 @@ function findingItem(
         : "resuelto — inspección posterior";
     } else if (doneEntry.by || fecha) {
       meta.style.color = "var(--s2)";
-      meta.textContent = `atendido${doneEntry.by ? ` — ${doneEntry.by}` : ""}${fecha ? ` · ${fecha}` : ""}`;
+      // Del correo basta el usuario ("tesoreria@gpa.com.mx" → "tesoreria").
+      const quien = doneEntry.by ? doneEntry.by.split("@")[0] : "";
+      meta.textContent = `atendido${quien ? ` — ${quien}` : ""}${fecha ? ` · ${fecha}` : ""}`;
     }
     if (meta.textContent) el.appendChild(meta);
   }
   return el;
+}
+
+/** dd/mm/aaaa de una marca. ts puede ser solo día ("2026-07-06", autos) o ISO completo
+ *  (manuales, en UTC): el ISO se muestra en la fecha LOCAL — tomar el día del string
+ *  UTC hacía que lo marcado después de las 18:00 en México saliera con fecha de mañana. */
+function fechaMarca(ts: string): string {
+  if (ts.includes("T")) {
+    const d = new Date(ts);
+    if (!Number.isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      return `${dd}/${mm}/${d.getFullYear()}`;
+    }
+  }
+  return ts.slice(0, 10).split("-").reverse().join("/");
 }
 
 // ═══════════════════════════════════════════════════════════════

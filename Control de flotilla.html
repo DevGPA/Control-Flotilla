@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-5TzHUS+T86IArLqeXggWhn5KF/1mwZnrFyTWG77W5+s=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-SqKDK2MXtL63iitl6rfFwoYlTnyMowqL9kyDHG+v2o0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -288,11 +288,11 @@
     <!-- Cobertura del ciclo (2026-08): "¿vamos al corriente?" como titular, no nota al
          pie. El % vive en hero-val porque hero-sub desaparece en laptops (max-height:800px).
          La llena buildKPIs vía window.__cobertura; clic → las que faltan (missingMensual). -->
-    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades con inspección en el rango · clic para ver las que faltan">
+    <div class="hero-card" id="hero-cobertura" onclick="openFleetModal('missingMensual')" style="cursor:pointer;display:none" role="button" tabindex="0" title="Unidades sin checklist en el rango · clic: también incluye las que están en taller">
       <div class="hero-icon" style="background:var(--B)"><i data-lucide="clipboard-check" style="width:22px;height:22px;color:#fff;stroke-width:2"></i></div>
       <div class="hero-body">
         <div class="hero-val" id="kv_cob">—</div>
-        <div class="hero-lbl">Cobertura del ciclo</div>
+        <div class="hero-lbl">Unidades sin checklist</div>
         <div class="hero-sub" id="ks_cob"></div>
       </div>
     </div>
@@ -342,18 +342,20 @@
      tope y scroll interno — la app es de viewport fijo (#app overflow:hidden) y
      apilados a lo ancho aplastaban la tabla. syncOpsRow() gobierna el wrapper. -->
 <div id="ops-row" style="display:none">
-<!-- MAPA DE FLOTA (Híbrido B×C H4): cada tile es una unidad, agrupadas por
-     sucursal. Lo puebla buildKPIs vía window.__fleetMap (src/ui/fleetMap.ts,
-     lógica pura testeada). Mismo criterio de estado que el hero y las alertas. -->
+<!-- MAPA DE FLOTA (Híbrido B×C H4): una tarjeta por sucursal con sus unidades
+     numeradas. Lo puebla buildKPIs vía window.__fleetMap (src/ui/fleetMap.ts,
+     lógica pura testeada). Color = operativa/en taller (criterio de la dona);
+     puntito rojo = urgente sin atender o servicio vencido. La leyenda vive en el
+     título (ahorra un renglón). -->
 <div id="fleet-map-panel" style="display:none;padding:10px 14px;background:var(--bg);border:var(--card-bd);box-shadow:var(--card-sh);border-radius:var(--r2)">
-  <div class="fm-title" id="fm-header" title="Mostrar/ocultar mapa"><span role="heading" aria-level="2">Mapa de flota</span><span class="fm-hint">cada cuadro es una unidad · click abre su expediente</span><span id="fm-chev" style="margin-left:auto;display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--s2)"></i></span></div>
+  <div class="fm-title" id="fm-header" title="Mostrar/ocultar mapa"><span role="heading" aria-level="2">Mapa de flota</span><span class="fm-hint">cada cuadro es una unidad · click abre su expediente</span>
+    <span class="fm-legend" aria-hidden="true">
+      <span class="fm-lg"><span class="fm-sw fm-sw-ok"></span>Operativa</span>
+      <span class="fm-lg"><span class="fm-sw fm-sw-taller"></span>En taller</span>
+      <span class="fm-lg"><span class="fm-lgdot"></span>Urgente sin atender</span>
+    </span>
+    <span id="fm-chev" style="display:inline-flex;transition:transform .15s;transform:rotate(180deg)"><i data-lucide="chevron-down" style="width:14px;height:14px;color:var(--s2)"></i></span></div>
   <div id="fleet-map"></div>
-  <div class="fm-legend" aria-hidden="true">
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Gl);box-shadow:inset 0 0 0 1px var(--G)"></span>Operativa</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Al);box-shadow:inset 0 0 0 1px var(--A)"></span>Revisar</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--Rl);box-shadow:inset 0 0 0 1.5px var(--R)"></span>Requiere atención</span>
-    <span class="fm-lg"><span class="fm-sw" style="background:var(--violet-l);box-shadow:inset 0 0 0 1px var(--violet)"></span>En taller</span>
-  </div>
 </div>
 
 <!-- ALERTS SUMMARY — RETIRADO a petición del usuario (H8, 2026-07-03). Todo el
@@ -1552,7 +1554,7 @@
     try{
       const t=document.createElement("div");
       t.setAttribute("role", kind==="error"?"alert":"status");
-      t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS[kind]||COLORS.info};color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px;animation:up .2s ease;display:flex;gap:8px;align-items:flex-start;line-height:1.35`;
+      t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS[kind]||COLORS.info};color:var(--toast-fg,#fff);padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px;animation:up .2s ease;display:flex;gap:8px;align-items:flex-start;line-height:1.35`;
       const ico=document.createElement("span");ico.textContent=ICONS[kind]||ICONS.info;ico.style.cssText="font-weight:700;flex-shrink:0";
       const body=document.createElement("span");body.textContent=String(msg||"");
       t.appendChild(ico);t.appendChild(body);
@@ -1567,11 +1569,11 @@
   window.notifyUndo=function(msg,onCommit,ms=5000,onUndo){
     const t=document.createElement("div");
     t.setAttribute("role","status");
-    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:var(--w1);color:#fff;padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
+    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:var(--w1);color:var(--toast-fg,#fff);padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
     const body=document.createElement("span");body.textContent=String(msg||"");body.style.flex="1";
     const btn=document.createElement("button");
     btn.textContent="DESHACER";
-    btn.style.cssText="background:var(--A);color:#fff;border:none;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
+    btn.style.cssText="background:var(--A);color:var(--toast-fg,#fff);border:none;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
     t.appendChild(body);t.appendChild(btn);
     document.body.appendChild(t);stack++;
     let done=false;
@@ -1583,11 +1585,11 @@
   window.notifyAction=function(msg,btnLabel,onAction,ms=8000){
     const t=document.createElement("div");
     t.setAttribute("role","alert");
-    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS.warn};color:#fff;padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
+    t.style.cssText=`position:fixed;right:20px;bottom:${20+stack*54}px;background:${COLORS.warn};color:var(--toast-fg,#fff);padding:11px 14px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.22);max-width:420px;animation:up .2s ease;display:flex;gap:10px;align-items:center;line-height:1.35`;
     const body=document.createElement("span");body.textContent=String(msg||"");body.style.flex="1";
     const btn=document.createElement("button");
     btn.textContent=String(btnLabel||"REINTENTAR");
-    btn.style.cssText="background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
+    btn.style.cssText="background:transparent;color:inherit;border:1px solid currentColor;border-radius:5px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;letter-spacing:.4px";
     t.appendChild(body);t.appendChild(btn);
     document.body.appendChild(t);stack++;
     let done=false;
@@ -2240,6 +2242,17 @@ function isoDayOf(v){
   const dmy=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(dmy)return `${dmy[3]}-${String(dmy[2]).padStart(2,"0")}-${String(dmy[1]).padStart(2,"0")}`;
   return "";
+}
+// dd/mm/aaaa de una marca de atendido. ESPEJO de fechaMarca en
+// src/ui/detail/renderChecklist.ts: el ts ISO (UTC) se muestra en fecha LOCAL —
+// tomar el día del string UTC hacía que lo marcado después de las 18:00 saliera "mañana".
+function fechaMarca(ts){
+  const s=String(ts||"");
+  if(s.includes("T")){
+    const d=new Date(s);
+    if(!isNaN(d.getTime())) return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  }
+  return s.slice(0,10).split("-").reverse().join("/");
 }
 function resolveDoneEntry(dm,f){
   if(!dm)return undefined;
@@ -3396,7 +3409,7 @@ function loadWBSemanal(wb, fname){
         showView("semanales");
         // Pequeño toast de confirmación
         const toast=document.createElement("div");
-        toast.style.cssText="position:fixed;bottom:24px;right:24px;background:var(--ac);color:#fff;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:up .2s ease";
+        toast.style.cssText="position:fixed;bottom:24px;right:24px;background:var(--ac);color:var(--toast-fg,#fff);padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:up .2s ease";
         toast.textContent=`✓ ${periodoLbl} — ${entries.length} unidades importadas`;
         document.body.appendChild(toast);
         setTimeout(()=>toast.remove(),3500);
@@ -3723,10 +3736,10 @@ function buildKPIs(){
       const cs=getComputedStyle(document.documentElement);
       const NIVEL_COLOR={ok:cs.getPropertyValue("--G"),warn:cs.getPropertyValue("--A"),bad:cs.getPropertyValue("--R")};
       const kvc=document.getElementById("kv_cob");
-      if(kvc){ kvc.textContent=`${cob.pct}%`; kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
+      if(kvc){ kvc.textContent=String(cob.faltan); kvc.style.color=(NIVEL_COLOR[window.__cobertura.nivel(cob.pct)]||"").trim(); }
       const ksc=document.getElementById("ks_cob");
-      if(ksc) ksc.textContent=`${cob.conCheck}/${cob.total} · ${cob.faltan?`faltan ${cob.faltan}`:"completo"}`;
-      cobCard.title=`${cob.conCheck} de ${cob.total} unidades con inspección en el rango · clic para ver las ${cob.faltan||""} que faltan`.replace("  "," ");
+      if(ksc) ksc.textContent=`${cob.pct}% al corriente · ${cob.conCheck}/${cob.total}`;
+      cobCard.title=`${cob.faltan} de ${cob.total} unidades sin checklist en el rango · clic: la lista suma también las que están en taller`;
       cobCard.style.display="flex";
     } else {
       // Sin catálogo cloud no hay denominador: la card queda oculta (fail-closed).
@@ -3767,19 +3780,37 @@ function buildKPIs(){
       legRows.map(([k,c,l,n])=>`<div class="dleg-i" data-k="${k}"><span class="dleg-lbl"><span class="dleg-sq" style="background:${c}"></span>${l}</span><span class="dleg-num" style="color:${c}">${n}</span></div>`).join("");
   }
 
-  // Híbrido B×C H4: mapa de flota — flags con las MISMAS reglas que el hero/alertas;
-  // la agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
+  // Híbrido B×C H4: mapa de flota. Color = operativa/en taller (MISMO criterio que la
+  // dona, decisión Navares 2026-09-25); puntito rojo = hallazgos Urgentes SIN atender
+  // de la última inspección (incluye llanta crítica) o servicio vencido (salvo que su
+  // hallazgo Mant:Servicio ya esté marcado atendido). Los motivos van a la tarjeta flotante.
+  // La agrupación/orden/render vive en src/ui/fleetMap.ts (window.__fleetMap, testeado).
   const fmWrap=document.getElementById("fleet-map-panel"), fmEl=document.getElementById("fleet-map");
   if(fmWrap&&fmEl&&window.__fleetMap){
     // H9: índice key→unidad del catálogo (misma derivación de key que el módulo)
     // para el click de dos niveles: detalle si hay inspección en rango; si no, ficha.
     const fmKey=x=>x.uid!=null?String(x.uid):String(x.eco??x.plate??"?");
     const fmIndex=new Map(fleet.map(x=>[fmKey(x),x]));
+    // Marcas "atendido" por PLACA: checklistDB va por uid de fila (placa o placa__fecha)
+    // y el catálogo no recibe el fan-out de toggleCheckItem → se juntan aquí con LWW por ts.
+    const fmDone=new Map();
+    for(const uid in (checklistDB||{})){
+      const p=plateOfUid(uid).trim(); if(!p) continue;
+      const acc=fmDone.get(p)||{}, m=checklistDB[uid]||{};
+      for(const k in m){ const e=m[k]; if(e&&(!acc[k]||(e.ts||"")>(acc[k].ts||""))) acc[k]=e; }
+      fmDone.set(p,acc);
+    }
+    const fmAlertas=x=>{
+      const dm=fmDone.get(String(x.plate||plateOfUid(x.uid)).trim())||{};
+      const out=(x.F||[]).filter(f=>f.lv==="Urgente"&&!isFindingDone(dm,f,x.fecha)).map(f=>f.text||f.key);
+      const svcF=(x.F||[]).find(f=>f.key==="Mant:Servicio");
+      if(svcStatus(x)==="vencido"&&!(svcF&&isFindingDone(dm,svcF,x.fecha))) out.push("Servicio vencido");
+      return out;
+    };
     const model=window.__fleetMap.build(fleet.map(x=>({
       uid:x.uid,eco:x.eco,plate:x.plate,branch:x.branch,
       enTaller:isUnitEnTaller(x),
-      atencion:x.risk==="Urgente"||(x.minT!=null&&x.minT<=TCRIT)||svcStatus(x)==="vencido",
-      revisar:x.risk==="Revisar"||x.risk==="Completar"||svcStatus(x)==="proximo"
+      alertas:fmAlertas(x)
     })));
     const has=model.some(g=>g.tiles.length);
     fmWrap.dataset.has=has?"1":"0";
@@ -4168,12 +4199,11 @@ function syncOpsRow(){
 }
 
 // Híbrido H5: pliega/expande el mapa de flota (persistido, como las alertas).
+// La leyenda vive en el título y se queda visible aunque el mapa esté plegado.
 function setFleetMapCollapsed(collapsed){
   const m=document.getElementById("fleet-map");
-  const l=document.querySelector("#fleet-map-panel .fm-legend");
   const ch=document.getElementById("fm-chev");
   if(m)m.style.display=collapsed?"none":"";
-  if(l)l.style.display=collapsed?"none":"";
   if(ch)ch.style.transform=collapsed?"rotate(0deg)":"rotate(180deg)";
   try{localStorage.setItem("cf_fleetmap_collapsed",collapsed?"1":"0");}catch(e){}
 }
@@ -4674,10 +4704,12 @@ function renderChecklist(u,body){
       if(done){
         // Overlay auto-resueltos (spec 2026-07-23): distinguir auto vs manual.
         const _e=resolveDoneEntry(doneMap,f);
-        const _fe=_e&&_e.ts?_e.ts.slice(0,10).split("-").reverse().join("/"):"";
+        const _fe=_e&&_e.ts?fechaMarca(_e.ts):"";
+        // Del correo basta el usuario ("tesoreria@gpa.com.mx" → "tesoreria").
+        const _by=_e&&_e.by?String(_e.by).split("@")[0]:"";
         const _meta=_e&&_e.auto===true
-          ?`<span style="margin-left:6px;font-size:9px;color:var(--G);font-style:italic">resuelto — inspección ${escHtml(_fe||"posterior")}</span>`
-          :(_e&&(_e.by||_fe)?`<span style="margin-left:6px;font-size:9px;color:var(--s2);font-style:italic">atendido${_e.by?` — ${escHtml(_e.by)}`:""}${_fe?` · ${escHtml(_fe)}`:""}</span>`:"");
+          ?`<span class="ck-meta" style="color:var(--G)">resuelto — inspección ${escHtml(_fe||"posterior")}</span>`
+          :(_e&&(_by||_fe)?`<span class="ck-meta" style="color:var(--s2)">atendido${_by?` — ${escHtml(_by)}`:""}${_fe?` · ${escHtml(_fe)}`:""}</span>`:"");
         html+=`<div class="ck-item ck-done"${changeStyle}><div class="ck-item-body" ${bodyAttr}><span class="ck-icon" style="color:var(--G)">✓</span><span class="ck-txt">${escHtml(f.text)}${_meta}</span></div><button class="ck-checkbox ck-checkbox-done" ${cbAttr} aria-label="Desmarcar"><span>✓</span></button></div>`;
       } else {
         const cls=f.lv==="Urgente"?"ck-fail-u":f.lv==="Completar"?"ck-fail-c":"ck-fail-r";
@@ -4759,11 +4791,13 @@ async function toggleCheckItem(uid,itemKey,aliasText,want){
   // semanas distintos en sesión cloud) comparten la marca. El corte temporal de
   // isFindingDone decide por-fila si la marca aplica.
   const targets=units.filter(x=>x===u||(plate&&(x.plate||plateOfUid(x.uid))===plate));
+  // Quién marcó, visible desde ya (la nube ya lo guarda como `por`, pero solo se veía al recargar).
+  const by=(window.__cloudSession&&window.__cloudSession.email)||undefined;
   for(const t of targets){
     if(!checklistDB[t.uid]) checklistDB[t.uid]={};
     // Tombstone {done:false,ts} en vez de delete: conserva el ts para que el
     // LWW del dual-read gane a marcas viejas bajo el texto display.
-    checklistDB[t.uid][itemKey]={done:nowDone,ts};
+    checklistDB[t.uid][itemKey]=by?{done:nowDone,ts,by}:{done:nowDone,ts};
     try{ await dbPut("checklist",t.uid,stripAutoDM(checklistDB[t.uid])); }
     catch(e){ console.warn("[toggleCheckItem] dbPut falló:",t.uid,e); }
     recalcRisk(t);
@@ -5620,7 +5654,7 @@ function _pdfProgreso(){
       if(!el){
         el=document.createElement("div");
         el.setAttribute("role","status");
-        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:#fff;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
+        el.style.cssText="position:fixed;right:20px;bottom:20px;background:var(--ac);color:var(--toast-fg,#fff);padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 8px 20px rgba(0,0,0,.18);max-width:360px";
         document.body.appendChild(el);
       }
       el.textContent=txt;
@@ -8916,7 +8950,7 @@ const _FLEET_MODAL_META = {
   tiresCrit:     { ttl:`Unidades con llanta crítica (≤${TCRIT}mm)`, col:"Llanta mín" },
   svc:           { ttl:"Servicio vencido o próximo",     col:"Servicio" },
   taller:        { ttl:"Unidades en taller",             col:"Estado" },
-  missingMensual:{ ttl:"Sin check mensual en el rango",  col:"Último check" },
+  missingMensual:{ ttl:"Sin checklist o en taller",      col:"Estado" },
   missingSemanal:{ ttl:"Sin check semanal en el rango",  col:"Último check" },
 };
 function _isMissingKind(k){ return k==="missingMensual" || k==="missingSemanal"; }
@@ -8938,7 +8972,13 @@ function _fleetKindFilter(u){
   if(_fleetModalKind==="tiresCrit") return u.minT!==null && u.minT<=TCRIT;
   if(_fleetModalKind==="taller")    return isUnitEnTaller(u);
   if(_fleetModalKind==="svc")       return svcStatus(u)!=="ok";
-  if(_isMissingKind(_fleetModalKind)) return !_missingPresent.has(u.plate||u.uid) && !u.esMontacargas; // falta = no presente en el rango (montacargas excluidos)
+  if(_isMissingKind(_fleetModalKind)){
+    if(u.esMontacargas) return false; // no hacen checklist de vehiculo
+    // Mensual: una sola vista con lo que no esta al corriente Y lo que no esta
+    // disponible. Una unidad en taller entra aunque ya tenga su checklist.
+    if(_fleetModalKind==="missingMensual" && typeof isUnitEnTaller==="function" && isUnitEnTaller(u)) return true;
+    return !_missingPresent.has(u.plate||u.uid); // falta = no presente en el rango
+  }
   return true;
 }
 // Celda de detalle (6ª columna) según el kind.
@@ -8958,8 +8998,22 @@ function _fleetDetailCell(u){
   }
   if(_isMissingKind(_fleetModalKind)){
     const last = _fleetModalKind==="missingSemanal" ? _missingLast.get(u.plate) : pickStrFleet(u.fecha);
-    return last ? `<span style="color:var(--s2);font-size:11px">${escHtml(String(last).slice(0,10))}</span>`
-                : `<span style="color:var(--R);font-weight:600">Nunca</span>`;
+    if(_fleetModalKind==="missingSemanal"){
+      return last ? `<span style="color:var(--s2);font-size:11px">${escHtml(String(last).slice(0,10))}</span>`
+                  : `<span style="color:var(--R);font-weight:600">Nunca</span>`;
+    }
+    // Mensual: la fila puede estar aqui por no tener checklist, por estar en
+    // taller, o por las dos. El motivo se dice explicito para que la mezcla
+    // no se lea como un error de conteo.
+    const sinCheck = !_missingPresent.has(u.plate||u.uid);
+    const enTaller = typeof isUnitEnTaller==="function" && isUnitEnTaller(u);
+    const motivos = [];
+    if(sinCheck) motivos.push(`<span style="color:var(--R);font-weight:600">Sin checklist</span>`);
+    if(enTaller) motivos.push(`<span style="color:var(--violet);font-weight:600">En taller</span>`);
+    const fecha = last ? `<span style="color:var(--s2);font-size:10px">${escHtml(String(last).slice(0,10))}</span>`
+                       : (sinCheck ? `<span style="color:var(--s2);font-size:10px">nunca</span>` : "");
+    const sep = `<span style="color:var(--s2);font-size:10px"> · </span>`;
+    return motivos.join(sep) + (fecha ? sep + fecha : "");
   }
   return "";
 }
@@ -9020,9 +9074,21 @@ window.renderFleetModalRows = function(){
     return _qMatch(q, u.eco, [u.plate,u.brand,u.branch]);
   });
   const sub = document.getElementById("fleet-mod-sub");
-  if(sub) sub.textContent = rows.length === base.length
-    ? `${base.length} unidad${base.length!==1?"es":""}`
-    : `${rows.length} de ${base.length}`;
+  if(sub){
+    const cuenta = rows.length === base.length
+      ? `${base.length} unidad${base.length!==1?"es":""}`
+      : `${rows.length} de ${base.length}`;
+    let desglose = "";
+    if(_fleetModalKind==="missingMensual"){
+      let sc=0, tl=0;
+      for(const u of rows){
+        if(!_missingPresent.has(u.plate||u.uid)) sc++;
+        if(typeof isUnitEnTaller==="function" && isUnitEnTaller(u)) tl++;
+      }
+      desglose = ` · ${sc} sin checklist · ${tl} en taller`;
+    }
+    sub.textContent = cuenta + desglose;
+  }
   const showDet = _fleetModalKind !== "all";
   const tbody = document.getElementById("fleet-mod-tbody");
   if(!tbody) return;
