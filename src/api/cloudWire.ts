@@ -42,8 +42,13 @@ import {
   distintivoProveedor,
   prioridadDistintivo,
   filasPendientes,
+  ordenarHallazgos,
 } from "../taller/seguimiento";
 import { avisoSinDespues, mensajeWhatsApp, type Partida } from "../taller/partidas";
+import { fichaRegistro } from "../taller/ficha";
+import { describirRevocadaPor, nombreDeUsuario } from "../taller/nombreUsuario";
+import { hayCambios } from "../taller/cambiosFormulario";
+import { cargarDirectorio, directorioEnCache, yoActual, yoEnCache } from "./directorioUsuarios";
 import {
   listUnits,
   upsertUnit,
@@ -603,6 +608,28 @@ export function setupCloud(): void {
   // _bnGrupo quedan sin caller, ver comentario junto a _bnGrupo).
   window.__filasPendientes = (entries, porVisita) =>
     filasPendientes(entries, porVisita, new Date().toISOString());
+
+  // ── Registro como ficha (spec 2026-09-30 §4.2, §4.3, §4.5, §4.7): el monolito pinta,
+  //    src/ calcula. El "ahora" es el mismo instante que usan __estadoLiga/__promesaTaller.
+  window.__fichaRegistro = (e, ps, opts) =>
+    fichaRegistro(e, ps, {
+      ahora: new Date().toISOString(),
+      hibrido: opts.hibrido,
+      confiables: opts.confiables,
+    });
+  window.__ordenarHallazgos = ordenarHallazgos;
+  window.__nombreDeUsuario = (crudo) => nombreDeUsuario(crudo, directorioEnCache(), yoEnCache());
+  window.__describirRevocadaPor = (crudo) =>
+    describirRevocadaPor(crudo, directorioEnCache(), yoEnCache());
+  window.__hayCambios = hayCambios;
+  // Lectura pasiva y en caché del directorio (nunca pide login). Devuelve si hay
+  // directorio; el monolito reescribe entonces SOLO los nodos de nombre (§4.7).
+  window.__directorioUsuarios = {
+    cargar: async () => {
+      await yoActual();
+      return (await cargarDirectorio()) !== null;
+    },
+  };
 
   // ── Ciclo de firma del taller — liga del proveedor (Task 11) ────────────────
   // No vive en src/api/client.ts (otra sesión lo está editando en este mismo
