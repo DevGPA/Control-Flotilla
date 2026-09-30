@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-9A6JQ1PFcbF+1Kp+2fnWKvIkhkz1eoPW6vERMXQyqSs=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-SqKDK2MXtL63iitl6rfFwoYlTnyMowqL9kyDHG+v2o0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7837,6 +7837,15 @@ function _partidasDeVisita(e){
   return vk ? (window.__tallerPartidas?.get(vk) || []) : [];
 }
 
+// Antes y después (spec 2026-09-28 §6.2): el renglón del aviso al CERRAR una visita con
+// refacciones autorizadas sin foto del después. La regla y el texto viven en
+// src/taller/partidas.ts (avisoSinDespues); aquí solo se pregunta. "" = no avisar.
+function _avisoSinDespues(e) {
+  return typeof window.__avisoSinDespues === "function"
+    ? window.__avisoSinDespues(_partidasDeVisita(e))
+    : "";
+}
+
 // Fix B-C2 (TRI-ESTADO) — ¿se puede CREER lo que devuelve _partidasDeVisita?
 // Devolver [] tiene dos significados incompatibles y hasta ahora se confundían:
 //   (a) "el esquema está apagado / esta visita no tiene partidas" → el [] es un
@@ -8078,6 +8087,15 @@ function _provFilaHistorial(p){
   badge.className = "tl-pill " + claseExtra;
   badge.textContent = etiqueta;
   linea1.append(desc, badge);
+  // Antes y después (spec 2026-09-28 §6.3): una refacción autorizada sin foto del después
+  // lo dice en su fila (la mano de obra no: su foto es opcional). Distintivo ámbar (diag),
+  // como "esperando firma": es un pendiente, no un rechazo.
+  if(p.estado === "autorizada" && p.tipo !== "manoObra"){
+    const chip = document.createElement("span");
+    chip.className = "tl-pill diag";
+    chip.textContent = "Sin foto del después";
+    linea1.appendChild(chip);
+  }
 
   const esAutorizadaOTerminada = p.estado === "autorizada" || p.estado === "terminada";
   const precio = document.createElement("div");
@@ -8108,6 +8126,31 @@ function _provFilaHistorial(p){
     rastro.textContent = esDelTaller ? "Capturada por el taller, aún sin enviar" : "Capturada por GPA, aún sin enviar";
   }
   info.append(linea1, precio, rastro);
+  // Una terminada con alguna foto ofrece ver antes y después lado a lado (visor A+).
+  const fotosAntes = p.fotos || [];
+  const fotosDespues = p.evidenciaFinal || [];
+  if(p.estado === "terminada" && (fotosAntes.length || fotosDespues.length)){
+    const verAD = document.createElement("button");
+    verAD.type = "button";
+    verAD.textContent = "🖼 Antes y después";
+    verAD.style.cssText = "align-self:flex-start;margin-top:4px;min-height:32px;padding:4px 10px;border-radius:6px;border:1px solid var(--ln);background:var(--bg2);color:var(--w1);font-size:11.5px;font-weight:600;cursor:pointer";
+    verAD.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if(typeof window.__abrirVisorAntesDespues === "function"){
+        const tipoTxtV = p.tipo === "manoObra" ? "Mano de obra" : "Refacción";
+        let subtitulo = tipoTxtV;
+        if(Number.isFinite(p.precioAutorizado)) subtitulo += ` · ${_fmtMon2(p.precioAutorizado)}`;
+        if(p.terminadoEn) subtitulo += ` · terminada el ${fmtDate(p.terminadoEn)}`;
+        window.__abrirVisorAntesDespues({
+          antes: { llaves: fotosAntes, fecha: p.creadoEn },
+          despues: { llaves: fotosDespues, fecha: p.terminadoEn },
+          titulo: p.descripcion || "(sin descripción)",
+          subtitulo,
+        });
+      }
+    });
+    info.appendChild(verAD);
+  }
   row.appendChild(info);
   return row;
 }
@@ -11124,7 +11167,9 @@ function finalizarUnidad(id){
   const avisoPartidas = (nPend || nBorr)
     ? `\n\n⚠ Esta visita tiene ${nPend} partida${nPend===1?"":"s"} esperando firma y ${nBorr} borrador${nBorr===1?"":"es"} sin enviar.\nSi la finalizas ahora, su costo puede cambiar después de cerrada.`
     : "";
-  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresarla en cualquier momento desde el Historial.`)) return;
+  // Antes y después (spec 2026-09-28 decisión 6): mismo criterio que C-I5 — se DICE.
+  const avisoDespues = _avisoSinDespues(e);
+  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}${avisoDespues ? "\n\n" + avisoDespues : ""}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresarla en cualquier momento desde el Historial.`)) return;
   e.estado = "Finalizado";
   e.fsalidaReal = e.fsalidaReal || new Date().toISOString().slice(0,10);
   e.updatedAt   = new Date().toISOString();
@@ -11391,6 +11436,16 @@ async function saveTallerEntry(){
       _markInvalid("tf-fentrada");
       return;
     }
+  }
+
+  // Antes y después (spec 2026-09-28 decisión 6): guardar con "Fecha real de salida" CIERRA la
+  // visita (batchUpload.ts deriva estatus "cerrado" de fsalidaReal) y la liga del taller muere.
+  // Si quedan refacciones autorizadas sin foto del después, se DICE, no se prohíbe. Solo al
+  // cerrar: una visita que ya estaba cerrada y se vuelve a guardar no pregunta otra vez.
+  const cierraAhora = !!srcEntry && !srcEntry.fsalidaReal && !!entry.fsalidaReal;
+  if(cierraAhora){
+    const avisoDespues = _avisoSinDespues(srcEntry);
+    if(avisoDespues && !confirm(`${avisoDespues}\n\n¿Guardar la salida de todos modos?`)) return;
   }
 
   if(_tallerEditId){

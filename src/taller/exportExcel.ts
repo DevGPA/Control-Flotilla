@@ -504,7 +504,7 @@ export const ETIQUETA_ESTADO_PARTIDA: Record<PartidaEstado, string> = {
 };
 
 /**
- * 14 columnas, en el orden que lee Riesgos: identidad de la visita, qué se pidió, el
+ * 16 columnas, en el orden que lee Riesgos: identidad de la visita, qué se pidió, el
  * ciclo de firma (propuesto → estado → autorizado → quién/cuándo), por qué se rechazó
  * si aplica, de dónde vino y cuánta evidencia trae.
  *
@@ -576,6 +576,21 @@ export const COLUMNAS_PARTIDAS: ColumnaPartida[] = [
     tipo: "numero",
     formato: "0",
     valor: (_e, p) => p.fotos?.length ?? 0,
+  },
+  {
+    titulo: "Fotos después",
+    ancho: 10,
+    tipo: "numero",
+    formato: "0",
+    // Vacío mientras la partida no esté terminada: un 0 diría "se terminó sin foto".
+    valor: (_e, p) => (p.estado === "terminada" ? (p.evidenciaFinal?.length ?? 0) : ""),
+  },
+  {
+    titulo: "Terminado el",
+    ancho: 12,
+    tipo: "fecha",
+    formato: FMT_FECHA,
+    valor: (_e, p) => fecha(p.terminadoEn),
   },
 ];
 

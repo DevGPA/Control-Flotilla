@@ -215,6 +215,10 @@ declare global {
      *  consuma en vez de reimplementar el filtro "estado === propuesta" —
      *  Task 8 (bandeja de firma) contará con esta misma función. */
     __pendientesDeFirma?: (ps: Partida[]) => number;
+    /** Antes y después (spec 2026-09-28 §6.2): el renglón del aviso al cerrar una visita
+     *  con refacciones autorizadas sin foto del después ("" si no falta ninguna).
+     *  Lo publica cloudWire.ts (corre siempre, también en ?e2e=1). */
+    __avisoSinDespues?: (ps: Partida[]) => string;
     /** Bridges de Task 8 (bandeja de firmas) — mismo motivo que los de arriba:
      *  el `<script>` inline del monolito no puede `import`, así que las
      *  funciones puras de src/ se publican para que las invoque directo. */
@@ -266,6 +270,13 @@ declare global {
     __abrirVisorFotos?: (opts: {
       llaves: readonly string[];
       inicial?: number;
+      titulo?: string;
+      subtitulo?: string;
+    }) => void;
+    /** Visor A+ antes|después (spec 2026-09-28 §6.4). Lo monta src/taller/visorFotos.ts. */
+    __abrirVisorAntesDespues?: (opts: {
+      antes: { llaves: readonly string[]; fecha?: string };
+      despues: { llaves: readonly string[]; fecha?: string };
       titulo?: string;
       subtitulo?: string;
     }) => void;

@@ -21,7 +21,7 @@
  * análisis de imports de Vite tumba handler.ts antes de que `vi.mock` alcance a
  * intervenir — comprobado, no supuesto.
  *
- * ── LAS 17 PROPIEDADES ────────────────────────────────────────────────────────
+ * ── LAS 18 PROPIEDADES ────────────────────────────────────────────────────────
  * La lista canónica de la fase de diseño se perdió; esta es la reconstrucción
  * desde el código. Cada `describe` de abajo abre con su número.
  *
@@ -77,6 +77,12 @@
  *     forma real con que Amplify Gen 2 invoca la Lambda, o bajo `info` — ANTES
  *     de cualquier lógica de `rawPath`. REGRESIÓN 2026-09-14: buscarlo solo en
  *     `info.fieldName` mandaba toda emisión al perímetro público ("malformado").
+ * 18. `POST /api/terminar` (antes y después, spec 2026-09-28): solo una partida
+ *     `autorizada` DE ESTA visita (ni de otra visita ni de otro tenant, aunque la
+ *     consulta dejara de acotar); refacción sin foto ⇒ 400; llaves fuera del prefijo
+ *     o de más ⇒ 400; el SERVIDOR pone `terminada`, la hora y `version + 1`; el
+ *     reintento idéntico ⇒ 200 sin escribir; otras llaves sobre una terminada ⇒ 409;
+ *     el acuse es una proyección; la bitácora va después de escribir.
  *
  * ── LO QUE SE MOCKEA ─────────────────────────────────────────────────────────
  *  · `$amplify/env/taller-portal`  → tests/stubs/ vía `test.alias` (vite.config.ts)
@@ -524,7 +530,7 @@ function sembrarPartida(sobre: Fila = {}) {
   return p;
 }
 
-/** Las siete rutas públicas, cada una con un cuerpo/query que pasaría sus
+/** Las ocho rutas públicas, cada una con un cuerpo/query que pasaría sus
  *  propias validaciones — para que lo único que las tumbe sea el PORTÓN. */
 const RUTAS_PUBLICAS: Array<{
   nombre: string;
@@ -551,6 +557,12 @@ const RUTAS_PUBLICAS: Array<{
     metodo: "POST",
     body: { mime: "image/jpeg", tamano: 1024 },
   },
+  {
+    nombre: "POST /api/terminar",
+    ruta: "/api/terminar",
+    metodo: "POST",
+    body: { partidaId: "p-1", fotos: [LLAVE_PROPIA] },
+  },
 ];
 
 const CUERPO_OPACO = JSON.stringify({ error: "liga no válida" });
@@ -561,7 +573,7 @@ const CUERPO_OPACO = JSON.stringify({ error: "liga no válida" });
 describe("P1 — secreto ausente o corto: todo el perímetro responde 401", () => {
   for (const secreto of ["", "x", "x".repeat(31)]) {
     const etiqueta = secreto === "" ? "ausente" : `de ${secreto.length} caracteres`;
-    it(`secreto ${etiqueta}: las 7 rutas públicas responden 401 aun con un token bien firmado`, async () => {
+    it(`secreto ${etiqueta}: las ${RUTAS_PUBLICAS.length} rutas públicas responden 401 aun con un token bien firmado`, async () => {
       const handler = await cargarHandler(secreto);
       sembrarVisita();
       // El token se firma con el secreto BUENO: el 401 tiene que venir de que el
@@ -1002,7 +1014,7 @@ describe("P2-P6 (opacidad transversal) — los ocho motivos son INDISTINGUIBLES 
 // P6 — el apagador
 // ════════════════════════════════════════════════════════════════════════════
 describe("P6 — el apagador AppConfig.tallerHibrido (R90/R96)", () => {
-  it("apagado ⇒ 401 opaco en las 7 rutas públicas", async () => {
+  it(`apagado ⇒ 401 opaco en las ${RUTAS_PUBLICAS.length} rutas públicas`, async () => {
     const handler = await cargarHandler();
     sembrarVisita();
     g.appConfig.set(TENANT, { tenantId: TENANT, tallerHibrido: false });
@@ -1775,11 +1787,13 @@ describe("P12 — GET /api/visita proyecta SOLO lo del taller", () => {
     expect(Object.keys(primero(partidas)).sort()).toEqual([
       "descripcion",
       "estado",
+      "evidenciaFinal",
       "fotos",
       "motivoRechazo",
       "partidaId",
       "precio",
       "precioAutorizado",
+      "terminadoEn",
       "tipo",
     ]);
   });
@@ -2381,5 +2395,286 @@ describe("P17 — ruteo: 404 para lo desconocido, y el resolver se despacha prim
     // Sin token válido ⇒ 401 opaco. La identidad de AppSync NO abre el portal.
     expect(res.statusCode).toBe(401);
     expect(res.body).toBe(CUERPO_OPACO);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// P18 — POST /api/terminar: antes y después por hallazgo (spec 2026-09-28 §4, §7)
+// ════════════════════════════════════════════════════════════════════════════
+describe("P18 — POST /api/terminar: el después lo decide el SERVIDOR", () => {
+  const LLAVE_DESPUES = `${PREFIJO}despues-uno.jpg`;
+  const LLAVE_DESPUES_2 = `${PREFIJO}despues-dos.jpg`;
+  const AHORA = "2026-09-16T15:00:00.000Z";
+
+  async function terminar(handler: Handler, body: unknown, token: string = acunar()) {
+    return http(await handler(eventoHttp({ ruta: "/api/terminar", metodo: "POST", token, body })));
+  }
+
+  it("refacción autorizada ⇒ terminada con su foto, la hora del SERVIDOR y versión + 1; el estado y la fecha que mande el cliente se ignoran", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(AHORA));
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({
+      partidaId: "p-1",
+      estado: "autorizada",
+      precioAutorizado: 1850,
+      fotos: [LLAVE_PROPIA],
+      version: 3,
+    });
+
+    const res = await terminar(handler, {
+      partidaId: "p-1",
+      fotos: [LLAVE_DESPUES],
+      estado: "autorizada",
+      terminadoEn: "1999-01-01T00:00:00.000Z",
+      version: 99,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(cuerpo(res)).toEqual({
+      partidaId: "p-1",
+      estado: "terminada",
+      evidenciaFinal: [LLAVE_DESPUES],
+      terminadoEn: AHORA,
+    });
+    expect(g.actualizacionesPartida).toEqual([
+      {
+        tenantId: TENANT,
+        visitaKey: VISITA_KEY,
+        partidaId: "p-1",
+        estado: "terminada",
+        evidenciaFinal: [LLAVE_DESPUES],
+        terminadoEn: AHORA,
+        version: 4,
+      },
+    ]);
+    // El dinero no cambia (decisión 8).
+    expect(g.partidas.get(`${TENANT}|${VISITA_KEY}|p-1`)?.precioAutorizado).toBe(1850);
+  });
+
+  it("mano de obra se termina SIN foto", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "mo-1", tipo: "manoObra", precio: 350, estado: "autorizada" });
+    const res = await terminar(handler, { partidaId: "mo-1", fotos: [] });
+    expect(res.statusCode).toBe(200);
+    expect(cuerpo(res).evidenciaFinal).toEqual([]);
+    expect(primero(g.actualizacionesPartida).estado).toBe("terminada");
+  });
+
+  it("refacción sin foto ⇒ 400 con el mensaje del spec y NADA se escribe", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [] });
+    expect(res.statusCode).toBe(400);
+    expect(cuerpo(res)).toEqual({
+      error: "Una refacción necesita al menos una foto del trabajo terminado",
+    });
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("una partida de OTRA visita no existe para esta liga — aunque la consulta dejara de acotar", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "ajena", visitaKey: VISITA_KEY_AJENA, estado: "autorizada" });
+    g.listaIgnoraAlcance = true; // peor caso: el backend deja de acotar por sort key
+    const res = await terminar(handler, { partidaId: "ajena", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(400);
+    expect(cuerpo(res)).toEqual({ error: "Este hallazgo no existe en esta visita" });
+    expect(g.actualizacionesPartida).toEqual([]);
+    expect(g.partidas.get(`${TENANT}|${VISITA_KEY_AJENA}|ajena`)?.estado).toBe("autorizada");
+  });
+
+  it("una partida de OTRO tenant, con la misma visita y el mismo id, tampoco existe", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ tenantId: TENANT_AJENO, partidaId: "p-1", estado: "autorizada" });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(400);
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("sin partidaId ⇒ 400", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const res = await terminar(handler, { fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(400);
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it.each([
+    ["borrador", "Este hallazgo todavía no está autorizado"],
+    ["propuesta", "Este hallazgo todavía no está autorizado"],
+    ["rechazada", "Este hallazgo no fue autorizado"],
+    ["cancelada", "Este hallazgo no fue autorizado"],
+  ])("partida %s ⇒ 400 y nada se escribe", async (estado, mensaje) => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(400);
+    expect(cuerpo(res)).toEqual({ error: mensaje });
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it.each([
+    ["de otra visita", LLAVE_OTRA_VISITA],
+    ["de otro tenant", LLAVE_OTRO_TENANT],
+    ["de inspecciones", LLAVE_INSPECCIONES],
+    ["con travesía (..)", LLAVE_TRAVESIA],
+  ])("llave %s ⇒ 400 y nada se escribe", async (_nombre, llave) => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [llave] });
+    expect(res.statusCode).toBe(400);
+    expect(cuerpo(res)).toEqual({ error: "llave de foto no válida" });
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it(`más de ${TOPE_FOTOS_PARTIDA} fotos ⇒ 400`, async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const demas = Array.from({ length: TOPE_FOTOS_PARTIDA + 1 }, (_, i) => `${PREFIJO}d${i}.jpg`);
+    const res = await terminar(handler, { partidaId: "p-1", fotos: demas });
+    expect(res.statusCode).toBe(400);
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("reintento idéntico (la respuesta se perdió por mala señal) ⇒ 200 con el mismo acuse y CERO escrituras", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({
+      partidaId: "p-1",
+      estado: "terminada",
+      evidenciaFinal: [LLAVE_DESPUES, LLAVE_DESPUES_2],
+      terminadoEn: AHORA,
+    });
+    const res = await terminar(handler, {
+      partidaId: "p-1",
+      fotos: [LLAVE_DESPUES_2, LLAVE_DESPUES],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(cuerpo(res)).toEqual({
+      partidaId: "p-1",
+      estado: "terminada",
+      evidenciaFinal: [LLAVE_DESPUES, LLAVE_DESPUES_2],
+      terminadoEn: AHORA,
+    });
+    expect(g.actualizacionesPartida).toEqual([]);
+    expect(bitacoras.some((l) => l.includes('"accion":"terminar-partida-reintento"'))).toBe(true);
+  });
+
+  it("cambiar el después de una terminada ⇒ 409 y cero escrituras", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "terminada", evidenciaFinal: [LLAVE_DESPUES] });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES_2] });
+    expect(res.statusCode).toBe(409);
+    expect(cuerpo(res)).toEqual({
+      error: "Este hallazgo ya se marcó como terminado y no se puede cambiar",
+    });
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("el acuse no trae nada interno aunque la fila lo tenga", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({
+      partidaId: "p-1",
+      estado: "autorizada",
+      creadoPor: "liga:AAA111|2026-09-01",
+      decididoPor: "quien.emitio@ejemplo.invalid",
+      motivoRechazoNota: "NOTA-INTERNA-DE-RIESGOS",
+    });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(200);
+    for (const m of MARCADORES_INTERNOS) expect(res.body).not.toContain(m);
+    expect(Object.keys(cuerpo(res)).sort()).toEqual([
+      "estado",
+      "evidenciaFinal",
+      "partidaId",
+      "terminadoEn",
+    ]);
+  });
+
+  it("la bitácora va DESPUÉS de escribir: si la escritura falla ⇒ 500 genérico y ninguna línea 'terminar-partida'", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    g.fallas.add("TallerPartida.update");
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(500);
+    expect(cuerpo(res)).toEqual({ error: "error interno" });
+    expect(bitacoras.some((l) => l.includes('"accion":"terminar-partida"'))).toBe(false);
+  });
+
+  it("la línea de bitácora lleva IP y huella, nunca el token", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const token = acunar();
+    await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] }, token);
+    const linea = bitacoras.find((l) => l.includes('"accion":"terminar-partida"'));
+    expect(linea).toBeDefined();
+    expect(linea).toContain(IP);
+    expect(linea).toContain('"liga8"');
+    expect(linea).not.toContain(token);
+  });
+
+  it.each([null, [], 5, "texto", true])(
+    "cuerpo que no es objeto (%j) ⇒ 400 y nada se escribe",
+    async (body) => {
+      const handler = await cargarHandler();
+      sembrarVisita();
+      sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+      const res = await terminar(handler, body);
+      expect(res.statusCode).toBe(400);
+      expect(g.actualizacionesPartida).toEqual([]);
+    },
+  );
+
+  it("visita cerrada ⇒ 401 opaco y nada se escribe (el portón va primero)", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita({ estatus: "cerrado" });
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const res = await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toBe(CUERPO_OPACO);
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("un evento con un fieldName desconocido no alcanza /api/terminar: cae al perímetro y sin liga da 401", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada" });
+    const res = http(
+      await handler({
+        fieldName: "terminarPartida",
+        rawPath: "/api/terminar",
+        requestContext: { http: { method: "POST", sourceIp: IP } },
+        body: JSON.stringify({ partidaId: "p-1", fotos: [LLAVE_DESPUES] }),
+      }),
+    );
+    expect(res.statusCode).toBe(401);
+    expect(g.actualizacionesPartida).toEqual([]);
+  });
+
+  it("después de terminar, GET /api/visita le muestra al taller su antes y su después", async () => {
+    const handler = await cargarHandler();
+    sembrarVisita();
+    sembrarPartida({ partidaId: "p-1", estado: "autorizada", fotos: [LLAVE_PROPIA] });
+    const token = acunar();
+    await terminar(handler, { partidaId: "p-1", fotos: [LLAVE_DESPUES] }, token);
+    const v = cuerpo(await handler(eventoHttp({ ruta: "/api/visita", metodo: "GET", token })));
+    const p = primero(v.partidas as Fila[]);
+    expect(p.fotos).toEqual([LLAVE_PROPIA]);
+    expect(p.evidenciaFinal).toEqual([LLAVE_DESPUES]);
+    expect(p.estado).toBe("terminada");
+    expect(typeof p.terminadoEn).toBe("string");
   });
 });

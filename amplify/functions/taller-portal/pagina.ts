@@ -192,6 +192,19 @@ textarea{min-height:72px; resize:vertical}
 .btn-enviar{width:100%; font-size:15px}
 .msg-enviar-razon{font-size:12px; color:var(--a); margin:6px 0 0; text-align:center}
 .msg-enviar-ok{font-size:12px; color:var(--g); margin:6px 0 0; text-align:center}
+.despues{margin-top:10px}
+.despues-panel{margin-top:10px; padding:10px; border:1px dashed rgba(30,79,163,.45); border-radius:var(--r1); background:rgba(30,79,163,.04)}
+.despues-lbl{font-size:12px; font-weight:700; color:var(--ink2); margin:0 0 6px}
+.despues-regla{font-size:12px; color:var(--a); margin:4px 0 0}
+.btn-despues{width:100%; margin-top:8px; font-size:14px}
+.btn-link{background:none; border:none; color:var(--ac); font-weight:600; font-size:13px; padding:6px 0; min-height:0; cursor:pointer}
+.par{display:flex; gap:8px; margin-top:8px}
+.par figure{margin:0; text-align:center}
+.par-foto{width:72px; height:72px; border-radius:8px; overflow:hidden; background:#f1f5f9; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--ink3)}
+.par-foto img{width:100%; height:100%; object-fit:cover}
+.par figcaption{font-size:10px; font-weight:800; color:var(--ink3); letter-spacing:.05em; margin-top:2px}
+.msg-ok-despues{font-size:12px; color:var(--g); margin:6px 0 0}
+.espera-despues{font-size:12px; color:var(--ink3); font-style:italic; margin:6px 0 0}
 </style>
 </head>
 <body>
@@ -247,6 +260,7 @@ textarea{min-height:72px; resize:vertical}
 
       <button id="btn-agregar" class="btn btn-primario btn-agregar" type="button">📷 Agregar hallazgo</button>
       <input id="in-foto" type="file" accept="image/*" capture="environment" hidden>
+      <input id="in-foto-despues" type="file" accept="image/*" capture="environment" hidden>
       <p id="msg-tope-partidas" class="msg" hidden></p>
 
       <div id="draft" class="draft" hidden>
@@ -303,12 +317,18 @@ textarea{min-height:72px; resize:vertical}
   var RUTA_PARTIDA = "/api/partida";
   var RUTA_SUBIDA = "/api/subida";
   var RUTA_FOTO = "/api/foto";
+  var RUTA_TERMINAR = "/api/terminar";
 
   var estado = null; // { unidad, visita, partidas } tal como lo devuelve /api/visita
   var fotosDraft = []; // { file: File, key: string|null }[] — key se llena
   // al subir; un reintento no vuelve a subir lo que ya tiene key (Important 5)
   var tipoDraft = null; // "refaccion" | "manoObra"
   var previewsLocal = {}; // partidaId -> object URL, solo para lo creado en esta sesión
+  // Antes y después (spec 2026-09-28 §5): un solo panel abierto a la vez.
+  // despues = { partidaId, tipo, fotos: [{ file, key }], error } — key se llena al
+  // subir y un reintento no vuelve a subir lo que ya tiene key (igual que fotosDraft).
+  var despues = null;
+  var previewsDespues = {}; // partidaId -> object URL de la primera foto del después
 
   function conToken(ruta) {
     return ruta + "?t=" + encodeURIComponent(TOKEN);
@@ -449,6 +469,186 @@ textarea{min-height:72px; resize:vertical}
       });
   }
 
+  // Miniatura de UNA llave: la previa local si existe; si no, URL firmada por demanda.
+  function pintarLlave(cont, llave, previa, alt) {
+    if (previa) {
+      var img0 = el("img", null);
+      img0.src = previa;
+      img0.alt = alt;
+      cont.appendChild(img0);
+      return;
+    }
+    if (!llave) {
+      cont.appendChild(document.createTextNode("Sin foto"));
+      return;
+    }
+    fetch(conToken(RUTA_FOTO) + "&key=" + encodeURIComponent(llave))
+      .then(function (res) {
+        if (!res.ok) throw new Error("http-" + res.status);
+        return res.json();
+      })
+      .then(function (datos) {
+        if (!datos || !datos.url) throw new Error("sin-url");
+        var img = el("img", null);
+        img.src = datos.url;
+        img.alt = alt;
+        cont.textContent = "";
+        cont.appendChild(img);
+      })
+      .catch(function () {
+        // Firma fallida: el recuadro se queda vacío; nunca rompe la tarjeta.
+      });
+  }
+
+  function parAntesDespues(p) {
+    var par = el("div", "par");
+    var fotosAntes = p.fotos || [];
+    var fotosDespues = p.evidenciaFinal || [];
+    var lados = [
+      ["ANTES", fotosAntes[0], previewsLocal[p.partidaId], "Foto de antes"],
+      ["DESPUÉS", fotosDespues[0], previewsDespues[p.partidaId], "Foto de después"],
+    ];
+    for (var i = 0; i < lados.length; i++) {
+      var fig = el("figure", null);
+      var caja = el("div", "par-foto");
+      pintarLlave(caja, lados[i][1], lados[i][2], lados[i][3]);
+      fig.appendChild(caja);
+      fig.appendChild(el("figcaption", null, lados[i][0]));
+      par.appendChild(fig);
+    }
+    return par;
+  }
+
+  function abrirDespues(p) {
+    if (!despues || despues.partidaId !== p.partidaId) {
+      despues = { partidaId: p.partidaId, tipo: p.tipo, fotos: [], error: null };
+    }
+    pintarPartidas();
+  }
+
+  function enviarDespues(p, msg, boton) {
+    var items = despues && despues.partidaId === p.partidaId ? despues.fotos : [];
+    if (p.tipo !== "manoObra" && items.length === 0) {
+      msg.textContent = "Una refacción necesita al menos una foto de la pieza nueva.";
+      return;
+    }
+    boton.disabled = true;
+    msg.textContent = "Enviando…";
+    subirFotos(items)
+      .then(function (claves) {
+        return peticionJson(RUTA_TERMINAR, { partidaId: p.partidaId, fotos: claves });
+      })
+      .catch(function (err) {
+        if (err && err.message === "http-409") {
+          msg.textContent = "Este hallazgo ya se había marcado como terminado.";
+          if (despues && despues.partidaId === p.partidaId) despues = null;
+          cargar();
+        } else {
+          msg.textContent = "No se pudo enviar. Revisa tu señal e intenta de nuevo.";
+          boton.disabled = false;
+        }
+        throw new Error("terminar");
+      })
+      .then(function (acuse) {
+        try {
+          p.estado = "terminada";
+          p.evidenciaFinal = (acuse && acuse.evidenciaFinal) || [];
+          p.terminadoEn = (acuse && acuse.terminadoEn) || null;
+          if (items[0] && items[0].file) {
+            previewsDespues[p.partidaId] = URL.createObjectURL(items[0].file);
+          }
+          if (despues && despues.partidaId === p.partidaId) despues = null;
+          pintarPartidas();
+        } catch (e) {
+          msg.textContent = "Se envió, pero no se pudo actualizar la lista. Recarga la página.";
+        }
+      })
+      .catch(function () {
+        // El re-throw de arriba aterriza aquí: ya avisó.
+      });
+  }
+
+  function bloqueDespues(p) {
+    var cont = el("div", "despues");
+    var msg = el("p", "msg");
+    msg.setAttribute("aria-live", "polite");
+    var esRefaccion = p.tipo !== "manoObra";
+    var abierto = despues && despues.partidaId === p.partidaId;
+
+    if (!abierto) {
+      if (esRefaccion) {
+        var abrir = el("button", "btn btn-primario btn-despues", "📷 Subir foto del trabajo terminado");
+        abrir.type = "button";
+        abrir.addEventListener("click", function () {
+          abrirDespues(p);
+          document.getElementById("in-foto-despues").click();
+        });
+        cont.appendChild(abrir);
+      } else {
+        var directo = el("button", "btn btn-despues", "✓ Marcar como terminado");
+        directo.type = "button";
+        directo.addEventListener("click", function () {
+          enviarDespues(p, msg, directo);
+        });
+        cont.appendChild(directo);
+        var opcional = el("button", "btn-link", "+ Agregar foto (opcional)");
+        opcional.type = "button";
+        opcional.addEventListener("click", function () {
+          abrirDespues(p);
+          document.getElementById("in-foto-despues").click();
+        });
+        cont.appendChild(opcional);
+      }
+      cont.appendChild(msg);
+      return cont;
+    }
+
+    var panel = el("div", "despues-panel");
+    panel.appendChild(el("p", "despues-lbl", "Foto del trabajo terminado"));
+    var tira = el("div", "draft-fotos");
+    despues.fotos.forEach(function (item, idx) {
+      var chip = el("div", "draft-foto");
+      var img = document.createElement("img");
+      img.src = URL.createObjectURL(item.file);
+      img.alt = "Foto " + (idx + 1) + " del trabajo terminado";
+      chip.appendChild(img);
+      tira.appendChild(chip);
+    });
+    panel.appendChild(tira);
+    if (despues.fotos.length < TOPE_FOTOS) {
+      var tomar = el("button", "btn btn-sec btn-despues", despues.fotos.length ? "+ Otra foto" : "📷 Tomar foto");
+      tomar.type = "button";
+      tomar.addEventListener("click", function () {
+        document.getElementById("in-foto-despues").click();
+      });
+      panel.appendChild(tomar);
+    }
+    if (despues.error) {
+      panel.appendChild(el("p", "despues-regla", despues.error));
+      despues.error = null;
+    }
+    if (esRefaccion && despues.fotos.length === 0) {
+      panel.appendChild(el("p", "despues-regla", "Una refacción necesita al menos una foto de la pieza nueva."));
+    }
+    var enviar = el("button", "btn btn-primario btn-despues", "Marcar como terminado");
+    enviar.type = "button";
+    enviar.disabled = esRefaccion && despues.fotos.length === 0;
+    enviar.addEventListener("click", function () {
+      enviarDespues(p, msg, enviar);
+    });
+    panel.appendChild(enviar);
+    var cancelar = el("button", "btn-link", "Cancelar");
+    cancelar.type = "button";
+    cancelar.addEventListener("click", function () {
+      despues = null;
+      pintarPartidas();
+    });
+    panel.appendChild(cancelar);
+    panel.appendChild(msg);
+    cont.appendChild(panel);
+    return cont;
+  }
+
   function tarjetaPartida(p) {
     var card = el("div", "hallazgo");
 
@@ -474,7 +674,7 @@ textarea{min-height:72px; resize:vertical}
     var meta = el(
       "p",
       "hallazgo-meta" + (tachado ? " tachado" : ""),
-      tipoTxt + " · " + moneda(precioMostrado),
+      tipoTxt + " · " + moneda(precioMostrado)
     );
     cuerpo.appendChild(meta);
 
@@ -484,6 +684,16 @@ textarea{min-height:72px; resize:vertical}
     if (p.estado === "rechazada" && p.motivoRechazo) {
       var motivo = el("p", "hallazgo-motivo", '"' + p.motivoRechazo + '"');
       cuerpo.appendChild(motivo);
+    }
+
+    // Antes y después (spec 2026-09-28 §5).
+    if (p.estado === "autorizada") {
+      cuerpo.appendChild(bloqueDespues(p));
+    } else if (p.estado === "terminada") {
+      cuerpo.appendChild(parAntesDespues(p));
+      cuerpo.appendChild(el("p", "msg-ok-despues", "Este hallazgo ya no se puede cambiar."));
+    } else if (p.estado === "propuesta") {
+      cuerpo.appendChild(el("p", "espera-despues", "El botón del después aparece cuando GPA lo autorice."));
     }
 
     card.appendChild(cuerpo);
@@ -521,11 +731,17 @@ textarea{min-height:72px; resize:vertical}
     var aut = 0;
     var nBorrador = 0;
     (estado.partidas || []).forEach(function (p) {
-      if (p.estado === "propuesta" || p.estado === "autorizada" || p.estado === "rechazada") {
+      if (
+        p.estado === "propuesta" ||
+        p.estado === "autorizada" ||
+        p.estado === "terminada" ||
+        p.estado === "rechazada"
+      ) {
         cot += p.precio || 0;
       }
-      // A-6: ternario, nunca coalescencia nula (ver tarjetaPartida).
-      if (p.estado === "autorizada")
+      // A-6: ternario, nunca coalescencia nula (ver tarjetaPartida). Terminar un
+      // hallazgo no le quita nada a lo autorizado (Review Focus 1, spec 2026-09-28).
+      if (p.estado === "autorizada" || p.estado === "terminada")
         aut += (p.precioAutorizado != null ? p.precioAutorizado : p.precio) || 0;
       if (p.estado === "borrador") nBorrador++;
     });
@@ -686,6 +902,22 @@ textarea{min-height:72px; resize:vertical}
     if (!draftEstabaAbierto) document.getElementById("in-desc").focus();
   });
 
+  document.getElementById("in-foto-despues").addEventListener("change", function (ev) {
+    var input = ev.target;
+    var f = input.files && input.files[0];
+    input.value = "";
+    if (!f || !despues) return;
+    if (despues.fotos.length >= TOPE_FOTOS) return;
+    var err = validarArchivo(f);
+    if (err) {
+      despues.error = err;
+      pintarPartidas();
+      return;
+    }
+    despues.fotos.push({ file: f, key: null });
+    pintarPartidas();
+  });
+
   var botonesTipo = document.querySelectorAll(".btn-tipo");
   for (var iBT = 0; iBT < botonesTipo.length; iBT++) {
     botonesTipo[iBT].addEventListener("click", function (ev) {
@@ -724,7 +956,7 @@ textarea{min-height:72px; resize:vertical}
               if (!resPut.ok) throw new Error("subida");
               item.key = firma.key;
             });
-          },
+          }
         );
       });
     });

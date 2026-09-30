@@ -31,7 +31,7 @@ import {
   type LegacyTallerEntry,
 } from "./batchUpload";
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
-import { abrirVisorFotos } from "../taller/visorFotos";
+import { abrirVisorAntesDespues, abrirVisorFotos } from "../taller/visorFotos";
 import { llaveEnUso, type LlaveEnUso } from "../taller/llaveVisita";
 import { columnasLigaDe, type ColumnasLiga } from "../taller/liga";
 import {
@@ -43,7 +43,7 @@ import {
   prioridadDistintivo,
   filasPendientes,
 } from "../taller/seguimiento";
-import { mensajeWhatsApp, type Partida } from "../taller/partidas";
+import { avisoSinDespues, mensajeWhatsApp, type Partida } from "../taller/partidas";
 import {
   listUnits,
   upsertUnit,
@@ -571,17 +571,21 @@ export function setupCloud(): void {
 
   // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
   // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
-  window.__abrirVisorFotos = (opts) =>
-    abrirVisorFotos({
-      ...opts,
-      url: (llave) => urlFotoPartida(llave),
-    });
+  // `window.__urlFotoPartida ?? urlFotoPartida`: en producción son la MISMA función
+  // (cloudHydrate publica una en la otra); la costura existe para que la vista local
+  // (spec 2026-09-28 §8.1) pueda servir dibujos en lugar de S3.
+  const urlFoto = (llave: string) => (window.__urlFotoPartida ?? urlFotoPartida)(llave);
+  window.__abrirVisorFotos = (opts) => abrirVisorFotos({ ...opts, url: urlFoto });
+  // Visor A+ antes|después (spec 2026-09-28 §6.4).
+  window.__abrirVisorAntesDespues = (opts) => abrirVisorAntesDespues({ ...opts, url: urlFoto });
 
   // Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
   window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
   window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
   window.__etiquetaDistintivo = etiquetaDistintivo;
   window.__resumenPartidas = resumenPartidas;
+  // Antes y después (spec 2026-09-28 §6.2): el aviso al cerrar se calcula en src/.
+  window.__avisoSinDespues = avisoSinDespues;
   // Task 7: una sola señal por visita para la columna "Proveedor" de la tabla
   // de Taller — el monolito pinta y ordena, nunca decide la prioridad.
   window.__distintivoProveedor = (e, ps) => {

@@ -18,8 +18,11 @@ export function abrirVisorFotos(opts: {
   titulo?: string;
   subtitulo?: string;
   url: (llave: string) => Promise<string | null>;
+  /** Solo cuando el USUARIO lo cierra (✕, Esc, fondo), con la foto en la que quedó.
+   *  Si otro visor lo reemplaza, no se llama. Así el A+ recupera su comparativo. */
+  alCerrar?: (i: number) => void;
 }): void {
-  const { llaves, titulo, subtitulo, url } = opts;
+  const { llaves, titulo, subtitulo, url, alCerrar } = opts;
   if (!llaves.length) return;
   cerrarActual?.();
 
@@ -107,21 +110,24 @@ export function abrirVisorFotos(opts: {
     pintar();
   }
 
-  function cerrar(): void {
-    if (cerrarActual === cerrar) cerrarActual = null;
+  function cerrar(porUsuario: boolean): void {
+    if (cerrarActual === reemplazar) cerrarActual = null;
     generacion++; // invalida cualquier respuesta de pintar() que siga en vuelo
     document.removeEventListener("keydown", onKey);
     overlay.remove();
     devolverFoco?.focus?.();
+    if (porUsuario) alCerrar?.(i);
   }
-  cerrarActual = cerrar;
+  // Abrir otro visor cierra este sin avisar a `alCerrar`: el que llega manda.
+  const reemplazar = (): void => cerrar(false);
+  cerrarActual = reemplazar;
 
   // Trampa de foco (spec §6.3): mientras el visor está abierto, Tab no debe
   // escapar hacia el modal de abajo. Los controles focusables del overlay son
   // sus botones — las flechas se ocultan (visibility:hidden) cuando solo hay
   // una foto, y esas NO cuentan para el ciclo.
   function onKey(ev: KeyboardEvent): void {
-    if (ev.key === "Escape") cerrar();
+    if (ev.key === "Escape") cerrar(true);
     else if (ev.key === "ArrowRight") mover(1);
     else if (ev.key === "ArrowLeft") mover(-1);
     else if (ev.key === "Tab") {
@@ -145,9 +151,9 @@ export function abrirVisorFotos(opts: {
     }
   }
 
-  btnCerrar.addEventListener("click", cerrar);
+  btnCerrar.addEventListener("click", () => cerrar(true));
   overlay.addEventListener("click", (ev) => {
-    if (ev.target === overlay) cerrar();
+    if (ev.target === overlay) cerrar(true);
   });
   document.addEventListener("keydown", onKey);
 
@@ -157,4 +163,315 @@ export function abrirVisorFotos(opts: {
   };
   pintar();
   btnCerrar.focus();
+}
+
+export type GrupoFotos = { llaves: readonly string[]; fecha?: string };
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/**
+ * "14 sep" desde una fecha ISO. Una fecha SOLA (YYYY-MM-DD) se lee tal cual: `new Date`
+ * la tomaría como medianoche UTC y en México saldría el día anterior. Un instante ISO usa
+ * el día local. Ausente o inválida ⇒ "" (nunca "Invalid Date").
+ */
+export function fechaCorta(iso: string | null | undefined): string {
+  const s = String(iso ?? "").trim();
+  if (!s) return "";
+  const sola = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (sola) {
+    const mes = MESES[Number(sola[2]) - 1];
+    return mes ? `${Number(sola[3])} ${mes}` : "";
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getDate()} ${MESES[d.getMonth()]}`;
+}
+
+const ID_ANTES_DESPUES = "taller-visor-antes-despues";
+
+type Lado = "antes" | "despues";
+
+/** Una columna del A+: foto grande, leyenda, botón de pantalla completa y tira de
+ *  miniaturas que cambia SOLO su lado. `inicial` es la foto que se ve al montar;
+ *  `alMover` avisa cada cambio para que el A+ recuerde su estado. */
+function columnaGrupo(
+  etiqueta: "ANTES" | "DESPUÉS",
+  color: string,
+  g: GrupoFotos,
+  url: (llave: string) => Promise<string | null>,
+  alCerrar: Array<() => void>,
+  lugar: {
+    inicial: number;
+    alMover: (i: number) => void;
+    pantallaCompleta: (i: number) => void;
+  },
+): { col: HTMLElement; btnPantalla: HTMLButtonElement | null } {
+  const lado: Lado = etiqueta === "ANTES" ? "antes" : "despues";
+  const col = document.createElement("div");
+  col.style.cssText = "display:flex;flex-direction:column;gap:8px;min-width:0";
+
+  const marco = document.createElement("div");
+  marco.style.cssText =
+    "flex:1;min-height:240px;border-radius:10px;background:#1a2234;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative";
+  const img = document.createElement("img");
+  img.dataset.lado = lado;
+  img.alt = `Foto de ${etiqueta === "ANTES" ? "antes" : "después"}`;
+  img.style.cssText = "max-width:100%;max-height:70vh;object-fit:contain";
+  const aviso = document.createElement("span");
+  aviso.style.cssText = "font-size:12px;color:#94a3b8;position:absolute";
+  marco.append(img, aviso);
+
+  const n = g.llaves.length;
+  const leyenda = document.createElement("div");
+  leyenda.style.cssText = `font-size:11px;font-weight:800;letter-spacing:.05em;color:${color}`;
+  leyenda.textContent = [
+    etiqueta,
+    fechaCorta(g.fecha),
+    n ? `${n} foto${n === 1 ? "" : "s"}` : "sin foto",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const pie = document.createElement("div");
+  pie.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap";
+  pie.appendChild(leyenda);
+  col.append(marco, pie);
+
+  if (!n) {
+    img.style.display = "none";
+    aviso.textContent = "Sin foto";
+    return { col, btnPantalla: null };
+  }
+
+  let actual = Math.min(Math.max(lugar.inicial, 0), n - 1);
+  // Decisión 7 / §6.4: la foto de media columna se amplía en el overlay que ya existe.
+  const btnPantalla = document.createElement("button");
+  btnPantalla.type = "button";
+  btnPantalla.setAttribute(
+    "aria-label",
+    `Ver ${lado === "antes" ? "antes" : "después"} en pantalla completa`,
+  );
+  btnPantalla.textContent = "⛶ Pantalla completa";
+  btnPantalla.style.cssText =
+    "min-height:44px;padding:0 12px;border-radius:6px;border:1px solid rgba(148,170,205,.25);background:transparent;color:#e2e8f0;cursor:pointer;font-size:12px";
+  btnPantalla.addEventListener("click", () => lugar.pantallaCompleta(actual));
+  pie.appendChild(btnPantalla);
+
+  let generacion = 0;
+  alCerrar.push(() => {
+    generacion++; // invalida respuestas en vuelo
+  });
+  const pintar = (i: number): void => {
+    const gen = ++generacion;
+    img.removeAttribute("src");
+    aviso.textContent = "Cargando…";
+    void url(g.llaves[i] as string)
+      .then((u) => {
+        if (gen !== generacion) return;
+        if (!u) {
+          aviso.textContent = "Foto no disponible";
+          return;
+        }
+        img.src = u;
+        aviso.textContent = "";
+      })
+      .catch(() => {
+        if (gen !== generacion) return;
+        aviso.textContent = "Foto no disponible";
+      });
+  };
+  img.onerror = () => {
+    aviso.textContent = "Foto no disponible";
+  };
+
+  if (n > 1) {
+    const tira = document.createElement("div");
+    tira.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+    const botones: HTMLButtonElement[] = [];
+    const marcar = (i: number): void => {
+      botones.forEach((b, j) => {
+        b.style.borderColor = j === i ? "#60a5fa" : "transparent";
+        b.setAttribute("aria-pressed", j === i ? "true" : "false");
+      });
+    };
+    g.llaves.forEach((llave, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.miniatura = lado;
+      b.setAttribute(
+        "aria-label",
+        `${lado === "antes" ? "antes" : "después"}: foto ${i + 1} de ${n}`,
+      );
+      b.style.cssText =
+        "width:56px;height:44px;padding:0;border-radius:8px;border:2px solid transparent;background:rgba(226,232,240,.12);color:#e2e8f0;cursor:pointer;overflow:hidden;font-weight:700";
+      b.textContent = String(i + 1);
+      void url(llave)
+        .then((u) => {
+          if (!u) return;
+          const mini = document.createElement("img");
+          mini.alt = "";
+          mini.src = u;
+          mini.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
+          b.replaceChildren(mini);
+        })
+        .catch(() => {
+          // Se queda el número: la miniatura es cortesía, la foto grande manda.
+        });
+      b.addEventListener("click", () => {
+        actual = i;
+        lugar.alMover(i);
+        marcar(i);
+        pintar(i);
+      });
+      botones.push(b);
+      tira.appendChild(b);
+    });
+    marcar(actual);
+    col.appendChild(tira);
+  }
+  pintar(actual);
+  return { col, btnPantalla };
+}
+
+/**
+ * Visor A+ (spec 2026-09-28 §6.4, decisión 7): ANTES y DESPUÉS lado a lado, cada lado con
+ * su foto grande, su leyenda ("ANTES · 14 sep · 2 fotos") y su tira de miniaturas. Es el
+ * mismo tipo de overlay que el visor simple (trampa de foco, Esc, un solo visor vivo):
+ * abrir uno cierra el otro. Un lado sin fotos dice "Sin foto".
+ * Cada lado con fotos trae "⛶ Pantalla completa": abre el visor simple en la foto que se
+ * ve y, al cerrarlo el usuario, el A+ vuelve con el mismo estado (y el foco en ese botón).
+ * Reglas del repo: cero innerHTML; URLs firmadas por demanda con la misma `url`.
+ */
+type OpcionesAntesDespues = {
+  antes: GrupoFotos;
+  despues: GrupoFotos;
+  titulo?: string;
+  subtitulo?: string;
+  url: (llave: string) => Promise<string | null>;
+};
+
+export function abrirVisorAntesDespues(opts: OpcionesAntesDespues): void {
+  if (!opts.antes.llaves.length && !opts.despues.llaves.length) return;
+  cerrarActual?.();
+  montarAntesDespues(opts, {
+    antes: 0,
+    despues: 0,
+    devolverFoco: document.activeElement as HTMLElement | null,
+  });
+}
+
+/** Monta el A+ con un estado dado: la foto de cada lado, a quién devolver el foco al
+ *  cerrarlo (siempre a quien abrió el A+ la primera vez) y qué botón enfocar. */
+function montarAntesDespues(
+  opts: OpcionesAntesDespues,
+  estado: { antes: number; despues: number; devolverFoco: HTMLElement | null; foco?: Lado },
+): void {
+  const { antes, despues, titulo, subtitulo, url } = opts;
+  const { devolverFoco } = estado;
+  const indice = { antes: estado.antes, despues: estado.despues };
+
+  const overlay = document.createElement("div");
+  overlay.id = ID_ANTES_DESPUES;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Antes y después del hallazgo");
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:rgba(11,15,25,.92);display:flex;flex-direction:column;gap:12px;padding:16px 24px;overflow:auto";
+
+  const cabecera = document.createElement("div");
+  cabecera.style.cssText =
+    "display:flex;align-items:flex-start;justify-content:space-between;gap:12px";
+  const textos = document.createElement("div");
+  textos.style.cssText = "display:flex;flex-direction:column;gap:2px;min-width:0";
+  const t1 = document.createElement("span");
+  t1.style.cssText = "font-size:13px;font-weight:700;color:#e2e8f0";
+  t1.textContent = titulo ?? "Antes y después";
+  const t2 = document.createElement("span");
+  t2.style.cssText = "font-size:11px;color:#94a3b8";
+  t2.textContent = subtitulo ?? "";
+  textos.append(t1, t2);
+  const btnCerrar = document.createElement("button");
+  btnCerrar.type = "button";
+  btnCerrar.setAttribute("aria-label", "Cerrar");
+  btnCerrar.textContent = "✕";
+  btnCerrar.style.cssText =
+    "min-width:44px;min-height:44px;border-radius:6px;border:1px solid rgba(148,170,205,.25);background:transparent;color:#e2e8f0;cursor:pointer;font-size:14px";
+  cabecera.append(textos, btnCerrar);
+
+  const alCerrar: Array<() => void> = [];
+  const pantallaCompleta = (lado: Lado, i: number): void => {
+    const g = lado === "antes" ? antes : despues;
+    // abrirVisorFotos cierra este A+ (un solo visor vivo); su `alCerrar` lo vuelve a montar.
+    abrirVisorFotos({
+      llaves: g.llaves,
+      inicial: i,
+      titulo: titulo ?? "Antes y después",
+      subtitulo: [lado === "antes" ? "Antes" : "Después", fechaCorta(g.fecha)]
+        .filter(Boolean)
+        .join(" · "),
+      url,
+      alCerrar: (fin) => {
+        indice[lado] = fin;
+        montarAntesDespues(opts, { ...indice, devolverFoco, foco: lado });
+      },
+    });
+  };
+  const lugar = (lado: Lado) => ({
+    inicial: indice[lado],
+    alMover: (i: number) => {
+      indice[lado] = i;
+    },
+    pantallaCompleta: (i: number) => pantallaCompleta(lado, i),
+  });
+  const colAntes = columnaGrupo("ANTES", "#fda4af", antes, url, alCerrar, lugar("antes"));
+  const colDespues = columnaGrupo("DESPUÉS", "#86efac", despues, url, alCerrar, lugar("despues"));
+  const columnas = document.createElement("div");
+  columnas.style.cssText =
+    "display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0";
+  columnas.append(colAntes.col, colDespues.col);
+  overlay.append(cabecera, columnas);
+
+  function cerrar(): void {
+    if (cerrarActual === cerrar) cerrarActual = null;
+    alCerrar.forEach((f) => f());
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+    devolverFoco?.focus?.();
+  }
+  cerrarActual = cerrar;
+
+  function onKey(ev: KeyboardEvent): void {
+    if (ev.key === "Escape") cerrar();
+    else if (ev.key === "Tab") {
+      const focos = Array.from(overlay.querySelectorAll("button"));
+      if (!focos.length) return;
+      const primero = focos[0]!;
+      const ultimo = focos[focos.length - 1]!;
+      const activo = document.activeElement;
+      const dentro = activo != null && overlay.contains(activo);
+      if (ev.shiftKey) {
+        if (!dentro || activo === primero) {
+          ev.preventDefault();
+          ultimo.focus();
+        }
+      } else if (!dentro || activo === ultimo) {
+        ev.preventDefault();
+        primero.focus();
+      }
+    }
+  }
+
+  btnCerrar.addEventListener("click", cerrar);
+  overlay.addEventListener("click", (ev) => {
+    if (ev.target === overlay) cerrar();
+  });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+  const enfocar =
+    estado.foco === "antes"
+      ? colAntes.btnPantalla
+      : estado.foco === "despues"
+        ? colDespues.btnPantalla
+        : null;
+  (enfocar ?? btnCerrar).focus();
 }

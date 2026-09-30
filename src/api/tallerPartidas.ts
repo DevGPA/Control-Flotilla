@@ -239,6 +239,7 @@ function rowToPartida(r: Schema["TallerPartida"]["type"]): Partida {
     motivoRechazo: r.motivoRechazo ?? undefined,
     motivoRechazoNota: r.motivoRechazoNota ?? undefined,
     fotos: (r.fotos ?? []).filter((f): f is string => typeof f === "string"),
+    evidenciaFinal: (r.evidenciaFinal ?? []).filter((f): f is string => typeof f === "string"),
     precioAutorizado: r.precioAutorizado ?? undefined,
     recotizaDe: r.recotizaDe ?? undefined,
     proveedorNombre: r.proveedorNombre ?? undefined,
