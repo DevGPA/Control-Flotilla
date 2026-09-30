@@ -6779,3 +6779,299 @@ body[data-hydrating] .uv-empty::before {
   font-size: 12px;
   color: var(--s2);
 }
+
+/* ── Registro de Taller como ficha (spec 2026-09-30) ─────────────────────────────
+   Acotado a #taller-modal: .tl-mcard/.tl-mbody/.tl-mftr los comparten otros modales. */
+:root {
+  --tl-ficha-gpa-bg: rgba(30, 79, 163, 0.06);
+  --tl-ficha-gpa-fg: #1e4fa3;
+  --tl-ficha-taller-bg: rgba(8, 145, 178, 0.06);
+  --tl-ficha-taller-fg: #0e7490;
+  --tl-ficha-taller-bd: #67e8f9;
+}
+:root[data-theme="dark"] {
+  --tl-ficha-gpa-bg: rgba(96, 165, 250, 0.1);
+  --tl-ficha-gpa-fg: #93c5fd;
+  --tl-ficha-taller-bg: rgba(34, 211, 238, 0.08);
+  --tl-ficha-taller-fg: #67e8f9;
+  --tl-ficha-taller-bd: #155e75;
+}
+#taller-modal .tl-mcard {
+  max-width: 760px;
+}
+#taller-modal .tl-ficha-cabecera {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+#taller-modal .tl-ficha-sub {
+  font-size: 10.5px;
+  color: var(--s2);
+}
+#tf-ficha,
+#tf-proveedor,
+#tf-datos,
+#tf-aviso-firma {
+  grid-column: 1 / -1;
+}
+#tf-ficha {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tl-ficha-titulo,
+.tl-ficha-etiqueta {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--s1);
+}
+.tl-ficha-estados {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.tl-ficha-caja {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  min-width: 0;
+}
+.tl-ficha-caja-gpa {
+  background: var(--tl-ficha-gpa-bg);
+  border: 1px solid transparent;
+}
+.tl-ficha-caja-taller {
+  background: var(--tl-ficha-taller-bg);
+  border: 1px dashed var(--tl-ficha-taller-bd);
+}
+.tl-ficha-rotulo,
+.tl-ficha-fila {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--w1);
+}
+.tl-ficha-etq {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.tl-ficha-etq-gpa {
+  background: var(--tl-ficha-gpa-fg);
+  color: #fff;
+}
+.tl-ficha-etq-taller {
+  background: var(--tl-ficha-taller-fg);
+  color: #fff;
+}
+.tl-ficha-nota {
+  font-size: 10.5px;
+  color: var(--s2);
+}
+.tl-ficha-cifras {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.tl-ficha-cifra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  background: var(--bg);
+  min-width: 0;
+}
+.tl-ficha-num {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--w1);
+}
+.tl-ficha-num span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--s1);
+}
+.tl-ficha-tono-ambar {
+  color: var(--A);
+}
+.tl-ficha-tono-rojo {
+  color: var(--R);
+}
+.tl-ficha-verde {
+  color: #047857;
+}
+.tl-ficha-ambar {
+  color: var(--A);
+}
+.tl-ficha-liga {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+.tl-ficha-grupo {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--s1);
+  padding: 8px 12px 2px;
+}
+.tl-ficha-grupo-nota {
+  padding: 0 12px 6px;
+}
+.tl-ficha-aviso {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--A);
+  border-left-width: 4px;
+  background: var(--Ad);
+  color: var(--tl-warn-fg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+#tf-aviso-firma[hidden] {
+  display: none !important;
+}
+#tf-datos {
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  background: var(--bg);
+}
+#tf-datos > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+#tf-datos > summary::-webkit-details-marker {
+  display: none;
+}
+.tl-datos-titulo {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--w1);
+}
+.tl-datos-resumen {
+  flex: 1 1 200px;
+  font-size: 10.5px;
+  color: var(--s2);
+  min-width: 0;
+}
+.tl-datos-ver,
+.tl-datos-ocultar {
+  padding: 6px 12px;
+  font-size: 11.5px;
+}
+#tf-datos[open] .tl-datos-ver {
+  display: none;
+}
+#tf-datos:not([open]) .tl-datos-ocultar {
+  display: none;
+}
+.tl-datos-nota {
+  margin: 0;
+  padding: 0 12px 6px;
+  font-size: 10.5px;
+  color: var(--s2);
+}
+#tf-datos-campos {
+  border: 0;
+  padding: 0 12px 12px;
+  margin: 0;
+  min-width: 0;
+  min-inline-size: 0;
+}
+.tl-datos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+#tf-datos-campos:disabled {
+  opacity: 0.85;
+}
+.tl-datos-sincambios {
+  align-self: center;
+  font-size: 11px;
+  color: var(--s2);
+}
+#taller-modal .tl-save.tl-save-apagado {
+  background: var(--bg3);
+  color: var(--s2);
+  cursor: default;
+}
+@media (max-width: 768px) {
+  .tl-ficha-estados {
+    grid-template-columns: 1fr;
+  }
+  .tl-ficha-cifras {
+    grid-template-columns: 1fr 1fr;
+  }
+  .tl-ficha-costo {
+    grid-column: 1 / -1;
+  }
+  .tl-datos-grid {
+    grid-template-columns: 1fr;
+  }
+  #tf-aviso-firma {
+    display: flex;
+  }
+  /* Pie en dos renglones (§4.6): arriba Guardar (con "Sin cambios") y ✓ Finalizar; abajo el resto. */
+  #taller-modal .tl-mftr {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #taller-modal .tl-mftr > * {
+    order: 2;
+    flex: 1 1 30%;
+    min-height: 44px;
+  }
+  #taller-modal .tl-mftr #btn-guardar-taller,
+  #taller-modal .tl-mftr #tf-sin-cambios,
+  #taller-modal .tl-mftr #btn-finalizar {
+    order: 1;
+  }
+  #taller-modal .tl-mftr #btn-guardar-taller {
+    flex: 2 1 45%;
+  }
+  #taller-modal .tl-mftr #tf-sin-cambios {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  #tf-datos > summary,
+  .tl-datos-ver,
+  .tl-datos-ocultar {
+    min-height: 44px;
+  }
+}
+@media (min-width: 769px) {
+  #tf-aviso-firma {
+    display: none !important;
+  }
+}

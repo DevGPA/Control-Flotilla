@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-SqKDK2MXtL63iitl6rfFwoYlTnyMowqL9kyDHG+v2o0=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-LYZqUTvIeHdQEx0mFtRpkuifvVK3wYRWcCnSgeVZ1gg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1312,13 +1312,65 @@
 </div>
 
 <!-- TALLER MODAL -->
-<div id="taller-modal" onclick="if(event.target.id==='taller-modal')closeTallerModal()">
+<div id="taller-modal" onclick="if(event.target.id==='taller-modal')_tallerCerrarConAviso()">
   <div class="tl-mcard">
     <div class="tl-mhdr">
-      <div class="tl-mttl" id="tl-mttl">Agregar unidad al taller</div>
-      <button class="dcls" onclick="closeTallerModal()" aria-label="Cerrar modal de taller" style="position:static">✕</button>
+      <div class="tl-ficha-cabecera">
+        <div class="tl-mttl" id="tl-mttl" tabindex="-1">Agregar unidad al taller</div>
+        <div id="tl-msub" class="tl-ficha-sub"></div>
+      </div>
+      <button class="dcls" aria-label="Cerrar modal de taller" style="position:static" onclick="_tallerCerrarConAviso()">✕</button>
     </div>
     <div class="tl-mbody">
+      <!-- Registro como ficha (spec 2026-09-30 §4.1): ficha de solo lectura → hallazgos del
+           taller → "Datos del registro" (el formulario de hoy, plegado). Los ids tf-* NO
+           cambian, solo de lugar: saveTallerEntry, la liga, la firma y la anulación leen lo
+           mismo. _fichaPintar pinta la ficha; _provPintar sigue escribiendo en #tf-prov-*. -->
+      <button type="button" id="tf-aviso-firma" class="tl-ficha-aviso needs-write needs-hibrido" hidden onclick="_tfAvisoFirmaIr()"></button>
+      <section id="tf-ficha" class="tl-ficha" aria-label="Cómo va">
+        <div class="tl-ficha-titulo">Cómo va</div>
+        <div class="tl-ficha-estados">
+          <div id="tf-ficha-gpa" class="tl-ficha-caja tl-ficha-caja-gpa"></div>
+          <div id="tf-ficha-taller" class="tl-ficha-caja tl-ficha-caja-taller needs-hibrido">
+            <div class="tl-ficha-rotulo"><span class="tl-ficha-etq tl-ficha-etq-taller">TALLER</span><span class="tl-ficha-sub">Estado · desde su liga</span><span id="tf-ficha-taller-nombre" class="tl-ficha-sub"></span></div>
+            <div id="tf-prov-taller" class="needs-hibrido" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
+            <div id="tf-prov-taller-nota" class="needs-hibrido" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
+          </div>
+        </div>
+        <div class="tl-ficha-cifras">
+          <div id="tf-ficha-dias" class="tl-ficha-cifra"></div>
+          <div id="tf-ficha-salida" class="tl-ficha-cifra"></div>
+          <div id="tf-ficha-costo" class="tl-ficha-cifra tl-ficha-costo"></div>
+        </div>
+        <div id="tf-ficha-liga" class="tl-ficha-liga needs-hibrido">
+          <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
+               ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+               R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
+               §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
+               operativo tampoco por sí solo… la restricción se aplica en la UI Y
+               en el Lambda". needs-liga = grupo admin O grupo riesgos (la
+               credencial adicional de Administración de Riesgos, que NO es admin).
+               El permiso real lo aplican las dos mutaciones de
+               amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
+               esto es la capa de UI de esa misma regla. -->
+          <div id="tf-prov-liga" class="needs-hibrido" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga</button>
+            <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
+          </div>
+          <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
+        </div>
+      </section>
+      <div id="tf-proveedor" class="tl-ficha-hallazgos needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
+        <div id="tf-prov-partidas"></div>
+      </div>
+      <details id="tf-datos" class="tl-datos">
+        <summary class="tl-datos-summary">
+          <span class="tl-datos-titulo">Datos del registro</span>
+          <span id="tf-datos-resumen" class="tl-datos-resumen"></span>
+          <span class="tl-datos-ver tl-exp-btn">Editar datos</span><span class="tl-datos-ocultar tl-exp-btn">Ocultar</span>
+        </summary>
+        <p class="tl-datos-nota">Guardar, abajo, se resalta en cuanto cambias algo de este bloque.</p>
+        <fieldset id="tf-datos-campos" class="tl-datos-grid">
       <!-- UX Fase 3 (2026-06-11): 13 campos seccionados — antes era un scroll
            plano sin jerarquía. -->
       <div class="tl-sec">Identificación de la unidad</div>
@@ -1359,31 +1411,9 @@
           <option value="Administración">Administración</option>
         </select>
       </div>
-      <!-- Seguimiento del proveedor (Plan 2, bloque 1). Todo lo que muestra ya
-           se guarda hoy: liga (columnas ligaCreadaEn/Por, ligaRevocada*) y lo
-           que el taller reporta desde su liga (estadoOperativo, km, fsalidaEst
-           y su compromiso). Riesgos VE y DECIDE; el taller REPORTA. -->
-      <div class="tl-sec needs-hibrido">Proveedor</div>
-      <div id="tf-proveedor" class="tl-field full needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
-        <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
-             ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
-             R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
-             §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
-             operativo tampoco por sí solo… la restricción se aplica en la UI Y
-             en el Lambda". needs-liga = grupo admin O grupo riesgos (la
-             credencial adicional de Administración de Riesgos, que NO es admin).
-             El permiso real lo aplican las dos mutaciones de
-             amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
-             esto es la capa de UI de esa misma regla. -->
-        <div id="tf-prov-liga" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
-          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
-        </div>
-        <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
-        <div id="tf-prov-taller" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
-        <div id="tf-prov-taller-nota" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
-        <div id="tf-prov-partidas"></div>
-      </div>
+      <!-- Seguimiento del proveedor (Plan 2, bloque 1) vive arriba, en la ficha (#tf-ficha):
+           liga (#tf-prov-liga, #tf-prov-liga-meta) y lo que el taller reporta (#tf-prov-taller).
+           Riesgos VE y DECIDE; el taller REPORTA. -->
       <div class="tl-sec">Mantenimiento</div>
       <div class="tl-field">
         <label for="tf-estado">Estado</label>
@@ -1449,13 +1479,16 @@
         <label for="tf-comentario">Comentario de Falla</label>
         <textarea id="tf-comentario" placeholder="Descripcion de la falla o trabajo realizado..."></textarea>
       </div>
+        </fieldset>
+      </details>
     </div>
     <div class="tl-mftr">
-      <button class="tl-cancel" onclick="closeTallerModal()">Cancelar</button>
-      <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
-      <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
+      <button class="tl-cancel" onclick="_tallerCerrarConAviso()">Cerrar</button>
+      <button class="tl-reingreso needs-write" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
+      <button class="tl-fin-btn needs-write" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
-      <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
+      <span id="tf-sin-cambios" class="tl-datos-sincambios" hidden>Sin cambios</span>
+      <button class="tl-save needs-write" id="btn-guardar-taller" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
 </div>
@@ -5462,7 +5495,9 @@ function openModal(id){
   _modalPrevFocus=document.activeElement;
   el.addEventListener("keydown",_trapFocus);
   const f=el.querySelector('input,select,textarea,button:not([aria-label^="Cerrar"])');
-  if(f)setTimeout(()=>f.focus(),30);
+  // Registro como ficha (spec 2026-09-30 §2 #24): si el modal marca un [data-autofocus], el foco
+  // va ahí (el título, nunca un botón que emite o firma). Los demás modales no lo usan: igual que hoy.
+  setTimeout(()=>{const af=el.querySelector("[data-autofocus]");if(af)af.focus();else if(f)f.focus();},30);
 }
 function closeModal(id){
   const el=document.getElementById(id);
@@ -7867,13 +7902,255 @@ function _partidasConfiables(){
   return window.__tallerPartidasCargadas === true;
 }
 
+// ── Registro como ficha — estado y ayudantes (spec 2026-09-30 §4.4, §4.5, §4.7, §2 #23) ──
+// Bloque PROPIO (fuera de openTallerModal…closeTallerModal: las pruebas cortan esas
+// funciones por su nombre). Todo aquí es DOM y estado de pantalla; las cuentas viven en
+// src/taller/* y llegan por window.__* con guarda, para que la demo y las pruebas que
+// ejecutan literales con `window = {}` no revienten.
+const _tfNombres = new WeakMap();      // nodo → { crudo, plantilla, cierre }
+const _tfNodosNombre = new Set();      // los mismos nodos, iterables para refrescar
+let _tfFotoCampos = null;              // foto de #tf-datos-campos al abrir una visita GUARDADA; null en alta/reingreso
+let _tfTocado = false;                 // la persona tecleó en "Datos del registro" desde que se abrió
+
+// Respaldo sin directorio: correo sin dominio o "un usuario de GPA". Nunca un GUID.
+function _tfNombreRespaldo(crudo){
+  const c = String(crudo || "").trim();
+  return /^[^\s@]+@[^\s@]+$/.test(c) ? c.split("@")[0] : "un usuario de GPA";
+}
+function _tfNombreDe(reg){
+  if(reg.cierre){
+    const d = typeof window.__describirRevocadaPor === "function" ? window.__describirRevocadaPor(reg.crudo) : { nombre: null };
+    return d.nombre;
+  }
+  return typeof window.__nombreDeUsuario === "function" ? window.__nombreDeUsuario(reg.crudo) : _tfNombreRespaldo(reg.crudo);
+}
+// Un nodo que muestra un nombre se registra para reescribirlo cuando llegue el directorio
+// (§4.7): el crudo vive en JS, jamás en el DOM.
+function _tfRegistrarNombre(nodo, crudo, plantilla, cierre){
+  const reg = { crudo, plantilla, cierre: !!cierre };
+  _tfNombres.set(nodo, reg);
+  _tfNodosNombre.add(nodo);
+  nodo.textContent = plantilla(_tfNombreDe(reg));
+  return nodo;
+}
+function _tfNombresRefrescar(){
+  for(const nodo of Array.from(_tfNodosNombre)){
+    if(!nodo.isConnected){ _tfNodosNombre.delete(nodo); continue; }
+    const reg = _tfNombres.get(nodo);
+    if(reg) nodo.textContent = reg.plantilla(_tfNombreDe(reg));
+  }
+}
+
+function _tfTomarFoto(){
+  const foto = {};
+  const campos = document.getElementById("tf-datos-campos");
+  if(!campos) return foto;
+  for(const c of campos.querySelectorAll("input[id],select[id],textarea[id]")){
+    foto[c.id] = { valor: String(c.value ?? ""), readOnly: !!c.readOnly };
+  }
+  return foto;
+}
+function _tfHayCambiosSinGuardar(){
+  if(_tfFotoCampos){
+    return typeof window.__hayCambios === "function" ? window.__hayCambios(_tfFotoCampos, _tfTomarFoto()) : false;
+  }
+  return _tfTocado;
+}
+// Guardar solo con cambios (§4.5). En el alta y los reingresos no hay foto: siempre encendido.
+function _tfRecalcularCambios(){
+  const btn = document.getElementById("btn-guardar-taller");
+  if(!btn) return;
+  const cambios = _tfFotoCampos
+    ? (typeof window.__hayCambios === "function" ? window.__hayCambios(_tfFotoCampos, _tfTomarFoto()) : true)
+    : true;
+  btn.disabled = !cambios;
+  btn.classList.toggle("tl-save-apagado", !cambios);
+  const sin = document.getElementById("tf-sin-cambios");
+  if(sin) sin.hidden = cambios;
+}
+// Cerrar con cambios pregunta (§2 #23). Lo llaman ✕, Cerrar, el fondo, Escape, Finalizar y
+// Expediente. Los cierres del código (reingreso, tras guardar) siguen usando closeTallerModal.
+function _tallerCerrarConAviso(){
+  if(_tfHayCambiosSinGuardar() && !confirm("¿Descartar los cambios?")) return false;
+  closeTallerModal();
+  return true;
+}
+// El foco inicial nunca cae en un control que escribe (§2 #24): openModal respeta [data-autofocus].
+function _tfAutofoco(id){
+  const modal = document.getElementById("taller-modal");
+  if(modal) for(const n of modal.querySelectorAll("[data-autofocus]")) n.removeAttribute("data-autofocus");
+  const el = document.getElementById(id);
+  if(el) el.setAttribute("data-autofocus", "");
+}
+// Aviso tocable del celular (§4.6): lleva a los hallazgos que esperan firma.
+function _tfAvisoFirmaIr(){
+  const e = tallerEntries.find(x => x.id === _tallerEditId);
+  if(!e) return;
+  _provFiltro = "pendientes";
+  _provPartidas(e);
+  const lista = document.getElementById("tf-prov-partidas");
+  if(lista && typeof lista.scrollIntoView === "function") lista.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function _tfCablear(){
+  const m = document.getElementById("taller-modal");
+  if(!m || m.__fichaCableado) return;
+  m.__fichaCableado = true;
+  // Escape pasa por la pregunta y por closeTallerModal (limpia _tallerEditId). Se detiene aquí,
+  // en captura, para que el _trapFocus de openModal no cierre por su cuenta.
+  m.addEventListener("keydown", (ev) => {
+    if(ev.key !== "Escape") return;
+    ev.stopImmediatePropagation();
+    ev.preventDefault();
+    _tallerCerrarConAviso();
+  }, true);
+  const datos = document.getElementById("tf-datos");
+  if(datos){
+    const marcar = () => { _tfTocado = true; _tfRecalcularCambios(); };
+    datos.addEventListener("input", marcar);
+    datos.addEventListener("change", marcar);
+  }
+}
+document.addEventListener("DOMContentLoaded", _tfCablear);
+// ── fin registro como ficha ──────────────────────────────────────────────────
+
+// ── Registro como ficha — el pintado (spec 2026-09-30 §4.2) ─────────────────
+// _provPintar la llama en su PRIMERA línea, así los cuatro lugares que ya repintan
+// (_bnRepintar, abrir, emitir, revocar) refrescan la ficha sin tocarlos. Todo sale de
+// window.__fichaRegistro (src/taller/ficha.ts); aquí solo hay nodos. XSS: textContent.
+function _fichaPintar(e){
+  const ficha = document.getElementById("tf-ficha");
+  if(!ficha) return;
+  const sub = document.getElementById("tl-msub");
+  const aviso = document.getElementById("tf-aviso-firma");
+  if(!e){
+    ficha.style.display = "none";
+    if(sub) sub.textContent = "";
+    if(aviso) aviso.hidden = true;
+    return;
+  }
+  ficha.style.display = "";
+  if(sub) sub.textContent = [e.brand, e.sucursal, e.area].filter(Boolean).join(" · ");
+  const ps = _partidasDeVisita(e) || [];
+  const confiables = _partidasConfiables();
+  const f = typeof window.__fichaRegistro === "function"
+    ? window.__fichaRegistro(e, ps, { hibrido: window.__tallerHibrido, confiables })
+    : null;
+  if(!f) return;
+  const el = (tag, cls, txt) => { const n = document.createElement(tag); if(cls) n.className = cls; if(txt != null) n.textContent = txt; return n; };
+  const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
+  _tfNodosNombre.clear();
+
+  // Estado · GPA (lo decides tú)
+  const gpa = document.getElementById("tf-ficha-gpa");
+  gpa.textContent = "";
+  const rot = el("div", "tl-ficha-rotulo");
+  rot.append(el("span", "tl-ficha-etq tl-ficha-etq-gpa", "GPA"), el("span", "tl-ficha-sub", "Estado · lo decides tú"));
+  gpa.appendChild(rot);
+  const CLS = { "En Diagnóstico": "diag", "En Reparación": "repar", "Cotización": "cotiz", "Por recuperar": "porrec", "Finalizado": "listo", "Listo": "listo" };
+  const filaG = el("div", "tl-ficha-fila");
+  filaG.appendChild(el("span", "tl-pill " + (CLS[f.estadoGpa] || ""), f.estadoGpa || "—"));
+  if(f.tipo) filaG.appendChild(el("span", "tl-tipo " + (f.tipo === "Correctivo" ? "correctivo" : f.tipo === "Preventivo" ? "preventivo" : ""), `Mtto ${f.tipo}`));
+  gpa.appendChild(filaG);
+  gpa.appendChild(el("div", "tl-ficha-nota", "Se cambia en Datos del registro"));
+  if(f.esperandoFirma) gpa.appendChild(el("div", "tl-ficha-nota", "Mientras haya hallazgos sin firmar, la lista del Taller marca esta unidad «Esperando firma»"));
+
+  // Estado · TALLER: el nombre según GPA (§2 #16); el reporte lo pinta _provPintar en #tf-prov-taller
+  const tn = document.getElementById("tf-ficha-taller-nombre");
+  if(tn) tn.textContent = f.tallerNombre ? `· ${f.tallerNombre} · nombre según GPA` : "";
+
+  // En taller
+  const cd = document.getElementById("tf-ficha-dias");
+  cd.textContent = "";
+  cd.appendChild(el("div", "tl-ficha-etiqueta", "En taller"));
+  const num = el("div", "tl-ficha-num tl-ficha-tono-" + f.dias.tono);
+  num.append(el("b", null, String(f.dias.n)), el("span", null, ` ${f.dias.n === 1 ? "día" : "días"}`));
+  cd.appendChild(num);
+  cd.appendChild(el("div", "tl-ficha-nota", f.dias.cerrada
+    ? `Salió el ${fmtDate(f.dias.fin)} · estuvo ${dias(f.dias.n)}`
+    : `Ingresó el ${fmtDate(f.dias.inicio)}`));
+
+  // Salida: fila GPA, fila TALLER y UNA señal
+  const cs = document.getElementById("tf-ficha-salida");
+  cs.textContent = "";
+  cs.appendChild(el("div", "tl-ficha-etiqueta", "Salida"));
+  const fg = el("div", "tl-ficha-fila");
+  fg.append(el("span", "tl-ficha-etq tl-ficha-etq-gpa", "GPA"), el("span", null, "Estimada por GPA"), el("b", null, f.salida.estimadaGpa ? fmtDate(f.salida.estimadaGpa) : "—"));
+  cs.appendChild(fg);
+  const ft = el("div", "tl-ficha-fila needs-hibrido");
+  ft.appendChild(el("span", "tl-ficha-etq tl-ficha-etq-taller", "TALLER"));
+  if(f.salida.prometida){
+    ft.append(el("span", null, "El taller promete"), el("b", null, fmtDate(f.salida.prometida)));
+    if(f.salida.compromisoOriginal) ft.appendChild(el("span", "tl-ficha-nota", `(había prometido ${fmtDate(f.salida.compromisoOriginal)})`));
+  } else {
+    ft.appendChild(el("span", "tl-ficha-nota", "sin fecha prometida"));
+  }
+  cs.appendChild(ft);
+  const s = f.salida.senal;
+  if(s.kind === "promesa-vencida") cs.appendChild(el("span", "tl-pill pendiente", `PROMESA VENCIDA · ${dias(s.dias)}`));
+  else if(s.kind === "estimada-vencida") cs.appendChild(el("span", "tl-pill pendiente", `Salida estimada vencida hace ${dias(s.dias)}`));
+  else if(s.kind === "despues-de-estimada") cs.appendChild(el("span", "tl-pill diag", `${dias(s.dias)} después de lo estimado`));
+
+  // Costo (§2 #19): la misma fuente que #tf-gasto
+  const cc = document.getElementById("tf-ficha-costo");
+  cc.textContent = "";
+  cc.appendChild(el("div", "tl-ficha-etiqueta", "Costo"));
+  if(f.costo.kind === "partidas"){
+    const a = el("div", "tl-ficha-fila");
+    a.append(el("span", null, "Autorizado"), el("b", "tl-ficha-verde", _fmtMon2(f.costo.autorizado)));
+    cc.appendChild(a);
+    if(f.costo.pendiente > 0){
+      const p = el("div", "tl-ficha-fila");
+      p.append(el("span", null, "Esperando tu firma"), el("b", "tl-ficha-ambar", _fmtMon2(f.costo.pendiente)));
+      cc.appendChild(p);
+    }
+    cc.appendChild(el("div", "tl-ficha-nota", "El subtotal es la suma de los hallazgos autorizados"));
+  } else if(f.costo.kind === "sin-datos"){
+    cc.appendChild(el("div", "tl-ficha-nota", "No se pudieron cargar los hallazgos"));
+  } else {
+    const a = el("div", "tl-ficha-fila");
+    a.append(el("span", null, "Capturado por GPA"), el("b", null, _fmtMon2(f.costo.monto)));
+    if(f.costo.verificando) a.appendChild(el("span", "tl-ficha-nota", "· verificando…"));
+    cc.appendChild(a);
+  }
+
+  // Aviso tocable del celular (§4.6): solo con pendientes, partidas confiables y apagador ON.
+  if(aviso){
+    const n = typeof window.__pendientesDeFirma === "function" ? window.__pendientesDeFirma(ps) : ps.filter(p => p.estado === "propuesta").length;
+    const mostrar = n > 0 && confiables && window.__tallerHibrido === true;
+    aviso.hidden = !mostrar;
+    if(mostrar){
+      const y = typeof window.__montoPendienteDeFirma === "function" ? window.__montoPendienteDeFirma(ps) : 0;
+      aviso.textContent = `${n} ${n === 1 ? "hallazgo espera" : "hallazgos esperan"} tu firma · ${_fmtMon2(y)} · Ver →`;
+    }
+  }
+
+  // Resumen "Guardado:" del pliegue (§4.4) — lo guardado, no lo que se está tecleando.
+  const res = document.getElementById("tf-datos-resumen");
+  if(res){
+    const km = Number(e.km);
+    res.textContent = "Guardado: " + [
+      `Km al ingreso ${Number.isFinite(km) && km > 0 ? km.toLocaleString("es-MX") : "sin capturar"}`,
+      `Técnico: ${String(e.tecnico || "").trim() || "sin capturar"}`,
+      `Pedido ERP: ${String(e.pedidoErp || "").trim() || "sin capturar"}`,
+    ].join(" · ");
+  }
+  if(typeof _tfRecalcularCambios === "function") _tfRecalcularCambios();
+}
+
 // Pinta el bloque Proveedor de una visita YA persistida. Todo el cálculo vive
 // en la capa pura (src/taller/seguimiento.ts): aquí solo se traduce a DOM.
 // XSS: createElement + textContent, nunca innerHTML.
 function _provPintar(e){
+  // Registro como ficha (spec 2026-09-30 §4.1): una sola ruta de repintado.
+  _fichaPintar(e);
   const cont = document.getElementById("tf-proveedor");
   if(!cont) return;
-  if(!e || typeof window.__estadoLiga !== "function"){ cont.style.display = "none"; return; }
+  if(!e || typeof window.__estadoLiga !== "function"){
+    cont.style.display = "none";
+    // Sin la capa pura tampoco hay nada del taller que mostrar en la ficha.
+    for(const id of ["tf-ficha-taller","tf-ficha-liga"]){ const n = document.getElementById(id); if(n) n.style.display = "none"; }
+    return;
+  }
   cont.style.display = "flex";
 
   const liga = window.__estadoLiga(e);
@@ -7891,21 +8168,40 @@ function _provPintar(e){
     : liga.kind === "revocada" ? "Liga revocada"
     : liga.kind === "vencida" ? "Liga vencida"
     : liga.kind === "cerrada" ? "Liga cerrada" : "Sin liga";
-  const detalle = document.createElement("span");
-  detalle.style.cssText = "font-size:12px;color:var(--w1);font-weight:600";
-  detalle.textContent = liga.kind === "activa" ? `Vence en ${liga.diasRestantes} días` : "";
-  filaLiga.prepend(detalle);
   filaLiga.prepend(pill);
 
-  meta.textContent = liga.kind === "activa"
-    ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
-    : liga.kind === "revocada"
-      ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
-      : liga.kind === "cerrada"
-        ? `Liga cerrada con la visita · emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)}`
-      : liga.kind === "vencida"
-        ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
-        : "Sin liga emitida para esta visita.";
+  // La liga dice el NOMBRE de quien la emitió o revocó (§4.7), nunca el id. El texto nuevo
+  // va en #tf-prov-liga-meta (dentro de #tf-prov-liga solo sobreviven los dos botones).
+  meta.textContent = "";
+  const linea = document.createElement("span");
+  const fe = fmtDate(liga.emitidaEn);
+  if(liga.kind === "activa"){
+    _tfRegistrarNombre(linea, liga.emitidaPor, (n) => `Liga del proveedor activa · vence en ${liga.diasRestantes} días · emitida por ${n} el ${fe}`);
+  } else if(liga.kind === "revocada"){
+    const fr = fmtDate(liga.revocadaEn);
+    const esCierre = String(liga.revocadaPor || "").indexOf("cierre:") === 0;
+    _tfRegistrarNombre(linea, liga.revocadaPor, esCierre
+      ? (n) => (n ? `Se cerró junto con la visita (${n}) el ${fr}` : `Se cerró junto con la visita el ${fr}`)
+      : (n) => `Liga revocada por ${n} el ${fr}`, esCierre);
+  } else if(liga.kind === "cerrada"){
+    _tfRegistrarNombre(linea, liga.emitidaPor, (n) => `Liga cerrada con la visita · emitida por ${n} el ${fe}`);
+  } else if(liga.kind === "vencida"){
+    linea.textContent = `Liga vencida el ${fmtDate(liga.vencioEn)}`;
+  } else {
+    linea.textContent = "Sin liga";
+  }
+  meta.appendChild(linea);
+  if(liga.kind === "activa"){
+    const nota = document.createElement("div");
+    nota.className = "tl-ficha-nota";
+    nota.textContent = "Copiar vuelve a emitir: la liga queda a tu nombre y vence en 90 días";
+    meta.appendChild(nota);
+  }
+  // §2 #20: los botones dicen la verdad. copiarLigaProveedor SIEMPRE emite.
+  const btnCopiar = document.getElementById("btn-liga-copiar");
+  if(btnCopiar) btnCopiar.textContent = liga.kind === "activa" ? "Copiar liga" : "Emitir liga y copiar";
+  const btnRevocar = document.getElementById("btn-liga-revocar");
+  if(btnRevocar && liga.kind !== "activa") btnRevocar.style.display = "none";
 
   // ── Fila 2: lo que reporta el taller
   const filaT = document.getElementById("tf-prov-taller");
@@ -7933,25 +8229,9 @@ function _provPintar(e){
     }
     filaT.appendChild(km);
   }
-  if(prom.kind !== "sin-promesa"){
-    const f = document.createElement("span");
-    f.style.cssText = "font-size:12px;color:var(--w1)";
-    f.textContent = `· promete salida ${fmtDate(prom.fecha)}`;
-    filaT.appendChild(f);
-    if(prom.compromisoOriginal){
-      const o = document.createElement("span");
-      o.style.cssText = "font-size:10.5px;color:var(--s2)";
-      o.textContent = `(había prometido ${fmtDate(prom.compromisoOriginal)})`;
-      filaT.appendChild(o);
-    }
-    if(prom.kind === "vencida"){
-      const v = document.createElement("span");
-      v.className = "tl-pill pendiente";
-      v.style.marginLeft = "auto";
-      v.textContent = `PROMESA VENCIDA · ${prom.diasVencida} días`;
-      filaT.appendChild(v);
-    }
-  }
+  // La promesa de salida y "PROMESA VENCIDA" viven en la fila "Salida" de la ficha (§4.2);
+  // aquí solo queda su huella para quien inspeccione el nodo.
+  filaT.dataset.promesa = prom.kind;
   if(!filaT.childNodes.length){
     const nada = document.createElement("span");
     nada.style.cssText = "font-size:12px;color:var(--s2)";
@@ -7965,7 +8245,9 @@ function _provPintar(e){
 // Filtro activo de la lista de partidas del registro. "pendientes" por defecto
 // cuando hay algo esperando firma; si no, "todas". _provFiltroId lo reinicia
 // por visita para que cambiar de registro no arrastre el filtro de la anterior.
-let _provFiltro = "pendientes";
+// Registro como ficha (spec 2026-09-30 §2 #18): abre en "todas", agrupado. "pendientes" queda
+// para el salto desde la bandeja, que fija _provFiltro y _provFiltroId juntos.
+let _provFiltro = "todas";
 let _provFiltroId = null;
 
 // Lista completa de partidas de la visita, con su historial y la decisión
@@ -7977,7 +8259,7 @@ function _provPartidas(e){
   cont.textContent = "";
   if(!e) return;
 
-  if(_provFiltroId !== e.id){ _provFiltroId = e.id; _provFiltro = "pendientes"; }
+  if(_provFiltroId !== e.id){ _provFiltroId = e.id; _provFiltro = "todas"; }
 
   if(!_partidasConfiables()){
     const aviso = document.createElement("div");
@@ -8006,8 +8288,15 @@ function _provPartidas(e){
   barra.style.cssText = "display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid var(--ln);flex-wrap:wrap";
   const titulo = document.createElement("span");
   titulo.style.cssText = "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--s1);margin-right:4px";
-  titulo.textContent = "Partidas";
+  titulo.textContent = `Hallazgos del taller (${ps.length})`;
   barra.appendChild(titulo);
+  if(r.pendientes.n > 0){
+    const pend = document.createElement("span");
+    pend.className = "tl-ficha-ambar";
+    pend.style.cssText = "font-size:10.5px;font-weight:700;margin-right:6px";
+    pend.textContent = `${r.pendientes.n} ${r.pendientes.n === 1 ? "espera" : "esperan"} tu firma`;
+    barra.appendChild(pend);
+  }
   const defs = [
     ["todas", "Todas", ps.length],
     ["pendientes", "Pendientes", r.pendientes.n],
@@ -8023,37 +8312,52 @@ function _provPartidas(e){
     b.addEventListener("click", () => { _provFiltro = clave; _provPartidas(e); });
     barra.appendChild(b);
   }
-  const totales = document.createElement("span");
-  totales.style.cssText = "margin-left:auto;font-size:10.5px;color:var(--s2)";
-  totales.textContent = `Autorizado ${_fmtMon2(r.autorizadas.monto)} · Esperando ${_fmtMon2(r.pendientes.monto)}`;
-  barra.appendChild(totales);
   cont.appendChild(barra);
 
   // ── Lista
   const lista = document.createElement("div");
   lista.style.cssText = "display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--ln);border-radius:8px;overflow:hidden;margin-top:8px";
-  const visibles = ps.filter((p) =>
-    _provFiltro === "todas" ? true
-    : _provFiltro === "pendientes" ? p.estado === "propuesta"
-    : _provFiltro === "autorizadas" ? (p.estado === "autorizada" || p.estado === "terminada")
-    : p.estado === "rechazada");
-
-  if(!visibles.length){
-    const vacio = document.createElement("div");
-    vacio.style.cssText = "padding:16px;color:var(--s2);font-size:12px;text-align:center";
-    vacio.textContent = "No hay partidas en este filtro.";
-    lista.appendChild(vacio);
-  }
   const fila = { visitaKey: window.__visitaKeyDe(e), proveedor: String(e.tecnico ?? "") };
-  for(const p of visibles){
+  const pintarFila = (p) => {
     if(p.estado === "propuesta"){
       // La MISMA fila de la bandeja: botones, motivos y repintado incluidos.
       const filaPend = _bnPartida(fila, p, window.__MOTIVOS_RECHAZO);
       filaPend.style.background = "var(--Al)";
       lista.appendChild(filaPend);
-      continue;
+      return;
     }
     lista.appendChild(_provFilaHistorial(p));
+  };
+  const subtitulo = (texto, nota) => {
+    lista.appendChild(Object.assign(document.createElement("div"), { className: "tl-ficha-grupo", textContent: texto }));
+    if(nota) lista.appendChild(Object.assign(document.createElement("div"), { className: "tl-ficha-nota tl-ficha-grupo-nota", textContent: nota }));
+  };
+  let visibles;
+  if(_provFiltro === "todas"){
+    // Registro como ficha (spec 2026-09-30 §2 #18): tres grupos, los que esperan firma primero.
+    // El orden lo decide la capa pura; aquí solo se pintan los subtítulos.
+    const g = typeof window.__ordenarHallazgos === "function"
+      ? window.__ordenarHallazgos(ps)
+      : { esperanFirma: ps.filter(p => p.estado === "propuesta"),
+          autorizados: ps.filter(p => p.estado === "autorizada" || p.estado === "terminada"),
+          noAutorizados: ps.filter(p => p.estado !== "propuesta" && p.estado !== "autorizada" && p.estado !== "terminada") };
+    const sumaAutorizados = typeof window.__gastoDerivado === "function" ? window.__gastoDerivado(e, ps).gasto : r.autorizadas.monto;
+    if(g.esperanFirma.length){ subtitulo("Esperan tu firma", "Autorizar y No autorizar se guardan solos; no necesitas Guardar."); g.esperanFirma.forEach(pintarFila); }
+    if(g.autorizados.length){ subtitulo(`Autorizados · suman ${_fmtMon2(sumaAutorizados)}`); g.autorizados.forEach(pintarFila); }
+    if(g.noAutorizados.length){ subtitulo("No autorizados"); g.noAutorizados.forEach(pintarFila); }
+    visibles = ps;
+  } else {
+    visibles = ps.filter((p) =>
+      _provFiltro === "pendientes" ? p.estado === "propuesta"
+      : _provFiltro === "autorizadas" ? (p.estado === "autorizada" || p.estado === "terminada")
+      : p.estado === "rechazada");
+    if(!visibles.length){
+      const vacio = document.createElement("div");
+      vacio.style.cssText = "padding:16px;color:var(--s2);font-size:12px;text-align:center";
+      vacio.textContent = "No hay partidas en este filtro.";
+      lista.appendChild(vacio);
+    }
+    visibles.forEach(pintarFila);
   }
   if(visibles.length > 6){ lista.style.maxHeight = "360px"; lista.style.overflowY = "auto"; }
   cont.appendChild(lista);
@@ -8066,7 +8370,8 @@ function _provPartidas(e){
 function _provFilaHistorial(p){
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--ln);align-items:center";
-  row.appendChild(_bnThumb(p));
+  const thumb = _bnThumb(p);
+  row.appendChild(thumb);
 
   const info = document.createElement("div");
   info.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:2px";
@@ -8111,15 +8416,25 @@ function _provFilaHistorial(p){
 
   const rastro = document.createElement("div");
   rastro.style.cssText = "font-size:10.5px;color:var(--s2)";
+  // Registro como ficha (spec 2026-09-30 §4.7 punto 4): quién firmó, por NOMBRE. Todo se lee
+  // de window con guarda: esta función se ejecuta en pruebas con window = {} y en la demo.
+  const quien = (crudo) => {
+    if(typeof window.__nombreDeUsuario === "function") return window.__nombreDeUsuario(crudo);
+    const c = String(crudo || "").trim();
+    return /^[^\s@]+@[^\s@]+$/.test(c) ? c.split("@")[0] : "un usuario de GPA";
+  };
+  const registrar = (nodo, crudo, plantilla) => {
+    if(typeof _tfRegistrarNombre === "function") return _tfRegistrarNombre(nodo, crudo, plantilla);
+    nodo.textContent = plantilla(quien(crudo));
+    return nodo;
+  };
   if(p.estado === "autorizada"){
-    rastro.textContent = `Autorizada por ${p.decididoPor || "desconocido"} · ${fmtDate(p.decididoEn)}`;
+    registrar(rastro, p.decididoPor, (n) => `Autorizada por ${n} · ${fmtDate(p.decididoEn)}`);
   }else if(p.estado === "terminada"){
-    let txt = `Autorizada por ${p.decididoPor || "desconocido"} · ${fmtDate(p.decididoEn)}`;
-    if(p.terminadoEn) txt += ` · terminada el ${fmtDate(p.terminadoEn)}`;
-    rastro.textContent = txt;
+    registrar(rastro, p.decididoPor, (n) => `Autorizada por ${n} · ${fmtDate(p.decididoEn)}` + (p.terminadoEn ? ` · terminada el ${fmtDate(p.terminadoEn)}` : ""));
   }else if(p.estado === "rechazada"){
     const nota = p.motivoRechazoNota ? ` — ${p.motivoRechazoNota}` : "";
-    rastro.textContent = `Rechazada por ${p.decididoPor || "desconocido"} · ${fmtDate(p.decididoEn)} · ${p.motivoRechazo || "sin motivo"}${nota}`;
+    registrar(rastro, p.decididoPor, (n) => `Rechazada por ${n} · ${fmtDate(p.decididoEn)} · ${p.motivoRechazo || "sin motivo"}${nota}`);
   }else if(p.estado === "cancelada"){
     rastro.textContent = "Cancelada — no cuenta en el gasto";
   }else{
@@ -8130,26 +8445,29 @@ function _provFilaHistorial(p){
   const fotosAntes = p.fotos || [];
   const fotosDespues = p.evidenciaFinal || [];
   if(p.estado === "terminada" && (fotosAntes.length || fotosDespues.length)){
+    const abrirAD = () => {
+      if(typeof window.__abrirVisorAntesDespues !== "function") return;
+      const tipoTxtV = p.tipo === "manoObra" ? "Mano de obra" : "Refacción";
+      let subtitulo = tipoTxtV;
+      if(Number.isFinite(p.precioAutorizado)) subtitulo += ` · ${_fmtMon2(p.precioAutorizado)}`;
+      if(p.terminadoEn) subtitulo += ` · terminada el ${fmtDate(p.terminadoEn)}`;
+      window.__abrirVisorAntesDespues({
+        antes: { llaves: fotosAntes, fecha: p.creadoEn },
+        despues: { llaves: fotosDespues, fecha: p.terminadoEn },
+        titulo: p.descripcion || "(sin descripción)",
+        subtitulo,
+      });
+    };
     const verAD = document.createElement("button");
     verAD.type = "button";
     verAD.textContent = "🖼 Antes y después";
     verAD.style.cssText = "align-self:flex-start;margin-top:4px;min-height:32px;padding:4px 10px;border-radius:6px;border:1px solid var(--ln);background:var(--bg2);color:var(--w1);font-size:11.5px;font-weight:600;cursor:pointer";
-    verAD.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      if(typeof window.__abrirVisorAntesDespues === "function"){
-        const tipoTxtV = p.tipo === "manoObra" ? "Mano de obra" : "Refacción";
-        let subtitulo = tipoTxtV;
-        if(Number.isFinite(p.precioAutorizado)) subtitulo += ` · ${_fmtMon2(p.precioAutorizado)}`;
-        if(p.terminadoEn) subtitulo += ` · terminada el ${fmtDate(p.terminadoEn)}`;
-        window.__abrirVisorAntesDespues({
-          antes: { llaves: fotosAntes, fecha: p.creadoEn },
-          despues: { llaves: fotosDespues, fecha: p.terminadoEn },
-          titulo: p.descripcion || "(sin descripción)",
-          subtitulo,
-        });
-      }
-    });
+    verAD.addEventListener("click", (ev) => { ev.stopPropagation(); abrirAD(); });
     info.appendChild(verAD);
+    // §2 #17: en una terminada, la miniatura abre el MISMO visor A+ (en captura, antes del
+    // visor simple que _bnThumb le cuelga a la miniatura).
+    thumb.style.cursor = "pointer";
+    thumb.addEventListener("click", (ev) => { ev.stopImmediatePropagation(); ev.preventDefault(); abrirAD(); }, true);
   }
   row.appendChild(info);
   return row;
@@ -10528,7 +10846,15 @@ function openTallerModal(id){
   _tallerEditId = id||null;
   _clearInvalid(["tf-eco","tf-tipo","tf-km","tf-fentrada","tf-fsalida-est","tf-fsalida-real"]);
   const e = id ? tallerEntries.find(x=>x.id===id) : null;
-  document.getElementById("tl-mttl").textContent = e ? "Editar registro" : "Agregar unidad al taller";
+  document.getElementById("tl-mttl").textContent = e ? `Unidad ${e.eco||e.plate||"?"} · ${e.plate||"sin placas"}` : "Agregar unidad al taller";
+  // Registro como ficha (spec 2026-09-30 §4.4): visita guardada ⇒ "Datos del registro" plegado;
+  // alta ⇒ desplegado. Viewer: campos deshabilitados (nunca readOnly: esa es la señal de #tf-gasto).
+  {
+    const esViewer = typeof isViewer === "function" && isViewer();
+    const datos = document.getElementById("tf-datos"); if(datos) datos.open = !e;
+    const campos = document.getElementById("tf-datos-campos"); if(campos) campos.disabled = esViewer;
+    const ver = document.querySelector("#tf-datos .tl-datos-ver"); if(ver) ver.textContent = esViewer ? "Ver datos" : "Editar datos";
+  }
   const isClosed = v => v==="Finalizado"||v==="Listo";
   document.getElementById("btn-reingreso").style.display  = e ? "" : "none";
   document.getElementById("btn-finalizar").style.display  = (e && !isClosed(e?.estado)) ? "" : "none";
@@ -10628,7 +10954,8 @@ function openTallerModal(id){
       if(ligaOfrecible && window.__tallerHibrido && puedeEmitirLiga() && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
         const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
         window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
-          if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";
+          // §2 #20: la nube confirma Y la copia local dice activa; si no, "Revocar" no se ofrece.
+          if(_tallerEditId===id && st && st.generada && typeof window.__estadoLiga === "function" && window.__estadoLiga(e).kind === "activa") btnRevocarLiga.style.display = "";
         }).catch(()=>{});
       }
     }
@@ -10636,11 +10963,26 @@ function openTallerModal(id){
 
   // Bloque Proveedor: lo que reporta el taller desde su liga. Solo pinta con
   // una visita YA persistida; un ingreso nuevo aún no tiene nada que mostrar.
-  if(e) _provPintar(e); else document.getElementById("tf-proveedor").style.display = "none";
+  if(e) _provPintar(e); else { document.getElementById("tf-proveedor").style.display = "none"; _fichaPintar(null); }
+  // §4.7: el directorio se pide la primera vez que se abre un registro con liga o partidas. Cuando
+  // llega, se reescriben SOLO los nodos de nombre: nunca _provPintar/_provPartidas (borrarían un
+  // "No autorizar" a medio escribir, el foco y las firmas de las miniaturas).
+  if(e && (e.ligaCreadaEn || _partidasDeVisita(e).length) && window.__directorioUsuarios && typeof window.__directorioUsuarios.cargar === "function"){
+    const idAbierto = id;
+    window.__directorioUsuarios.cargar().then(ok => {
+      if(ok && _tallerEditId===idAbierto && document.getElementById("taller-modal")?.classList.contains("open")) _tfNombresRefrescar();
+    }).catch(()=>{});
+  }
 
   buildTallerSucOptions();
+  // §2 #24: en una visita guardada el foco va al título; en el alta, al campo de la unidad.
+  _tfAutofoco(e ? "tl-mttl" : "tf-eco");
   openModal("taller-modal");
-  document.getElementById("tf-eco").focus();
+  if(!e) document.getElementById("tf-eco").focus();
+  // §4.5: la foto de "Datos del registro" solo en una visita guardada; en el alta Guardar va encendido.
+  _tfFotoCampos = e ? _tfTomarFoto() : null;
+  _tfTocado = false;
+  _tfRecalcularCambios();
 }
 
 function closeTallerModal(){
@@ -10788,13 +11130,27 @@ function clearTallerEntryFields(){
   }
   const idHint = document.getElementById("tf-identidad-hint");
   if(idHint) idHint.style.display = "none";
+  // Registro como ficha (spec 2026-09-30 §2 #21): un reingreso es una visita NUEVA — nada de la
+  // anterior se queda pintado, "Datos del registro" abre desplegado y Guardar encendido.
+  _fichaPintar(null);
+  const prov = document.getElementById("tf-proveedor"); if(prov) prov.style.display = "none";
+  const datos = document.getElementById("tf-datos"); if(datos) datos.open = true;
+  const campos = document.getElementById("tf-datos-campos"); if(campos) campos.disabled = false;
+  for(const id of ["btn-finalizar","btn-expediente"]){ const b = document.getElementById(id); if(b) b.style.display = "none"; }
+  _tfFotoCampos = null;
+  _tfTocado = false;
+  _tfAutofoco("tf-freporte");
+  _tfRecalcularCambios();
 }
 
 function reingresoTaller(){
   const src = tallerEntries.find(x=>x.id===_tallerEditId);
   if(!src) return;
-  _tallerReingresoKey = src.unitKey || src.id;
   closeTallerModal();
+  // Decisión 26 (spec 2026-09-30): closeTallerModal pone _tallerReingresoKey en null, así que la
+  // llave de la unidad de origen se fija DESPUÉS de cerrar. Antes se perdía y la visita nueva
+  // abría un historial aparte.
+  _tallerReingresoKey = src.unitKey || src.id;
   _tallerEditId = null;
   document.getElementById("tl-mttl").textContent = "Reingresar al Taller";
   document.getElementById("tf-eco").value          = src.eco||"";
@@ -11140,14 +11496,14 @@ async function enviarHallazgoManual(partidaId, visitaKey){
 // ── Acciones del modal ─────────────────────────────────────
 function finalizarDesdeModal(){
   const id = _tallerEditId;
-  closeTallerModal();
+  if(!_tallerCerrarConAviso()) return;
   finalizarUnidad(id);
 }
 function expedienteDesdeModal(){
   const e = tallerEntries.find(x=>x.id===_tallerEditId);
   if(!e) return;
   const key = e.unitKey||e.id;
-  closeTallerModal();
+  if(!_tallerCerrarConAviso()) return;
   openHistorialModal(key);
 }
 
@@ -11286,12 +11642,14 @@ function tlAcSelect(idx){
   if(r.area) document.getElementById("tf-area").value = r.area;
   document.getElementById("tl-ac-drop").style.display="none";
   document.getElementById("tf-tipo").focus();
+  _tfRecalcularCambios();
 }
 
 function tlAcSelectNew(val){
   document.getElementById("tf-eco").value = val;
   document.getElementById("tl-ac-drop").style.display="none";
   document.getElementById("tf-plate").focus();
+  _tfRecalcularCambios();
 }
 
 // Auto-fill legacy (kept for compatibility)
@@ -11305,6 +11663,8 @@ function _markInvalid(id){
   el.style.outline="2px solid var(--R)";el.style.outlineOffset="1px";
   const clear=()=>{el.style.outline="";el.style.outlineOffset="";el.removeEventListener("input",clear);el.removeEventListener("change",clear);};
   el.addEventListener("input",clear);el.addEventListener("change",clear);
+  // Registro como ficha (§2 #22): con "Datos del registro" plegado, el aviso apuntaría a un campo oculto.
+  const det=el.closest&&el.closest("details");if(det)det.open=true;
   el.focus();
 }
 // El marcador solo se limpia con input/change; abrir OTRA visita asigna .value por código

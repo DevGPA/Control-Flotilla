@@ -292,6 +292,27 @@ declare global {
     /** Una sola señal por visita, la más urgente (Task 7): pinta la columna
      *  "Proveedor" de la tabla de Taller, nunca decide la prioridad a mano. */
     __distintivoProveedor?: (e: Partial<TallerEntry>, ps: Partida[]) => Distintivo;
+    /** Registro como ficha (spec 2026-09-30): cuentas puras de src/taller/ficha.ts. */
+    __fichaRegistro?: (
+      e: Partial<TallerEntry>,
+      ps: readonly Partida[],
+      opts: { hibrido: boolean | undefined; confiables: boolean },
+    ) => import("../taller/ficha").FichaRegistro;
+    __ordenarHallazgos?: (
+      ps: readonly Partida[],
+    ) => import("../taller/seguimiento").GruposHallazgos;
+    /** "Emitida por NOMBRE", nunca un id (§4.7). */
+    __nombreDeUsuario?: (crudo: string | null | undefined) => string;
+    __describirRevocadaPor?: (crudo: string | null | undefined) => {
+      porCierre: boolean;
+      nombre: string | null;
+    };
+    /** Guardar solo con cambios (§4.5). */
+    __hayCambios?: (
+      foto: import("../taller/cambiosFormulario").FotoCampos,
+      actual: import("../taller/cambiosFormulario").FotoCampos,
+    ) => boolean;
+    __directorioUsuarios?: { cargar: () => Promise<boolean> };
     /** Prioridad de un distintivo para ordenar esa columna por urgencia
      *  (spec §6.2) — mismo orden que decide `distintivoProveedor`. */
     __prioridadDistintivo?: (d: Distintivo) => number;
