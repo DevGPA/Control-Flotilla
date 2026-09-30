@@ -188,3 +188,23 @@ export function filasPendientes(
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
 }
+
+// ── Registro como ficha (spec 2026-09-30 §2 #18) ─────────────────────────────
+export type GruposHallazgos = {
+  esperanFirma: Partida[];
+  autorizados: Partida[];
+  noAutorizados: Partida[];
+};
+
+/** Los tres grupos del registro, en el orden en que llegan (estable). El monolito
+ *  solo pinta los subtítulos; los filtros "Pendientes/Autorizadas/Rechazadas" siguen
+ *  mostrando un solo grupo. */
+export function ordenarHallazgos(ps: readonly Partida[]): GruposHallazgos {
+  const g: GruposHallazgos = { esperanFirma: [], autorizados: [], noAutorizados: [] };
+  for (const p of ps) {
+    if (p.estado === "propuesta") g.esperanFirma.push(p);
+    else if (p.estado === "autorizada" || p.estado === "terminada") g.autorizados.push(p);
+    else g.noAutorizados.push(p);
+  }
+  return g;
+}
