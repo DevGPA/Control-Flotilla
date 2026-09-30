@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-dJts7pJvbB0uC4UFIT5WX/Zdk27He99URYyEbVPHQFA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-9A6JQ1PFcbF+1Kp+2fnWKvIkhkz1eoPW6vERMXQyqSs=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7880,7 +7880,8 @@ function _provPintar(e){
   pill.className = "tl-pill " + (liga.kind === "activa" ? "repar" : liga.kind === "revocada" ? "pendiente" : "");
   pill.textContent = liga.kind === "activa" ? "Liga activa"
     : liga.kind === "revocada" ? "Liga revocada"
-    : liga.kind === "vencida" ? "Liga vencida" : "Sin liga";
+    : liga.kind === "vencida" ? "Liga vencida"
+    : liga.kind === "cerrada" ? "Liga cerrada" : "Sin liga";
   const detalle = document.createElement("span");
   detalle.style.cssText = "font-size:12px;color:var(--w1);font-weight:600";
   detalle.textContent = liga.kind === "activa" ? `Vence en ${liga.diasRestantes} días` : "";
@@ -7891,6 +7892,8 @@ function _provPintar(e){
     ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
     : liga.kind === "revocada"
       ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
+      : liga.kind === "cerrada"
+        ? `Liga cerrada con la visita · emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)}`
       : liga.kind === "vencida"
         ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
         : "Sin liga emitida para esta visita.";
@@ -9871,7 +9874,7 @@ function renderActivas(){
     ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--R)18,var(--bg2));border-bottom:1px solid var(--Rl);color:var(--s1)"><span style="color:var(--R);display:inline-flex;align-items:center;gap:4px;font-weight:700"><i data-lucide="clock" style="width:11px;height:11px"></i> ${vencidas.length} unidad${vencidas.length>1?"es con la salida estimada VENCIDA":" con la salida estimada VENCIDA"}:</span> <b>${vencidas.slice(0,5).map(e=>escHtml((e.eco||e.plate||"?")+" (+"+_diasVenc(e)+"d)")).join(", ")}${vencidas.length>5?" y "+(vencidas.length-5)+" más...":""}</b></div>`
     : "";
   const tlAlert = (urgEcos.length
-    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":"lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
+    ? `<div style="padding:6px 16px;font-size:11px;background:linear-gradient(90deg,var(--A)11,var(--bg2));border-bottom:1px solid var(--Al);color:var(--s1)"><span style="color:var(--A);display:inline-flex;align-items:center;gap:4px"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i> ${urgEcos.length} unidad${urgEcos.length>1?"es llevan":" lleva"} más de 7 días sin salir:</span> <b>${urgEcos.slice(0,5).map(escHtml).join(", ")}${urgEcos.length>5?" y "+(urgEcos.length-5)+" más...":""}</b></div>`
     : "") + tlVencAlert;
 
   const _klbl = (ico,txt) => `<div class="klbl" style="display:flex;align-items:center;gap:5px"><i data-lucide="${ico}" style="width:11px;height:11px"></i> ${txt}</div>`;
@@ -10033,7 +10036,7 @@ ${tlAlert}`;
       })()}</td>
       <td style="font-size:11px;color:var(--s1)">${escHtml(e.tecnico||"—")}</td>
       <td style="max-width:200px;color:var(--s1);font-size:11px;white-space:normal">${escHtml(e.comentario||e.refacciones||"")}</td>
-      <td onclick="event.stopPropagation()">
+      <td>
         <button class="tl-fin-btn" data-action="finalizarUnidad" data-arg1="${escAttr(e.id)}" data-stop-propagation="1" title="Marcar como Finalizado">✓ Salida</button>
       </td>
     </tr>`;
@@ -10480,6 +10483,7 @@ function _tfGastoPintar(e){
 
 function openTallerModal(id){
   _tallerEditId = id||null;
+  _clearInvalid(["tf-eco","tf-tipo","tf-km","tf-fentrada","tf-fsalida-est","tf-fsalida-real"]);
   const e = id ? tallerEntries.find(x=>x.id===id) : null;
   document.getElementById("tl-mttl").textContent = e ? "Editar registro" : "Agregar unidad al taller";
   const isClosed = v => v==="Finalizado"||v==="Listo";
@@ -10623,6 +10627,17 @@ async function copiarLigaProveedor(){
       window.notify?.((r && r.error) || "No se pudo generar la liga.","error");
       return;
     }
+    // Espejo local (decisión 2; hallazgo de la prueba en Chrome 2026-09-24): `emitir`
+    // devuelve la liga RELEÍDA de la nube. Sin esto la copia local seguía "Sin liga"
+    // hasta la hidratación y emitir + dar salida sin recargar NO revocaba la liga
+    // (cierraVisitaConLiga veía un entry sin ligaCreadaEn y la subida no releía la nube).
+    if(r.liga){
+      Object.assign(e, r.liga);
+      if(typeof saveTallerDB==="function") saveTallerDB().catch(err=>console.warn("[liga] espejo local no persistido en IndexedDB:",err));
+      // Repintar solo si el modal sigue en ESTA visita: la espera fue larga (mutación +
+      // relectura) y la persona pudo abrir otra; la copia local ya quedó bien de todos modos.
+      if(typeof _provPintar==="function" && _tallerEditId===e.id) _provPintar(e);
+    }
     const msg = window.__tallerLiga.mensajeWhatsApp({ eco: e.eco||"", placa: e.plate||"", url: r.url });
     let copiado = false;
     try{
@@ -10661,6 +10676,15 @@ async function revocarLigaProveedor(){
     if(!r || "error" in r){
       window.notify?.((r && r.error) || "No se pudo revocar la liga.","error");
       return;
+    }
+    // Espejo local: misma regla que en copiarLigaProveedor — el bloque dice
+    // "Liga revocada" al instante, sin esperar la hidratación.
+    if(r.liga){
+      Object.assign(e, r.liga);
+      if(typeof saveTallerDB==="function") saveTallerDB().catch(err=>console.warn("[liga] espejo local no persistido en IndexedDB:",err));
+      // Repintar solo si el modal sigue en ESTA visita: la espera fue larga (mutación +
+      // relectura) y la persona pudo abrir otra; la copia local ya quedó bien de todos modos.
+      if(typeof _provPintar==="function" && _tallerEditId===e.id) _provPintar(e);
     }
     window.notify?.("Liga revocada.","ok");
   }catch(err){
@@ -11100,7 +11124,7 @@ function finalizarUnidad(id){
   const avisoPartidas = (nPend || nBorr)
     ? `\n\n⚠ Esta visita tiene ${nPend} partida${nPend===1?"":"s"} esperando firma y ${nBorr} borrador${nBorr===1?"":"es"} sin enviar.\nSi la finalizas ahora, su costo puede cambiar después de cerrada.`
     : "";
-  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresorla en cualquier momento desde el Historial.`)) return;
+  if(!confirm(`¿Finalizar el ingreso de ${nombre}?${avisoPartidas}\n\nEl registro pasará al Historial y desaparecerá de Operaciones Activas.\nPodrás reingresarla en cualquier momento desde el Historial.`)) return;
   e.estado = "Finalizado";
   e.fsalidaReal = e.fsalidaReal || new Date().toISOString().slice(0,10);
   e.updatedAt   = new Date().toISOString();
@@ -11238,6 +11262,12 @@ function _markInvalid(id){
   el.addEventListener("input",clear);el.addEventListener("change",clear);
   el.focus();
 }
+// El marcador solo se limpia con input/change; abrir OTRA visita asigna .value por código
+// (sin eventos) y lo dejaba pegado en un campo válido (hallazgo C13 de la prueba en Chrome,
+// frecuente desde que la guarda de la llave marca la fecha). Se limpia al abrir el modal.
+function _clearInvalid(ids){
+  ids.forEach(id=>{const el=document.getElementById(id);if(el){el.style.outline="";el.style.outlineOffset="";}});
+}
 async function saveTallerEntry(){
   if(typeof canWrite==="function" && !canWrite()){ window.notify && window.notify("Tu cuenta es de solo lectura: no puedes guardar registros de taller.","warn",4000); return; }
   const eco  = document.getElementById("tf-eco").value.trim();
@@ -11304,6 +11334,25 @@ async function saveTallerEntry(){
     // lista blanca de este `entry` lo omitía y `upsertTaller` reemplaza `datos`
     // COMPLETO ⇒ el siguiente guardado lo borraba de DynamoDB para siempre.
     gastoCapturadoOriginal: srcEntry?.gastoCapturadoOriginal,
+    // Columnas SOLO-NUBE: las cuelga la hidratación (cloudHydrate.ts), el formulario no las
+    // captura, y esta lista blanca las PERDÍA: `tallerEntries[idx]=entry` dejaba la copia local
+    // "sin-liga" hasta el siguiente refresco, así que cerrar desde el modal NO revocaba la liga
+    // (revocacionPorCierre veía un entry sin liga — decisión 2 rota en este camino) y anular
+    // tras editar se saltaba la revocación (__estadoLiga decía "sin-liga" — decisión 3). Se
+    // arrastran de srcEntry, como gastoCapturadoOriginal. En un alta o reingreso srcEntry es
+    // null ⇒ undefined (JSON.stringify las omite): una visita nueva no hereda liga de nadie.
+    ligaVersion:          srcEntry?.ligaVersion,
+    ligaCreadaEn:         srcEntry?.ligaCreadaEn,
+    ligaCreadaPor:        srcEntry?.ligaCreadaPor,
+    ligaRevocadaEn:       srcEntry?.ligaRevocadaEn,
+    ligaRevocadaPor:      srcEntry?.ligaRevocadaPor,
+    // Lo que reporta el proveedor y la marca anti-resurrección de la migración: misma pérdida
+    // (preexistente a este frente), mismo remedio.
+    estadoOperativo:      srcEntry?.estadoOperativo,
+    kmTaller:             srcEntry?.kmTaller,
+    fsalidaEstTaller:     srcEntry?.fsalidaEstTaller,
+    fsalidaEstCompromiso: srcEntry?.fsalidaEstCompromiso,
+    _cloud:               srcEntry?._cloud,
     // Pedido del ERP (NetSuite): viaja a la nube completo dentro de `datos` (el upsert
     // guarda el entry entero), se hidrata en cloudHydrate y sale en el Excel.
     pedidoErp:   document.getElementById("tf-pedido").value.trim(),
@@ -11326,6 +11375,22 @@ async function saveTallerEntry(){
   // Auto-set fsalidaReal cuando estado=Finalizado y campo está vacío.
   if(entry.estado === "Finalizado" && !entry.fsalidaReal){
     entry.fsalidaReal = new Date().toISOString().slice(0,10);
+  }
+
+  // Decisión 1 (spec §4.1): la llave real de la visita es unidad + fecha de atención. Si otra
+  // visita —vigente o ANULADA— ya la tiene, guardar la PISARÍA en silencio y la nueva heredaría
+  // su anulación, su liga y sus partidas (incidente 2026-09-22). Se bloquea y se explica.
+  if(typeof window.__llaveEnUso === "function"){
+    const uso = window.__llaveEnUso(entry, tallerEntries);
+    if(uso.kind !== "libre"){
+      const quien = entry.eco ? `La unidad ${entry.eco}` : `La placa ${entry.plate}`;
+      const msg = uso.kind === "anulada"
+        ? `${quien} ya tiene una visita con fecha de atención ${fmtDate(uso.fentrada)} (anulada${uso.anuladaEn ? " el " + fmtDate(uso.anuladaEn) : ""}). Cambia la fecha, o restáurala desde Anulados si es la misma visita.`
+        : `${quien} ya tiene una visita con fecha de atención ${fmtDate(uso.fentrada)} (vigente). Cambia la fecha o abre la existente.`;
+      window.notify && window.notify(msg, "warn", 7000);
+      _markInvalid("tf-fentrada");
+      return;
+    }
   }
 
   if(_tallerEditId){
@@ -11368,6 +11433,24 @@ async function deleteTallerEntry(id){
       etiqueta:`Taller · unidad ${e.eco||e.plate||"?"} (${e.plate||"sin placas"}) · ingreso ${fmtDate(e.fentrada||e.freporte)||"sin fecha"}`,
       confirmText:String(e.plate||e.eco||""),
       onConfirm:async(motivo)=>{
+        // Decisión 3 (spec §4.3): una visita anulada no puede dejar una liga viva detrás.
+        // PRIMERO revocar (admin sí puede), DESPUÉS anular: si anular falla, solo queda una
+        // liga muerta — inofensivo. Si revocar falla, NO se anula (throw → el overlay lo
+        // muestra y no cierra).
+        const ligaE = typeof window.__estadoLiga === "function" ? window.__estadoLiga(e).kind : "sin-liga";
+        // "activa" (visita abierta) o "cerrada" (visita cerrada con liga vigente): en ambos la
+        // liga sigue viva para el portal si la visita se reabre — hay que matarla.
+        if((ligaE === "activa" || ligaE === "cerrada")
+           && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
+          const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
+          const r = await window.__tallerLiga.revocar(unitUid, fechaEntrada);
+          if(!r || "error" in r){
+            // UN solo mensaje, en el overlay que la persona está mirando: ErrorLegible le dice a
+            // src/anulacion/ui.ts que este texto es para ella (con un Error cualquiera pintaría su
+            // genérico de sesión/rol — falso aquí: la sesión sirve, lo que falló fue revocar).
+            throw new window.__anulacionUI.ErrorLegible("No se pudo revocar la liga del proveedor; la visita no se anuló. Intenta de nuevo.");
+          }
+        }
         await window.__anulaciones.anular(window.__tallerRefId(e),"taller",motivo);
         // Fuera de la vista local de inmediato; la hidratación lo mantiene fuera
         // (filtro por tombstone) y Restaurar lo trae de vuelta en el siguiente ciclo.

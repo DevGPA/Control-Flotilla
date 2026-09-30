@@ -68,3 +68,6 @@ amplify_outputs.d.ts
 
 # CDK backup local (migración a Amplify Gen 2 — sin git)
 _backup_cdk/
+
+# Issues/specs locales de los agentes (docs/agents/issue-tracker.md): nunca al repo publico
+.scratch/

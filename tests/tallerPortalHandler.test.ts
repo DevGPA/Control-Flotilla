@@ -452,3 +452,47 @@ describe("alcance `p` — las dos rutas que no lo conocen lo dicen (ancla Plan 2
     expect(tokenSrc).toMatch(/if \(payload\.p\) throw new ErrorToken\("alcance-no-soportado"\)/);
   });
 });
+
+// ── Decisión 3 (spec §4.3): el portón rechaza visitas ANULADAS ─────────────
+describe("decisión 3 (spec §4.3): el portón rechaza visitas ANULADAS", () => {
+  const i = handlerSrc.indexOf("async function cargarVisitaVigente(");
+  const cuerpo = handlerSrc.slice(i, handlerSrc.indexOf("\n}", i));
+  it("consulta Anulacion por su llave (tenantId + refId compuesto con refIdTaller)", () => {
+    expect(cuerpo).toContain("models.Anulacion.get(");
+    expect(cuerpo).toContain("refIdTaller(tk.u, tk.f)");
+  });
+  it("una anulación ACTIVA (sin restauradaTs) tumba la liga con el mismo 401 opaco", () => {
+    expect(cuerpo).toContain("esAnulacionActiva(");
+    expect(cuerpo).toContain('ErrorLigaInvalida("visita anulada")');
+  });
+  it("el handler importa las reglas puras de anulación de src/, no las reimplementa", () => {
+    expect(handlerSrc).toMatch(
+      /import \{[^}]*refIdTaller[^}]*\} from "\.\.\/\.\.\/\.\.\/src\/anulacion\/anulacion"/,
+    );
+  });
+  it("el chequeo va DESPUÉS de leer la visita y ANTES de devolverla", () => {
+    expect(cuerpo.indexOf("models.Anulacion.get(")).toBeGreaterThan(
+      cuerpo.indexOf("models.Taller.get("),
+    );
+    expect(cuerpo.indexOf('ErrorLigaInvalida("visita anulada")')).toBeLessThan(
+      cuerpo.lastIndexOf("return v;"),
+    );
+  });
+});
+
+// ── B-1 (revisión de seguridad): segunda cerradura por RASTRO, con la regla del escritorio ──
+describe("B-1: el portón también rechaza por rastro de revocación, con la MISMA regla que el escritorio", () => {
+  const i = handlerSrc.indexOf("async function cargarVisitaVigente(");
+  const cuerpo = handlerSrc.slice(i, handlerSrc.indexOf("\n}", i));
+  it("importa estadoLiga y columnasLigaDe de src/taller/liga (módulo hoja): no reimplementa la regla", () => {
+    expect(handlerSrc).toMatch(
+      /import \{[^}]*estadoLiga[^}]*\} from "\.\.\/\.\.\/\.\.\/src\/taller\/liga"/,
+    );
+    expect(cuerpo).toContain("estadoLiga(columnasLigaDe(v)");
+  });
+  it("el chequeo va tras el de versión y antes de devolver la visita, con su propio motivo en bitácora", () => {
+    const iRastro = cuerpo.indexOf('ErrorLigaInvalida("liga revocada (rastro)")');
+    expect(iRastro).toBeGreaterThan(cuerpo.indexOf('ErrorLigaInvalida("liga revocada")'));
+    expect(iRastro).toBeLessThan(cuerpo.lastIndexOf("return v;"));
+  });
+});

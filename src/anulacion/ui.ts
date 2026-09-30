@@ -7,6 +7,20 @@
 import type { AnulacionRow } from "./anulacion";
 import { esAnulacionActiva } from "./anulacion";
 
+/**
+ * Error cuyo `message` está escrito PARA LA PERSONA (español, sin jerga): el overlay de anular
+ * lo pinta tal cual en vez de su texto genérico. Lo lanza `onConfirm` cuando la causa la conoce
+ * el llamador (Taller: "no se pudo revocar la liga del proveedor; la visita no se anuló").
+ * Cualquier otro error (red, AppSync, rol) sigue con el genérico — su mensaje técnico no es
+ * para ella. Publicado también en `window.__anulacionUI.ErrorLegible`: el monolito no importa.
+ */
+export class ErrorLegible extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ErrorLegible";
+  }
+}
+
 declare global {
   interface Window {
     esAdmin?: () => boolean;
@@ -14,6 +28,7 @@ declare global {
     __anulacionUI?: {
       openAnular: typeof openAnularModal;
       openPanel: typeof openAnuladosPanel;
+      ErrorLegible: typeof ErrorLegible;
     };
   }
 }
@@ -62,7 +77,8 @@ export type AnularModalOpts = {
   etiqueta: string;
   /** Texto que el admin debe escribir para confirmar (p.ej. el económico o la placa). */
   confirmText: string;
-  /** Persiste la anulación. Si lanza, el modal muestra el error y permanece abierto. */
+  /** Persiste la anulación. Si lanza, el modal permanece abierto y muestra el `message` si es un
+   *  `ErrorLegible`; con cualquier otro error, el texto genérico de sesión/rol. */
   onConfirm: (motivo: string) => Promise<void>;
   /** Texto precargado del motivo (p.ej. triage de rechazadas de Ops); el admin puede editarlo. */
   motivoInicial?: string;
@@ -138,7 +154,10 @@ export function openAnularModal(opts: AnularModalOpts): void {
       .then(() => closeOverlay())
       .catch((e) => {
         console.error("[anulacion] anular:", e);
+        // ErrorLegible = el llamador ya explicó la causa para la persona; lo demás es técnico.
+        const legible = e instanceof ErrorLegible ? e.message.trim() : "";
         err.textContent =
+          legible ||
           "No se pudo anular. Verifica tu sesión (se requiere rol admin) e intenta de nuevo.";
         ok.disabled = false;
         ok.textContent = "Anular registro";
@@ -277,4 +296,4 @@ export function openAnuladosPanel(opts: AnuladosPanelOpts): void {
 }
 
 // Puente para los módulos legacy (Inspecciones/Semanales, Lote E3) desde el JS inline.
-window.__anulacionUI = { openAnular: openAnularModal, openPanel: openAnuladosPanel };
+window.__anulacionUI = { openAnular: openAnularModal, openPanel: openAnuladosPanel, ErrorLegible };

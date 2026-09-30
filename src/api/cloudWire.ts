@@ -32,6 +32,8 @@ import {
 } from "./batchUpload";
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
 import { abrirVisorFotos } from "../taller/visorFotos";
+import { llaveEnUso, type LlaveEnUso } from "../taller/llaveVisita";
+import { columnasLigaDe, type ColumnasLiga } from "../taller/liga";
 import {
   estadoLiga,
   promesaTaller,
@@ -47,6 +49,7 @@ import {
   upsertUnit,
   deleteUnit,
   listTaller,
+  getTaller,
   listNotas,
   listChecklists,
   listPeriodos,
@@ -175,6 +178,9 @@ declare global {
      *  (Task 11) nunca deriva unitUid/fechaEntrada de campos de formulario
      *  crudos, para no apuntar a una visita que el backend no encuentra. */
     __tallerCloudKey?: (e: LegacyTallerEntry) => { unitUid: string; fechaEntrada: string };
+    /** Decisión 1 (spec §4.1): ¿la llave (unitUid+fechaEntrada) de la visita candidata ya la usa
+     *  otra visita vigente o una anulada? El monolito NO guarda si no es "libre". */
+    __llaveEnUso?: (candidata: LegacyTallerEntry, vigentes: LegacyTallerEntry[]) => LlaveEnUso;
     /** Ciclo de firma del taller (Task 11): emitir/revocar la liga del
      *  proveedor + componer el mensaje de WhatsApp. El gate de ROL real es
      *  AppSync (grupo admin/operativo, ver data/resource.ts); needs-write +
@@ -182,16 +188,28 @@ declare global {
     __tallerLiga?: {
       /** Firma un token para la visita y devuelve la URL COMPLETA ya armada
        *  con `custom.tallerPortalUrl` (o `{error}` si el portal no está
-       *  configurado en este ambiente, o si la mutación falla). */
+       *  configurado en este ambiente, o si la mutación falla).
+       *
+       *  `liga` = las cinco columnas de la liga RELEÍDAS de la nube tras emitir
+       *  (`columnasLigaDe`, la única proyección nube→entry). Viaja para que el
+       *  monolito ESPEJE la copia local al instante (decisión 2, spec §4.2):
+       *  sin ello `tallerEntries` no traía `ligaCreadaEn` hasta la siguiente
+       *  hidratación, el bloque seguía en "Sin liga" y —peor— emitir y dar
+       *  salida sin recargar NO revocaba (`cierraVisitaConLiga` veía un entry
+       *  sin liga y la subida no releía la nube). Es opcional: si la relectura
+       *  falla, la emisión YA ocurrió y se devuelve sin `liga` (la hidratación
+       *  lo corrige); nunca se convierte en `{error}`. */
       emitir: (
         unitUid: string,
         fechaEntrada: string,
-      ) => Promise<{ url: string; expira: number } | { error: string }>;
-      /** Sube `ligaVersion` — invalida todos los tokens emitidos antes. */
+      ) => Promise<{ url: string; expira: number; liga?: ColumnasLiga } | { error: string }>;
+      /** Sube `ligaVersion` — invalida todos los tokens emitidos antes.
+       *  `liga`: misma regla que en `emitir` (relectura opcional para el espejo
+       *  local: el bloque dice "Liga revocada" sin esperar la hidratación). */
       revocar: (
         unitUid: string,
         fechaEntrada: string,
-      ) => Promise<{ ligaVersion: number } | { error: string }>;
+      ) => Promise<{ ligaVersion: number; liga?: ColumnasLiga } | { error: string }>;
       /** ¿Ya se generó alguna liga para esta visita? Lee `ligaCreadaEn`
        *  (columna real) vía el CRUD estándar de Taller — visitas previas a
        *  esta feature no la tienen: `generada` sale false. */
@@ -365,7 +383,13 @@ export function setupCloud(): void {
       return { units: 0, checklist: 0, semanal: 0, skipped: 0, errors: [], duration_ms: 0 };
     }
     window.notify?.(`Subiendo ${entries.length} taller a DynamoDB…`, "info", 2500);
-    const res = await uploadTallerToCloud(entries, session.tenantId, partidasDeEntry);
+    // Decisión 2: el correo viaja para el rastro "cierre:<quien>" de la revocación por cierre.
+    const res = await uploadTallerToCloud(
+      entries,
+      session.tenantId,
+      partidasDeEntry,
+      session.email,
+    );
     const summary = `Cloud taller: ${res.semanal} OK · ${res.errors.length} errors`;
     if (res.errors.length > 0) {
       console.warn("[cloudSyncTaller] errors:", res.errors);
@@ -405,7 +429,12 @@ export function setupCloud(): void {
   // simplemente no encuentra filas que borrar.
   window.__cloudReplaceTaller = async (entry: LegacyTallerEntry): Promise<void> => {
     const session = await ensureSession();
-    const res = await uploadTallerToCloud([entry], session.tenantId, partidasDeEntry);
+    const res = await uploadTallerToCloud(
+      [entry],
+      session.tenantId,
+      partidasDeEntry,
+      session.email,
+    );
     if (res.errors.length) {
       throw new Error(`replaceTaller upsert falló: ${res.errors[0]?.error ?? "?"}`);
     }
@@ -531,6 +560,15 @@ export function setupCloud(): void {
   };
   window.__tallerCloudKey = tallerCloudKey;
 
+  // Decisión 1 (spec §4.1): la guarda del alta. Las llaves se componen con tallerCloudKey (la
+  // misma que usa el registro, la liga y el tombstone) y las anuladas salen del mapa de la
+  // hidratación (__anuladasActivas). La regla es pura (src/taller/llaveVisita.ts); el monolito
+  // solo pregunta y, si no es "libre", no guarda.
+  window.__llaveEnUso = (candidata, vigentes) => {
+    const k = (e: LegacyTallerEntry) => ({ id: String(e.id ?? ""), ...tallerCloudKey(e) });
+    return llaveEnUso(k(candidata), vigentes.map(k), window.__anuladasActivas ?? new Map());
+  };
+
   // Visor de fotos (bloque Proveedor y bandeja de entrada). La URL firmada sale
   // del mismo puente que ya usa la miniatura: por demanda, nunca un índice.
   window.__abrirVisorFotos = (opts) =>
@@ -569,7 +607,7 @@ export function setupCloud(): void {
   // cliente de datos: es el MISMO singleton de getClient().
   window.__tallerLiga = {
     emitir: async (unitUid, fechaEntrada) => {
-      await ensureSession();
+      const session = await ensureSession();
       // R66: la mutación devuelve { token, expira } — nunca una URL (el Lambda
       // no puede leer su propia Function URL sin crear un ciclo de CDK). La URL
       // la compone el FRONTEND con custom.tallerPortalUrl. Se resuelve ANTES de
@@ -584,10 +622,29 @@ export function setupCloud(): void {
       }
       const v = parseLigaJson<{ token?: string; expira?: number; error?: string }>(r.data);
       if (v.error || !v.token) return { error: v.error || "No se pudo generar la liga." };
-      return { url: `${portal}?t=${encodeURIComponent(v.token)}`, expira: v.expira ?? 0 };
+      const url = `${portal}?t=${encodeURIComponent(v.token)}`;
+      const expira = v.expira ?? 0;
+      // Espejo local (decisión 2; hallazgo de la prueba en Chrome 2026-09-24): la emisión YA
+      // ocurrió. Se relee la fila para devolver la liga tal como quedó en la nube y que el
+      // monolito la espeje en la copia local sin esperar la hidratación. Si la relectura falla
+      // o la fila no aparece, se devuelve SIN `liga` y se avisa — NUNCA `{error}`: el token
+      // existe y la siguiente hidratación corrige la copia local.
+      try {
+        const fila = await getTaller({ tenantId: session.tenantId, unitUid, fechaEntrada });
+        if (fila) return { url, expira, liga: columnasLigaDe(fila) };
+        console.warn(
+          "[tallerLiga] emitir: la fila no apareció al releer; la hidratación la traerá",
+        );
+      } catch (err) {
+        console.warn(
+          "[tallerLiga] emitir: no se pudo releer la liga; la hidratación la traerá",
+          err,
+        );
+      }
+      return { url, expira };
     },
     revocar: async (unitUid, fechaEntrada) => {
-      await ensureSession();
+      const session = await ensureSession();
       const c = getClient();
       const r = await c.mutations.revocarLigaTaller({ unitUid, fechaEntrada });
       if (r.errors?.length) {
@@ -597,7 +654,22 @@ export function setupCloud(): void {
       if (v.error || typeof v.ligaVersion !== "number") {
         return { error: v.error || "No se pudo revocar la liga." };
       }
-      return { ligaVersion: v.ligaVersion };
+      const ligaVersion = v.ligaVersion;
+      // Espejo local: misma regla que en `emitir` — la revocación YA ocurrió; la relectura es
+      // opcional y su fallo nunca se convierte en `{error}`.
+      try {
+        const fila = await getTaller({ tenantId: session.tenantId, unitUid, fechaEntrada });
+        if (fila) return { ligaVersion, liga: columnasLigaDe(fila) };
+        console.warn(
+          "[tallerLiga] revocar: la fila no apareció al releer; la hidratación la traerá",
+        );
+      } catch (err) {
+        console.warn(
+          "[tallerLiga] revocar: no se pudo releer la liga; la hidratación la traerá",
+          err,
+        );
+      }
+      return { ligaVersion };
     },
     // B-I5 — LECTURA PASIVA: `getSession`, nunca `ensureSession`. Esta la llama
     // `openTallerModal` en CADA apertura, así que con `ensureSession` una sesión
