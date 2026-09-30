@@ -43,6 +43,20 @@ describe("renderChecklist — leyenda de auto-resueltos", () => {
     };
     renderChecklist(c, { unit: unit(), checklistDB: db });
     expect(c.textContent).not.toContain("resuelto — inspección");
-    expect(c.textContent).toContain("atendido — navares@gpa · 06/07/2026");
+    // Del correo solo se muestra el usuario (antes de la @).
+    expect(c.textContent).toContain("atendido — navares · 06/07/2026");
+  });
+
+  it("la fecha del atendido es la LOCAL, no el día UTC (marcado de noche no sale 'mañana')", () => {
+    const c = document.createElement("div");
+    // 25/09 a las 19:30 hora local; en UTC ya puede ser 26/09.
+    const ts = new Date(2026, 8, 25, 19, 30).toISOString();
+    const db: ChecklistDB = {
+      "ABC123__2026-06-02": {
+        "Bin:Tapetes completos": { done: true, ts, by: "tesoreria@gpa.com.mx" },
+      },
+    };
+    renderChecklist(c, { unit: unit(), checklistDB: db });
+    expect(c.textContent).toContain("atendido — tesoreria · 25/09/2026");
   });
 });

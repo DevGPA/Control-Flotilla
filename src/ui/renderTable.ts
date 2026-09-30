@@ -235,7 +235,7 @@ function buildRow(u: Unit, i: number, ctx: BuildRowCtx): HTMLElement {
   if (u.eco && u.plate) {
     const sub = document.createElement("div");
     sub.style.cssText =
-      "font-size:9px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
+      "font-size:10px;color:var(--s2);font-family:var(--fm);margin-top:2px;letter-spacing:.3px";
     sub.textContent = u.plate;
     idCell.appendChild(sub);
   }
