@@ -1107,3 +1107,11 @@ if (
 ) {
   void import("./dev/demoAntesDespues").then((m) => m.montarDemo());
 }
+// ─── Vista local "registro como ficha" (spec 2026-09-30 §8) — SOLO `npm run dev` ───
+if (
+  import.meta.env.DEV &&
+  window.location.search.includes("e2e=1") &&
+  window.location.search.includes("demo=registro-ficha")
+) {
+  void import("./dev/demoRegistroFicha").then((m) => m.montarDemo());
+}
