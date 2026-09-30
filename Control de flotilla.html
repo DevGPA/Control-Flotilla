@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-1BjMJtp/n4G2vM50NIpDg64ScbYP0D308qLD67UPWMY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-tQf30jFRjSjqKrtZ92W19NY4RDZUYzWbq02BePgpSPM=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -10898,6 +10898,15 @@ function openTallerModal(id){
   // Bloque Proveedor: lo que reporta el taller desde su liga. Solo pinta con
   // una visita YA persistida; un ingreso nuevo aún no tiene nada que mostrar.
   if(e) _provPintar(e); else { document.getElementById("tf-proveedor").style.display = "none"; _fichaPintar(null); }
+  // §4.7: el directorio se pide la primera vez que se abre un registro con liga o partidas. Cuando
+  // llega, se reescriben SOLO los nodos de nombre: nunca _provPintar/_provPartidas (borrarían un
+  // "No autorizar" a medio escribir, el foco y las firmas de las miniaturas).
+  if(e && (e.ligaCreadaEn || _partidasDeVisita(e).length) && window.__directorioUsuarios && typeof window.__directorioUsuarios.cargar === "function"){
+    const idAbierto = id;
+    window.__directorioUsuarios.cargar().then(ok => {
+      if(ok && _tallerEditId===idAbierto && document.getElementById("taller-modal")?.classList.contains("open")) _tfNombresRefrescar();
+    }).catch(()=>{});
+  }
 
   buildTallerSucOptions();
   // §2 #24: en una visita guardada el foco va al título; en el alta, al campo de la unidad.

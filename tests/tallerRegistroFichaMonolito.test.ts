@@ -689,3 +689,18 @@ describe("apertura del registro (§4.4, §2 #9, #12, #21, #22, #24, #26)", () =>
     expect(resultado).toBe("unidad-06");
   });
 });
+
+describe("el directorio llega después y solo reescribe nombres (§4.7)", () => {
+  it("openTallerModal pide el directorio y, al llegar, refresca nombres sin repintar", () => {
+    const i = html.indexOf("function openTallerModal(");
+    const c = html.slice(i, html.indexOf("\nfunction closeTallerModal", i));
+    expect(c).toContain("window.__directorioUsuarios.cargar()");
+    const then = c.slice(
+      c.indexOf("window.__directorioUsuarios.cargar()"),
+      c.indexOf("_tfNombresRefrescar()") + 30,
+    );
+    expect(then).toContain("_tallerEditId===idAbierto");
+    expect(then).not.toContain("_provPintar(");
+    expect(then).not.toContain("_provPartidas(");
+  });
+});
