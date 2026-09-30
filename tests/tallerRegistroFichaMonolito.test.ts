@@ -259,3 +259,264 @@ describe("autofoco y nombres", () => {
     expect(nodo.textContent).toBe("Se cerró junto con la visita");
   });
 });
+
+describe("_fichaPintar y la liga con nombre (§4.2, §4.7)", () => {
+  const GUID = "11111111-2222-4333-8444-555555555555";
+  const cuerpo = (nombre: string): string => {
+    const i = html.indexOf(`function ${nombre}(`);
+    expect(i, `no existe ${nombre}`).toBeGreaterThan(-1);
+    return html.slice(i, html.indexOf("\nfunction ", i + 10));
+  };
+  const dom = (): void => {
+    // eslint-disable-next-line no-restricted-syntax -- armado de prueba, literal controlado
+    document.body.innerHTML = `
+      <div id="tl-mttl"></div><div id="tl-msub"></div><button id="tf-aviso-firma" hidden></button>
+      <section id="tf-ficha"><div id="tf-ficha-gpa"></div><div id="tf-ficha-taller"><span id="tf-ficha-taller-nombre"></span>
+      <div id="tf-prov-taller"></div><div id="tf-prov-taller-nota"></div></div>
+      <div id="tf-ficha-dias"></div><div id="tf-ficha-salida"></div><div id="tf-ficha-costo"></div>
+      <div id="tf-ficha-liga"><div id="tf-prov-liga"><button id="btn-liga-copiar">Copiar liga</button><button id="btn-liga-revocar">Revocar</button></div>
+      <div id="tf-prov-liga-meta"></div></div></section>
+      <div id="tf-proveedor"><div id="tf-prov-partidas"></div></div><span id="tf-datos-resumen"></span>`;
+  };
+  const FICHA = {
+    estadoGpa: "En Reparación",
+    tipo: "Correctivo",
+    esperandoFirma: true,
+    dias: { n: 5, cerrada: false, inicio: "2026-09-25", fin: null, tono: "ambar" },
+    salida: {
+      estimadaGpa: "2026-09-30",
+      prometida: "2026-10-01",
+      compromisoOriginal: null,
+      senal: { kind: "despues-de-estimada", dias: 1 },
+    },
+    costo: { kind: "partidas", autorizado: 3850, pendiente: 2400 },
+    tallerNombre: "Taller Frenos del Bajío",
+  };
+  /** Ejecuta _fichaPintar + _provPintar reales con dobles. */
+  function pintar(
+    e: Record<string, unknown>,
+    win: Record<string, unknown>,
+    ficha: unknown = FICHA,
+  ): void {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecutan los literales reales
+    const fabrica = new Function(
+      "window",
+      "document",
+      "_partidasDeVisita",
+      "_partidasConfiables",
+      "fmtDate",
+      "_fmtMon2",
+      "_tfRegistrarNombre",
+      "_tfNodosNombre",
+      "_tfRecalcularCambios",
+      "_tfNombreRespaldo",
+      "_provPartidas",
+      `${cuerpo("_fichaPintar")}\n${cuerpo("_provPintar")}\nreturn { _fichaPintar, _provPintar };`,
+    );
+    const registrar = (
+      nodo: HTMLElement,
+      crudo: string,
+      plantilla: (n: string | null) => string,
+      cierre?: boolean,
+    ): HTMLElement => {
+      const n = cierre
+        ? ((win.__describirRevocadaPor as ((c: string) => { nombre: string | null }) | undefined)?.(
+            crudo,
+          ).nombre ?? null)
+        : typeof win.__nombreDeUsuario === "function"
+          ? (win.__nombreDeUsuario as (c: string) => string)(crudo)
+          : "un usuario de GPA";
+      nodo.textContent = plantilla(n);
+      return nodo;
+    };
+    const fns = fabrica(
+      { ...win, __fichaRegistro: () => ficha },
+      document,
+      () => (e.__ps as unknown[]) ?? [],
+      () => true,
+      (d: unknown) =>
+        String(d ?? "")
+          .slice(0, 10)
+          .split("-")
+          .reverse()
+          .join("/"),
+      (n: number) => `$${n.toFixed(2)}`,
+      registrar,
+      new Set(),
+      vi.fn(),
+      (c: string) => (/@/.test(String(c)) ? String(c).split("@")[0] : "un usuario de GPA"),
+      vi.fn(),
+    ) as { _provPintar: (e: unknown) => void };
+    fns._provPintar(e);
+  }
+  const E = (s: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: "e1",
+    eco: "06",
+    plate: "PRB0006",
+    brand: "Nissan NP300",
+    sucursal: "GDL",
+    area: "Mantenimiento",
+    estado: "En Reparación",
+    tipo: "Correctivo",
+    km: 85000,
+    tecnico: "Taller Frenos del Bajío",
+    ...s,
+  });
+
+  beforeEach(dom);
+
+  it("pinta subtítulo, GPA/TALLER, días, salida y costo con los textos exactos", () => {
+    const liga = {
+      kind: "activa",
+      diasRestantes: 88,
+      emitidaPor: GUID,
+      emitidaEn: "2026-09-24",
+      venceEn: "2026-12-23",
+    };
+    pintar(E(), {
+      __estadoLiga: () => liga,
+      __promesaTaller: () => ({ kind: "sin-promesa" }),
+      __tallerHibrido: true,
+      __nombreDeUsuario: () => "Ana López",
+    });
+    const t = document.body.textContent ?? "";
+    expect(document.getElementById("tl-msub")?.textContent).toBe(
+      "Nissan NP300 · GDL · Mantenimiento",
+    );
+    // "Cómo va" es markup fijo (lo cubre la prueba de estructura); aquí solo lo pintado.
+    for (const s of [
+      "GPA",
+      "lo decides tú",
+      "En Reparación",
+      "Se cambia en Datos del registro",
+      "marca esta unidad «Esperando firma»",
+      "TALLER",
+      "Taller Frenos del Bajío",
+      "nombre según GPA",
+      "5",
+      "Ingresó el 25/09/2026",
+      "Estimada por GPA",
+      "30/09/2026",
+      "El taller promete",
+      "01/10/2026",
+      "1 día después de lo estimado",
+      "Autorizado",
+      "$3850.00",
+      "Esperando tu firma",
+      "$2400.00",
+      "El subtotal es la suma de los hallazgos autorizados",
+      "Liga del proveedor activa · vence en 88 días · emitida por Ana López el 24/09/2026",
+      "Copiar vuelve a emitir: la liga queda a tu nombre y vence en 90 días",
+      "Guardado: Km al ingreso 85,000",
+    ]) {
+      expect(t, s).toContain(s);
+    }
+    expect(t).not.toContain(GUID);
+    expect(document.getElementById("btn-liga-copiar")?.textContent).toBe("Copiar liga");
+  });
+  it("sin directorio: revocada por un GUID ⇒ 'un usuario de GPA'; texto libre igual; sin 'Revocar'", () => {
+    const liga = {
+      kind: "revocada",
+      revocadaPor: "revocacion manual (CLI admin) por incidente",
+      revocadaEn: "2026-09-22",
+      emitidaPor: GUID,
+    };
+    pintar(E(), {
+      __estadoLiga: () => liga,
+      __promesaTaller: () => ({ kind: "sin-promesa" }),
+      __tallerHibrido: true,
+    });
+    expect(document.getElementById("tf-prov-liga-meta")?.textContent).toContain(
+      "Liga revocada por un usuario de GPA el 22/09/2026",
+    );
+    expect(document.body.textContent).not.toContain("CLI admin");
+    expect(document.getElementById("btn-liga-copiar")?.textContent).toBe("Emitir liga y copiar");
+    expect((document.getElementById("btn-liga-revocar") as HTMLElement).style.display).toBe("none");
+  });
+  it("cierre: ⇒ 'Se cerró junto con la visita (Ana López) el …'", () => {
+    const liga = {
+      kind: "revocada",
+      revocadaPor: "cierre:ana@ejemplo.test",
+      revocadaEn: "2026-09-29",
+    };
+    pintar(
+      E({ estado: "Finalizado", fsalidaReal: "2026-09-29" }),
+      {
+        __estadoLiga: () => liga,
+        __promesaTaller: () => ({ kind: "sin-promesa" }),
+        __tallerHibrido: true,
+        __describirRevocadaPor: () => ({ porCierre: true, nombre: "Ana López" }),
+      },
+      {
+        ...FICHA,
+        dias: { n: 4, cerrada: true, inicio: "2026-09-25", fin: "2026-09-29", tono: "normal" },
+      },
+    );
+    expect(document.getElementById("tf-prov-liga-meta")?.textContent).toContain(
+      "Se cerró junto con la visita (Ana López) el 29/09/2026",
+    );
+    expect(document.getElementById("tf-ficha-dias")?.textContent).toContain(
+      "Salió el 29/09/2026 · estuvo 4 días",
+    );
+  });
+  it("costo sin datos no pinta $0; capturado con 'verificando…' cuando el apagador no se sabe", () => {
+    const liga = { kind: "sin-liga" };
+    pintar(
+      E(),
+      { __estadoLiga: () => liga, __promesaTaller: () => ({ kind: "sin-promesa" }) },
+      { ...FICHA, costo: { kind: "sin-datos" } },
+    );
+    expect(document.getElementById("tf-ficha-costo")?.textContent).toContain(
+      "No se pudieron cargar los hallazgos",
+    );
+    expect(document.getElementById("tf-ficha-costo")?.textContent).not.toContain("$0");
+    pintar(
+      E(),
+      { __estadoLiga: () => liga, __promesaTaller: () => ({ kind: "sin-promesa" }) },
+      { ...FICHA, costo: { kind: "capturado", monto: 999, verificando: true } },
+    );
+    expect(document.getElementById("tf-ficha-costo")?.textContent).toContain("Capturado por GPA");
+    expect(document.getElementById("tf-ficha-costo")?.textContent).toContain("verificando…");
+  });
+  it("aviso de firma: texto exacto y solo con pendientes, confiables y apagador encendido", () => {
+    const liga = {
+      kind: "activa",
+      diasRestantes: 88,
+      emitidaPor: "x@ejemplo.test",
+      emitidaEn: "2026-09-24",
+    };
+    const ps = [{ estado: "propuesta", precio: 2400 }];
+    pintar(E({ __ps: ps }), {
+      __estadoLiga: () => liga,
+      __promesaTaller: () => ({ kind: "sin-promesa" }),
+      __tallerHibrido: true,
+      __pendientesDeFirma: () => 1,
+      __montoPendienteDeFirma: () => 2400,
+    });
+    const aviso = document.getElementById("tf-aviso-firma") as HTMLElement;
+    expect(aviso.hidden).toBe(false);
+    expect(aviso.textContent).toBe("1 hallazgo espera tu firma · $2400.00 · Ver →");
+    pintar(E({ __ps: ps }), {
+      __estadoLiga: () => liga,
+      __promesaTaller: () => ({ kind: "sin-promesa" }),
+      __tallerHibrido: false,
+      __pendientesDeFirma: () => 1,
+    });
+    expect(aviso.hidden).toBe(true);
+  });
+  it("estructura: _provPintar empieza con _fichaPintar(e) y conserva sus obligaciones", () => {
+    const c = cuerpo("_provPintar");
+    expect(c.indexOf("_fichaPintar(e)")).toBeLessThan(c.indexOf("getElementById"));
+    for (const s of [
+      "window.__estadoLiga(",
+      "window.__promesaTaller(",
+      "km del taller",
+      "km ingreso",
+      "El taller aún no ha reportado estado.",
+    ])
+      expect(c).toContain(s);
+    expect(c).not.toContain(".innerHTML");
+    expect(c).not.toContain("promete salida");
+    expect(cuerpo("_fichaPintar")).not.toContain(".innerHTML");
+  });
+});

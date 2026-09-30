@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-qlmk3SLl/wEBN13WQn6mU0GupT37BRFzC9UyL6K4kdY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-ur/hA6dotsywe/B/6vGvVAZLmMCQwJRDdjN9/LXJc4M=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -7977,13 +7977,144 @@ function _tfCablear(){
 document.addEventListener("DOMContentLoaded", _tfCablear);
 // ── fin registro como ficha ──────────────────────────────────────────────────
 
+// ── Registro como ficha — el pintado (spec 2026-09-30 §4.2) ─────────────────
+// _provPintar la llama en su PRIMERA línea, así los cuatro lugares que ya repintan
+// (_bnRepintar, abrir, emitir, revocar) refrescan la ficha sin tocarlos. Todo sale de
+// window.__fichaRegistro (src/taller/ficha.ts); aquí solo hay nodos. XSS: textContent.
+function _fichaPintar(e){
+  const ficha = document.getElementById("tf-ficha");
+  if(!ficha) return;
+  const sub = document.getElementById("tl-msub");
+  const aviso = document.getElementById("tf-aviso-firma");
+  if(!e){
+    ficha.style.display = "none";
+    if(sub) sub.textContent = "";
+    if(aviso) aviso.hidden = true;
+    return;
+  }
+  ficha.style.display = "";
+  if(sub) sub.textContent = [e.brand, e.sucursal, e.area].filter(Boolean).join(" · ");
+  const ps = _partidasDeVisita(e) || [];
+  const confiables = _partidasConfiables();
+  const f = typeof window.__fichaRegistro === "function"
+    ? window.__fichaRegistro(e, ps, { hibrido: window.__tallerHibrido, confiables })
+    : null;
+  if(!f) return;
+  const el = (tag, cls, txt) => { const n = document.createElement(tag); if(cls) n.className = cls; if(txt != null) n.textContent = txt; return n; };
+  const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
+  _tfNodosNombre.clear();
+
+  // Estado · GPA (lo decides tú)
+  const gpa = document.getElementById("tf-ficha-gpa");
+  gpa.textContent = "";
+  const rot = el("div", "tl-ficha-rotulo");
+  rot.append(el("span", "tl-ficha-etq tl-ficha-etq-gpa", "GPA"), el("span", "tl-ficha-sub", "Estado · lo decides tú"));
+  gpa.appendChild(rot);
+  const CLS = { "En Diagnóstico": "diag", "En Reparación": "repar", "Cotización": "cotiz", "Por recuperar": "porrec", "Finalizado": "listo", "Listo": "listo" };
+  const filaG = el("div", "tl-ficha-fila");
+  filaG.appendChild(el("span", "tl-pill " + (CLS[f.estadoGpa] || ""), f.estadoGpa || "—"));
+  if(f.tipo) filaG.appendChild(el("span", "tl-tipo " + (f.tipo === "Correctivo" ? "correctivo" : f.tipo === "Preventivo" ? "preventivo" : ""), `Mtto ${f.tipo}`));
+  gpa.appendChild(filaG);
+  gpa.appendChild(el("div", "tl-ficha-nota", "Se cambia en Datos del registro"));
+  if(f.esperandoFirma) gpa.appendChild(el("div", "tl-ficha-nota", "Mientras haya hallazgos sin firmar, la lista del Taller marca esta unidad «Esperando firma»"));
+
+  // Estado · TALLER: el nombre según GPA (§2 #16); el reporte lo pinta _provPintar en #tf-prov-taller
+  const tn = document.getElementById("tf-ficha-taller-nombre");
+  if(tn) tn.textContent = f.tallerNombre ? `· ${f.tallerNombre} · nombre según GPA` : "";
+
+  // En taller
+  const cd = document.getElementById("tf-ficha-dias");
+  cd.textContent = "";
+  cd.appendChild(el("div", "tl-ficha-etiqueta", "En taller"));
+  const num = el("div", "tl-ficha-num tl-ficha-tono-" + f.dias.tono);
+  num.append(el("b", null, String(f.dias.n)), el("span", null, ` ${f.dias.n === 1 ? "día" : "días"}`));
+  cd.appendChild(num);
+  cd.appendChild(el("div", "tl-ficha-nota", f.dias.cerrada
+    ? `Salió el ${fmtDate(f.dias.fin)} · estuvo ${dias(f.dias.n)}`
+    : `Ingresó el ${fmtDate(f.dias.inicio)}`));
+
+  // Salida: fila GPA, fila TALLER y UNA señal
+  const cs = document.getElementById("tf-ficha-salida");
+  cs.textContent = "";
+  cs.appendChild(el("div", "tl-ficha-etiqueta", "Salida"));
+  const fg = el("div", "tl-ficha-fila");
+  fg.append(el("span", "tl-ficha-etq tl-ficha-etq-gpa", "GPA"), el("span", null, "Estimada por GPA"), el("b", null, f.salida.estimadaGpa ? fmtDate(f.salida.estimadaGpa) : "—"));
+  cs.appendChild(fg);
+  const ft = el("div", "tl-ficha-fila needs-hibrido");
+  ft.appendChild(el("span", "tl-ficha-etq tl-ficha-etq-taller", "TALLER"));
+  if(f.salida.prometida){
+    ft.append(el("span", null, "El taller promete"), el("b", null, fmtDate(f.salida.prometida)));
+    if(f.salida.compromisoOriginal) ft.appendChild(el("span", "tl-ficha-nota", `(había prometido ${fmtDate(f.salida.compromisoOriginal)})`));
+  } else {
+    ft.appendChild(el("span", "tl-ficha-nota", "sin fecha prometida"));
+  }
+  cs.appendChild(ft);
+  const s = f.salida.senal;
+  if(s.kind === "promesa-vencida") cs.appendChild(el("span", "tl-pill pendiente", `PROMESA VENCIDA · ${dias(s.dias)}`));
+  else if(s.kind === "estimada-vencida") cs.appendChild(el("span", "tl-pill pendiente", `Salida estimada vencida hace ${dias(s.dias)}`));
+  else if(s.kind === "despues-de-estimada") cs.appendChild(el("span", "tl-pill diag", `${dias(s.dias)} después de lo estimado`));
+
+  // Costo (§2 #19): la misma fuente que #tf-gasto
+  const cc = document.getElementById("tf-ficha-costo");
+  cc.textContent = "";
+  cc.appendChild(el("div", "tl-ficha-etiqueta", "Costo"));
+  if(f.costo.kind === "partidas"){
+    const a = el("div", "tl-ficha-fila");
+    a.append(el("span", null, "Autorizado"), el("b", "tl-ficha-verde", _fmtMon2(f.costo.autorizado)));
+    cc.appendChild(a);
+    if(f.costo.pendiente > 0){
+      const p = el("div", "tl-ficha-fila");
+      p.append(el("span", null, "Esperando tu firma"), el("b", "tl-ficha-ambar", _fmtMon2(f.costo.pendiente)));
+      cc.appendChild(p);
+    }
+    cc.appendChild(el("div", "tl-ficha-nota", "El subtotal es la suma de los hallazgos autorizados"));
+  } else if(f.costo.kind === "sin-datos"){
+    cc.appendChild(el("div", "tl-ficha-nota", "No se pudieron cargar los hallazgos"));
+  } else {
+    const a = el("div", "tl-ficha-fila");
+    a.append(el("span", null, "Capturado por GPA"), el("b", null, _fmtMon2(f.costo.monto)));
+    if(f.costo.verificando) a.appendChild(el("span", "tl-ficha-nota", "· verificando…"));
+    cc.appendChild(a);
+  }
+
+  // Aviso tocable del celular (§4.6): solo con pendientes, partidas confiables y apagador ON.
+  if(aviso){
+    const n = typeof window.__pendientesDeFirma === "function" ? window.__pendientesDeFirma(ps) : ps.filter(p => p.estado === "propuesta").length;
+    const mostrar = n > 0 && confiables && window.__tallerHibrido === true;
+    aviso.hidden = !mostrar;
+    if(mostrar){
+      const y = typeof window.__montoPendienteDeFirma === "function" ? window.__montoPendienteDeFirma(ps) : 0;
+      aviso.textContent = `${n} ${n === 1 ? "hallazgo espera" : "hallazgos esperan"} tu firma · ${_fmtMon2(y)} · Ver →`;
+    }
+  }
+
+  // Resumen "Guardado:" del pliegue (§4.4) — lo guardado, no lo que se está tecleando.
+  const res = document.getElementById("tf-datos-resumen");
+  if(res){
+    const km = Number(e.km);
+    res.textContent = "Guardado: " + [
+      `Km al ingreso ${Number.isFinite(km) && km > 0 ? km.toLocaleString("es-MX") : "sin capturar"}`,
+      `Técnico: ${String(e.tecnico || "").trim() || "sin capturar"}`,
+      `Pedido ERP: ${String(e.pedidoErp || "").trim() || "sin capturar"}`,
+    ].join(" · ");
+  }
+  if(typeof _tfRecalcularCambios === "function") _tfRecalcularCambios();
+}
+
 // Pinta el bloque Proveedor de una visita YA persistida. Todo el cálculo vive
 // en la capa pura (src/taller/seguimiento.ts): aquí solo se traduce a DOM.
 // XSS: createElement + textContent, nunca innerHTML.
 function _provPintar(e){
+  // Registro como ficha (spec 2026-09-30 §4.1): una sola ruta de repintado.
+  _fichaPintar(e);
   const cont = document.getElementById("tf-proveedor");
   if(!cont) return;
-  if(!e || typeof window.__estadoLiga !== "function"){ cont.style.display = "none"; return; }
+  if(!e || typeof window.__estadoLiga !== "function"){
+    cont.style.display = "none";
+    // Sin la capa pura tampoco hay nada del taller que mostrar en la ficha.
+    for(const id of ["tf-ficha-taller","tf-ficha-liga"]){ const n = document.getElementById(id); if(n) n.style.display = "none"; }
+    return;
+  }
   cont.style.display = "flex";
 
   const liga = window.__estadoLiga(e);
@@ -8001,21 +8132,40 @@ function _provPintar(e){
     : liga.kind === "revocada" ? "Liga revocada"
     : liga.kind === "vencida" ? "Liga vencida"
     : liga.kind === "cerrada" ? "Liga cerrada" : "Sin liga";
-  const detalle = document.createElement("span");
-  detalle.style.cssText = "font-size:12px;color:var(--w1);font-weight:600";
-  detalle.textContent = liga.kind === "activa" ? `Vence en ${liga.diasRestantes} días` : "";
-  filaLiga.prepend(detalle);
   filaLiga.prepend(pill);
 
-  meta.textContent = liga.kind === "activa"
-    ? `Emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)} · vence el ${fmtDate(liga.venceEn)}`
-    : liga.kind === "revocada"
-      ? `Revocada por ${liga.revocadaPor || "desconocido"} · ${fmtDate(liga.revocadaEn)}`
-      : liga.kind === "cerrada"
-        ? `Liga cerrada con la visita · emitida por ${liga.emitidaPor || "desconocido"} · ${fmtDate(liga.emitidaEn)}`
-      : liga.kind === "vencida"
-        ? `Emitida por ${liga.emitidaPor || "desconocido"} · venció el ${fmtDate(liga.vencioEn)}`
-        : "Sin liga emitida para esta visita.";
+  // La liga dice el NOMBRE de quien la emitió o revocó (§4.7), nunca el id. El texto nuevo
+  // va en #tf-prov-liga-meta (dentro de #tf-prov-liga solo sobreviven los dos botones).
+  meta.textContent = "";
+  const linea = document.createElement("span");
+  const fe = fmtDate(liga.emitidaEn);
+  if(liga.kind === "activa"){
+    _tfRegistrarNombre(linea, liga.emitidaPor, (n) => `Liga del proveedor activa · vence en ${liga.diasRestantes} días · emitida por ${n} el ${fe}`);
+  } else if(liga.kind === "revocada"){
+    const fr = fmtDate(liga.revocadaEn);
+    const esCierre = String(liga.revocadaPor || "").indexOf("cierre:") === 0;
+    _tfRegistrarNombre(linea, liga.revocadaPor, esCierre
+      ? (n) => (n ? `Se cerró junto con la visita (${n}) el ${fr}` : `Se cerró junto con la visita el ${fr}`)
+      : (n) => `Liga revocada por ${n} el ${fr}`, esCierre);
+  } else if(liga.kind === "cerrada"){
+    _tfRegistrarNombre(linea, liga.emitidaPor, (n) => `Liga cerrada con la visita · emitida por ${n} el ${fe}`);
+  } else if(liga.kind === "vencida"){
+    linea.textContent = `Liga vencida el ${fmtDate(liga.vencioEn)}`;
+  } else {
+    linea.textContent = "Sin liga";
+  }
+  meta.appendChild(linea);
+  if(liga.kind === "activa"){
+    const nota = document.createElement("div");
+    nota.className = "tl-ficha-nota";
+    nota.textContent = "Copiar vuelve a emitir: la liga queda a tu nombre y vence en 90 días";
+    meta.appendChild(nota);
+  }
+  // §2 #20: los botones dicen la verdad. copiarLigaProveedor SIEMPRE emite.
+  const btnCopiar = document.getElementById("btn-liga-copiar");
+  if(btnCopiar) btnCopiar.textContent = liga.kind === "activa" ? "Copiar liga" : "Emitir liga y copiar";
+  const btnRevocar = document.getElementById("btn-liga-revocar");
+  if(btnRevocar && liga.kind !== "activa") btnRevocar.style.display = "none";
 
   // ── Fila 2: lo que reporta el taller
   const filaT = document.getElementById("tf-prov-taller");
@@ -8043,25 +8193,9 @@ function _provPintar(e){
     }
     filaT.appendChild(km);
   }
-  if(prom.kind !== "sin-promesa"){
-    const f = document.createElement("span");
-    f.style.cssText = "font-size:12px;color:var(--w1)";
-    f.textContent = `· promete salida ${fmtDate(prom.fecha)}`;
-    filaT.appendChild(f);
-    if(prom.compromisoOriginal){
-      const o = document.createElement("span");
-      o.style.cssText = "font-size:10.5px;color:var(--s2)";
-      o.textContent = `(había prometido ${fmtDate(prom.compromisoOriginal)})`;
-      filaT.appendChild(o);
-    }
-    if(prom.kind === "vencida"){
-      const v = document.createElement("span");
-      v.className = "tl-pill pendiente";
-      v.style.marginLeft = "auto";
-      v.textContent = `PROMESA VENCIDA · ${prom.diasVencida} días`;
-      filaT.appendChild(v);
-    }
-  }
+  // La promesa de salida y "PROMESA VENCIDA" viven en la fila "Salida" de la ficha (§4.2);
+  // aquí solo queda su huella para quien inspeccione el nodo.
+  filaT.dataset.promesa = prom.kind;
   if(!filaT.childNodes.length){
     const nada = document.createElement("span");
     nada.style.cssText = "font-size:12px;color:var(--s2)";
