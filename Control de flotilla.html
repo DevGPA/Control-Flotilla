@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-YBggm6TKq1O/lOclHMY3uGCNBbDKZsijKsbg+hbYM7I=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-1BjMJtp/n4G2vM50NIpDg64ScbYP0D308qLD67UPWMY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -5461,7 +5461,9 @@ function openModal(id){
   _modalPrevFocus=document.activeElement;
   el.addEventListener("keydown",_trapFocus);
   const f=el.querySelector('input,select,textarea,button:not([aria-label^="Cerrar"])');
-  if(f)setTimeout(()=>f.focus(),30);
+  // Registro como ficha (spec 2026-09-30 §2 #24): si el modal marca un [data-autofocus], el foco
+  // va ahí (el título, nunca un botón que emite o firma). Los demás modales no lo usan: igual que hoy.
+  setTimeout(()=>{const af=el.querySelector("[data-autofocus]");if(af)af.focus();else if(f)f.focus();},30);
 }
 function closeModal(id){
   const el=document.getElementById(id);
@@ -10778,7 +10780,15 @@ function openTallerModal(id){
   _tallerEditId = id||null;
   _clearInvalid(["tf-eco","tf-tipo","tf-km","tf-fentrada","tf-fsalida-est","tf-fsalida-real"]);
   const e = id ? tallerEntries.find(x=>x.id===id) : null;
-  document.getElementById("tl-mttl").textContent = e ? "Editar registro" : "Agregar unidad al taller";
+  document.getElementById("tl-mttl").textContent = e ? `Unidad ${e.eco||e.plate||"?"} · ${e.plate||"sin placas"}` : "Agregar unidad al taller";
+  // Registro como ficha (spec 2026-09-30 §4.4): visita guardada ⇒ "Datos del registro" plegado;
+  // alta ⇒ desplegado. Viewer: campos deshabilitados (nunca readOnly: esa es la señal de #tf-gasto).
+  {
+    const esViewer = typeof isViewer === "function" && isViewer();
+    const datos = document.getElementById("tf-datos"); if(datos) datos.open = !e;
+    const campos = document.getElementById("tf-datos-campos"); if(campos) campos.disabled = esViewer;
+    const ver = document.querySelector("#tf-datos .tl-datos-ver"); if(ver) ver.textContent = esViewer ? "Ver datos" : "Editar datos";
+  }
   const isClosed = v => v==="Finalizado"||v==="Listo";
   document.getElementById("btn-reingreso").style.display  = e ? "" : "none";
   document.getElementById("btn-finalizar").style.display  = (e && !isClosed(e?.estado)) ? "" : "none";
@@ -10878,7 +10888,8 @@ function openTallerModal(id){
       if(ligaOfrecible && window.__tallerHibrido && puedeEmitirLiga() && window.__tallerLiga && typeof window.__tallerCloudKey === "function"){
         const { unitUid, fechaEntrada } = window.__tallerCloudKey(e);
         window.__tallerLiga.estado(unitUid, fechaEntrada).then(st=>{
-          if(_tallerEditId===id && st && st.generada) btnRevocarLiga.style.display = "";
+          // §2 #20: la nube confirma Y la copia local dice activa; si no, "Revocar" no se ofrece.
+          if(_tallerEditId===id && st && st.generada && typeof window.__estadoLiga === "function" && window.__estadoLiga(e).kind === "activa") btnRevocarLiga.style.display = "";
         }).catch(()=>{});
       }
     }
@@ -10886,11 +10897,17 @@ function openTallerModal(id){
 
   // Bloque Proveedor: lo que reporta el taller desde su liga. Solo pinta con
   // una visita YA persistida; un ingreso nuevo aún no tiene nada que mostrar.
-  if(e) _provPintar(e); else document.getElementById("tf-proveedor").style.display = "none";
+  if(e) _provPintar(e); else { document.getElementById("tf-proveedor").style.display = "none"; _fichaPintar(null); }
 
   buildTallerSucOptions();
+  // §2 #24: en una visita guardada el foco va al título; en el alta, al campo de la unidad.
+  _tfAutofoco(e ? "tl-mttl" : "tf-eco");
   openModal("taller-modal");
-  document.getElementById("tf-eco").focus();
+  if(!e) document.getElementById("tf-eco").focus();
+  // §4.5: la foto de "Datos del registro" solo en una visita guardada; en el alta Guardar va encendido.
+  _tfFotoCampos = e ? _tfTomarFoto() : null;
+  _tfTocado = false;
+  _tfRecalcularCambios();
 }
 
 function closeTallerModal(){
@@ -11038,13 +11055,27 @@ function clearTallerEntryFields(){
   }
   const idHint = document.getElementById("tf-identidad-hint");
   if(idHint) idHint.style.display = "none";
+  // Registro como ficha (spec 2026-09-30 §2 #21): un reingreso es una visita NUEVA — nada de la
+  // anterior se queda pintado, "Datos del registro" abre desplegado y Guardar encendido.
+  _fichaPintar(null);
+  const prov = document.getElementById("tf-proveedor"); if(prov) prov.style.display = "none";
+  const datos = document.getElementById("tf-datos"); if(datos) datos.open = true;
+  const campos = document.getElementById("tf-datos-campos"); if(campos) campos.disabled = false;
+  for(const id of ["btn-finalizar","btn-expediente"]){ const b = document.getElementById(id); if(b) b.style.display = "none"; }
+  _tfFotoCampos = null;
+  _tfTocado = false;
+  _tfAutofoco("tf-freporte");
+  _tfRecalcularCambios();
 }
 
 function reingresoTaller(){
   const src = tallerEntries.find(x=>x.id===_tallerEditId);
   if(!src) return;
-  _tallerReingresoKey = src.unitKey || src.id;
   closeTallerModal();
+  // Decisión 26 (spec 2026-09-30): closeTallerModal pone _tallerReingresoKey en null, así que la
+  // llave de la unidad de origen se fija DESPUÉS de cerrar. Antes se perdía y la visita nueva
+  // abría un historial aparte.
+  _tallerReingresoKey = src.unitKey || src.id;
   _tallerEditId = null;
   document.getElementById("tl-mttl").textContent = "Reingresar al Taller";
   document.getElementById("tf-eco").value          = src.eco||"";
@@ -11390,14 +11421,14 @@ async function enviarHallazgoManual(partidaId, visitaKey){
 // ── Acciones del modal ─────────────────────────────────────
 function finalizarDesdeModal(){
   const id = _tallerEditId;
-  closeTallerModal();
+  if(!_tallerCerrarConAviso()) return;
   finalizarUnidad(id);
 }
 function expedienteDesdeModal(){
   const e = tallerEntries.find(x=>x.id===_tallerEditId);
   if(!e) return;
   const key = e.unitKey||e.id;
-  closeTallerModal();
+  if(!_tallerCerrarConAviso()) return;
   openHistorialModal(key);
 }
 
@@ -11536,12 +11567,14 @@ function tlAcSelect(idx){
   if(r.area) document.getElementById("tf-area").value = r.area;
   document.getElementById("tl-ac-drop").style.display="none";
   document.getElementById("tf-tipo").focus();
+  _tfRecalcularCambios();
 }
 
 function tlAcSelectNew(val){
   document.getElementById("tf-eco").value = val;
   document.getElementById("tl-ac-drop").style.display="none";
   document.getElementById("tf-plate").focus();
+  _tfRecalcularCambios();
 }
 
 // Auto-fill legacy (kept for compatibility)
@@ -11555,6 +11588,8 @@ function _markInvalid(id){
   el.style.outline="2px solid var(--R)";el.style.outlineOffset="1px";
   const clear=()=>{el.style.outline="";el.style.outlineOffset="";el.removeEventListener("input",clear);el.removeEventListener("change",clear);};
   el.addEventListener("input",clear);el.addEventListener("change",clear);
+  // Registro como ficha (§2 #22): con "Datos del registro" plegado, el aviso apuntaría a un campo oculto.
+  const det=el.closest&&el.closest("details");if(det)det.open=true;
   el.focus();
 }
 // El marcador solo se limpia con input/change; abrir OTRA visita asigna .value por código

@@ -615,3 +615,77 @@ describe("hallazgos del taller agrupados y firmas con nombre (§4.3)", () => {
     });
   });
 });
+
+describe("apertura del registro (§4.4, §2 #9, #12, #21, #22, #24, #26)", () => {
+  const cuerpo = (nombre: string, fin = "\nfunction "): string => {
+    const i = html.indexOf(`function ${nombre}(`);
+    expect(i, `no existe ${nombre}`).toBeGreaterThan(-1);
+    return html.slice(i, html.indexOf(fin, i + 10));
+  };
+  it("openModal enfoca [data-autofocus] dentro del setTimeout; si no hay, el primer control", () => {
+    const c = cuerpo("openModal");
+    expect(c).toContain('querySelector("[data-autofocus]")');
+    expect(c.indexOf("setTimeout")).toBeLessThan(c.indexOf('querySelector("[data-autofocus]")'));
+  });
+  it("openTallerModal: título con la unidad, pliegue según el caso, viewer deshabilita el fieldset, foco en el título", () => {
+    const c = cuerpo("openTallerModal", "\nfunction closeTallerModal");
+    expect(c).toContain('`Unidad ${e.eco||e.plate||"?"} · ${e.plate||"sin placas"}`');
+    expect(c).toContain("datos.open = !e");
+    expect(c).toContain("campos.disabled");
+    expect(c).toContain('_tfAutofoco(e ? "tl-mttl" : "tf-eco")');
+    expect(c).toContain("_tfFotoCampos = e ? _tfTomarFoto() : null");
+    expect(c).toContain("_tfTocado = false");
+    expect(c).toContain("_tfRecalcularCambios()");
+    expect(c).toMatch(/if\s*\(\s*e\s*\)\s*_provPintar\(e\)/);
+    expect(c).toContain("_fichaPintar(null)");
+    // El bloque del candado B-C4 no gana getElementById nuevos (lo ejecuta una prueba con 4 ids).
+    const candado = c.slice(
+      c.indexOf("const idDudoso"),
+      c.indexOf("idHint.style.display = idLock"),
+    );
+    expect((candado.match(/getElementById/g) ?? []).length).toBe(2);
+    // "Revocar" solo si la nube confirma Y la copia local dice activa (§2 #20).
+    expect(c).toContain('window.__estadoLiga(e).kind === "activa"');
+  });
+  it("_markInvalid abre el pliegue antes de enfocar; clearTallerEntryFields limpia la ficha y despliega", () => {
+    expect(cuerpo("_markInvalid")).toContain('el.closest("details")');
+    const c = cuerpo("clearTallerEntryFields");
+    for (const s of [
+      "_fichaPintar(null)",
+      "datos.open = true",
+      "_tfFotoCampos = null",
+      "_tfTocado = false",
+      '_tfAutofoco("tf-freporte")',
+      "_tfRecalcularCambios()",
+    ])
+      expect(c, s).toContain(s);
+  });
+  it("Finalizar, Expediente y los reingresos: los dos primeros preguntan; el reingreso no", () => {
+    expect(cuerpo("finalizarDesdeModal")).toContain("if(!_tallerCerrarConAviso()) return;");
+    expect(cuerpo("expedienteDesdeModal")).toContain("if(!_tallerCerrarConAviso()) return;");
+    expect(cuerpo("reingresoTaller")).not.toContain("_tallerCerrarConAviso");
+    expect(cuerpo("tlAcSelect")).toContain("_tfRecalcularCambios()");
+    expect(cuerpo("tlAcSelectNew")).toContain("_tfRecalcularCambios()");
+  });
+  it("decisión 26: reingresar desde el registro conserva el unitKey de origen (RED antes del arreglo)", () => {
+    // eslint-disable-next-line no-restricted-syntax -- armado de prueba, literal controlado
+    document.body.innerHTML = `<div id="tl-mttl"></div>${["tf-eco", "tf-plate", "tf-brand", "tf-branch", "tf-area", "tf-estado", "tf-tipo", "tf-freporte"].map((id) => `<input id="${id}">`).join("")}<button id="btn-reingreso"></button>`;
+    // El literal real corre con closeTallerModal simulado igual que el de producción: pone la
+    // llave del reingreso en null. Con el orden viejo (fijar la llave ANTES de cerrar) se pierde.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fabrica = new Function(
+      "document",
+      "tallerEntries",
+      "clearTallerEntryFields",
+      "openModal",
+      `let _tallerEditId = "v1"; let _tallerReingresoKey = null;
+       function closeTallerModal(){ _tallerEditId = null; _tallerReingresoKey = null; }
+       ${cuerpo("reingresoTaller")}
+       reingresoTaller();
+       return _tallerReingresoKey;`,
+    );
+    const src = { id: "v1", unitKey: "unidad-06", eco: "06", plate: "PRB0006" };
+    const resultado = fabrica(document, [src], vi.fn(), vi.fn()) as string | null;
+    expect(resultado).toBe("unidad-06");
+  });
+});
