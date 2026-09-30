@@ -5,30 +5,45 @@ import { join } from "node:path";
 const html = readFileSync(join(__dirname, "..", "Control de flotilla.html"), "utf8");
 
 describe("bloque Proveedor en el registro de la unidad", () => {
-  it("existe bajo el apagador y después de la identificación", () => {
-    const iIdent = html.indexOf(">Identificación de la unidad<");
+  it("registro como ficha (spec 2026-09-30 §4.1): ficha → hallazgos (bajo el apagador) → datos", () => {
+    const iFicha = html.indexOf('id="tf-ficha"');
     const iProv = html.indexOf('id="tf-proveedor"');
+    const iDatos = html.indexOf('id="tf-datos"');
+    const iIdent = html.indexOf(">Identificación de la unidad<");
     // Texto EXACTO del encabezado de sección, no la subcadena suelta
     // ">Mantenimiento<": esa aparece antes, en un <option> de Área ajeno a
     // este modal (línea ~653), y un indexOf ingenuo la agarraba primero.
     const iMant = html.indexOf('<div class="tl-sec">Mantenimiento</div>');
-    expect(iIdent).toBeGreaterThan(-1);
-    expect(iProv).toBeGreaterThan(iIdent);
-    expect(iProv).toBeLessThan(iMant);
+    expect(iFicha).toBeGreaterThan(-1);
+    expect(iProv).toBeGreaterThan(iFicha);
+    expect(iDatos).toBeGreaterThan(iProv);
+    expect(iIdent).toBeGreaterThan(iDatos);
+    expect(iMant).toBeGreaterThan(iIdent);
     const tag = html.slice(html.lastIndexOf("<div", iProv), iProv + 200);
     expect(tag).toContain("needs-hibrido");
+    // #tf-ficha NO lleva needs-hibrido (días, salida y costo se ven con el apagador apagado);
+    // las piezas del taller que viven dentro sí.
+    const tagFicha = html.slice(html.lastIndexOf("<section", iFicha), html.indexOf(">", iFicha));
+    expect(tagFicha).not.toContain("needs-hibrido");
+    for (const id of ["tf-prov-liga", "tf-prov-taller", "tf-ficha-taller", "tf-ficha-liga"]) {
+      const i = html.indexOf(`id="${id}"`);
+      expect(html.slice(html.lastIndexOf("<div", i), html.indexOf(">", i)), id).toContain(
+        "needs-hibrido",
+      );
+    }
+    expect(html).not.toContain('<div class="tl-sec needs-hibrido">Proveedor</div>');
   });
 
-  it("los botones de liga viven en el bloque, ya no en el pie del modal", () => {
-    const iProv = html.indexOf('id="tf-proveedor"');
-    const iFin = html.indexOf('id="tf-prov-partidas"', iProv);
-    const bloque = html.slice(iProv, iFin);
+  it("los botones de liga viven en la fila de la liga de la ficha, no en el pie del modal", () => {
+    const iLiga = html.indexOf('id="tf-prov-liga"');
+    const iFin = html.indexOf('id="tf-prov-liga-meta"', iLiga);
+    const bloque = html.slice(iLiga, iFin);
     expect(bloque).toContain('id="btn-liga-copiar"');
     expect(bloque).toContain('id="btn-liga-revocar"');
-    // El pie del MODAL DE TALLER es el próximo tl-mftr tras nuestro bloque —
+    // El pie del MODAL DE TALLER es el próximo tl-mftr tras la lista de hallazgos —
     // no el primero del documento: otros modales (Agregar unidad, Editar
     // checklist, Accesorios…) también usan la clase tl-mftr antes que este.
-    const pie = html.slice(html.indexOf('class="tl-mftr"', iFin));
+    const pie = html.slice(html.indexOf('class="tl-mftr"', html.indexOf('id="tf-prov-partidas"')));
     expect(pie).not.toContain('id="btn-liga-copiar"');
   });
 

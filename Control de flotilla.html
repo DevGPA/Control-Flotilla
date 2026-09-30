@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-5TzHUS+T86IArLqeXggWhn5KF/1mwZnrFyTWG77W5+s=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-qlmk3SLl/wEBN13WQn6mU0GupT37BRFzC9UyL6K4kdY=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -1310,13 +1310,65 @@
 </div>
 
 <!-- TALLER MODAL -->
-<div id="taller-modal" onclick="if(event.target.id==='taller-modal')closeTallerModal()">
+<div id="taller-modal" onclick="if(event.target.id==='taller-modal')_tallerCerrarConAviso()">
   <div class="tl-mcard">
     <div class="tl-mhdr">
-      <div class="tl-mttl" id="tl-mttl">Agregar unidad al taller</div>
-      <button class="dcls" onclick="closeTallerModal()" aria-label="Cerrar modal de taller" style="position:static">✕</button>
+      <div class="tl-ficha-cabecera">
+        <div class="tl-mttl" id="tl-mttl" tabindex="-1">Agregar unidad al taller</div>
+        <div id="tl-msub" class="tl-ficha-sub"></div>
+      </div>
+      <button class="dcls" aria-label="Cerrar modal de taller" style="position:static" onclick="_tallerCerrarConAviso()">✕</button>
     </div>
     <div class="tl-mbody">
+      <!-- Registro como ficha (spec 2026-09-30 §4.1): ficha de solo lectura → hallazgos del
+           taller → "Datos del registro" (el formulario de hoy, plegado). Los ids tf-* NO
+           cambian, solo de lugar: saveTallerEntry, la liga, la firma y la anulación leen lo
+           mismo. _fichaPintar pinta la ficha; _provPintar sigue escribiendo en #tf-prov-*. -->
+      <button type="button" id="tf-aviso-firma" class="tl-ficha-aviso needs-write needs-hibrido" hidden onclick="_tfAvisoFirmaIr()"></button>
+      <section id="tf-ficha" class="tl-ficha" aria-label="Cómo va">
+        <div class="tl-ficha-titulo">Cómo va</div>
+        <div class="tl-ficha-estados">
+          <div id="tf-ficha-gpa" class="tl-ficha-caja tl-ficha-caja-gpa"></div>
+          <div id="tf-ficha-taller" class="tl-ficha-caja tl-ficha-caja-taller needs-hibrido">
+            <div class="tl-ficha-rotulo"><span class="tl-ficha-etq tl-ficha-etq-taller">TALLER</span><span class="tl-ficha-sub">Estado · desde su liga</span><span id="tf-ficha-taller-nombre" class="tl-ficha-sub"></span></div>
+            <div id="tf-prov-taller" class="needs-hibrido" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
+            <div id="tf-prov-taller-nota" class="needs-hibrido" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
+          </div>
+        </div>
+        <div class="tl-ficha-cifras">
+          <div id="tf-ficha-dias" class="tl-ficha-cifra"></div>
+          <div id="tf-ficha-salida" class="tl-ficha-cifra"></div>
+          <div id="tf-ficha-costo" class="tl-ficha-cifra tl-ficha-costo"></div>
+        </div>
+        <div id="tf-ficha-liga" class="tl-ficha-liga needs-hibrido">
+          <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
+               ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
+               R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
+               §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
+               operativo tampoco por sí solo… la restricción se aplica en la UI Y
+               en el Lambda". needs-liga = grupo admin O grupo riesgos (la
+               credencial adicional de Administración de Riesgos, que NO es admin).
+               El permiso real lo aplican las dos mutaciones de
+               amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
+               esto es la capa de UI de esa misma regla. -->
+          <div id="tf-prov-liga" class="needs-hibrido" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga</button>
+            <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
+          </div>
+          <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
+        </div>
+      </section>
+      <div id="tf-proveedor" class="tl-ficha-hallazgos needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
+        <div id="tf-prov-partidas"></div>
+      </div>
+      <details id="tf-datos" class="tl-datos">
+        <summary class="tl-datos-summary">
+          <span class="tl-datos-titulo">Datos del registro</span>
+          <span id="tf-datos-resumen" class="tl-datos-resumen"></span>
+          <span class="tl-datos-ver tl-exp-btn">Editar datos</span><span class="tl-datos-ocultar tl-exp-btn">Ocultar</span>
+        </summary>
+        <p class="tl-datos-nota">Guardar, abajo, se resalta en cuanto cambias algo de este bloque.</p>
+        <fieldset id="tf-datos-campos" class="tl-datos-grid">
       <!-- UX Fase 3 (2026-06-11): 13 campos seccionados — antes era un scroll
            plano sin jerarquía. -->
       <div class="tl-sec">Identificación de la unidad</div>
@@ -1357,31 +1409,9 @@
           <option value="Administración">Administración</option>
         </select>
       </div>
-      <!-- Seguimiento del proveedor (Plan 2, bloque 1). Todo lo que muestra ya
-           se guarda hoy: liga (columnas ligaCreadaEn/Por, ligaRevocada*) y lo
-           que el taller reporta desde su liga (estadoOperativo, km, fsalidaEst
-           y su compromiso). Riesgos VE y DECIDE; el taller REPORTA. -->
-      <div class="tl-sec needs-hibrido">Proveedor</div>
-      <div id="tf-proveedor" class="tl-field full needs-hibrido" style="display:none;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg2);border:var(--card-bd);border-radius:8px">
-        <!-- Task 11 (ciclo de firma): ligadas a un registro YA persistido — un
-             ingreso nuevo sin Guardar no tiene visita que el backend resuelva.
-             R84 + Task 14: needs-LIGA, no needs-write ni needs-admin. El spec
-             §7.7 (decisión 20) es literal — "el grupo viewer no puede, y
-             operativo tampoco por sí solo… la restricción se aplica en la UI Y
-             en el Lambda". needs-liga = grupo admin O grupo riesgos (la
-             credencial adicional de Administración de Riesgos, que NO es admin).
-             El permiso real lo aplican las dos mutaciones de
-             amplify/data/resource.ts y el chequeo de cognito:groups del Lambda;
-             esto es la capa de UI de esa misma regla. -->
-        <div id="tf-prov-liga" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-copiar" style="display:none;padding:8px 14px;font-size:12px" onclick="copiarLigaProveedor()">Copiar liga para el proveedor</button>
-          <button class="tl-exp-btn needs-liga needs-hibrido" id="btn-liga-revocar" style="display:none;padding:8px 14px;font-size:12px;color:#b91c1c" onclick="revocarLigaProveedor()">Revocar liga</button>
-        </div>
-        <div id="tf-prov-liga-meta" style="font-size:10.5px;color:var(--s2)"></div>
-        <div id="tf-prov-taller" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"></div>
-        <div id="tf-prov-taller-nota" style="font-size:10px;color:var(--s2)">Estado, km y fecha prometida los reporta el proveedor desde su liga.</div>
-        <div id="tf-prov-partidas"></div>
-      </div>
+      <!-- Seguimiento del proveedor (Plan 2, bloque 1) vive arriba, en la ficha (#tf-ficha):
+           liga (#tf-prov-liga, #tf-prov-liga-meta) y lo que el taller reporta (#tf-prov-taller).
+           Riesgos VE y DECIDE; el taller REPORTA. -->
       <div class="tl-sec">Mantenimiento</div>
       <div class="tl-field">
         <label for="tf-estado">Estado</label>
@@ -1447,13 +1477,16 @@
         <label for="tf-comentario">Comentario de Falla</label>
         <textarea id="tf-comentario" placeholder="Descripcion de la falla o trabajo realizado..."></textarea>
       </div>
+        </fieldset>
+      </details>
     </div>
     <div class="tl-mftr">
-      <button class="tl-cancel" onclick="closeTallerModal()">Cancelar</button>
-      <button class="tl-reingreso" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
-      <button class="tl-fin-btn" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
+      <button class="tl-cancel" onclick="_tallerCerrarConAviso()">Cerrar</button>
+      <button class="tl-reingreso needs-write" id="btn-reingreso" style="display:none" onclick="reingresoTaller()">+ Reingresar al Taller</button>
+      <button class="tl-fin-btn needs-write" id="btn-finalizar" style="display:none;padding:8px 14px;font-size:12px" onclick="finalizarDesdeModal()">✓ Finalizar</button>
       <button class="tl-exp-btn"  id="btn-expediente" style="display:none;padding:8px 14px;font-size:12px" onclick="expedienteDesdeModal()">Expediente</button>
-      <button class="tl-save needs-write" onclick="saveTallerEntry()">Guardar</button>
+      <span id="tf-sin-cambios" class="tl-datos-sincambios" hidden>Sin cambios</span>
+      <button class="tl-save needs-write" id="btn-guardar-taller" onclick="saveTallerEntry()">Guardar</button>
     </div>
   </div>
 </div>
@@ -7832,6 +7865,117 @@ function _partidasConfiables(){
   // Prendido: solo si la lectura de partidas de la última hidratación tuvo éxito.
   return window.__tallerPartidasCargadas === true;
 }
+
+// ── Registro como ficha — estado y ayudantes (spec 2026-09-30 §4.4, §4.5, §4.7, §2 #23) ──
+// Bloque PROPIO (fuera de openTallerModal…closeTallerModal: las pruebas cortan esas
+// funciones por su nombre). Todo aquí es DOM y estado de pantalla; las cuentas viven en
+// src/taller/* y llegan por window.__* con guarda, para que la demo y las pruebas que
+// ejecutan literales con `window = {}` no revienten.
+const _tfNombres = new WeakMap();      // nodo → { crudo, plantilla, cierre }
+const _tfNodosNombre = new Set();      // los mismos nodos, iterables para refrescar
+let _tfFotoCampos = null;              // foto de #tf-datos-campos al abrir una visita GUARDADA; null en alta/reingreso
+let _tfTocado = false;                 // la persona tecleó en "Datos del registro" desde que se abrió
+
+// Respaldo sin directorio: correo sin dominio o "un usuario de GPA". Nunca un GUID.
+function _tfNombreRespaldo(crudo){
+  const c = String(crudo || "").trim();
+  return /^[^\s@]+@[^\s@]+$/.test(c) ? c.split("@")[0] : "un usuario de GPA";
+}
+function _tfNombreDe(reg){
+  if(reg.cierre){
+    const d = typeof window.__describirRevocadaPor === "function" ? window.__describirRevocadaPor(reg.crudo) : { nombre: null };
+    return d.nombre;
+  }
+  return typeof window.__nombreDeUsuario === "function" ? window.__nombreDeUsuario(reg.crudo) : _tfNombreRespaldo(reg.crudo);
+}
+// Un nodo que muestra un nombre se registra para reescribirlo cuando llegue el directorio
+// (§4.7): el crudo vive en JS, jamás en el DOM.
+function _tfRegistrarNombre(nodo, crudo, plantilla, cierre){
+  const reg = { crudo, plantilla, cierre: !!cierre };
+  _tfNombres.set(nodo, reg);
+  _tfNodosNombre.add(nodo);
+  nodo.textContent = plantilla(_tfNombreDe(reg));
+  return nodo;
+}
+function _tfNombresRefrescar(){
+  for(const nodo of Array.from(_tfNodosNombre)){
+    if(!nodo.isConnected){ _tfNodosNombre.delete(nodo); continue; }
+    const reg = _tfNombres.get(nodo);
+    if(reg) nodo.textContent = reg.plantilla(_tfNombreDe(reg));
+  }
+}
+
+function _tfTomarFoto(){
+  const foto = {};
+  const campos = document.getElementById("tf-datos-campos");
+  if(!campos) return foto;
+  for(const c of campos.querySelectorAll("input[id],select[id],textarea[id]")){
+    foto[c.id] = { valor: String(c.value ?? ""), readOnly: !!c.readOnly };
+  }
+  return foto;
+}
+function _tfHayCambiosSinGuardar(){
+  if(_tfFotoCampos){
+    return typeof window.__hayCambios === "function" ? window.__hayCambios(_tfFotoCampos, _tfTomarFoto()) : false;
+  }
+  return _tfTocado;
+}
+// Guardar solo con cambios (§4.5). En el alta y los reingresos no hay foto: siempre encendido.
+function _tfRecalcularCambios(){
+  const btn = document.getElementById("btn-guardar-taller");
+  if(!btn) return;
+  const cambios = _tfFotoCampos
+    ? (typeof window.__hayCambios === "function" ? window.__hayCambios(_tfFotoCampos, _tfTomarFoto()) : true)
+    : true;
+  btn.disabled = !cambios;
+  btn.classList.toggle("tl-save-apagado", !cambios);
+  const sin = document.getElementById("tf-sin-cambios");
+  if(sin) sin.hidden = cambios;
+}
+// Cerrar con cambios pregunta (§2 #23). Lo llaman ✕, Cerrar, el fondo, Escape, Finalizar y
+// Expediente. Los cierres del código (reingreso, tras guardar) siguen usando closeTallerModal.
+function _tallerCerrarConAviso(){
+  if(_tfHayCambiosSinGuardar() && !confirm("¿Descartar los cambios?")) return false;
+  closeTallerModal();
+  return true;
+}
+// El foco inicial nunca cae en un control que escribe (§2 #24): openModal respeta [data-autofocus].
+function _tfAutofoco(id){
+  const modal = document.getElementById("taller-modal");
+  if(modal) for(const n of modal.querySelectorAll("[data-autofocus]")) n.removeAttribute("data-autofocus");
+  const el = document.getElementById(id);
+  if(el) el.setAttribute("data-autofocus", "");
+}
+// Aviso tocable del celular (§4.6): lleva a los hallazgos que esperan firma.
+function _tfAvisoFirmaIr(){
+  const e = tallerEntries.find(x => x.id === _tallerEditId);
+  if(!e) return;
+  _provFiltro = "pendientes";
+  _provPartidas(e);
+  const lista = document.getElementById("tf-prov-partidas");
+  if(lista && typeof lista.scrollIntoView === "function") lista.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function _tfCablear(){
+  const m = document.getElementById("taller-modal");
+  if(!m || m.__fichaCableado) return;
+  m.__fichaCableado = true;
+  // Escape pasa por la pregunta y por closeTallerModal (limpia _tallerEditId). Se detiene aquí,
+  // en captura, para que el _trapFocus de openModal no cierre por su cuenta.
+  m.addEventListener("keydown", (ev) => {
+    if(ev.key !== "Escape") return;
+    ev.stopImmediatePropagation();
+    ev.preventDefault();
+    _tallerCerrarConAviso();
+  }, true);
+  const datos = document.getElementById("tf-datos");
+  if(datos){
+    const marcar = () => { _tfTocado = true; _tfRecalcularCambios(); };
+    datos.addEventListener("input", marcar);
+    datos.addEventListener("change", marcar);
+  }
+}
+document.addEventListener("DOMContentLoaded", _tfCablear);
+// ── fin registro como ficha ──────────────────────────────────────────────────
 
 // Pinta el bloque Proveedor de una visita YA persistida. Todo el cálculo vive
 // en la capa pura (src/taller/seguimiento.ts): aquí solo se traduce a DOM.
