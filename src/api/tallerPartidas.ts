@@ -374,6 +374,17 @@ export async function guardarDecisionPartida(args: {
   }
   const actual = rowToPartida(data);
 
+  // Cambiar de decisión (2026-10-01): la máquina de estados ahora SÍ deja volver a
+  // autorizar un rechazado y retirar un autorizado, así que ya no es ella quien frena
+  // el clic viejo de B-C3. Lo que lo frena es esto: la decisión se aplica solo si la
+  // fila real está en el MISMO estado que la copia que el usuario tenía enfrente. Si
+  // otra pestaña la movió, nadie pisa a nadie — se lanza y el repintado trae la verdad.
+  if (actual.estado !== partida.estado) {
+    throw new Error(
+      `La partida cambió en otra pestaña (${partida.estado} → ${actual.estado}); recarga para decidir sobre lo vigente`,
+    );
+  }
+
   const nueva =
     decision === "autorizar"
       ? autorizar(actual, quien, cuando)

@@ -275,6 +275,56 @@ describe("guardarDecisionPartida — re-lee antes de aplicar la máquina de esta
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
+  // Cambiar de decisión (2026-10-01): la máquina de estados ahora SÍ deja volver a
+  // autorizar un rechazado, así que lo que sigue protegiendo contra el clic viejo es
+  // comparar lo que el usuario VIO (su copia) con la fila real.
+  it("si el usuario VE la rechazada y la fila real también lo está, volver a autorizar SÍ escribe", async () => {
+    const rechazada = {
+      ...propuesta,
+      estado: "rechazada",
+      motivoRechazo: "Precio alto — recotizar",
+      decididoPor: "otro@gpa",
+    };
+    mockGet.mockResolvedValue({ data: rechazada, errors: undefined });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+
+    const r = await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: { ...enCache, estado: "rechazada", motivoRechazo: "Precio alto — recotizar" },
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-10-01T12:00:00Z",
+    });
+
+    expect(r.estado).toBe("autorizada");
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[0]![0]).toMatchObject({ estado: "autorizada", motivoRechazo: "" });
+  });
+
+  it("si la copia local dice autorizada pero el taller YA la terminó, retirar LANZA y no se escribe nada", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        ...propuesta,
+        estado: "terminada",
+        precioAutorizado: 1850,
+        terminadoEn: "2026-09-30T10:00:00Z",
+      },
+      errors: undefined,
+    });
+
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: { ...enCache, estado: "autorizada", precioAutorizado: 1850 },
+        decision: "rechazar",
+        motivo: "No es necesario ahora",
+        quien: "riesgos@gpa",
+        cuando: "2026-10-01T12:00:00Z",
+      }),
+    ).rejects.toThrow();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   // CORREGIDO 2026-09-15 tras un defecto en PROD. Este test exigía que el
   // payload llevara SIEMPRE `motivoRechazo: null` y `motivoRechazoNota: null`
   // al autorizar. En la misma ola, R92 le quitó `delete` a `operativo` sobre
