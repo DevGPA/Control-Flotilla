@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-LYZqUTvIeHdQEx0mFtRpkuifvVK3wYRWcCnSgeVZ1gg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-aspSt91P66QbRPlztXDxhyu9+KoBqHrMPvKqsF0/xh8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8326,7 +8326,10 @@ function _provPartidas(e){
       lista.appendChild(filaPend);
       return;
     }
-    lista.appendChild(_provFilaHistorial(p));
+    // Cambiar de decisión (2026-10-01): una partida ya decidida ofrece la acción contraria
+    // SOLO con la visita abierta; sin el puente no ofrece nada (fail-closed).
+    const abierta = typeof window.__visitaCerrada === "function" && !window.__visitaCerrada(e);
+    lista.appendChild(abierta ? _provFilaRedecidir(fila, p) : _provFilaHistorial(p));
   };
   const subtitulo = (texto, nota) => {
     lista.appendChild(Object.assign(document.createElement("div"), { className: "tl-ficha-grupo", textContent: texto }));
@@ -8361,6 +8364,49 @@ function _provPartidas(e){
   }
   if(visibles.length > 6){ lista.style.maxHeight = "360px"; lista.style.overflowY = "auto"; }
   cont.appendChild(lista);
+}
+
+// Cambiar de decisión (Navares, 2026-10-01): mientras la visita siga abierta, lo último que
+// decides es lo que queda. Una RECHAZADA vuelve a ofrecer "✓ Autorizar" y una AUTORIZADA
+// ofrece "✕ Retirar autorización" (con motivo); una TERMINADA no se toca — el taller ya hizo
+// el trabajo. Reusa la fila de rastro, el panel de motivos y los guardados de la bandeja
+// (_bnAutorizar / _bnPanelRechazo → _bnRechazar): cero lógica nueva de dinero aquí.
+function _provFilaRedecidir(fila, p){
+  const row = _provFilaHistorial(p);
+  if(p.estado !== "autorizada" && p.estado !== "rechazada") return row;
+  const contenedor = document.createElement("div");
+  contenedor.style.cssText = "display:flex;flex-direction:column";
+  contenedor.appendChild(row);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "needs-write bandeja-firma-btn tl-redecidir-btn";
+  btn.dataset.partida = p.partidaId;
+  btn.style.cssText = "margin-left:auto;padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0";
+  if(p.estado === "rechazada"){
+    const tienePrecio = typeof p.precio === "number" && Number.isFinite(p.precio);
+    btn.textContent = "✓ Autorizar";
+    btn.style.border = "none";
+    btn.style.background = "var(--G)";
+    btn.style.color = "#fff";
+    if(!tienePrecio){
+      btn.disabled = true;
+      btn.title = "No se puede autorizar sin precio.";
+      btn.style.opacity = "0.5";
+      btn.style.cursor = "not-allowed";
+    }
+    btn.addEventListener("click", () => _bnAutorizar(fila, p, btn));
+    row.appendChild(btn);
+    return contenedor;
+  }
+  btn.textContent = "✕ Retirar autorización";
+  btn.style.border = "1px solid var(--R)";
+  btn.style.background = "none";
+  btn.style.color = "var(--R)";
+  const panel = _bnPanelRechazo(fila, p, window.__MOTIVOS_RECHAZO || []);
+  btn.addEventListener("click", () => { _bnPanelVisible(panel, panel.hidden); });
+  row.appendChild(btn);
+  contenedor.appendChild(panel);
+  return contenedor;
 }
 
 // Una partida ya decidida (o un borrador, del taller o de GPA): sin botones de

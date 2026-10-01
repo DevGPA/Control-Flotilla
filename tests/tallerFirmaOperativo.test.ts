@@ -152,3 +152,30 @@ describe("esquema — por qué `operativo` no puede escribir un null (R92 sigue 
     expect(bloque).toContain('allow.group("admin")');
   });
 });
+
+// Cambiar de decisión (2026-10-01): volver a autorizar un rechazado tiene que LIMPIAR el
+// motivo, y `operativo` no puede mandar `null` (nullAllowedFields vacío, ver arriba). La
+// limpieza viaja como "" — un valor, no un borrado — para que la firma de Riesgos no muera.
+describe("camposDeDecision — cambiar de decisión no pide borrar nada", () => {
+  const LUEGO = "2026-10-01T12:00:00Z";
+
+  it('volver a autorizar un rechazado limpia motivo y nota con "" (nunca null) y vuelve a congelar el precio', () => {
+    const rech = rechazar(P({ estado: "propuesta" }), "Otro", "nota vieja", QUIEN, CUANDO);
+    const campos = camposDeDecision(rech, autorizar(rech, QUIEN, LUEGO));
+    expect(campos.motivoRechazo).toBe("");
+    expect(campos.motivoRechazoNota).toBe("");
+    expect(campos.precioAutorizado).toBe(550);
+    expect(Object.values(campos)).not.toContain(null);
+  });
+
+  it("retirar una autorización manda el motivo y NO toca precioAutorizado (queda como rastro)", () => {
+    const aut = autorizar(P({ estado: "propuesta" }), QUIEN, CUANDO);
+    const campos = camposDeDecision(
+      aut,
+      rechazar(aut, "No es necesario ahora", undefined, QUIEN, LUEGO),
+    );
+    expect(campos.motivoRechazo).toBe("No es necesario ahora");
+    expect(Object.prototype.hasOwnProperty.call(campos, "precioAutorizado")).toBe(false);
+    expect(Object.values(campos)).not.toContain(null);
+  });
+});

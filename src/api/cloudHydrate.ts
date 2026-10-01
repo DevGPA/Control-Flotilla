@@ -283,6 +283,9 @@ declare global {
     /** Capa pura del seguimiento del proveedor (src/taller/seguimiento.ts):
      *  el monolito PINTA `_provPintar(e)`, nunca recalcula fechas a mano. */
     __estadoLiga?: (e: Partial<TallerEntry>) => EstadoLiga;
+    /** Cambiar de decisión (2026-10-01): el registro ofrece la acción contraria solo
+     *  con la visita abierta; sin puente no ofrece nada (fail-closed). */
+    __visitaCerrada?: (e: Partial<TallerEntry>) => boolean;
     __promesaTaller?: (e: Partial<TallerEntry>) => PromesaTaller;
     __etiquetaDistintivo?: (d: Distintivo) => string;
     /** Capa pura de seguimiento (src/taller/seguimiento.ts): pendientes,

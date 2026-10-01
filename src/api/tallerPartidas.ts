@@ -311,11 +311,20 @@ export function camposDeDecision(
   // había algo que borrar.
   const autorizada = nueva.estado === "autorizada";
   poner("precioAutorizado", actual.precioAutorizado, nueva.precioAutorizado);
-  poner("motivoRechazo", actual.motivoRechazo, autorizada ? undefined : nueva.motivoRechazo);
+  // Cambiar de decisión (2026-10-01): volver a autorizar un RECHAZADO sí tiene que
+  // limpiar su motivo, y `operativo` no puede mandar `null`. La limpieza viaja como
+  // "" — un valor, no un borrado. El `null` queda solo para el dato corrupto (una
+  // propuesta que arrastra motivo), que ningún camino de la app produce.
+  const limpio = actual.estado === "rechazada" ? "" : undefined;
+  poner(
+    "motivoRechazo",
+    actual.motivoRechazo,
+    autorizada ? (actual.motivoRechazo ? limpio : undefined) : nueva.motivoRechazo,
+  );
   poner(
     "motivoRechazoNota",
     actual.motivoRechazoNota,
-    autorizada ? undefined : nueva.motivoRechazoNota,
+    autorizada ? (actual.motivoRechazoNota ? limpio : undefined) : nueva.motivoRechazoNota,
   );
   return out;
 }

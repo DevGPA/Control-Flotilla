@@ -118,6 +118,66 @@ describe("firma — se autoriza un precio, no una idea", () => {
   });
 });
 
+// Cambiar de decisión (Navares, 2026-10-01): "si por algo autorizas o rechazas algo ya no
+// tenemos manera de cambiar ese estatus cuando sigue en taller". Regla: lo último que
+// decides es lo que queda; un terminado (el taller ya hizo el trabajo) no se toca.
+describe("cambiar de decisión — lo último que decides es lo que queda", () => {
+  const ANTES = "2026-09-28T10:00:00Z";
+  const DESPUES = "2026-10-01T12:00:00Z";
+
+  it("un rechazado se puede volver a autorizar: congela el precio y limpia el motivo", () => {
+    const rech = rechazar(
+      P({ estado: "propuesta", precio: 1850 }),
+      "Precio alto — recotizar",
+      undefined,
+      "user:a",
+      ANTES,
+    );
+    const r = autorizar(rech, "user:b", DESPUES);
+    expect(r.estado).toBe("autorizada");
+    expect(r.precioAutorizado).toBe(1850);
+    expect(r.motivoRechazo).toBeUndefined();
+    expect(r.motivoRechazoNota).toBeUndefined();
+    expect(r.decididoPor).toBe("user:b");
+    expect(r.decididoEn).toBe(DESPUES);
+  });
+
+  it("un autorizado se puede retirar con motivo: queda rechazada, el precio autorizado se conserva como rastro y deja de sumar", () => {
+    const aut = autorizar(P({ estado: "propuesta", precio: 1850 }), "user:a", ANTES);
+    const r = rechazar(aut, "No es necesario ahora", undefined, "user:b", DESPUES);
+    expect(r.estado).toBe("rechazada");
+    expect(r.motivoRechazo).toBe("No es necesario ahora");
+    expect(r.decididoPor).toBe("user:b");
+    // Se conserva (operativo no puede borrar campos en AppSync) pero los totales van por estado.
+    expect(r.precioAutorizado).toBe(1850);
+    expect(totalesVisita([r]).autorizado).toBe(0);
+    expect(totalesVisita([r]).rechazado).toBe(1850);
+  });
+
+  it("un terminado NO se puede retirar: el taller ya hizo el trabajo", () => {
+    expect(() =>
+      rechazar(
+        P({ estado: "terminada", precioAutorizado: 1850 }),
+        "No es necesario ahora",
+        undefined,
+        "u",
+        DESPUES,
+      ),
+    ).toThrow(/el taller ya terminó/);
+  });
+
+  it("lo demás sigue cerrado: borrador, cancelada y terminada no se autorizan; borrador, cancelada y rechazada no se rechazan", () => {
+    for (const e of ["borrador", "cancelada", "terminada", "autorizada"] as const) {
+      expect(() => autorizar(P({ estado: e, precio: 10 }), "u", DESPUES)).toThrow();
+    }
+    for (const e of ["borrador", "cancelada", "rechazada"] as const) {
+      expect(() =>
+        rechazar(P({ estado: e }), "No es necesario ahora", undefined, "u", DESPUES),
+      ).toThrow();
+    }
+  });
+});
+
 describe("totales — el gasto es la suma de lo firmado", () => {
   const ps = [
     P({

@@ -33,7 +33,7 @@ import {
 import { visitaKeyDe, urlFotoPartida } from "./tallerPartidas";
 import { abrirVisorAntesDespues, abrirVisorFotos } from "../taller/visorFotos";
 import { llaveEnUso, type LlaveEnUso } from "../taller/llaveVisita";
-import { columnasLigaDe, type ColumnasLiga } from "../taller/liga";
+import { columnasLigaDe, visitaCerrada, type ColumnasLiga } from "../taller/liga";
 import {
   estadoLiga,
   promesaTaller,
@@ -586,6 +586,9 @@ export function setupCloud(): void {
 
   // Capa pura del seguimiento del proveedor: el monolito PINTA, no calcula.
   window.__estadoLiga = (e) => estadoLiga(e, new Date().toISOString());
+  // Cambiar de decisión (2026-10-01): el registro solo ofrece volver a autorizar / retirar
+  // mientras la visita siga abierta; la regla de "cerrada" es la de la capa pura.
+  window.__visitaCerrada = visitaCerrada;
   window.__promesaTaller = (e) => promesaTaller(e, new Date().toISOString().slice(0, 10));
   window.__etiquetaDistintivo = etiquetaDistintivo;
   window.__resumenPartidas = resumenPartidas;
