@@ -37,8 +37,10 @@ test.describe("cambiar de decisión — demo local", () => {
     const panelSelect = lista.locator("select:visible");
     await expect(panelSelect).toHaveCount(1);
     await panelSelect.selectOption("No es necesario ahora");
+    // El panel dice lo que estás haciendo (2026-10-02): no "rechazo".
+    await expect(lista.getByText("¿Por qué retiras la autorización?")).toBeVisible();
     await lista
-      .getByRole("button", { name: "Confirmar rechazo" })
+      .getByRole("button", { name: "Retirar autorización", exact: true })
       .filter({ visible: true })
       .click();
 

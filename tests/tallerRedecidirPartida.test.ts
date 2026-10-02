@@ -229,3 +229,74 @@ describe("guardarDecisionPartida — el choque se distingue de un fallo de red",
     expect(src.slice(i, i + 600)).toContain("cambio: true");
   });
 });
+
+// Navares (2026-10-02): al retirar una autorización se sigue pidiendo el motivo (el taller
+// lo ve en su liga), pero el panel no puede decir "rechazo": dice lo que estás haciendo.
+describe("_bnPanelRechazo / _bnRechazar — el texto dice 'retirar' cuando estaba autorizada", () => {
+  function panel(p: Partida): HTMLElement {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fabrica = new Function(
+      "window",
+      "document",
+      "_bnPanelVisible",
+      "_bnRechazar",
+      `${literal("_bnPanelRechazo")}
+      return _bnPanelRechazo;`,
+    );
+    const fn = fabrica(
+      {},
+      document,
+      () => {},
+      () => {},
+    ) as (fila: unknown, p: Partida, motivos: string[]) => HTMLElement;
+    return fn(fila, p, ["No es necesario ahora", "Otro"]);
+  }
+  const textos = (el: HTMLElement) => ({
+    titulo: el.querySelector("label")?.textContent ?? "",
+    confirmar: Array.from(el.querySelectorAll("button")).map((b) => b.textContent)[0] ?? "",
+  });
+
+  it("autorizada ⇒ '¿Por qué retiras la autorización?' y 'Retirar autorización'", () => {
+    const t = textos(panel(P({ estado: "autorizada", precioAutorizado: 2400 })));
+    expect(t.titulo).toBe("¿Por qué retiras la autorización?");
+    expect(t.confirmar).toBe("Retirar autorización");
+  });
+
+  it("propuesta ⇒ los textos de siempre del rechazo", () => {
+    const t = textos(panel(P({ estado: "propuesta" })));
+    expect(t.titulo).toBe("Motivo del rechazo");
+    expect(t.confirmar).toBe("Confirmar rechazo");
+  });
+
+  it("el aviso al guardar dice 'Autorización retirada.' cuando estaba autorizada", async () => {
+    const notify = vi.fn();
+    const win = {
+      __guardarDecisionPartida: vi.fn(async () => {}),
+      __cloudHydrate: vi.fn(async () => {}),
+      notify,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fn = new Function(
+      "window",
+      "_bnRepintar",
+      "console",
+      `${literal("_bnRechazar")}\nreturn _bnRechazar;`,
+    )(win, () => {}, { error: () => {} }) as (...a: unknown[]) => Promise<void>;
+    await fn(
+      fila,
+      P({ estado: "autorizada" }),
+      "No es necesario ahora",
+      "",
+      document.createElement("button"),
+    );
+    expect(notify.mock.calls[0]?.[0]).toBe("Autorización retirada.");
+    await fn(
+      fila,
+      P({ estado: "propuesta" }),
+      "No es necesario ahora",
+      "",
+      document.createElement("button"),
+    );
+    expect(notify.mock.calls[1]?.[0]).toBe("Partida rechazada.");
+  });
+});
