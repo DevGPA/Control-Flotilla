@@ -13,9 +13,11 @@ import {
   rechazar,
   totalesVisita,
   type Partida,
+  type PartidaEstado,
   type PartidaTipo,
   type TotalesVisita,
 } from "../taller/partidas";
+import { visitaCerrada } from "../taller/liga";
 
 /** Junta `{unitUid, fechaEntrada}` en la MISMA llave que usa `Partida.visitaKey`.
  *  Fix ronda 2 (Finding 2): esta plantilla vive en UN solo lugar y solo se usa
@@ -345,6 +347,32 @@ export function camposDeDecision(
  * es AppSync (`operativo`/`admin`); esto solo persiste lo que la UI, ya
  * gateada para viewer, permitió intentar.
  */
+/** El error que el monolito distingue de un fallo de red: la partida o su visita ya no
+ *  están como el usuario las vio. */
+function cambioDePartida(detalle: string): Error {
+  return Object.assign(
+    new Error(`La partida cambió (${detalle}); recarga para decidir sobre lo vigente`),
+    { cambio: true },
+  );
+}
+
+/** Misma regla de "cerrada" que el registro (`visitaCerrada`), sobre la fila de la nube:
+ *  `estatus` es la columna que deriva el guardado y `datos` trae estado y salida real. */
+function filaTallerCerrada(fila: { estatus?: string | null; datos?: unknown }): boolean {
+  let datos: { estado?: unknown; fsalidaReal?: unknown } = {};
+  try {
+    const crudo = typeof fila.datos === "string" ? JSON.parse(fila.datos) : fila.datos;
+    if (crudo && typeof crudo === "object") datos = crudo as typeof datos;
+  } catch {
+    // datos ilegible: decide la columna estatus.
+  }
+  if (fila.estatus === "cerrado") return true;
+  return visitaCerrada({
+    estado: typeof datos.estado === "string" ? (datos.estado as never) : undefined,
+    fsalidaReal: typeof datos.fsalidaReal === "string" ? datos.fsalidaReal : undefined,
+  });
+}
+
 export async function guardarDecisionPartida(args: {
   tenantId: string;
   partida: Partida;
@@ -353,8 +381,14 @@ export async function guardarDecisionPartida(args: {
   cuando: string;
   motivo?: string;
   nota?: string;
+  /** El estado que el usuario tenía PINTADO al hacer clic (revisión 2026-10-02). La caché
+   *  pudo refrescarse después — p. ej. a media corrida del lote — y ya no es lo que vio. */
+  estadoVisto?: PartidaEstado;
+  /** La visita de la partida. Cambiar de decisión la relee de la nube: el registro abierto
+   *  pudo cerrarse en otra pestaña. */
+  visita?: { unitUid: string; fechaEntrada: string };
 }): Promise<Partida> {
-  const { tenantId, partida, decision, quien, cuando, motivo, nota } = args;
+  const { tenantId, partida, decision, quien, cuando, motivo, nota, estadoVisto, visita } = args;
   const c = getClient();
 
   // B-C3 — la máquina de estados se aplica sobre la fila REAL, nunca sobre la
@@ -385,13 +419,20 @@ export async function guardarDecisionPartida(args: {
   // otra pestaña la movió, nadie pisa a nadie — se lanza y el repintado trae la verdad.
   // `cambio: true` le dice al monolito que no es un fallo de red: reintentar no sirve,
   // hay que traer la verdad de la nube y repintar (_bnAutorizar / _bnRechazar).
-  if (actual.estado !== partida.estado) {
-    throw Object.assign(
-      new Error(
-        `La partida cambió en otra pestaña (${partida.estado} → ${actual.estado}); recarga para decidir sobre lo vigente`,
-      ),
-      { cambio: true },
-    );
+  // Se compara contra lo que el usuario VIO (`estadoVisto`), no contra la caché: el lote
+  // pudo ver "propuesta" y la caché refrescarse con el rechazo de otra persona.
+  const visto = estadoVisto ?? partida.estado;
+  if (actual.estado !== visto) throw cambioDePartida(`${visto} → ${actual.estado}`);
+
+  // Cambiar de decisión solo "mientras sigue en taller" (Navares, 2026-10-01), verificado
+  // contra la NUBE: la primera decisión (propuesta) no cambia de camino.
+  if (actual.estado === "autorizada" || actual.estado === "rechazada") {
+    if (!visita) throw cambioDePartida("no se pudo verificar la visita");
+    const { data: fila, errors: visitaErrors } = await c.models.Taller.get({ tenantId, ...visita });
+    if (visitaErrors) {
+      throw new Error(`Taller.get (decisión): ${JSON.stringify(visitaErrors)}`);
+    }
+    if (!fila || filaTallerCerrada(fila)) throw cambioDePartida("la visita ya se cerró");
   }
 
   const nueva =

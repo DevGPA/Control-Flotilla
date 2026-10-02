@@ -100,3 +100,22 @@ test.describe("cambiar de decisión — demo local", () => {
     await expect(page.locator("#tf-prov-partidas button.tl-redecidir-btn")).toBeHidden();
   });
 });
+
+// Revisión 2026-10-02 (Important C): en celular el botón "✕ Retirar autorización" no puede
+// ensanchar el registro. Se mide el cuerpo del modal (tiene su propio scroll), no la página.
+test.describe("cambiar de decisión — celular (390 px)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test("el botón de retirar cabe: el registro no se desplaza de lado", async ({ page }) => {
+    await abrir(page);
+    const btn = page.locator("#tf-prov-partidas button.tl-redecidir-btn");
+    await expect(btn).toHaveText("✕ Retirar autorización");
+    await btn.scrollIntoViewIfNeeded();
+    const medida = await page.evaluate(() => {
+      const b = document.querySelector("#taller-modal .tl-mbody") as HTMLElement;
+      return { scroll: b.scrollWidth, cliente: b.clientWidth };
+    });
+    expect(medida.scroll, JSON.stringify(medida)).toBeLessThanOrEqual(medida.cliente + 1);
+    const caja = await btn.boundingBox();
+    expect(caja!.x + caja!.width).toBeLessThanOrEqual(390);
+  });
+});

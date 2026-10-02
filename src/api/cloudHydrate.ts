@@ -39,7 +39,7 @@ import { monthOf } from "../dates";
 import { buildAccesorioEntries } from "../accesorios/mapEntry";
 import type { FuelEntry } from "../fuel/types";
 import { batchGetCloudPhotoUrls, refreshPhotoUrls, type PhotoUrlEntry } from "./photoFetch";
-import { uploadTallerToCloud, type LegacyTallerEntry } from "./batchUpload";
+import { tallerCloudKey, uploadTallerToCloud, type LegacyTallerEntry } from "./batchUpload";
 import { dedupTallerCloudRows } from "./tallerDedup";
 import {
   listTallerPartidas,
@@ -63,6 +63,7 @@ import {
   montoPendienteDeFirma,
   esquemaHibridoActivo,
   type Partida,
+  type PartidaEstado,
   type TotalesVisita,
   type GastoDerivado,
 } from "../taller/partidas";
@@ -355,6 +356,8 @@ declare global {
       decision: DecisionPartida,
       motivo?: string,
       nota?: string,
+      /** El estado que el usuario tenía pintado (revisión 2026-10-02). */
+      estadoVisto?: PartidaEstado,
     ) => Promise<void>;
     /** Mapa filename → {url firmada, expires}. Lo lee legacy imgUrl, que descarta las
      *  vencidas (las URLs firmadas de S3 expiran ≈15min). */
@@ -1180,7 +1183,14 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
     window.__resumenLoteFirma = resumenLoteFirma;
     // R85: la franja de resumen de la bandeja (spec §9.2) — mismo seam.
     window.__resumenBandeja = resumenBandeja;
-    window.__guardarDecisionPartida = async (partidaId, visitaKey, decision, motivo, nota) => {
+    window.__guardarDecisionPartida = async (
+      partidaId,
+      visitaKey,
+      decision,
+      motivo,
+      nota,
+      estadoVisto,
+    ) => {
       const ps = window.__tallerPartidas?.get(visitaKey) ?? [];
       const partida = ps.find((p) => p.partidaId === partidaId);
       if (!partida) {
@@ -1188,6 +1198,12 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
           `[guardarDecisionPartida] partida no encontrada: ${partidaId} (${visitaKey})`,
         );
       }
+      // Cambiar de decisión relee la visita de la nube (revisión 2026-10-02): su llave
+      // sale del registro, hacia ADELANTE (tallerCloudKey), nunca separando visitaKey.
+      const entry = tallerEntries.find(
+        (e) => visitaKeyDe(e as unknown as LegacyTallerEntry) === visitaKey,
+      );
+      const visita = entry ? tallerCloudKey(entry as unknown as LegacyTallerEntry) : undefined;
       const quien = window.__cloudSession?.email || "desconocido";
       await guardarDecisionPartida({
         tenantId,
@@ -1197,6 +1213,8 @@ export async function hydrateFromCloud(tenantId: string): Promise<{
         cuando: new Date().toISOString(),
         motivo,
         nota,
+        estadoVisto,
+        visita,
       });
     };
     if (typeof window.updateTallerBadge === "function") window.updateTallerBadge();

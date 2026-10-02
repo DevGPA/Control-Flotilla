@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-JoigwZrk3o70ZUJLvyibwqCodv1IcfG+a2l2NN0I9rA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-rfgst/QmC1EwvHeU5fKS4Q3tbAw+AfX3P4yPyzATrGA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8374,6 +8374,10 @@ function _provPartidas(e){
 function _provFilaRedecidir(fila, p){
   const row = _provFilaHistorial(p);
   if(p.estado !== "autorizada" && p.estado !== "rechazada") return row;
+  // Celular (revisión 2026-10-02): la fila se parte y el botón baja a su propio renglón,
+  // alineado a la derecha, en vez de ensanchar todo el registro. En PC no cambia nada.
+  row.style.flexWrap = "wrap";
+  if(row.children[1]) row.children[1].style.flex = "1 1 180px";
   const contenedor = document.createElement("div");
   contenedor.style.cssText = "display:flex;flex-direction:column";
   contenedor.appendChild(row);
@@ -9194,7 +9198,8 @@ async function _bnAutorizar(fila, p, btn){
   }
   btn.disabled = true;
   try{
-    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+    // 6.º argumento: el estado que el usuario VIO; el guardado lo compara con la nube.
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar", undefined, undefined, p.estado);
     if(window.notify) window.notify("Partida autorizada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
     _bnRepintar();
@@ -9223,7 +9228,7 @@ async function _bnRechazar(fila, p, motivo, nota, btn){
   }
   btn.disabled = true;
   try{
-    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined);
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined, p.estado);
     if(window.notify) window.notify(p.estado === "autorizada" ? "Autorización retirada." : "Partida rechazada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
     _bnRepintar();
@@ -9245,7 +9250,8 @@ async function _bnAutorizarLote(fila, partidas, btn){
   try{
     for(const p of partidas){
       try{
-        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+        // Lo que el usuario vio al pedir el lote ("propuesta"), no la caché del momento.
+        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar", undefined, undefined, p.estado);
         ok++;
       }catch(e){
         console.error("[bandeja] autorizar lote:", p.partidaId, e);

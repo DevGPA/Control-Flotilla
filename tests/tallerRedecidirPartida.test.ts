@@ -222,11 +222,13 @@ describe("_bnAutorizar / _bnRechazar — cuando la partida cambió en otro lado"
 });
 
 describe("guardarDecisionPartida — el choque se distingue de un fallo de red", () => {
+  // El comportamiento (lanza con cambio:true y no escribe) lo ejecutan las pruebas del
+  // guardado en tests/tallerCapturaManualApi.test.ts; aquí solo el contrato con el monolito.
   it("el error de la guarda trae la marca `cambio: true` que el monolito lee", () => {
     const src = readFileSync(join(raiz, "src", "api", "tallerPartidas.ts"), "utf8");
-    const i = src.indexOf("if (actual.estado !== partida.estado)");
-    expect(i, "falta la guarda de estado").toBeGreaterThan(-1);
-    expect(src.slice(i, i + 600)).toContain("cambio: true");
+    const i = src.indexOf("function cambioDePartida(");
+    expect(i, "falta cambioDePartida").toBeGreaterThan(-1);
+    expect(src.slice(i, i + 400)).toContain("cambio: true");
   });
 });
 
@@ -298,5 +300,90 @@ describe("_bnPanelRechazo / _bnRechazar — el texto dice 'retirar' cuando estab
       document.createElement("button"),
     );
     expect(notify.mock.calls[1]?.[0]).toBe("Partida rechazada.");
+  });
+});
+
+// Revisión 2026-10-02 (Important B): el guardado compara la nube contra lo que el usuario
+// VIO, no contra la caché. El monolito manda el estado pintado como 6.º argumento.
+describe("_bnAutorizar / _bnRechazar / _bnAutorizarLote — mandan el estado que el usuario vio", () => {
+  type Fn = (...a: unknown[]) => Promise<void>;
+  function firma(): {
+    guardar: ReturnType<typeof vi.fn<Fn>>;
+    _bnAutorizar: Fn;
+    _bnRechazar: Fn;
+    _bnAutorizarLote: Fn;
+  } {
+    const guardar = vi.fn<Fn>(async () => {});
+    const win = {
+      __guardarDecisionPartida: guardar,
+      __cloudHydrate: vi.fn(async () => {}),
+      notify: vi.fn(),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fns = new Function(
+      "window",
+      "_bnRepintar",
+      "console",
+      `${literal("_bnAutorizar")}
+      ${literal("_bnRechazar")}
+      ${literal("_bnTraerVerdad")}
+      ${literal("_bnAutorizarLote")}
+      return { _bnAutorizar, _bnRechazar, _bnAutorizarLote };`,
+    )(win, () => {}, { error: () => {} }) as {
+      _bnAutorizar: Fn;
+      _bnRechazar: Fn;
+      _bnAutorizarLote: Fn;
+    };
+    return { guardar, ...fns };
+  }
+
+  it("autorizar una rechazada manda 'rechazada'; retirar una autorizada manda 'autorizada'", async () => {
+    const f = firma();
+    await f._bnAutorizar!(fila, P({ estado: "rechazada" }), document.createElement("button"));
+    expect(f.guardar).toHaveBeenLastCalledWith(
+      "p1",
+      fila.visitaKey,
+      "autorizar",
+      undefined,
+      undefined,
+      "rechazada",
+    );
+    await f._bnRechazar!(
+      fila,
+      P({ estado: "autorizada" }),
+      "No es necesario ahora",
+      "",
+      document.createElement("button"),
+    );
+    expect(f.guardar).toHaveBeenLastCalledWith(
+      "p1",
+      fila.visitaKey,
+      "rechazar",
+      "No es necesario ahora",
+      undefined,
+      "autorizada",
+    );
+  });
+
+  it("el lote manda 'propuesta' por cada partida que el usuario vio esperando firma", async () => {
+    const f = firma();
+    const ps = [
+      P({ partidaId: "a", estado: "propuesta" }),
+      P({ partidaId: "b", estado: "propuesta" }),
+    ];
+    await f._bnAutorizarLote!(fila, ps, document.createElement("button"));
+    expect(f.guardar.mock.calls.map((c) => [c[0], c[5]])).toEqual([
+      ["a", "propuesta"],
+      ["b", "propuesta"],
+    ]);
+  });
+
+  it("el puente pasa el estado visto y la visita (unitUid/fechaEntrada) al guardado", () => {
+    const src = readFileSync(join(raiz, "src", "api", "cloudHydrate.ts"), "utf8");
+    const i = src.indexOf("window.__guardarDecisionPartida = async");
+    expect(i).toBeGreaterThan(-1);
+    const puente = src.slice(i, i + 1500);
+    expect(puente).toContain("estadoVisto");
+    expect(puente).toContain("visita");
   });
 });
