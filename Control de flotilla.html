@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-LYZqUTvIeHdQEx0mFtRpkuifvVK3wYRWcCnSgeVZ1gg=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-rfgst/QmC1EwvHeU5fKS4Q3tbAw+AfX3P4yPyzATrGA=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -8326,7 +8326,10 @@ function _provPartidas(e){
       lista.appendChild(filaPend);
       return;
     }
-    lista.appendChild(_provFilaHistorial(p));
+    // Cambiar de decisión (2026-10-01): una partida ya decidida ofrece la acción contraria
+    // SOLO con la visita abierta; sin el puente no ofrece nada (fail-closed).
+    const abierta = typeof window.__visitaCerrada === "function" && !window.__visitaCerrada(e);
+    lista.appendChild(abierta ? _provFilaRedecidir(fila, p) : _provFilaHistorial(p));
   };
   const subtitulo = (texto, nota) => {
     lista.appendChild(Object.assign(document.createElement("div"), { className: "tl-ficha-grupo", textContent: texto }));
@@ -8361,6 +8364,53 @@ function _provPartidas(e){
   }
   if(visibles.length > 6){ lista.style.maxHeight = "360px"; lista.style.overflowY = "auto"; }
   cont.appendChild(lista);
+}
+
+// Cambiar de decisión (Navares, 2026-10-01): mientras la visita siga abierta, lo último que
+// decides es lo que queda. Una RECHAZADA vuelve a ofrecer "✓ Autorizar" y una AUTORIZADA
+// ofrece "✕ Retirar autorización" (con motivo); una TERMINADA no se toca — el taller ya hizo
+// el trabajo. Reusa la fila de rastro, el panel de motivos y los guardados de la bandeja
+// (_bnAutorizar / _bnPanelRechazo → _bnRechazar): cero lógica nueva de dinero aquí.
+function _provFilaRedecidir(fila, p){
+  const row = _provFilaHistorial(p);
+  if(p.estado !== "autorizada" && p.estado !== "rechazada") return row;
+  // Celular (revisión 2026-10-02): la fila se parte y el botón baja a su propio renglón,
+  // alineado a la derecha, en vez de ensanchar todo el registro. En PC no cambia nada.
+  row.style.flexWrap = "wrap";
+  if(row.children[1]) row.children[1].style.flex = "1 1 180px";
+  const contenedor = document.createElement("div");
+  contenedor.style.cssText = "display:flex;flex-direction:column";
+  contenedor.appendChild(row);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "needs-write bandeja-firma-btn tl-redecidir-btn";
+  btn.dataset.partida = p.partidaId;
+  btn.style.cssText = "margin-left:auto;padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0";
+  if(p.estado === "rechazada"){
+    const tienePrecio = typeof p.precio === "number" && Number.isFinite(p.precio);
+    btn.textContent = "✓ Autorizar";
+    btn.style.border = "none";
+    btn.style.background = "var(--G)";
+    btn.style.color = "#fff";
+    if(!tienePrecio){
+      btn.disabled = true;
+      btn.title = "No se puede autorizar sin precio.";
+      btn.style.opacity = "0.5";
+      btn.style.cursor = "not-allowed";
+    }
+    btn.addEventListener("click", () => _bnAutorizar(fila, p, btn));
+    row.appendChild(btn);
+    return contenedor;
+  }
+  btn.textContent = "✕ Retirar autorización";
+  btn.style.border = "1px solid var(--R)";
+  btn.style.background = "none";
+  btn.style.color = "var(--R)";
+  const panel = _bnPanelRechazo(fila, p, window.__MOTIVOS_RECHAZO || []);
+  btn.addEventListener("click", () => { _bnPanelVisible(panel, panel.hidden); });
+  row.appendChild(btn);
+  contenedor.appendChild(panel);
+  return contenedor;
 }
 
 // Una partida ya decidida (o un borrador, del taller o de GPA): sin botones de
@@ -8978,9 +9028,12 @@ function _bnPanelRechazo(fila, p, motivos){
   panel.style.cssText = "width:100%;padding:10px 16px 14px;background:var(--bg3);border-top:1px dashed var(--ln);flex-direction:column;gap:8px";
   _bnPanelVisible(panel, false);
 
+  // Retirar una autorización (2026-10-02) pide el mismo motivo —el taller lo ve en su liga—,
+  // pero el panel dice lo que estás haciendo, no "rechazo".
+  const retirando = p.estado === "autorizada";
   const lbl = document.createElement("label");
   lbl.style.cssText = "font-size:10.5px;color:var(--s2);font-weight:600;text-transform:uppercase;letter-spacing:.4px";
-  lbl.textContent = "Motivo del rechazo";
+  lbl.textContent = retirando ? "¿Por qué retiras la autorización?" : "Motivo del rechazo";
   panel.appendChild(lbl);
 
   const sel = document.createElement("select");
@@ -9018,7 +9071,7 @@ function _bnPanelRechazo(fila, p, motivos){
   btnConfirmar.type = "button";
   btnConfirmar.className = "needs-write bandeja-firma-btn";
   btnConfirmar.style.cssText = "padding:8px 14px;border-radius:8px;border:none;background:var(--R);color:#fff;font-size:12px;font-weight:700;cursor:pointer";
-  btnConfirmar.textContent = "Confirmar rechazo";
+  btnConfirmar.textContent = retirando ? "Retirar autorización" : "Confirmar rechazo";
   btnConfirmar.disabled = true;
 
   const btnCancelar = document.createElement("button");
@@ -9145,15 +9198,27 @@ async function _bnAutorizar(fila, p, btn){
   }
   btn.disabled = true;
   try{
-    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+    // 6.º argumento: el estado que el usuario VIO; el guardado lo compara con la nube.
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar", undefined, undefined, p.estado);
     if(window.notify) window.notify("Partida autorizada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
     _bnRepintar();
   }catch(e){
     console.error("[bandeja] autorizar:", e);
+    if(e && e.cambio === true){ await _bnTraerVerdad(); return; }
     if(window.notify) window.notify("No se pudo autorizar. Intenta de nuevo.", "error", 5000);
     btn.disabled = false;
   }
+}
+
+// Cambiar de decisión (2026-10-01): la partida ya no está como el usuario la vio (otra
+// pestaña la decidió o el taller la terminó). Reintentar no sirve — con el registro abierto
+// el poll se pausa —, así que se trae la verdad de la nube, se repinta y se dice.
+async function _bnTraerVerdad(){
+  if(window.notify) window.notify("Esta partida cambió (otra persona o el taller). Ya se actualizó la lista.", "warn", 6000);
+  try{ if(window.__cloudHydrate) await window.__cloudHydrate(); }
+  catch(e){ console.error("[bandeja] re-hidratar tras cambio:", e); }
+  _bnRepintar();
 }
 
 async function _bnRechazar(fila, p, motivo, nota, btn){
@@ -9163,12 +9228,13 @@ async function _bnRechazar(fila, p, motivo, nota, btn){
   }
   btn.disabled = true;
   try{
-    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined);
-    if(window.notify) window.notify("Partida rechazada.", "ok", 3500);
+    await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "rechazar", motivo, nota || undefined, p.estado);
+    if(window.notify) window.notify(p.estado === "autorizada" ? "Autorización retirada." : "Partida rechazada.", "ok", 3500);
     if(window.__cloudHydrate) await window.__cloudHydrate();
     _bnRepintar();
   }catch(e){
     console.error("[bandeja] rechazar:", e);
+    if(e && e.cambio === true){ await _bnTraerVerdad(); return; }
     if(window.notify) window.notify("No se pudo rechazar. Intenta de nuevo.", "error", 5000);
     btn.disabled = false;
   }
@@ -9184,7 +9250,8 @@ async function _bnAutorizarLote(fila, partidas, btn){
   try{
     for(const p of partidas){
       try{
-        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar");
+        // Lo que el usuario vio al pedir el lote ("propuesta"), no la caché del momento.
+        await window.__guardarDecisionPartida(p.partidaId, fila.visitaKey, "autorizar", undefined, undefined, p.estado);
         ok++;
       }catch(e){
         console.error("[bandeja] autorizar lote:", p.partidaId, e);

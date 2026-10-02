@@ -13,9 +13,11 @@ import {
   rechazar,
   totalesVisita,
   type Partida,
+  type PartidaEstado,
   type PartidaTipo,
   type TotalesVisita,
 } from "../taller/partidas";
+import { visitaCerrada } from "../taller/liga";
 
 /** Junta `{unitUid, fechaEntrada}` en la MISMA llave que usa `Partida.visitaKey`.
  *  Fix ronda 2 (Finding 2): esta plantilla vive en UN solo lugar y solo se usa
@@ -287,9 +289,12 @@ export type DecisionPartida = "autorizar" | "rechazar";
  * real de AppSync no se ejecuta en las pruebas: son puras o estructurales.
  *
  * El `null` sigue viajando cuando de verdad hay que limpiar (dato corrupto: una
- * `propuesta` que arrastra un motivo). Esa ruta es inalcanzable por la capa pura
- * —`autorizar` exige `estado === "propuesta"` y una propuesta no tiene motivo—,
- * así que en la práctica `operativo` nunca manda un `null`.
+ * `propuesta` que arrastra un motivo). Cambiar de decisión (2026-10-01) abrió
+ * `rechazada → autorizada` y `autorizada → rechazada`: la limpieza del motivo al
+ * volver a autorizar viaja como `""` (un valor, no un borrado), y un `""` ya
+ * guardado cuenta como vacío — pedir borrarlo con `null` en el SIGUIENTE cambio
+ * de decisión era reabrir este mismo defecto. En la práctica `operativo` nunca
+ * manda un `null`.
  */
 export function camposDeDecision(
   actual: Partida,
@@ -299,8 +304,9 @@ export function camposDeDecision(
   const poner = (campo: string, antes: unknown, ahora: unknown): void => {
     if (antes === ahora) return;
     if (ahora === undefined) {
-      // Solo se borra lo que existía; `undefined → undefined` no se manda.
-      if (antes !== undefined && antes !== null) out[campo] = null;
+      // Solo se borra lo que existía; `undefined → undefined` no se manda, y un
+      // `""` (limpieza de un cambio de decisión anterior) ya está vacío.
+      if (antes !== undefined && antes !== null && antes !== "") out[campo] = null;
       return;
     }
     out[campo] = ahora as string | number;
@@ -311,11 +317,20 @@ export function camposDeDecision(
   // había algo que borrar.
   const autorizada = nueva.estado === "autorizada";
   poner("precioAutorizado", actual.precioAutorizado, nueva.precioAutorizado);
-  poner("motivoRechazo", actual.motivoRechazo, autorizada ? undefined : nueva.motivoRechazo);
+  // Cambiar de decisión (2026-10-01): volver a autorizar un RECHAZADO sí tiene que
+  // limpiar su motivo, y `operativo` no puede mandar `null`. La limpieza viaja como
+  // "" — un valor, no un borrado. El `null` queda solo para el dato corrupto (una
+  // propuesta que arrastra motivo), que ningún camino de la app produce.
+  const limpio = actual.estado === "rechazada" ? "" : undefined;
+  poner(
+    "motivoRechazo",
+    actual.motivoRechazo,
+    autorizada ? (actual.motivoRechazo ? limpio : undefined) : nueva.motivoRechazo,
+  );
   poner(
     "motivoRechazoNota",
     actual.motivoRechazoNota,
-    autorizada ? undefined : nueva.motivoRechazoNota,
+    autorizada ? (actual.motivoRechazoNota ? limpio : undefined) : nueva.motivoRechazoNota,
   );
   return out;
 }
@@ -332,6 +347,32 @@ export function camposDeDecision(
  * es AppSync (`operativo`/`admin`); esto solo persiste lo que la UI, ya
  * gateada para viewer, permitió intentar.
  */
+/** El error que el monolito distingue de un fallo de red: la partida o su visita ya no
+ *  están como el usuario las vio. */
+function cambioDePartida(detalle: string): Error {
+  return Object.assign(
+    new Error(`La partida cambió (${detalle}); recarga para decidir sobre lo vigente`),
+    { cambio: true },
+  );
+}
+
+/** Misma regla de "cerrada" que el registro (`visitaCerrada`), sobre la fila de la nube:
+ *  `estatus` es la columna que deriva el guardado y `datos` trae estado y salida real. */
+function filaTallerCerrada(fila: { estatus?: string | null; datos?: unknown }): boolean {
+  let datos: { estado?: unknown; fsalidaReal?: unknown } = {};
+  try {
+    const crudo = typeof fila.datos === "string" ? JSON.parse(fila.datos) : fila.datos;
+    if (crudo && typeof crudo === "object") datos = crudo as typeof datos;
+  } catch {
+    // datos ilegible: decide la columna estatus.
+  }
+  if (fila.estatus === "cerrado") return true;
+  return visitaCerrada({
+    estado: typeof datos.estado === "string" ? (datos.estado as never) : undefined,
+    fsalidaReal: typeof datos.fsalidaReal === "string" ? datos.fsalidaReal : undefined,
+  });
+}
+
 export async function guardarDecisionPartida(args: {
   tenantId: string;
   partida: Partida;
@@ -340,8 +381,14 @@ export async function guardarDecisionPartida(args: {
   cuando: string;
   motivo?: string;
   nota?: string;
+  /** El estado que el usuario tenía PINTADO al hacer clic (revisión 2026-10-02). La caché
+   *  pudo refrescarse después — p. ej. a media corrida del lote — y ya no es lo que vio. */
+  estadoVisto?: PartidaEstado;
+  /** La visita de la partida. Cambiar de decisión la relee de la nube: el registro abierto
+   *  pudo cerrarse en otra pestaña. */
+  visita?: { unitUid: string; fechaEntrada: string };
 }): Promise<Partida> {
-  const { tenantId, partida, decision, quien, cuando, motivo, nota } = args;
+  const { tenantId, partida, decision, quien, cuando, motivo, nota, estadoVisto, visita } = args;
   const c = getClient();
 
   // B-C3 — la máquina de estados se aplica sobre la fila REAL, nunca sobre la
@@ -364,6 +411,29 @@ export async function guardarDecisionPartida(args: {
     throw new Error(`Partida no encontrada: ${partida.partidaId} (${partida.visitaKey})`);
   }
   const actual = rowToPartida(data);
+
+  // Cambiar de decisión (2026-10-01): la máquina de estados ahora SÍ deja volver a
+  // autorizar un rechazado y retirar un autorizado, así que ya no es ella quien frena
+  // el clic viejo de B-C3. Lo que lo frena es esto: la decisión se aplica solo si la
+  // fila real está en el MISMO estado que la copia que el usuario tenía enfrente. Si
+  // otra pestaña la movió, nadie pisa a nadie — se lanza y el repintado trae la verdad.
+  // `cambio: true` le dice al monolito que no es un fallo de red: reintentar no sirve,
+  // hay que traer la verdad de la nube y repintar (_bnAutorizar / _bnRechazar).
+  // Se compara contra lo que el usuario VIO (`estadoVisto`), no contra la caché: el lote
+  // pudo ver "propuesta" y la caché refrescarse con el rechazo de otra persona.
+  const visto = estadoVisto ?? partida.estado;
+  if (actual.estado !== visto) throw cambioDePartida(`${visto} → ${actual.estado}`);
+
+  // Cambiar de decisión solo "mientras sigue en taller" (Navares, 2026-10-01), verificado
+  // contra la NUBE: la primera decisión (propuesta) no cambia de camino.
+  if (actual.estado === "autorizada" || actual.estado === "rechazada") {
+    if (!visita) throw cambioDePartida("no se pudo verificar la visita");
+    const { data: fila, errors: visitaErrors } = await c.models.Taller.get({ tenantId, ...visita });
+    if (visitaErrors) {
+      throw new Error(`Taller.get (decisión): ${JSON.stringify(visitaErrors)}`);
+    }
+    if (!fila || filaTallerCerrada(fila)) throw cambioDePartida("la visita ya se cerró");
+  }
 
   const nueva =
     decision === "autorizar"

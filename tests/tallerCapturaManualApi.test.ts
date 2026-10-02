@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockGet = vi.fn();
+const mockTallerGet = vi.fn();
 
 vi.mock("../src/api/amplifyClient", () => ({
   getClient: () => ({
@@ -21,6 +22,7 @@ vi.mock("../src/api/amplifyClient", () => ({
         update: mockUpdate,
         get: mockGet,
       },
+      Taller: { get: mockTallerGet },
     },
   }),
 }));
@@ -32,7 +34,21 @@ beforeEach(() => {
   mockCreate.mockReset();
   mockUpdate.mockReset();
   mockGet.mockReset();
+  mockTallerGet.mockReset();
 });
+
+/** La visita en la nube, como la devuelve `Taller.get`. */
+const visitaNube = (estatus: "abierto" | "cerrado", datos: Record<string, unknown> = {}) => ({
+  data: {
+    tenantId: "gpa",
+    unitUid: "JV98698",
+    fechaEntrada: "2026-09-01",
+    estatus,
+    datos: JSON.stringify(datos),
+  },
+  errors: undefined,
+});
+const VISITA = { unitUid: "JV98698", fechaEntrada: "2026-09-01" };
 
 const datos = { descripcion: "Balatas delanteras", tipo: "refaccion" as const, precio: 1850 };
 
@@ -270,6 +286,143 @@ describe("guardarDecisionPartida — re-lee antes de aplicar la máquina de esta
         decision: "autorizar",
         quien: "riesgos@gpa",
         cuando: "2026-09-11T10:00:00Z",
+      }),
+    ).rejects.toThrow();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  // Cambiar de decisión (2026-10-01): la máquina de estados ahora SÍ deja volver a
+  // autorizar un rechazado, así que lo que sigue protegiendo contra el clic viejo es
+  // comparar lo que el usuario VIO (su copia) con la fila real.
+  it("si el usuario VE la rechazada y la fila real también lo está, volver a autorizar SÍ escribe", async () => {
+    const rechazada = {
+      ...propuesta,
+      estado: "rechazada",
+      motivoRechazo: "Precio alto — recotizar",
+      decididoPor: "otro@gpa",
+    };
+    mockGet.mockResolvedValue({ data: rechazada, errors: undefined });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+    mockTallerGet.mockResolvedValue(visitaNube("abierto"));
+
+    const r = await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: { ...enCache, estado: "rechazada", motivoRechazo: "Precio alto — recotizar" },
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-10-01T12:00:00Z",
+      estadoVisto: "rechazada",
+      visita: VISITA,
+    });
+
+    expect(r.estado).toBe("autorizada");
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[0]![0]).toMatchObject({ estado: "autorizada", motivoRechazo: "" });
+  });
+
+  // Revisión 2026-10-02 (Important B): el lote compara contra la CACHÉ; si la caché se
+  // refrescó a media corrida con el rechazo de otra persona, la guarda pasaba y se
+  // re-autorizaba algo que el usuario nunca vio rechazado. Lo que manda es lo que VIO.
+  it("el lote vio 'propuesta' pero la caché ya dice 'rechazada' ⇒ LANZA cambio y no escribe", async () => {
+    const rechazadaPorOtro = {
+      ...propuesta,
+      estado: "rechazada",
+      motivoRechazo: "Precio alto — recotizar",
+      decididoPor: "otro@gpa",
+    };
+    mockGet.mockResolvedValue({ data: rechazadaPorOtro, errors: undefined });
+
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: { ...enCache, estado: "rechazada", motivoRechazo: "Precio alto — recotizar" },
+        decision: "autorizar",
+        quien: "riesgos@gpa",
+        cuando: "2026-10-02T12:00:00Z",
+        estadoVisto: "propuesta",
+        visita: VISITA,
+      }),
+    ).rejects.toMatchObject({ cambio: true });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  // Revisión 2026-10-02 (Important A): cambiar de decisión solo "mientras sigue en taller",
+  // verificado contra la NUBE — el registro abierto pudo cerrarse en otra pestaña.
+  it("cambiar de decisión con la visita CERRADA en la nube ⇒ LANZA cambio y no escribe", async () => {
+    mockGet.mockResolvedValue({
+      data: { ...propuesta, estado: "rechazada", motivoRechazo: "No es necesario ahora" },
+      errors: undefined,
+    });
+    mockTallerGet.mockResolvedValue(visitaNube("cerrado", { fsalidaReal: "2026-10-01" }));
+
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: { ...enCache, estado: "rechazada" },
+        decision: "autorizar",
+        quien: "riesgos@gpa",
+        cuando: "2026-10-02T12:00:00Z",
+        estadoVisto: "rechazada",
+        visita: VISITA,
+      }),
+    ).rejects.toMatchObject({ cambio: true });
+    expect(mockTallerGet).toHaveBeenCalledWith({ tenantId: "gpa", ...VISITA });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("cambiar de decisión sin saber cuál es la visita ⇒ LANZA cambio (no se adivina)", async () => {
+    mockGet.mockResolvedValue({
+      data: { ...propuesta, estado: "autorizada", precioAutorizado: 1850 },
+      errors: undefined,
+    });
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: { ...enCache, estado: "autorizada", precioAutorizado: 1850 },
+        decision: "rechazar",
+        motivo: "No es necesario ahora",
+        quien: "riesgos@gpa",
+        cuando: "2026-10-02T12:00:00Z",
+        estadoVisto: "autorizada",
+      }),
+    ).rejects.toMatchObject({ cambio: true });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("la PRIMERA decisión (propuesta) no relee la visita: su camino no cambia", async () => {
+    mockGet.mockResolvedValue({ data: propuesta, errors: undefined });
+    mockUpdate.mockResolvedValue({ errors: undefined });
+    await guardarDecisionPartida({
+      tenantId: "gpa",
+      partida: enCache,
+      decision: "autorizar",
+      quien: "riesgos@gpa",
+      cuando: "2026-10-02T12:00:00Z",
+      estadoVisto: "propuesta",
+    });
+    expect(mockTallerGet).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("si la copia local dice autorizada pero el taller YA la terminó, retirar LANZA y no se escribe nada", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        ...propuesta,
+        estado: "terminada",
+        precioAutorizado: 1850,
+        terminadoEn: "2026-09-30T10:00:00Z",
+      },
+      errors: undefined,
+    });
+
+    await expect(
+      guardarDecisionPartida({
+        tenantId: "gpa",
+        partida: { ...enCache, estado: "autorizada", precioAutorizado: 1850 },
+        decision: "rechazar",
+        motivo: "No es necesario ahora",
+        quien: "riesgos@gpa",
+        cuando: "2026-10-01T12:00:00Z",
       }),
     ).rejects.toThrow();
     expect(mockUpdate).not.toHaveBeenCalled();

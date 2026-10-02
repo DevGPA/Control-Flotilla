@@ -74,8 +74,15 @@ export function puedeCancelar(p: Partida, actor: "proveedor" | "riesgos"): boole
   return true;
 }
 
+/**
+ * Cambiar de decisión (Navares, 2026-10-01): mientras la visita siga abierta, lo
+ * último que decide Riesgos es lo que queda — un rechazado se puede volver a
+ * autorizar y un autorizado se puede retirar. Lo único intocable es `terminada`:
+ * el taller ya hizo el trabajo. Que la visita esté abierta lo vigila quien pinta
+ * los botones (el monolito, con `__visitaCerrada`); aquí solo el estado.
+ */
 export function autorizar(p: Partida, quien: string, cuando: string): Partida {
-  if (p.estado !== "propuesta") {
+  if (p.estado !== "propuesta" && p.estado !== "rechazada") {
     throw new Error(`No se puede autorizar una partida en estado "${p.estado}"`);
   }
   // R92 (fail-closed) — antes esto era `p.precio ?? 0`: una partida sin precio
@@ -92,6 +99,9 @@ export function autorizar(p: Partida, quien: string, cuando: string): Partida {
     estado: "autorizada",
     // Se autoriza un PRECIO: queda congelado aquí.
     precioAutorizado: p.precio,
+    // Una autorizada no tiene motivo de rechazo: al volver a autorizar se limpia.
+    motivoRechazo: undefined,
+    motivoRechazoNota: undefined,
     decididoPor: quien,
     decididoEn: cuando,
   };
@@ -104,7 +114,10 @@ export function rechazar(
   quien: string,
   cuando: string,
 ): Partida {
-  if (p.estado !== "propuesta") {
+  if (p.estado === "terminada") {
+    throw new Error("No se puede retirar la autorización: el taller ya terminó este hallazgo");
+  }
+  if (p.estado !== "propuesta" && p.estado !== "autorizada") {
     throw new Error(`No se puede rechazar una partida en estado "${p.estado}"`);
   }
   if (!(MOTIVOS_RECHAZO as readonly string[]).includes(motivo)) {
@@ -114,6 +127,9 @@ export function rechazar(
   if (motivo === "Otro" && !limpia) {
     throw new Error('El motivo "Otro" exige una nota');
   }
+  // Al retirar una autorización, `precioAutorizado` se CONSERVA como rastro de lo que
+  // se había firmado (y porque `operativo` no puede borrar campos en AppSync, ver
+  // camposDeDecision): los totales y el Excel van por `estado`, nunca por ese campo.
   return {
     ...p,
     estado: "rechazada",

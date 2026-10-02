@@ -120,6 +120,23 @@ describe("COLUMNAS_PARTIDAS / filasPartidas — capa pura", () => {
     expect(fila![i]).toBe("Borrador");
   });
 
+  // Cambiar de decisión (2026-10-01): al retirar una autorización el campo
+  // precioAutorizado se conserva como rastro, pero una rechazada NO tiene precio
+  // autorizado que reportar.
+  it("Precio autorizado sale vacío en una rechazada aunque conserve el campo", () => {
+    const i = COLUMNAS_PARTIDAS.findIndex((c) => c.titulo === "Precio autorizado");
+    const [retirada] = filasPartidas([entry()], {
+      hoy: HOY,
+      partidasDe: () => [partida({ estado: "rechazada", precio: 1850, precioAutorizado: 1850 })],
+    });
+    const [autorizada] = filasPartidas([entry()], {
+      hoy: HOY,
+      partidasDe: () => [partida({ estado: "autorizada", precio: 1850, precioAutorizado: 1850 })],
+    });
+    expect(retirada![i]).toBe("");
+    expect(autorizada![i]).toBe(1850);
+  });
+
   it("Origen: Taller cuando creadoPor empieza con liga:, GPA en cualquier otro caso", () => {
     const iOrigen = COLUMNAS_PARTIDAS.findIndex((c) => c.titulo === "Origen");
     const conLiga = filasPartidas([entry()], {

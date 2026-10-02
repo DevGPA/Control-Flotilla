@@ -547,7 +547,10 @@ export const COLUMNAS_PARTIDAS: ColumnaPartida[] = [
     ancho: 16,
     tipo: "moneda",
     formato: FMT_MONEDA,
-    valor: (_e, p) => monto(p.precioAutorizado),
+    // Una autorización retirada conserva el campo como rastro (cambiar de decisión,
+    // 2026-10-01); el precio autorizado solo se reporta mientras la firma siga viva.
+    valor: (_e, p) =>
+      p.estado === "autorizada" || p.estado === "terminada" ? monto(p.precioAutorizado) : "",
   },
   { titulo: "Decidido por", ancho: 18, tipo: "texto", valor: (_e, p) => texto(p.decididoPor) },
   {
