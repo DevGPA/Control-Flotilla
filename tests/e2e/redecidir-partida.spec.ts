@@ -59,6 +59,40 @@ test.describe("cambiar de decisión — demo local", () => {
     await expect(redecidir).toHaveText("✕ Retirar autorización");
   });
 
+  // Navares (2026-10-02): "¿y si se rechaza primero y después se quiere autorizar?"
+  test("rechazar primero un hallazgo que esperaba firma y después autorizarlo", async ({
+    page,
+  }) => {
+    const lista = page.locator("#tf-prov-partidas");
+    const costo = page.locator("#tf-ficha-costo");
+    await expect(costo).toContainText("Esperando tu firma");
+
+    // El que espera firma (Amortiguador, $2,400) se rechaza desde su fila de siempre.
+    await lista
+      .getByRole("button", { name: /No autorizar/ })
+      .first()
+      .click();
+    await lista.locator("select:visible").selectOption("Precio alto — recotizar");
+    await lista
+      .getByRole("button", { name: "Confirmar rechazo" })
+      .filter({ visible: true })
+      .click();
+    await expect(costo).not.toContainText("Esperando tu firma");
+    await expect(
+      lista.locator(".tl-ficha-grupo").filter({ hasText: "No autorizados" }),
+    ).toHaveCount(1);
+    await expect(lista).toContainText("Precio alto — recotizar");
+
+    // Ya rechazado, ofrece volver a autorizarlo; al hacerlo suma al autorizado.
+    const reautorizar = lista.locator("button.tl-redecidir-btn", { hasText: "✓ Autorizar" });
+    await expect(reautorizar).toHaveCount(1);
+    await reautorizar.click();
+    await expect(costo).toContainText("$6,250.00");
+    await expect(
+      lista.locator(".tl-ficha-grupo").filter({ hasText: "No autorizados" }),
+    ).toHaveCount(0);
+  });
+
   test("viewer: no ve la acción contraria", async ({ page }) => {
     await page.selectOption("#demo-rol-sel", "viewer");
     await expect(page.locator("#tf-prov-partidas button.tl-redecidir-btn")).toBeHidden();
