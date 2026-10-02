@@ -543,6 +543,12 @@ textarea{min-height:72px; resize:vertical}
           msg.textContent = "Este hallazgo ya se había marcado como terminado.";
           if (despues && despues.partidaId === p.partidaId) despues = null;
           cargar();
+        } else if (err && err.message === "http-400") {
+          // GPA puede cambiar su decisión mientras esta página sigue abierta (2026-10-01):
+          // el servidor ya no acepta el después de este hallazgo y reintentar no sirve.
+          msg.textContent = "GPA cambió la decisión sobre este hallazgo. Se actualizó la lista.";
+          if (despues && despues.partidaId === p.partidaId) despues = null;
+          cargar();
         } else {
           msg.textContent = "No se pudo enviar. Revisa tu señal e intenta de nuevo.";
           boton.disabled = false;

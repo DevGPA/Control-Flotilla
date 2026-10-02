@@ -287,9 +287,12 @@ export type DecisionPartida = "autorizar" | "rechazar";
  * real de AppSync no se ejecuta en las pruebas: son puras o estructurales.
  *
  * El `null` sigue viajando cuando de verdad hay que limpiar (dato corrupto: una
- * `propuesta` que arrastra un motivo). Esa ruta es inalcanzable por la capa pura
- * —`autorizar` exige `estado === "propuesta"` y una propuesta no tiene motivo—,
- * así que en la práctica `operativo` nunca manda un `null`.
+ * `propuesta` que arrastra un motivo). Cambiar de decisión (2026-10-01) abrió
+ * `rechazada → autorizada` y `autorizada → rechazada`: la limpieza del motivo al
+ * volver a autorizar viaja como `""` (un valor, no un borrado), y un `""` ya
+ * guardado cuenta como vacío — pedir borrarlo con `null` en el SIGUIENTE cambio
+ * de decisión era reabrir este mismo defecto. En la práctica `operativo` nunca
+ * manda un `null`.
  */
 export function camposDeDecision(
   actual: Partida,
@@ -299,8 +302,9 @@ export function camposDeDecision(
   const poner = (campo: string, antes: unknown, ahora: unknown): void => {
     if (antes === ahora) return;
     if (ahora === undefined) {
-      // Solo se borra lo que existía; `undefined → undefined` no se manda.
-      if (antes !== undefined && antes !== null) out[campo] = null;
+      // Solo se borra lo que existía; `undefined → undefined` no se manda, y un
+      // `""` (limpieza de un cambio de decisión anterior) ya está vacío.
+      if (antes !== undefined && antes !== null && antes !== "") out[campo] = null;
       return;
     }
     out[campo] = ahora as string | number;
@@ -379,9 +383,14 @@ export async function guardarDecisionPartida(args: {
   // el clic viejo de B-C3. Lo que lo frena es esto: la decisión se aplica solo si la
   // fila real está en el MISMO estado que la copia que el usuario tenía enfrente. Si
   // otra pestaña la movió, nadie pisa a nadie — se lanza y el repintado trae la verdad.
+  // `cambio: true` le dice al monolito que no es un fallo de red: reintentar no sirve,
+  // hay que traer la verdad de la nube y repintar (_bnAutorizar / _bnRechazar).
   if (actual.estado !== partida.estado) {
-    throw new Error(
-      `La partida cambió en otra pestaña (${partida.estado} → ${actual.estado}); recarga para decidir sobre lo vigente`,
+    throw Object.assign(
+      new Error(
+        `La partida cambió en otra pestaña (${partida.estado} → ${actual.estado}); recarga para decidir sobre lo vigente`,
+      ),
+      { cambio: true },
     );
   }
 

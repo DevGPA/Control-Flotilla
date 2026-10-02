@@ -154,6 +154,19 @@ describe("liga · mano de obra autorizada", () => {
     expect(llamadas.filter((l) => l.url.startsWith("/api/visita")).length).toBe(antes + 1);
   });
 
+  // Revisión 2026-10-02 (Important 2): GPA ahora puede retirar una autorización mientras el
+  // taller tiene la liga abierta. El servidor responde 400 ("no fue autorizado"): reintentar
+  // nunca va a funcionar, así que se dice la verdad y se recarga la visita, igual que el 409.
+  it("400 (GPA cambió la decisión) ⇒ lo dice, NO culpa a la señal y recarga la visita", async () => {
+    respuestaTerminar = { status: 400, body: { error: "Este hallazgo no fue autorizado" } };
+    await montar([mo()]);
+    const antes = llamadas.filter((l) => l.url.startsWith("/api/visita")).length;
+    boton(tarjeta("Ajuste de freno"), "Marcar como terminado")!.click();
+    await asentar();
+    expect(document.body.textContent).not.toContain("Revisa tu señal");
+    expect(llamadas.filter((l) => l.url.startsWith("/api/visita")).length).toBe(antes + 1);
+  });
+
   it("falla de red ⇒ 'No se pudo enviar' y el botón se puede volver a tocar", async () => {
     respuestaTerminar = { status: 500, body: { error: "error interno" } };
     await montar([mo()]);

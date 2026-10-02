@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
 <!-- CSP segunda línea de defensa (la primaria está en nginx). Cubre file:// y dev.
      Nota: frame-ancestors omitido aquí (browsers lo ignoran en meta — está en header nginx). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-aspSt91P66QbRPlztXDxhyu9+KoBqHrMPvKqsF0/xh8=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-spoNzrFYGIL2O8R7ecquXngwmbxgYk7nmX1xlwYjExU=' 'sha256-6qqSFqnAGIHEHI4Q9ACbk6Bch/8KN4A9H0pNaXcEpWY=' 'sha256-Z7Mjh1RPn3a8kg8hBt3qldUGzKcjKTtyzXtc2X70hWc=' 'sha256-Ra8p4/gHdvW01BqDhUxy/Cdh782NpGUFIWJP/wElt7M=' 'sha256-uyyxlbeXQNSZRUaWKeF8PEKDyrK9RlIbGSJBr24t62w='; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.amazonaws.com; media-src 'self' blob: https://*.amazonaws.com; connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com https://*.amazoncognito.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"/>
 <title>GPA Fleet Command</title>
 <script>
   // Anti-FOUC: aplicar tema ANTES de cargar CSS para evitar flash.
@@ -9197,9 +9197,20 @@ async function _bnAutorizar(fila, p, btn){
     _bnRepintar();
   }catch(e){
     console.error("[bandeja] autorizar:", e);
+    if(e && e.cambio === true){ await _bnTraerVerdad(); return; }
     if(window.notify) window.notify("No se pudo autorizar. Intenta de nuevo.", "error", 5000);
     btn.disabled = false;
   }
+}
+
+// Cambiar de decisión (2026-10-01): la partida ya no está como el usuario la vio (otra
+// pestaña la decidió o el taller la terminó). Reintentar no sirve — con el registro abierto
+// el poll se pausa —, así que se trae la verdad de la nube, se repinta y se dice.
+async function _bnTraerVerdad(){
+  if(window.notify) window.notify("Esta partida cambió (otra persona o el taller). Ya se actualizó la lista.", "warn", 6000);
+  try{ if(window.__cloudHydrate) await window.__cloudHydrate(); }
+  catch(e){ console.error("[bandeja] re-hidratar tras cambio:", e); }
+  _bnRepintar();
 }
 
 async function _bnRechazar(fila, p, motivo, nota, btn){
@@ -9215,6 +9226,7 @@ async function _bnRechazar(fila, p, motivo, nota, btn){
     _bnRepintar();
   }catch(e){
     console.error("[bandeja] rechazar:", e);
+    if(e && e.cambio === true){ await _bnTraerVerdad(); return; }
     if(window.notify) window.notify("No se pudo rechazar. Intenta de nuevo.", "error", 5000);
     btn.disabled = false;
   }

@@ -11,10 +11,15 @@ const raiz = join(__dirname, "..");
 const html = readFileSync(join(raiz, "Control de flotilla.html"), "utf8");
 
 const literal = (nombre: string): string => {
-  const i = html.indexOf(`function ${nombre}(`);
+  let i = html.indexOf(`function ${nombre}(`);
   expect(i, `falta ${nombre} en el monolito`).toBeGreaterThan(-1);
-  const j = html.indexOf("\nfunction ", i + 10);
-  return html.slice(i, j > 0 ? j : undefined);
+  // Las funciones `async` del monolito se recortan CON su `async`, y el recorte termina
+  // en la siguiente declaración, sea `function` o `async function`.
+  if (html.slice(i - 6, i) === "async ") i -= 6;
+  const fines = ["\nfunction ", "\nasync function "]
+    .map((m) => html.indexOf(m, i + 16))
+    .filter((j) => j > 0);
+  return html.slice(i, fines.length ? Math.min(...fines) : undefined);
 };
 
 const P = (o: Partial<Partida> = {}): Partida => ({
@@ -145,5 +150,82 @@ describe("cableado — el registro usa la fila y el puente de visita cerrada", (
     const hydrate = readFileSync(join(raiz, "src", "api", "cloudHydrate.ts"), "utf8");
     expect(wire).toContain("window.__visitaCerrada = visitaCerrada");
     expect(hydrate).toContain("__visitaCerrada?:");
+  });
+});
+
+// Revisión 2026-10-02 (Important 3): si el guardado choca con otra pestaña o con el taller
+// (la fila real ya no está en el estado que el usuario vio), "Intenta de nuevo" nunca puede
+// funcionar con el registro abierto — el poll se pausa con el modal. Hay que traer la
+// verdad de la nube, repintar y decirlo. Un fallo de red sigue siendo "Intenta de nuevo".
+describe("_bnAutorizar / _bnRechazar — cuando la partida cambió en otro lado", () => {
+  type Firma = (...a: unknown[]) => Promise<void>;
+  function guardados(guardar: () => Promise<void>) {
+    const win = {
+      __guardarDecisionPartida: vi.fn(guardar),
+      __cloudHydrate: vi.fn(async () => {}),
+      notify: vi.fn(),
+    };
+    const repintar = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- se ejecuta el literal real
+    const fabrica = new Function(
+      "window",
+      "_bnRepintar",
+      "console",
+      `${literal("_bnAutorizar")}
+      ${literal("_bnRechazar")}
+      ${literal("_bnTraerVerdad")}
+      return { _bnAutorizar, _bnRechazar };`,
+    );
+    const fns = fabrica(win, repintar, { error: () => {} }) as {
+      _bnAutorizar: Firma;
+      _bnRechazar: Firma;
+    };
+    return { win, repintar, ...fns };
+  }
+  const cambio = (): Error =>
+    Object.assign(new Error("La partida cambió en otra pestaña"), { cambio: true });
+
+  it("autorizar choca ⇒ re-hidrata, repinta y dice que cambió (no 'Intenta de nuevo')", async () => {
+    const g = guardados(async () => {
+      throw cambio();
+    });
+    const btn = document.createElement("button");
+    await g._bnAutorizar(fila, P({ estado: "rechazada" }), btn);
+    expect(g.win.__cloudHydrate).toHaveBeenCalledTimes(1);
+    expect(g.repintar).toHaveBeenCalledTimes(1);
+    const texto = String(g.win.notify.mock.calls.at(-1)?.[0] ?? "");
+    expect(texto).toMatch(/cambió/);
+    expect(texto).not.toMatch(/Intenta de nuevo/);
+  });
+
+  it("retirar choca (el taller ya lo terminó) ⇒ re-hidrata, repinta y lo dice", async () => {
+    const g = guardados(async () => {
+      throw cambio();
+    });
+    const btn = document.createElement("button");
+    await g._bnRechazar(fila, P({ estado: "autorizada" }), "No es necesario ahora", "", btn);
+    expect(g.win.__cloudHydrate).toHaveBeenCalledTimes(1);
+    expect(g.repintar).toHaveBeenCalledTimes(1);
+    expect(String(g.win.notify.mock.calls.at(-1)?.[0] ?? "")).toMatch(/cambió/);
+  });
+
+  it("un fallo de red sigue diciendo 'Intenta de nuevo' y deja el botón tocable", async () => {
+    const g = guardados(async () => {
+      throw new Error("Network error");
+    });
+    const btn = document.createElement("button");
+    await g._bnAutorizar(fila, P({ estado: "rechazada" }), btn);
+    expect(g.win.__cloudHydrate).not.toHaveBeenCalled();
+    expect(String(g.win.notify.mock.calls.at(-1)?.[0] ?? "")).toMatch(/Intenta de nuevo/);
+    expect(btn.disabled).toBe(false);
+  });
+});
+
+describe("guardarDecisionPartida — el choque se distingue de un fallo de red", () => {
+  it("el error de la guarda trae la marca `cambio: true` que el monolito lee", () => {
+    const src = readFileSync(join(raiz, "src", "api", "tallerPartidas.ts"), "utf8");
+    const i = src.indexOf("if (actual.estado !== partida.estado)");
+    expect(i, "falta la guarda de estado").toBeGreaterThan(-1);
+    expect(src.slice(i, i + 600)).toContain("cambio: true");
   });
 });

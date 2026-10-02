@@ -179,3 +179,40 @@ describe("camposDeDecision — cambiar de decisión no pide borrar nada", () => 
     expect(Object.values(campos)).not.toContain(null);
   });
 });
+
+// Revisión 2026-10-02 (Important 1): tras volver a autorizar, la NUBE guarda "" en
+// motivoRechazo/motivoRechazoNota (y rowToPartida los devuelve como ""). El SEGUNDO cambio
+// de decisión no puede pedir borrar esos "" con null: es el defecto de prod del 2026-09-15.
+describe("camposDeDecision — el segundo cambio de decisión tampoco manda null", () => {
+  const LUEGO = "2026-10-02T09:00:00Z";
+  // Fila como la devuelve la nube después de "rechazar (Otro) → volver a autorizar".
+  const reautorizadaEnNube = (): Partida =>
+    P({
+      estado: "autorizada",
+      precioAutorizado: 550,
+      motivoRechazo: "",
+      motivoRechazoNota: "",
+    });
+
+  it("retirar (motivo ≠ Otro) una re-autorizada no pide borrar la nota vacía", () => {
+    const actual = reautorizadaEnNube();
+    const campos = camposDeDecision(
+      actual,
+      rechazar(actual, "No es necesario ahora", undefined, QUIEN, LUEGO),
+    );
+    expect(campos.motivoRechazo).toBe("No es necesario ahora");
+    expect(Object.values(campos)).not.toContain(null);
+  });
+
+  it("volver a autorizar una rechazada cuya nota quedó vacía no pide borrarla", () => {
+    const actual = P({
+      estado: "rechazada",
+      precioAutorizado: 550,
+      motivoRechazo: "No es necesario ahora",
+      motivoRechazoNota: "",
+    });
+    const campos = camposDeDecision(actual, autorizar(actual, QUIEN, LUEGO));
+    expect(campos.motivoRechazo).toBe("");
+    expect(Object.values(campos)).not.toContain(null);
+  });
+});
